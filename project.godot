@@ -1,0 +1,25 @@
+; Engine configuration file.
+; Проект «Пепел и Мана» — Godot 4.7
+
+config_version=5
+
+[application]
+
+config/name="Пепел и Мана"
+run/main_scene="res://scenes/main_menu.tscn"
+config/features=PackedStringArray("4.7")
+
+[autoload]
+
+Loc="*res://scripts/loc.gd"
+
+[display]
+
+window/size/viewport_width=1920
+window/size/viewport_height=1080
+window/stretch/mode="canvas_items"
+window/stretch/aspect="keep"
+
+[rendering]
+
+textures/canvas_textures/default_texture_filter=0

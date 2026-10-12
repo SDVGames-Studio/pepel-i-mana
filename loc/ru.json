@@ -1,0 +1,8 @@
+{
+	"menu.title": "Пепел и Мана",
+	"menu.version": "версия %s — этап M0",
+	"menu.new_game": "Новая игра",
+	"menu.exit": "Выход",
+	"city.stub_hint": "Пустой город — заглушка этапа M0",
+	"city.back_hint": "Esc — вернуться в меню"
+}
