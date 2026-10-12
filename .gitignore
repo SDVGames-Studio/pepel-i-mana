@@ -1,0 +1,10 @@
+# Godot
+.godot/
+*.translation
+
+# Сборка
+build/
+
+# Система
+Thumbs.db
+.DS_Store
