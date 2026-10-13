@@ -117,12 +117,11 @@ func _build() -> void:
 	_warning_label = _make_screen_label(Color("#ff5555"), 30, VERTICAL_ALIGNMENT_CENTER)
 	root.add_child(_warning_label)
 
-	_toast_label = _make_screen_label(Color("#ffd766"), 22, VERTICAL_ALIGNMENT_BOTTOM)
-	_toast_label.offset_top = -170.0
+	# тост выше подсказки: полосы на разной высоте, не накладываются
+	_toast_label = _make_screen_label(Color("#ffd766"), 22, VERTICAL_ALIGNMENT_BOTTOM, -118.0)
 	root.add_child(_toast_label)
 
-	_hint_label = _make_screen_label(Color(1, 1, 1, 0.85), 22, VERTICAL_ALIGNMENT_BOTTOM)
-	_hint_label.offset_top = -120.0
+	_hint_label = _make_screen_label(Color(1, 1, 1, 0.85), 22, VERTICAL_ALIGNMENT_BOTTOM, -58.0)
 	root.add_child(_hint_label)
 
 	_build_spell_bar(root)
@@ -204,8 +203,9 @@ func _make_bar(bg: Color, fill_color: Color) -> Dictionary:
 	return {"panel": panel, "fill": fill, "label": label}
 
 
-## Подпись на весь экран: warning — по центру, hint/toast — снизу по центру.
-func _make_screen_label(color: Color, font_size: int, v_align: int) -> Label:
+## Подпись на весь экран: warning — по центру; hint/toast — полосы над нижним
+## краем (bottom_offset — высота текста над краем, у каждой полосы свой).
+func _make_screen_label(color: Color, font_size: int, v_align: int, bottom_offset := 0.0) -> Label:
 	var label := Label.new()
 	label.set_anchors_preset(Control.PRESET_FULL_RECT)
 	label.offset_top = 0.0
@@ -213,7 +213,8 @@ func _make_screen_label(color: Color, font_size: int, v_align: int) -> Label:
 	label.offset_left = 0.0
 	label.offset_right = 0.0
 	if v_align == VERTICAL_ALIGNMENT_BOTTOM:
-		label.offset_top = -140.0
+		label.offset_top = bottom_offset - 34.0
+		label.offset_bottom = bottom_offset
 	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	label.vertical_alignment = v_align
 	label.add_theme_color_override("font_color", color)

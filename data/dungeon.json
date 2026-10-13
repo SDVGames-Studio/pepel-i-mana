@@ -27,6 +27,12 @@
 	},
 	"mana_drain_period": 25.0,
 	"crystal_mana": 3,
+	"test_mode": {
+		"chest_items_min": 3,
+		"chest_items_max": 5,
+		"enemy_drop_chance": 1.0,
+		"rune_per_chest": 1
+	},
 	"biome": {
 		"id": "ruins",
 		"floor_color": "#4a4440",

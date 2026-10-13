@@ -39,6 +39,10 @@
 		"altar_cap_extra": 4,
 		"altar_regen_period": 5.0
 	},
+	"test_mode": {
+		"resources": {"wood": 500, "stone": 500, "food": 500, "crystal": 20},
+		"runes_each": 4
+	},
 	"colors": {
 		"grass": "#5d7a3a",
 		"grass_alt": "#577336",

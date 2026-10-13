@@ -223,6 +223,8 @@ func _unhandled_input(event: InputEvent) -> void:
 			set_build_mode("")
 		elif enchant_mode != "":
 			set_enchant_mode("")
+		elif hud.magic_visible():
+			hud.toggle_magic()
 		elif hud.residents_visible():
 			hud.toggle_residents()
 		else:

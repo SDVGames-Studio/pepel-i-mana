@@ -150,6 +150,7 @@ func _build_magic_panel(root: Control) -> void:
 		var btn := Button.new()
 		btn.custom_minimum_size = Vector2(0, 40)
 		btn.add_theme_font_size_override("font_size", 17)
+		btn.focus_mode = Control.FOCUS_NONE
 		btn.tooltip_text = Loc.t(String(def["desc"]))
 		btn.pressed.connect(func() -> void: city.cast_city_spell(spell_id))
 		_magic_box.add_child(btn)
@@ -166,6 +167,7 @@ func _build_magic_panel(root: Control) -> void:
 	_rune_slot_b = OptionButton.new()
 	for slot in [_rune_slot_a, _rune_slot_b]:
 		slot.custom_minimum_size = Vector2(240, 36)
+		slot.focus_mode = Control.FOCUS_NONE
 		slot.item_selected.connect(func(_idx: int) -> void: _update_craft_preview())
 		slots.add_child(slot)
 	_craft_result = _label(18)
@@ -173,6 +175,7 @@ func _build_magic_panel(root: Control) -> void:
 	_craft_btn = Button.new()
 	_craft_btn.text = Loc.t("magic.craft_make")
 	_craft_btn.custom_minimum_size = Vector2(0, 40)
+	_craft_btn.focus_mode = Control.FOCUS_NONE
 	_craft_btn.pressed.connect(_on_craft_pressed)
 	_magic_box.add_child(_craft_btn)
 
@@ -185,6 +188,7 @@ func _build_magic_panel(root: Control) -> void:
 		var btn := Button.new()
 		btn.custom_minimum_size = Vector2(0, 40)
 		btn.add_theme_font_size_override("font_size", 17)
+		btn.focus_mode = Control.FOCUS_NONE
 		btn.tooltip_text = Loc.t(String(def["desc"]))
 		btn.pressed.connect(func() -> void: city.set_enchant_mode(ench_id))
 		_magic_box.add_child(btn)
@@ -387,6 +391,7 @@ func _build() -> void:
 		btn.tooltip_text = _bld_tooltip(b)
 		btn.custom_minimum_size = Vector2(150, 52)
 		btn.add_theme_font_size_override("font_size", 18)
+		btn.focus_mode = Control.FOCUS_NONE   # Tab не должен гонять фокус по кнопкам
 		btn.pressed.connect(func() -> void: city.set_build_mode(type_id))
 		bld_box.add_child(btn)
 		_bld_btns.append(btn)
@@ -436,6 +441,7 @@ func _toggle_btn(text: String, on_press: Callable) -> Button:
 	b.toggle_mode = true
 	b.custom_minimum_size = Vector2(90, 44)
 	b.add_theme_font_size_override("font_size", 20)
+	b.focus_mode = Control.FOCUS_NONE
 	b.pressed.connect(on_press)
 	return b
 

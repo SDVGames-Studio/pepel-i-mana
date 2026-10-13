@@ -426,11 +426,35 @@ func _try_interact() -> void:
 func _open_chest(chest: Node) -> void:
 	chest.open = true
 	chest.queue_redraw()
-	var count := _loot_rng.randi_range(int(loot_data["chest_items_min"]), int(loot_data["chest_items_max"]))
+	var test_cfg: Dictionary = params.get("test_mode", {})
+	var min_i := int(loot_data["chest_items_min"])
+	var max_i := int(loot_data["chest_items_max"])
+	if Game.test_mode and not test_cfg.is_empty():
+		min_i = int(test_cfg.get("chest_items_min", min_i))
+		max_i = int(test_cfg.get("chest_items_max", max_i))
+	var count := _loot_rng.randi_range(min_i, max_i)
 	for i in count:
 		var item := _roll_item()
 		Game.add_item(String(item["id"]))
 		hud.toast(Loc.t("dungeon.got_item") % Loc.t(String(item["loc"])))
+	# тест-режим: гарантированная руна из сундука — для проверки крафта
+	if Game.test_mode and int(test_cfg.get("rune_per_chest", 0)) > 0:
+		for i in int(test_cfg["rune_per_chest"]):
+			var rune_id := _random_rune_id()
+			Game.add_item(rune_id)
+			var rune_item := _item_by_id(rune_id)
+			if not rune_item.is_empty():
+				hud.toast(Loc.t("dungeon.got_item") % Loc.t(String(rune_item["loc"])))
+
+
+## Случайная руна из рецептов (все 8 участвуют).
+func _random_rune_id() -> String:
+	var runes := {}
+	for r in Game.magic.cfg.get("recipes", []):
+		runes[String(r["a"])] = true
+		runes[String(r["b"])] = true
+	var keys: Array = runes.keys()
+	return String(keys[_loot_rng.randi_range(0, keys.size() - 1)])
 
 
 ## Ролл предмета: сначала редкость по весам, затем случайный предмет этой редкости.
@@ -465,7 +489,11 @@ func _on_pickup_collected(pickup) -> void:
 
 
 func _on_enemy_died(enemy) -> void:
-	if _loot_rng.randf() < float(loot_data["enemy_drop_chance"]):
+	var drop_chance := float(loot_data["enemy_drop_chance"])
+	var test_cfg: Dictionary = params.get("test_mode", {})
+	if Game.test_mode and not test_cfg.is_empty():
+		drop_chance = float(test_cfg.get("enemy_drop_chance", drop_chance))
+	if _loot_rng.randf() < drop_chance:
 		_spawn_pickup("item", String(_roll_item()["id"]), enemy.position)
 	if _loot_rng.randf() < float(enemy.p["mana_chance"]):
 		_spawn_pickup("mana", "", enemy.position + Vector2(12, 6))

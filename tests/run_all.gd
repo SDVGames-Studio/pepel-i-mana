@@ -7,7 +7,7 @@ const REQUIRED_LOCALES := [
 	"menu.title", "menu.version", "menu.new_game", "menu.exit",
 	"menu.continue_city", "menu.setup_title", "menu.residents",
 	"menu.start_level", "menu.level.low", "menu.level.normal", "menu.level.high",
-	"menu.begin", "menu.back",
+	"menu.begin", "menu.back", "menu.test_mode",
 	"city.back_hint", "city.last_run_ok", "city.last_run_death", "city.last_run_nothing",
 	"res.wood", "res.stone", "res.food", "res.crystal",
 	"city.pop", "city.day", "city.night", "city.paused", "city.speed",
@@ -153,7 +153,8 @@ func _test_data() -> void:
 	_check(city is Dictionary, "city.json — валидный JSON-словарь")
 	if not (city is Dictionary):
 		return
-	for key in ["tile_size", "map_w", "map_h", "day_length", "speeds", "start", "loot_to_pool"]:
+	for key in ["tile_size", "map_w", "map_h", "day_length", "speeds", "start", "loot_to_pool",
+			"pollution", "hero_mana", "test_mode"]:
 		_check(city.has(key), "city.json содержит %s" % key)
 	var blds: Variant = city.get("buildings", [])
 	_check(blds is Array and blds.size() == 9, "city.json — 9 типов зданий (8 из ТЗ 4.1 + лесопилка)")
@@ -254,6 +255,22 @@ func _test_game_inventory() -> void:
 	_check(lost == 5, "смерть: потеряно 5 из 8")
 	_check(game.loot_total() == 3, "после смерти в рюкзаке 3 единицы")
 	game.free()
+
+	# тест-режим: ресурсы и руны выдаются при новой игре
+	var game2: Node = load("res://scripts/game.gd").new()
+	game2.test_mode = true
+	game2.new_city()
+	var test_cfg: Dictionary = _read_json("res://data/city.json").get("test_mode", {})
+	_check(int(game2.city_sim.res["wood"]) == int(test_cfg["resources"]["wood"]),
+			"тест-режим: ресурсы из city.json")
+	_check(int(game2.city_sim.res["crystal"]) == int(test_cfg["resources"]["crystal"]),
+			"тест-режим: кристаллы в пуле")
+	_check(game2.count_item("rune_chaos") == int(test_cfg["runes_each"]),
+			"тест-режим: руны в рюкзаке (по recipes)")
+	_check(game2.count_item("rune_light") == int(test_cfg["runes_each"]),
+			"тест-режим: каждая руна в нужном числе")
+	_check(game2.spellbook.is_empty(), "тест-режим не изучает заклинания сам")
+	game2.free()
 
 
 # --- M2: город -----------------------------------------------------------

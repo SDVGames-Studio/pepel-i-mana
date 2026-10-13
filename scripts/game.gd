@@ -16,6 +16,7 @@ var magic = null                 # magic.gd — школы/рецепты/зак
 var spellbook: Array = []        # изученные заклинания: [id: String]
 var start_residents := 5         # настройки старта из меню (вопрос 11)
 var start_level := "normal"      # "low" | "normal" | "high"
+var test_mode := false           # тест-режим: много ресурсов, рун и добычи
 
 
 func _init() -> void:
@@ -48,6 +49,27 @@ func new_city() -> void:
 	city_map.generate(randi(), cfg)
 	city_sim = sim_script.new()
 	city_sim.setup(city_map, cfg, start_residents, start_level)
+	if test_mode:
+		_apply_test_mode(cfg)
+
+
+## Тест-режим: стартовые ресурсы и руны из city.json -> "test_mode".
+func _apply_test_mode(cfg: Dictionary) -> void:
+	var test_cfg: Dictionary = cfg.get("test_mode", {})
+	if test_cfg.is_empty():
+		return
+	var start_res: Dictionary = test_cfg.get("resources", {})
+	for key in start_res:
+		if city_sim.res.has(key):
+			city_sim.res[key] = float(int(start_res[key]))
+	var runes_each := int(test_cfg.get("runes_each", 0))
+	if runes_each > 0 and magic != null:
+		var rune_ids := {}
+		for r in magic.cfg.get("recipes", []):
+			rune_ids[String(r["a"])] = true
+			rune_ids[String(r["b"])] = true
+		for rune_id in rune_ids:
+			add_item(rune_id, runes_each)
 
 
 func _read_json(path: String) -> Variant:
