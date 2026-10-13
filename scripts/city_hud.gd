@@ -466,7 +466,14 @@ func _residents_bbcode() -> String:
 		if String(r["prof"]) == "":
 			parts.append("[color=#fff59d]%s[/color]" % Loc.t("city.state.child"))
 		else:
-			parts.append(_prof_loc(String(r["prof"])))
+			var prof_text := _prof_loc(String(r["prof"]))
+			var extras: Array = r.get("prof_extra", [])
+			if not (extras as Array).is_empty():
+				var extra_names := PackedStringArray()
+				for p_id in extras:
+					extra_names.append(_prof_loc(String(p_id)))
+				prof_text += " [color=#80cbc4](+%s)[/color]" % ", ".join(extra_names)
+			parts.append(prof_text)
 			var traits := PackedStringArray()
 			for t_id in r.get("traits", []):
 				traits.append(Loc.t("trait." + String(t_id)))

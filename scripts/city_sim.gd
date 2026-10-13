@@ -99,6 +99,7 @@ func _new_resident(res_name: String, prof: String, tile: Vector2i) -> Dictionary
 		"traits": traits, "mood": _start_mood(traits),
 		"skill": 0.0, "rank": 0, "age_days": 100.0,
 		"ail": "", "ail_days": 0.0, "friend": -1, "work_bonus": 0.0,
+		"prof_extra": [], "sub_prof": "",
 	}
 	return r
 
@@ -378,13 +379,15 @@ func _complete_site(site: Dictionary) -> void:
 # --- жители --------------------------------------------------------------
 
 ## Раздача работы: производственные здания и стройплощадки — свободным жителям.
+## M4-подмена: если по профессии никого нет, свободный житель замещает (и учится),
+## а держатель подмены возвращается на свою профессию, когда она понадобилась.
 func _assign_jobs() -> void:
 	var taken := {}   # id жителя -> занят
 	for r in residents:
 		if r["bld"] != null or r["site"] != null:
 			taken[int(r["id"])] = true
+	# 1. стройки — свободным строителям
 	for b in buildings:
-		var def := _def(b)
 		if b["done"]:
 			continue   # готовое производственное здание закрепляется ниже
 		if int(b["worker"]) > 0 and taken.has(int(b["worker"])):
@@ -396,6 +399,7 @@ func _assign_jobs() -> void:
 		worker["site"] = b
 		worker["bld"] = null
 		taken[int(worker["id"])] = true
+	# 2. готовые здания — по основной профессии
 	for b in buildings:
 		if not b["done"] or not def_has_worker(b):
 			continue
@@ -403,12 +407,100 @@ func _assign_jobs() -> void:
 			continue
 		var worker := _free_resident(String(_def(b)["worker"]), taken)
 		if worker.is_empty():
-			events.append({"type": "no_worker", "bld": String(b["type"])})
-			continue
+			continue   # попробуют замещающие ниже
 		b["worker"] = int(worker["id"])
 		worker["bld"] = b
 		worker["site"] = null
 		taken[int(worker["id"])] = true
+	# 3. держатели подмен возвращаются на основную профессию, если она нужна
+	_substitutes_to_primary(taken)
+	# 4. подмена строек и зданий свободными жителями (с обучением)
+	for b in buildings:
+		if not bool(b["done"]) and (int(b["worker"]) <= 0 or not taken.has(int(b["worker"]))):
+			_substitute_into("builder", taken, b, true)
+	for b in buildings:
+		if not b["done"] or not def_has_worker(b):
+			continue
+		if int(b["worker"]) > 0 and taken.has(int(b["worker"])):
+			continue
+		_substitute_into(String(_def(b)["worker"]), taken, b, false)
+	# 5. всё ещё некому — сообщаем игроку
+	for b in buildings:
+		if not b["done"] or not def_has_worker(b):
+			continue
+		if int(b["worker"]) <= 0:
+			events.append({"type": "no_worker", "bld": String(b["type"])})
+
+
+## Держатель подмены возвращается на свою профессию, если по ней свободна работа.
+func _substitutes_to_primary(taken: Dictionary) -> void:
+	for r in residents:
+		if String(r.get("sub_prof", "")) == "":
+			continue
+		var want := String(r["prof"])
+		var target: Dictionary = {}
+		if want == "builder":
+			for b in buildings:
+				if not bool(b["done"]) and int(b["worker"]) <= 0:
+					target = b
+					break
+		if target.is_empty():
+			for b in buildings:
+				if not b["done"] or not def_has_worker(b):
+					continue
+				if String(_def(b)["worker"]) != want or int(b["worker"]) > 0:
+					continue
+				target = b
+				break
+		if target.is_empty():
+			continue
+		if r["bld"] != null:
+			(r["bld"] as Dictionary)["worker"] = -1
+		if r["site"] != null:
+			(r["site"] as Dictionary)["worker"] = -1
+		target["worker"] = int(r["id"])
+		var is_site := not bool(target["done"])
+		if is_site:
+			r["site"] = target
+			r["bld"] = null
+		else:
+			r["bld"] = target
+			r["site"] = null
+		r["sub_prof"] = ""
+		taken[int(r["id"])] = true
+
+
+## Свободный житель замещает нехватку профессии need: предпочитает выучившего,
+## иначе учится сам (профессия попадает в prof_extra — ответ на просьбу заказчика).
+func _substitute_into(need: String, taken: Dictionary, bld: Dictionary, is_site: bool) -> void:
+	var learned_cand: Dictionary = {}
+	var any_cand: Dictionary = {}
+	for r in residents:
+		if taken.has(int(r["id"])) or String(r["prof"]) == need:
+			continue
+		if String(r["prof"]) == "" or String(r.get("ail", "")) != "":
+			continue
+		if r["bld"] != null or r["site"] != null:
+			continue
+		if (r.get("prof_extra", []) as Array).has(need):
+			learned_cand = r
+			break
+		if any_cand.is_empty():
+			any_cand = r
+	var cand: Dictionary = learned_cand if not learned_cand.is_empty() else any_cand
+	if cand.is_empty():
+		return
+	var extras: Array = cand.get("prof_extra", [])
+	var learned := not extras.has(need)
+	if learned:
+		extras.append(need)
+		_chron("chron.learned", String(cand["name"]), need)
+		events.append({"type": "learned", "name": String(cand["name"]), "prof": need})
+	cand["sub_prof"] = need
+	cand["site"] = bld if is_site else null
+	cand["bld"] = null if is_site else bld
+	bld["worker"] = int(cand["id"])
+	taken[int(cand["id"])] = true
 
 
 func def_has_worker(b: Dictionary) -> bool:
@@ -636,6 +728,7 @@ func _restore_rate(r: Dictionary, sleeping: bool) -> float:
 func _do_build(r: Dictionary, site: Dictionary, dt: float) -> void:
 	if site["done"]:
 		r["site"] = null
+		r["sub_prof"] = ""
 		return
 	if _arrived(r, site["tile"]):
 		r["state"] = "build"
@@ -644,6 +737,7 @@ func _do_build(r: Dictionary, site: Dictionary, dt: float) -> void:
 		_grow_skill(r, dt)
 		if float(site["progress"]) >= float(_def(site)["build_work"]):
 			r["site"] = null
+			r["sub_prof"] = ""
 			_complete_site(site)
 	else:
 		_move_towards(r, site["tile"], dt)

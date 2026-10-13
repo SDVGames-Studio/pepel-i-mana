@@ -62,6 +62,7 @@ const REQUIRED_LOCALES := [
 	"city.chronicle_panel", "city.refugee_came", "city.birth_toast", "city.grown_toast",
 	"city.died_toast", "city.wounded_toast", "city.skill_up_toast",
 	"city.growth_cap", "city.growth_food", "city.growth_mood",
+	"city.learned_toast", "chron.learned",
 	"trait.hardworking", "trait.lazy", "trait.cheerful", "trait.grumpy",
 	"trait.brave", "trait.coward", "trait.magephobe", "trait.magiclover",
 	"trait.glutton", "trait.greedy",
@@ -720,6 +721,37 @@ func _test_people() -> void:
 	f2["state"] = "work"
 	var duo: float = sim_fr.work_mult(f1)
 	_check(duo > solo, "друг за работой усиливает жителя")
+
+	# подмена профессий: свободные замещают нехватку и учатся (просьба заказчика)
+	var sim_p := _make_sim()
+	_build_now(sim_p, "farm")     # фермер занят первой фермой
+	_build_now(sim_p, "sawmill")  # лесоруб занят пилорамой
+	var farm2 := _build_now(sim_p, "farm")
+	var builder_p: Dictionary = _resident_by_prof(sim_p, "builder")
+	_check(int(farm2["worker"]) == int(builder_p["id"]),
+			"строитель замещает фермера на второй ферме (некому работать)")
+	_check((builder_p["prof_extra"] as Array).has("farmer"), "замещающий выучил профессию фермера")
+	_check(String(builder_p["sub_prof"]) == "farmer", "подмена помечена, чтобы вернуть на основную")
+	_check(String(sim_p.chronicle[-1]["key"]) == "chron.learned", "обучение записано в летопись")
+
+	# потребность по основной: стройка зовёт строителя назад, ферма пустеет
+	var wall_tile: Vector2i = sim_p.map.spawn_tile + Vector2i(6, 0)
+	while not sim_p.is_buildable_tile(wall_tile):
+		wall_tile += Vector2i(1, 0)
+	sim_p.place_building("wall", wall_tile)
+	_check(builder_p["site"] != null and String(builder_p["sub_prof"]) == "",
+			"строитель вернулся на стройку: потребность по основной профессии")
+	_check(int(farm2["worker"]) != int(builder_p["id"]) and int(farm2["worker"]) > 0,
+			"освободившуюся ферму подхватил другой замещающий")
+	# выучившего предпочитают: умеющий фермера замещает раньше неумевшего
+	var sim_l := _make_sim()
+	var knowing: Dictionary = sim_l.residents[3]
+	var ignorant: Dictionary = sim_l.residents[4]
+	(knowing["prof_extra"] as Array).append("farmer")
+	var taken := {}
+	var farm_l := {"done": true, "type": "farm", "worker": -1}
+	sim_l._substitute_into("farmer", taken, farm_l, false)
+	_check(int(farm_l["worker"]) == int(knowing["id"]), "выучивший профессию замещает первым")
 
 
 # --- M3: магия ------------------------------------------------------------
