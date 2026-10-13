@@ -186,10 +186,18 @@ func cast_city_spell(def: Dictionary) -> String:
 		"cleanse":
 			pollution = maxf(0.0, pollution - float(params.get("amount", 25.0)))
 		"forest_gift":
-			res["food"] = minf(float(storage_cap()),
-					float(res["food"]) + float(params.get("food", 15.0)))
+			_add_resource_capped("food", float(params.get("food", 15.0)))
 			add_pollution(float(def.get("pollution", 0.0)))
 	return ""
+
+
+## Добавить ресурс с ограничением хранилища, но БЕЗ уменьшения запаса:
+## если его больше капа (тест-режим, излишки) — просто ничего не добавляем.
+func _add_resource_capped(key: String, amount: float) -> void:
+	var cap := float(storage_cap())
+	if float(res[key]) >= cap:
+		return
+	res[key] = minf(cap, float(res[key]) + amount)
 
 
 ## Зачаровать готовое здание (ответ №60): руна из рюкзака + кристаллы из пула.
@@ -399,8 +407,7 @@ func _update_wild_events(pol_cfg: Dictionary, day_len: float) -> void:
 		"surge":
 			_wild_surge(pol_cfg)
 		"gift":
-			res["crystal"] = minf(float(storage_cap()),
-					float(res["crystal"]) + float(pol_cfg.get("gift_crystals", 1)))
+			_add_resource_capped("crystal", float(pol_cfg.get("gift_crystals", 1)))
 			events.append({"type": "wild_gift"})
 
 

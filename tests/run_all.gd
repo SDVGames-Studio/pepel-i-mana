@@ -583,6 +583,13 @@ func _test_magic_sim() -> void:
 	var food_before: float = float(sim2.res["food"])
 	sim2.cast_city_spell(magic.spell("forest_gift"))
 	_check(absf(float(sim2.res["food"]) - (food_before + 15.0)) < 0.001, "Дары леса: +15 еды")
+	# фикс v0.4.2: дар не режет запас выше вместимости хранилища
+	sim2.res["food"] = 400.0
+	food_before = float(sim2.res["food"])
+	sim2._spell_ready.clear()
+	sim2.cast_city_spell(magic.spell("forest_gift"))
+	_check(absf(float(sim2.res["food"]) - food_before) < 0.001,
+			"Дары леса при запасе выше хранилища не уменьшает еду")
 
 	# зачарование фермы: +25% к производству
 	var sim3 := _make_sim()
