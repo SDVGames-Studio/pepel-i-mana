@@ -21,6 +21,7 @@ var _toast_label: Label
 var _warning_label: Label
 var _inv_panel: PanelContainer
 var _inv_text: RichTextLabel
+var _spell_slots: Array = []      # [{panel, label}] — панель заклинаний 1–6
 var _toast_time := 0.0
 
 
@@ -49,12 +50,13 @@ func refresh() -> void:
 	var hp_max := int(hero.p["hp"])
 	_hp_fill.size = Vector2(BAR_W * clampf(float(hero.hp) / hp_max, 0.0, 1.0), BAR_H)
 	_hp_label.text = "%s %d/%d" % [Loc.t("hud.hp"), hero.hp, hp_max]
-	var mana_max := int(hero.p["mana"])
+	var mana_max := int(hero.mana_max)
 	_mana_fill.size = Vector2(BAR_W * clampf(float(hero.mana) / mana_max, 0.0, 1.0), BAR_H)
 	_mana_label.text = "%s %d/%d" % [Loc.t("hud.mana"), hero.mana, mana_max]
 	_dash_fill.size = Vector2(BAR_W * hero.dash_ready_fraction(), BAR_H)
 	_loot_label.text = Loc.t("hud.loot_total") % Game.loot_total()
 	_warning_label.visible = hero.mana <= 0 and not hero.dead
+	_refresh_spell_slots()
 	if _inv_panel.visible:
 		_inv_text.text = _inventory_bbcode()
 
@@ -123,7 +125,59 @@ func _build() -> void:
 	_hint_label.offset_top = -120.0
 	root.add_child(_hint_label)
 
+	_build_spell_bar(root)
 	_build_inventory_panel(root)
+
+
+## Панель заклинаний (M3): до 6 слотов спеллбука, клавиши 1–6.
+func _build_spell_bar(root: Control) -> void:
+	var bar := HBoxContainer.new()
+	bar.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
+	bar.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	bar.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	bar.position.y = -54.0
+	bar.add_theme_constant_override("separation", 6)
+	root.add_child(bar)
+	for i in 6:
+		var panel := PanelContainer.new()
+		var style := StyleBoxFlat.new()
+		style.bg_color = Color(0.08, 0.07, 0.06, 0.85)
+		style.set_corner_radius_all(4)
+		style.set_content_margin_all(6)
+		panel.add_theme_stylebox_override("panel", style)
+		panel.visible = false
+		var label := Label.new()
+		label.add_theme_font_size_override("font_size", 15)
+		panel.add_child(label)
+		bar.add_child(panel)
+		_spell_slots.append({"panel": panel, "label": label, "style": style})
+
+
+func _refresh_spell_slots() -> void:
+	for i in _spell_slots.size():
+		var slot: Dictionary = _spell_slots[i]
+		var panel: PanelContainer = slot["panel"]
+		if i >= Game.spellbook.size():
+			panel.visible = false
+			continue
+		var spell_id := String(Game.spellbook[i])
+		var def: Dictionary = Game.magic.spell(spell_id)
+		if def.is_empty():
+			panel.visible = false
+			continue
+		panel.visible = true
+		var cd: float = hero.spell_cd_left(spell_id)
+		var ready_state: bool = cd <= 0.0 and hero.mana >= int(def.get("mana_cost", 0))
+		var cd_text := " (%.1f)" % cd if cd > 0.0 else ""
+		slot["label"].text = "%d. %s\n%d мана%s" % [i + 1, Loc.t(String(def["loc"])),
+				int(def.get("mana_cost", 0)), cd_text]
+		var school_col: Color = Game.magic.school_color(String(def["school"]))
+		slot["style"].border_color = school_col
+		if ready_state:
+			slot["style"].set_border_width_all(2)
+		else:
+			slot["style"].set_border_width_all(0)
+		panel.modulate = Color.WHITE if ready_state else Color(0.55, 0.55, 0.55)
 
 
 func _dash_row_label(label: Label) -> void:

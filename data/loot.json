@@ -13,6 +13,13 @@
 		{ "id": "old_shield", "loc": "item.old_shield", "rarity": "uncommon", "value": 5 },
 		{ "id": "glass_orb", "loc": "item.glass_orb", "rarity": "uncommon", "value": 4 },
 		{ "id": "rune_sparks", "loc": "item.rune_sparks", "rarity": "rare", "value": 12 },
+		{ "id": "rune_storm", "loc": "item.rune_storm", "rarity": "uncommon", "value": 6 },
+		{ "id": "rune_frost", "loc": "item.rune_frost", "rarity": "uncommon", "value": 6 },
+		{ "id": "rune_stone", "loc": "item.rune_stone", "rarity": "uncommon", "value": 6 },
+		{ "id": "rune_growth", "loc": "item.rune_growth", "rarity": "rare", "value": 12 },
+		{ "id": "rune_light", "loc": "item.rune_light", "rarity": "rare", "value": 12 },
+		{ "id": "rune_shadow", "loc": "item.rune_shadow", "rarity": "rare", "value": 12 },
+		{ "id": "rune_chaos", "loc": "item.rune_chaos", "rarity": "rare", "value": 12 },
 		{ "id": "echo_crystal", "loc": "item.echo_crystal", "rarity": "rare", "value": 15 },
 		{ "id": "heart_of_ruins", "loc": "item.heart_of_ruins", "rarity": "legendary", "value": 40 }
 	],

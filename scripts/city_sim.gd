@@ -3,8 +3,12 @@ extends RefCounted
 ## жители-статисты (6 профессий): работа, еда, сон. Чистая логика без сцены.
 ## Живёт в автозагрузке Game — город продолжает жить, пока герой в данже.
 ##
+## M3 (магия): магическое загрязнение с полосами и дикими событиями,
+## городские заклинания (резонанс/очищение/дары леса) с кулдаунами,
+## зачарование зданий руной + кристаллом, стан зданий от диких вспышек.
+##
 ## Житель: {id, name, prof, bld, site, home, state, pos, target, path, fatigue}
-## Здание: {id, type, tile, done, progress, worker}
+## Здание: {id, type, tile, done, progress, worker, enchant, ench_mult, stun_left}
 
 const RESOURCES := ["wood", "stone", "food", "crystal"]
 
@@ -17,10 +21,16 @@ var time := 0.0                 # игровое время, сек (x1)
 var day := 1
 var speed := 1
 var paused := false
-var events: Array = []          # [{"type": "site"|"built"|"no_worker", "bld": id}] — читает сцена
+var pollution := 0.0            # магическое загрязнение 0..100
+var resonance_left := 0.0       # остаток «Дикого резонанса», сек
+var resonance_mult := 1.0       # множитель производства резонанса
+var events: Array = []          # [{"type": "site"|"built"|"no_worker"|"wild_*", ...}] — читает сцена
 var base_pop := 0               # жители на старте — база лимита
 
 var _next_id := 1
+var _spell_ready := {}          # id городского заклинания -> время готовности
+var _event_rng := RandomNumberGenerator.new()
+var _last_event_day := 0
 
 
 ## Запуск новой игры: карта, стартовые ресурсы по уровню, жители с профессиями.
@@ -34,6 +44,12 @@ func setup(city_map, city_cfg: Dictionary, residents_count: int, level: String) 
 	day = 1
 	speed = 1
 	paused = false
+	pollution = 0.0
+	resonance_left = 0.0
+	resonance_mult = 1.0
+	_spell_ready = {}
+	_last_event_day = 0
+	_event_rng.randomize()
 	_next_id = 1
 	var levels: Dictionary = cfg["start"]["levels"]
 	var start_res: Dictionary = levels.get(level, levels["normal"])
@@ -95,10 +111,139 @@ func day_number() -> int:
 
 ## Благословение алтаря: есть готовый алтарь с работающим магом-учеником.
 func has_blessing() -> bool:
+	return altar_ready()
+
+
+## Алтарь готов и на нём работает маг-ученик (крафт, зачарование, городские заклинания).
+func altar_ready() -> bool:
 	for b in buildings:
 		if b["done"] and _def(b).get("effect", "") == "altar" and int(b["worker"]) > 0:
 			return true
 	return false
+
+
+## На алтаре зачарование «Мана» (больше запас и быстрее регенерация у героя).
+func altar_enchanted() -> bool:
+	for b in buildings:
+		if b["done"] and String(b["type"]) == "altar" and String(b.get("enchant", "")) == "mana":
+			return true
+	return false
+
+
+## Полоса загрязнения: clean / mild / heart / wild (для HUD и множителя).
+func pollution_band() -> String:
+	var pol_cfg: Dictionary = cfg.get("pollution", {})
+	if pollution >= float(pol_cfg.get("band_wild", 85.0)):
+		return "wild"
+	if pollution >= float(pol_cfg.get("band_heart", 60.0)):
+		return "heart"
+	if pollution >= float(pol_cfg.get("band_mild", 30.0)):
+		return "mild"
+	return "clean"
+
+
+## Множитель производства от загрязнения («магическое сердце» — ответ №64),
+## дикого резонанса и зачарования здания.
+func production_mult(bld: Dictionary) -> float:
+	var pol_cfg: Dictionary = cfg.get("pollution", {})
+	var mult := 1.0
+	var band := pollution_band()
+	if band == "heart":
+		mult *= float(pol_cfg.get("prod_heart", 1.15))
+	elif band == "mild":
+		mult *= float(pol_cfg.get("prod_mild", 1.05))
+	if resonance_left > 0.0:
+		mult *= resonance_mult
+	mult *= float(bld.get("ench_mult", 1.0))
+	return mult
+
+
+## Прибавить загрязнение (дикая магия в данже тоже — город в том же регионе).
+func add_pollution(amount: float) -> void:
+	var pol_cfg: Dictionary = cfg.get("pollution", {})
+	pollution = clampf(pollution + amount, 0.0, float(pol_cfg.get("max", 100.0)))
+
+
+## Каст городского заклинания (M3). def — строка data/magic.json.
+## Возвращает "" при успехе или ключ ошибки локализации ("magic." + ключ).
+func cast_city_spell(def: Dictionary) -> String:
+	if not altar_ready():
+		return "no_altar"
+	var spell_id := String(def["id"])
+	if float(_spell_ready.get(spell_id, 0.0)) > time:
+		return "cooldown"
+	var cost := int(def.get("crystals_cost", 0))
+	if int(res["crystal"]) < cost:
+		return "no_crystals"
+	res["crystal"] = float(res["crystal"]) - float(cost)
+	_spell_ready[spell_id] = time + float(def.get("cooldown", 0.0))
+	var params: Dictionary = def.get("params", {})
+	match spell_id:
+		"wild_resonance":
+			resonance_left = float(params.get("duration", 120.0))
+			resonance_mult = float(params.get("prod_mult", 1.5))
+			add_pollution(float(def.get("pollution", 0.0)))
+		"cleanse":
+			pollution = maxf(0.0, pollution - float(params.get("amount", 25.0)))
+		"forest_gift":
+			res["food"] = minf(float(storage_cap()),
+					float(res["food"]) + float(params.get("food", 15.0)))
+			add_pollution(float(def.get("pollution", 0.0)))
+	return ""
+
+
+## Зачаровать готовое здание (ответ №60): руна из рюкзака + кристаллы из пула.
+## def — строка "enchantments" из data/magic.json. Возвращает "" или ключ ошибки.
+func enchant_building(bld: Dictionary, def: Dictionary, inventory: Array) -> String:
+	if bld.is_empty() or not bool(bld["done"]):
+		return "enchant_not_done"
+	var target := String(def.get("target", "any"))
+	if target != "any" and String(bld["type"]) != target:
+		return "enchant_wrong"
+	var cost := int(def.get("crystals", 1))
+	if int(res["crystal"]) < cost:
+		return "no_crystals"
+	var rune := String(def["rune"])
+	if _count_item(inventory, rune) < 1:
+		return "no_rune"
+	res["crystal"] = float(res["crystal"]) - float(cost)
+	_take_item(inventory, rune, 1)
+	bld["enchant"] = String(def["id"])
+	bld["ench_mult"] = float(def.get("prod_mult", 1.0))
+	return ""
+
+
+## Руной «Мана» алтарь усиливает ману героя (параметры из city.json -> "hero_mana").
+func hero_mana_params() -> Dictionary:
+	var mana_cfg: Dictionary = cfg.get("hero_mana", {})
+	if altar_enchanted():
+		return {
+			"cap_extra": int(mana_cfg.get("altar_cap_extra", 4)),
+			"regen_period": float(mana_cfg.get("altar_regen_period", 5.0)),
+		}
+	return {"cap_extra": 0, "regen_period": float(mana_cfg.get("regen_period", 8.0))}
+
+
+func _count_item(inventory: Array, item_id: String) -> int:
+	for stack in inventory:
+		if String(stack["id"]) == item_id:
+			return int(stack["count"])
+	return 0
+
+
+func _take_item(inventory: Array, item_id: String, count: int) -> void:
+	var left := count
+	var i := 0
+	while i < inventory.size() and left > 0:
+		var stack: Dictionary = inventory[i]
+		if String(stack["id"]) == item_id:
+			var take := mini(left, int(stack["count"]))
+			stack["count"] = int(stack["count"]) - take
+			left -= take
+			if int(stack["count"]) <= 0:
+				inventory.remove_at(i)
+				continue
+		i += 1
 
 
 ## Определение здания по типу.
@@ -137,6 +282,7 @@ func place_building(type_id: String, tile: Vector2i) -> bool:
 	buildings.append({
 		"id": _next_id, "type": type_id, "tile": tile,
 		"done": false, "progress": 0.0, "worker": -1,
+		"enchant": "", "ench_mult": 1.0, "stun_left": 0.0,
 	})
 	_next_id += 1
 	events.append({"type": "site", "bld": type_id})
@@ -216,8 +362,76 @@ func tick(dt_raw: float) -> void:
 	# еда: все жители едят непрерывно; пусто — город голодает
 	var eat: float = float(cfg["food_per_resident_day"]) * dt / day_len * residents.size()
 	res["food"] = maxf(0.0, float(res["food"]) - eat)
+	# магия (M3): резонанс, спад загрязнения, стан зданий, дикие события
+	if resonance_left > 0.0:
+		resonance_left = maxf(0.0, resonance_left - dt)
+	var pol_cfg: Dictionary = cfg.get("pollution", {})
+	if not pol_cfg.is_empty() and pollution > 0.0:
+		pollution = maxf(0.0, pollution - float(pol_cfg.get("decay_per_day", 2.0)) * dt / day_len)
+	for b in buildings:
+		if float(b.get("stun_left", 0.0)) > 0.0:
+			b["stun_left"] = maxf(0.0, float(b["stun_left"]) - dt)
+	_update_wild_events(pol_cfg, day_len)
 	for r in residents:
 		_update_resident(r, dt)
+
+
+## Дикие события (ответ №61): при переборе загрязнения (>= band_wild) раз в день
+## с шансом event_chance_per_day: вспышка (стан здания), прилив маны (+загрязнение,
+## усталость), сгущение маны (+кристалл). Защищает только зачарование «Оберег».
+func _update_wild_events(pol_cfg: Dictionary, day_len: float) -> void:
+	if pol_cfg.is_empty() or pollution < float(pol_cfg.get("band_wild", 85.0)):
+		return
+	if day == _last_event_day:
+		return
+	_last_event_day = day
+	if _event_rng.randf() > float(pol_cfg.get("event_chance_per_day", 0.5)):
+		return
+	var kind := _weighted_pick(pol_cfg.get("event_weights", {"flash": 5, "surge": 3, "gift": 2}))
+	match kind:
+		"flash":
+			var target := _wild_flash_target()
+			if target.is_empty():
+				_wild_surge(pol_cfg)
+				return
+			target["stun_left"] = float(pol_cfg.get("flash_stun_days", 1.0)) * day_len
+			events.append({"type": "wild_flash", "bld": String(target["type"])})
+		"surge":
+			_wild_surge(pol_cfg)
+		"gift":
+			res["crystal"] = minf(float(storage_cap()),
+					float(res["crystal"]) + float(pol_cfg.get("gift_crystals", 1)))
+			events.append({"type": "wild_gift"})
+
+
+func _wild_surge(pol_cfg: Dictionary) -> void:
+	pollution = minf(float(pol_cfg.get("max", 100.0)), pollution + float(pol_cfg.get("surge_pollution", 5.0)))
+	for r in residents:
+		r["fatigue"] = float(r["fatigue"]) + float(pol_cfg.get("surge_fatigue", 0.2))
+	events.append({"type": "wild_surge"})
+
+
+## Случайное готовое здание без «Оберега» (для дикой вспышки).
+func _wild_flash_target() -> Dictionary:
+	var candidates: Array = []
+	for b in buildings:
+		if bool(b["done"]) and String(b.get("enchant", "")) != "ward":
+			candidates.append(b)
+	if candidates.is_empty():
+		return {}
+	return candidates[_event_rng.randi_range(0, candidates.size() - 1)]
+
+
+func _weighted_pick(weights: Dictionary) -> String:
+	var total := 0
+	for w: int in weights.values():
+		total += w
+	var roll := _event_rng.randi_range(1, maxi(1, total))
+	for key in weights:
+		roll -= int(weights[key])
+		if roll <= 0:
+			return String(key)
+	return ""
 
 
 func _update_resident(r: Dictionary, dt: float) -> void:
@@ -323,12 +537,16 @@ func _do_build(r: Dictionary, site: Dictionary, dt: float) -> void:
 
 
 func _do_work(r: Dictionary, bld: Dictionary, dt: float) -> void:
+	if float(bld.get("stun_left", 0.0)) > 0.0:
+		# дикая вспышка: здание молчит, работник стоит
+		r["state"] = "idle"
+		return
 	if _arrived(r, bld["tile"]):
 		r["state"] = "work"
 		r["fatigue"] += dt / float(cfg["day_length"])
 		var prod: Dictionary = _def(bld)["produce"]
 		var boost: float = float(cfg["altar_boost"]) if has_blessing() else 1.0
-		var amount: float = float(prod["per_day"]) * dt / float(cfg["day_length"]) * boost
+		var amount: float = float(prod["per_day"]) * dt / float(cfg["day_length"]) * boost * production_mult(bld)
 		var key := String(prod["res"])
 		res[key] = minf(float(storage_cap()), float(res[key]) + amount)
 	else:

@@ -7,6 +7,8 @@ signal died
 var p: Dictionary = {}            # параметры из data/dungeon.json -> "hero"
 var hp := 1
 var mana := 0
+var mana_max := 10                # переопределяется сценой данжа (алтарь с зачарованием)
+var mana_regen_period := 8.0      # сек на +1 ману (ответ №65: регенерирует, если не тратится)
 var facing := Vector2.RIGHT
 var dead := false
 var city_mode := false            # в городе: только ходьба, без боя и рывка
@@ -15,6 +17,9 @@ var _dash_left := 0.0
 var _dash_cd := 0.0
 var _attack_cd := 0.0
 var _invuln := 0.0
+var _shield_left := 0.0           # щит света: поглощает урон
+var _mana_regen_acc := 0.0
+var _spell_cd := {}               # id заклинания -> остаток кулдауна, сек
 var _lantern: PointLight2D = null
 var _flicker_time := 0.0
 
@@ -25,7 +30,8 @@ const LANTERN_ENERGY := 1.15
 func setup(hero_params: Dictionary, start_mana: int) -> void:
 	p = hero_params
 	hp = int(p["hp"])
-	mana = start_mana
+	mana_max = int(p["mana"])
+	mana = mini(start_mana, mana_max)
 
 
 func _ready() -> void:
@@ -99,6 +105,10 @@ func _physics_process(delta: float) -> void:
 	_dash_cd = maxf(0.0, _dash_cd - delta)
 	_attack_cd = maxf(0.0, _attack_cd - delta)
 	_invuln = maxf(0.0, _invuln - delta)
+	_shield_left = maxf(0.0, _shield_left - delta)
+	_tick_spell_cooldowns(delta)
+	if not city_mode:
+		_regen_mana(delta)
 	var dir := Input.get_vector("move_left", "move_right", "move_up", "move_down")
 	if city_mode:
 		velocity = dir * float(p["speed"])
@@ -147,7 +157,7 @@ func try_attack() -> void:
 
 
 func take_damage(dmg: int) -> void:
-	if _invuln > 0.0 or dead:
+	if _invuln > 0.0 or dead or _shield_left > 0.0:
 		return
 	hp = maxi(0, hp - dmg)
 	_invuln = 0.5
@@ -155,6 +165,51 @@ func take_damage(dmg: int) -> void:
 	if hp <= 0:
 		dead = true
 		died.emit()
+
+
+## Лечение (заклинание «Свет исцеления»).
+func heal(amount: int) -> void:
+	hp = mini(int(p["hp"]), hp + amount)
+	queue_redraw()
+
+
+## Щит света: на duration сек поглощает весь входящий урон.
+func cast_shield(duration: float) -> void:
+	_shield_left = duration
+	queue_redraw()
+
+
+func shield_left() -> float:
+	return _shield_left
+
+
+## Кулдауны заклинаний (M3): герой хранит, сцена ставит/читает.
+func set_spell_cd(spell_id: String, seconds: float) -> void:
+	_spell_cd[spell_id] = seconds
+
+
+func spell_cd_left(spell_id: String) -> float:
+	return float(_spell_cd.get(spell_id, 0.0))
+
+
+func _tick_spell_cooldowns(delta: float) -> void:
+	for id in _spell_cd.keys():
+		var left: float = maxf(0.0, float(_spell_cd[id]) - delta)
+		_spell_cd[id] = left
+		if left <= 0.0:
+			_spell_cd.erase(id)
+
+
+## Медленная регенерация маны сама по себе (ответ №65).
+func _regen_mana(delta: float) -> void:
+	if mana >= mana_max:
+		_mana_regen_acc = 0.0
+		return
+	_mana_regen_acc += delta
+	if _mana_regen_acc >= mana_regen_period:
+		_mana_regen_acc = 0.0
+		mana = mini(mana_max, mana + 1)
+		queue_redraw()
 
 
 ## Тик мана-голода: true — мана была и утекла, false — мана уже на нуле.
@@ -166,7 +221,7 @@ func drain_mana() -> bool:
 
 
 func add_mana(v: int) -> void:
-	mana = mini(int(p["mana"]), mana + v)
+	mana = mini(mana_max, mana + v)
 
 
 ## Доля восстановления рывка 0..1 — для полосы HUD.
@@ -184,3 +239,5 @@ func _draw() -> void:
 		draw_line(Vector2.ZERO, facing * float(p["attack_range"]), Color(1.0, 0.9, 0.6, 0.8), 3.0)
 	if _invuln > 0.0:
 		draw_arc(Vector2.ZERO, float(p["radius"]) + 3.0, 0.0, TAU, 24, Color(1, 1, 1, 0.4), 1.5)
+	if _shield_left > 0.0:
+		draw_arc(Vector2.ZERO, float(p["radius"]) + 6.0, 0.0, TAU, 32, Color(1.0, 0.85, 0.35, 0.85), 2.5)

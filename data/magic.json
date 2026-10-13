@@ -1,0 +1,91 @@
+{
+	"schools": [
+		{ "id": "wild", "loc": "school.wild", "color": "#ff7043" },
+		{ "id": "light", "loc": "school.light", "color": "#ffd54f" },
+		{ "id": "nature", "loc": "school.nature", "color": "#66bb6a" }
+	],
+	"spells": [
+		{
+			"id": "fire_flash", "loc": "spell.fire_flash", "desc": "spell.desc.fire_flash",
+			"school": "wild", "where": "dungeon",
+			"mana_cost": 3, "crystals_cost": 0, "cooldown": 4.0, "pollution": 2.0,
+			"params": { "damage": 4, "radius": 46.0, "range": 200.0 }
+		},
+		{
+			"id": "chain_bolt", "loc": "spell.chain_bolt", "desc": "spell.desc.chain_bolt",
+			"school": "wild", "where": "dungeon",
+			"mana_cost": 3, "crystals_cost": 0, "cooldown": 5.0, "pollution": 2.0,
+			"params": { "damage": 2, "targets": 3, "radius": 170.0 }
+		},
+		{
+			"id": "wild_resonance", "loc": "spell.wild_resonance", "desc": "spell.desc.wild_resonance",
+			"school": "wild", "where": "city",
+			"mana_cost": 0, "crystals_cost": 2, "cooldown": 120.0, "pollution": 15.0,
+			"params": { "duration": 120.0, "prod_mult": 1.5 }
+		},
+		{
+			"id": "heal", "loc": "spell.heal", "desc": "spell.desc.heal",
+			"school": "light", "where": "dungeon",
+			"mana_cost": 3, "crystals_cost": 0, "cooldown": 8.0, "pollution": 0.0,
+			"params": { "heal": 5 }
+		},
+		{
+			"id": "shield", "loc": "spell.shield", "desc": "spell.desc.shield",
+			"school": "light", "where": "dungeon",
+			"mana_cost": 4, "crystals_cost": 0, "cooldown": 12.0, "pollution": 0.0,
+			"params": { "duration": 5.0 }
+		},
+		{
+			"id": "cleanse", "loc": "spell.cleanse", "desc": "spell.desc.cleanse",
+			"school": "light", "where": "city",
+			"mana_cost": 0, "crystals_cost": 1, "cooldown": 60.0, "pollution": 0.0,
+			"params": { "amount": 25.0 }
+		},
+		{
+			"id": "roots", "loc": "spell.roots", "desc": "spell.desc.roots",
+			"school": "nature", "where": "dungeon",
+			"mana_cost": 3, "crystals_cost": 0, "cooldown": 8.0, "pollution": 0.0,
+			"params": { "radius": 58.0, "stun": 3.0, "range": 200.0 }
+		},
+		{
+			"id": "forest_gift", "loc": "spell.forest_gift", "desc": "spell.desc.forest_gift",
+			"school": "nature", "where": "city",
+			"mana_cost": 0, "crystals_cost": 2, "cooldown": 60.0, "pollution": 2.0,
+			"params": { "food": 15.0 }
+		},
+		{
+			"id": "thorns", "loc": "spell.thorns", "desc": "spell.desc.thorns",
+			"school": "nature", "where": "dungeon",
+			"mana_cost": 3, "crystals_cost": 0, "cooldown": 6.0, "pollution": 0.0,
+			"params": { "radius": 58.0, "duration": 4.0, "dps": 1, "range": 200.0 }
+		}
+	],
+	"recipes": [
+		{ "a": "rune_sparks", "b": "rune_chaos", "spell": "fire_flash" },
+		{ "a": "rune_sparks", "b": "rune_storm", "spell": "chain_bolt" },
+		{ "a": "rune_chaos", "b": "rune_chaos", "spell": "wild_resonance" },
+		{ "a": "rune_light", "b": "rune_growth", "spell": "heal" },
+		{ "a": "rune_light", "b": "rune_stone", "spell": "shield" },
+		{ "a": "rune_light", "b": "rune_frost", "spell": "cleanse" },
+		{ "a": "rune_growth", "b": "rune_stone", "spell": "roots" },
+		{ "a": "rune_growth", "b": "rune_storm", "spell": "forest_gift" },
+		{ "a": "rune_growth", "b": "rune_shadow", "spell": "thorns" }
+	],
+	"enchantments": [
+		{
+			"id": "growth", "loc": "ench.growth", "desc": "ench.desc.growth",
+			"rune": "rune_growth", "crystals": 1, "target": "farm",
+			"prod_mult": 1.25, "color": "#66bb6a"
+		},
+		{
+			"id": "ward", "loc": "ench.ward", "desc": "ench.desc.ward",
+			"rune": "rune_stone", "crystals": 1, "target": "any",
+			"prod_mult": 1.0, "color": "#90a4ae"
+		},
+		{
+			"id": "mana", "loc": "ench.mana", "desc": "ench.desc.mana",
+			"rune": "rune_light", "crystals": 2, "target": "altar",
+			"prod_mult": 1.0, "color": "#ba68c8"
+		}
+	]
+}

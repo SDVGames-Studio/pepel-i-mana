@@ -1,5 +1,5 @@
 extends SceneTree
-## Автотесты этапов M0 + M1 + M2.
+## Автотесты этапов M0 + M1 + M2 + M3.
 ## Запуск headless: godot --headless --path . --script res://tests/run_all.gd
 ## В этом режиме автозагрузки не работают — всё проверяем через load()/FileAccess.
 
@@ -34,6 +34,27 @@ const REQUIRED_LOCALES := [
 	"item.ash_shard", "item.rusty_sword", "item.stone_chip",
 	"item.mana_thread", "item.old_shield", "item.glass_orb",
 	"item.rune_sparks", "item.echo_crystal", "item.heart_of_ruins",
+	"item.rune_storm", "item.rune_frost", "item.rune_stone", "item.rune_growth",
+	"item.rune_light", "item.rune_shadow", "item.rune_chaos",
+	"dungeon.hint_spells",
+	"magic.title", "magic.pollution", "magic.p_clean", "magic.p_mild",
+	"magic.p_heart", "magic.p_wild", "magic.city_spells",
+	"magic.craft", "magic.craft_pick", "magic.craft_none", "magic.craft_make",
+	"magic.craft_known", "magic.craft_done", "magic.craft_need_two",
+	"magic.enchant", "magic.enchant_pick", "magic.enchant_wrong", "magic.enchant_done",
+	"magic.no_altar", "magic.no_crystals", "magic.no_rune", "magic.no_mana",
+	"magic.cooldown", "magic.cast_done",
+	"magic.wild_flash", "magic.wild_surge", "magic.wild_gift", "city.any_bld",
+	"school.wild", "school.light", "school.nature",
+	"spell.fire_flash", "spell.chain_bolt", "spell.wild_resonance",
+	"spell.heal", "spell.shield", "spell.cleanse",
+	"spell.roots", "spell.forest_gift", "spell.thorns",
+	"spell.desc.fire_flash", "spell.desc.chain_bolt", "spell.desc.wild_resonance",
+	"spell.desc.heal", "spell.desc.shield", "spell.desc.cleanse",
+	"spell.desc.roots", "spell.desc.forest_gift", "spell.desc.thorns",
+	"ench.growth", "ench.ward", "ench.mana",
+	"ench.desc.growth", "ench.desc.ward", "ench.desc.mana",
+	"enemy.antimage",
 ]
 
 const ALL_SCRIPTS := [
@@ -44,6 +65,7 @@ const ALL_SCRIPTS := [
 	"res://scripts/dungeon_view.gd", "res://scripts/hero.gd", "res://scripts/enemy.gd",
 	"res://scripts/chest.gd", "res://scripts/pickup.gd", "res://scripts/exit_marker.gd",
 	"res://scripts/minimap.gd", "res://scripts/hud.gd",
+	"res://scripts/magic.gd", "res://scripts/spell_fx.gd",
 ]
 
 var _fails := 0
@@ -58,6 +80,9 @@ func _initialize() -> void:
 	_test_game_inventory()
 	_test_city_map()
 	_test_city_sim()
+	_test_magic()
+	_test_magic_sim()
+	_test_spell_damage()
 	if _fails == 0:
 		print("OK: все тесты пройдены")
 		quit(0)
@@ -104,7 +129,7 @@ func _test_data() -> void:
 		_check(hero is Dictionary and hero.has("speed") and hero.has("dash_cooldown"),
 				"dungeon.json: параметры героя полны")
 	var enemies: Variant = _read_json("res://data/enemies.json")
-	_check(enemies is Array and enemies.size() == 3, "enemies.json — ровно 3 типа врагов")
+	_check(enemies is Array and enemies.size() == 4, "enemies.json — 4 типа врагов (M3: +антимаг)")
 	if enemies is Array:
 		var fields_ok := true
 		for enemy in enemies:
@@ -112,6 +137,13 @@ func _test_data() -> void:
 				if not (enemy is Dictionary and enemy.has(key)):
 					fields_ok = false
 		_check(fields_ok, "enemies.json: у всех врагов есть поля боя и дропа")
+	var magic: Variant = _read_json("res://data/magic.json")
+	_check(magic is Dictionary, "magic.json — валидный JSON-словарь")
+	if magic is Dictionary:
+		_check((magic.get("schools", []) as Array).size() == 3, "magic.json — 3 школы")
+		_check((magic.get("spells", []) as Array).size() == 9, "magic.json — 9 заклинаний (3×3)")
+		_check((magic.get("recipes", []) as Array).size() == 9, "magic.json — 9 рецептов из рун")
+		_check((magic.get("enchantments", []) as Array).size() == 3, "magic.json — 3 зачарования")
 	var loot: Variant = _read_json("res://data/loot.json")
 	_check(loot is Dictionary and (loot.get("rarities", []) as Array).size() == 4,
 			"loot.json — 4 редкости")
@@ -427,3 +459,230 @@ func _test_city_sim() -> void:
 	_teleport(sim4, acolyte, altar["tile"])
 	sim4.tick(0.3)
 	_check(bool(sim4.has_blessing()), "работающий алтарь даёт благословение")
+
+
+# --- M3: магия ------------------------------------------------------------
+
+func _make_magic() -> Object:
+	var magic = load("res://scripts/magic.gd").new()
+	magic.setup(_read_json("res://data/magic.json"))
+	return magic
+
+
+func _test_magic() -> void:
+	print("[Магия: рецепты и спеллбук]")
+	var magic := _make_magic()
+	_check(String(magic.recipe_result("rune_sparks", "rune_chaos")) == "fire_flash",
+			"рецепт: искра+хаос = Огненная вспышка")
+	_check(String(magic.recipe_result("rune_chaos", "rune_sparks")) == "fire_flash",
+			"рецепт не зависит от порядка рун")
+	_check(String(magic.recipe_result("rune_chaos", "rune_chaos")) == "wild_resonance",
+			"рецепт: хаос+хаос = Дикий резонанс")
+	_check(String(magic.recipe_result("rune_storm", "rune_storm")) == "",
+			"неизвестная пара рун даёт пустой результат")
+	# все 8 рун участвуют хотя бы в одном рецепте
+	var used := {}
+	for r in magic.cfg["recipes"]:
+		used[String(r["a"])] = true
+		used[String(r["b"])] = true
+	_check(used.size() >= 8, "все руны (>=8) используются в рецептах")
+	# у всех спеллов корректные ссылки на школы
+	var school_ids := {}
+	for s in magic.cfg["schools"]:
+		school_ids[String(s["id"])] = true
+	var refs_ok := true
+	var city_count := 0
+	var dungeon_count := 0
+	for sp in magic.cfg["spells"]:
+		if not school_ids.has(String(sp["school"])):
+			refs_ok = false
+		if String(sp["where"]) == "city":
+			city_count += 1
+		else:
+			dungeon_count += 1
+	_check(refs_ok, "у всех заклинаний известная школа")
+	_check(city_count == 3 and dungeon_count == 6, "3 городских + 6 боевых заклинаний")
+	# спеллбук в Game: изучение, дубли, удаление предметов
+	var game: Node = load("res://scripts/game.gd").new()
+	_check(game.magic != null, "Game._init загрузил data/magic.json")
+	_check(not game.has_spell("heal"), "спеллбук пуста на новом Game")
+	game.learn_spell("heal")
+	game.learn_spell("heal")
+	game.learn_spell("shield")
+	_check(game.spellbook.size() == 2 and game.has_spell("heal"), "learn_spell без дублей")
+	game.add_item("rune_light", 3)
+	_check(game.remove_item("rune_light", 2) == 2, "remove_item убирает запрошенное")
+	_check(game.count_item("rune_light") == 1, "остаток стака после remove_item")
+	game.free()
+
+
+func _test_magic_sim() -> void:
+	print("[Магия: город — загрязнение, заклинания, зачарование]")
+	var magic := _make_magic()
+
+	# полосы загрязнения и множитель производства
+	var sim := _make_sim()
+	_check(String(sim.pollution_band()) == "clean", "новый город: полоса «чисто»")
+	_check(absf(float(sim.production_mult({"ench_mult": 1.0})) - 1.0) < 0.001,
+			"при чистоте множитель производства 1.0")
+	sim.pollution = 40.0
+	_check(String(sim.pollution_band()) == "mild", "40 загрязнения — наэлектризовано")
+	_check(absf(float(sim.production_mult({})) - 1.05) < 0.001, "полоса mild: ×1.05")
+	sim.pollution = 70.0
+	_check(String(sim.pollution_band()) == "heart", "70 — магическое сердце")
+	_check(absf(float(sim.production_mult({})) - 1.15) < 0.001, "полоса heart: ×1.15")
+	sim.add_pollution(500.0)
+	_check(absf(float(sim.pollution) - 100.0) < 0.001, "add_pollution ограничен 100")
+	# спад загрязнения со временем
+	sim.pollution = 50.0
+	sim.tick(float(sim.cfg["day_length"]))
+	_check(absf(float(sim.pollution) - 48.0) < 0.1, "за день загрязнение падает на decay_per_day")
+
+	# городские заклинания: нужен алтарь, кристаллы, кулдаун
+	var sim2 := _make_sim("high")
+	var resonance_def: Dictionary = magic.spell("wild_resonance")
+	var err: String = sim2.cast_city_spell(resonance_def)
+	_check(err == "no_altar", "без алтаря городской каст невозможен")
+	_build_now(sim2, "altar")
+	var acolyte2: Dictionary = _resident_by_prof(sim2, "acolyte")
+	_teleport(sim2, acolyte2, sim2.buildings[-1]["tile"])
+	sim2.tick(0.3)
+	sim2.res["crystal"] = 0.0
+	err = sim2.cast_city_spell(magic.spell("cleanse"))
+	_check(err == "no_crystals", "без кристаллов каст невозможен")
+	sim2.res["crystal"] = 10.0
+	err = sim2.cast_city_spell(resonance_def)
+	_check(err == "", "Дикий резонанс соткан у алтаря")
+	_check(float(sim2.res["crystal"]) == 8.0, "резонанс потратил 2 кристалла")
+	_check(float(sim2.resonance_left) > 0.0, "резонанс действует")
+	_check(absf(float(sim2.pollution) - 15.0) < 0.001, "резонанс добавил 15 загрязнения")
+	err = sim2.cast_city_spell(resonance_def)
+	_check(err == "cooldown", "второй каст сразу — упирается в кулдаун")
+	# множитель: полоса mild (15 < 30 — нет) + резонанс 1.5
+	var mult_base: float = float(sim2.production_mult({}))
+	_check(absf(mult_base - 1.5) < 0.001, "во время резонанса производство ×1.5")
+	err = sim2.cast_city_spell(magic.spell("cleanse"))
+	_check(err == "" and absf(float(sim2.pollution)) < 0.001, "Очищение сняло загрязнение в ноль")
+	var food_before: float = float(sim2.res["food"])
+	sim2.cast_city_spell(magic.spell("forest_gift"))
+	_check(absf(float(sim2.res["food"]) - (food_before + 15.0)) < 0.001, "Дары леса: +15 еды")
+
+	# зачарование фермы: +25% к производству
+	var sim3 := _make_sim()
+	sim3.cfg["food_per_resident_day"] = 0.0
+	var house_bld := _build_now(sim3, "house")   # дом заранее: его тик не попадёт в замер
+	var farm := _build_now(sim3, "farm")
+	var farmer: Dictionary = _resident_by_prof(sim3, "farmer")
+	_teleport(sim3, farmer, farm["tile"])
+	sim3.tick(10.0)
+	var food_plain: float = float(sim3.res["food"])
+	var inv := [{"id": "rune_growth", "count": 1}]
+	sim3.res["crystal"] = 5.0
+	var farm_def: Dictionary = magic.enchantment("growth")
+	_check(String(sim3.enchant_building(house_bld, farm_def, inv)) == "enchant_wrong",
+			"«Ярость урожая» не ставится на дом (цель — ферма)")
+	_check(String(sim3.enchant_building(farm, magic.enchantment("ward"), inv)) == "no_rune",
+			"«Оберег» без руны камня невозможен")
+	_check(String(sim3.enchant_building(farm, farm_def, inv)) == "",
+			"ферма зачарована руной роста")
+	_check(inv.is_empty(), "руна списана из рюкзака")
+	_check(absf(float(sim3.production_mult(farm)) - 1.25) < 0.001, "зачарование даёт ×1.25")
+	sim3.tick(10.0)
+	var sim4 := _make_sim()
+	sim4.cfg["food_per_resident_day"] = 0.0
+	var farmer4: Dictionary = _resident_by_prof(sim4, "farmer")
+	var farm4 := _build_now(sim4, "farm")
+	_teleport(sim4, farmer4, farm4["tile"])
+	var food4_start: float = float(sim4.res["food"])
+	sim4.tick(10.0)
+	var gain_ench: float = float(sim4.res["food"]) - food4_start
+	var gain_after: float = float(sim3.res["food"]) - food_plain
+	_check(absf(gain_ench * 1.25 - gain_after) < 0.05,
+			"зачарованная ферма даёт ровно +25% еды за то же время")
+
+	# зачарование алтаря «Мана»: параметры маны героя
+	var sim5 := _make_sim("high")
+	var mana_before: Dictionary = sim5.hero_mana_params()
+	_check(int(mana_before["cap_extra"]) == 0, "без зачарования запас маны обычный")
+	_build_now(sim5, "altar")
+	var altar5: Dictionary = sim5.buildings[-1]
+	var acolyte5: Dictionary = _resident_by_prof(sim5, "acolyte")
+	_teleport(sim5, acolyte5, altar5["tile"])
+	sim5.tick(0.3)
+	var inv_light := [{"id": "rune_light", "count": 1}]
+	sim5.res["crystal"] = 5.0
+	_check(String(sim5.enchant_building(altar5, magic.enchantment("mana"), inv_light)) == "",
+			"алтарь зачарован «Мана-связью»")
+	var mana_after: Dictionary = sim5.hero_mana_params()
+	_check(int(mana_after["cap_extra"]) == 4, "зачарованный алтарь: +4 к запасу маны")
+	_check(absf(float(mana_after["regen_period"]) - 5.0) < 0.001, "зачарованный алтарь: реген 5с")
+
+	# дикие события при переборе (>=85): шанс 1.0 — гарантированно за день
+	var sim6 := _make_sim()
+	_build_now(sim6, "house")
+	sim6.cfg["pollution"]["event_chance_per_day"] = 1.0
+	sim6.pollution = 95.0
+	sim6.time = float(sim6.cfg["day_length"]) - 0.5
+	sim6.tick(1.0)
+	_check(sim6.day == 2, "тик перешёл границу дня")
+	var wild_seen := false
+	for ev in sim6.events:
+		if String(ev["type"]).begins_with("wild_"):
+			wild_seen = true
+	_check(wild_seen, "при переборе случилось дикое событие")
+	# вспышка оглушает незачарованное здание
+	var house6: Dictionary = sim6.buildings[0]
+	var stunned: bool = float(house6["stun_left"]) > 0.0 or sim6.pollution >= 90.0
+	_check(stunned, "вспышка оглушила здание или случился прилив")
+	# «Оберег» защищает: единственное здание зачаровано — вспышка вырождается в прилив
+	var sim7 := _make_sim()
+	var house7 := _build_now(sim7, "house")
+	inv = [{"id": "rune_stone", "count": 1}]
+	sim7.res["crystal"] = 5.0
+	_check(String(sim7.enchant_building(house7, magic.enchantment("ward"), inv)) == "",
+			"дом под «Оберегом»")
+	sim7.cfg["pollution"]["event_chance_per_day"] = 1.0
+	sim7.pollution = 90.0
+	sim7._event_rng.seed = 12345
+	sim7.time = float(sim7.cfg["day_length"]) - 0.5
+	sim7.tick(1.0)
+	_check(float(house7["stun_left"]) == 0.0, "Оберег: здание не оглушено")
+	_check(absf(float(sim7.pollution) - 95.0) < 0.001 or float(sim7.pollution) >= 90.0,
+			"вспышка выродилась в прилив (или шанс не выпал)")
+	# оглушённое здание не производит
+	var sim8 := _make_sim()
+	sim8.cfg["food_per_resident_day"] = 0.0
+	var farm8 := _build_now(sim8, "farm")
+	var farmer8: Dictionary = _resident_by_prof(sim8, "farmer")
+	_teleport(sim8, farmer8, farm8["tile"])
+	farm8["stun_left"] = 50.0
+	var food_start8: float = float(sim8.res["food"])
+	sim8.tick(2.0)
+	_check(String(farmer8["state"]) == "idle", "работник оглушённого здания стоит")
+	_check(absf(float(sim8.res["food"]) - food_start8) < 0.001, "оглушённая ферма не даёт еды")
+
+
+func _test_spell_damage() -> void:
+	print("[Магия: уязвимости врагов]")
+	var enemies: Array = _read_json("res://data/enemies.json")
+	var by_id := {}
+	for e in enemies:
+		by_id[String(e["id"])] = e
+	var enemy_script: Script = load("res://scripts/enemy.gd")
+	_check(int(enemy_script.calc_spell_damage(by_id["skeleton"], 2, "light")) == 4,
+			"скелет уязвим к свету: урон ×2")
+	_check(int(enemy_script.calc_spell_damage(by_id["golem"], 3, "nature")) == 6,
+			"голем уязвим к природе: урон ×2")
+	_check(int(enemy_script.calc_spell_damage(by_id["rat"], 2, "wild")) == 4,
+			"крыса уязвима к дикой магии")
+	_check(int(enemy_script.calc_spell_damage(by_id["rat"], 2, "light")) == 2,
+			"чужая школа — обычный урон")
+	_check(int(enemy_script.calc_spell_damage(by_id["antimage"], 5, "light")) == 0,
+			"антимаг иммунен к любой магии")
+	_check(int(enemy_script.calc_spell_damage(by_id["antimage"], 5, "")) == 0,
+			"антимаг: даже «нейтральный» магический урон не проходит")
+	_check(int(enemy_script.calc_spell_damage(by_id["skeleton"], 5, "")) == 5,
+			"пустая школа у обычного врага — урон как есть (путь меча)")
+	_check(String(by_id["antimage"].get("weak_school", "")) == "",
+			"у антимага нет уязвимой школы")
+

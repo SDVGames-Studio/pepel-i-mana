@@ -19,6 +19,26 @@
 	"storage_base": 150,
 	"storage_per_warehouse": 200,
 	"altar_boost": 1.1,
+	"pollution": {
+		"max": 100.0,
+		"decay_per_day": 2.0,
+		"band_mild": 30.0,
+		"band_heart": 60.0,
+		"band_wild": 85.0,
+		"prod_mild": 1.05,
+		"prod_heart": 1.15,
+		"event_chance_per_day": 0.5,
+		"event_weights": { "flash": 5, "surge": 3, "gift": 2 },
+		"flash_stun_days": 1.0,
+		"surge_pollution": 5.0,
+		"surge_fatigue": 0.2,
+		"gift_crystals": 1
+	},
+	"hero_mana": {
+		"regen_period": 8.0,
+		"altar_cap_extra": 4,
+		"altar_regen_period": 5.0
+	},
 	"colors": {
 		"grass": "#5d7a3a",
 		"grass_alt": "#577336",

@@ -6,9 +6,12 @@ var map = null
 var sim = null
 var colors: Dictionary = {}
 var build_mode := ""            # выбранный тип здания (призрак под мышью)
+var enchant_mode := ""          # выбранное зачарование (подсветка здания)
+var enchant_colors: Dictionary = {}
 
 var _prof_colors: Dictionary = {}
 var _bld_colors: Dictionary = {}
+var city = null                 # сцена города — для проверки цели зачарования (неглубокая ссылка)
 
 
 func setup(city_map, city_sim, city_cfg: Dictionary) -> void:
@@ -84,6 +87,17 @@ func _draw_buildings() -> void:
 			# точка-работник: занятое здание подсвечено
 			if int(b["worker"]) > 0:
 				draw_circle(rect.get_center(), 3.0, Color(1, 1, 1, 0.85))
+		# зачарование: рамка цветом эффекта (M3)
+		if String(b.get("enchant", "")) != "":
+			var ecol: Color = enchant_colors.get(String(b["enchant"]), Color(0.8, 0.8, 1.0))
+			draw_rect(rect.grow(-1), ecol, false, 2.0)
+			draw_circle(rect.position + Vector2(5, 5), 3.0, ecol)
+		# дикая вспышка: здание оглушено
+		if float(b.get("stun_left", 0.0)) > 0.0:
+			draw_rect(rect, Color(0.1, 0.05, 0.15, 0.55))
+			var flash := 0.5 + 0.5 * sin(Time.get_ticks_msec() / 120.0)
+			draw_arc(rect.get_center(), map.ts * 0.4, 0.0, TAU, 20,
+					Color(0.9, 0.4, 1.0, 0.4 + 0.4 * flash), 2.0)
 
 
 func _draw_residents() -> void:
@@ -97,6 +111,16 @@ func _draw_residents() -> void:
 
 
 func _draw_ghost() -> void:
+	if enchant_mode != "":
+		# режим зачарования: подсветка тайла под мышью
+		var tile: Vector2i = map.tile_of_px(get_global_mouse_position())
+		if not map.in_bounds(tile):
+			return
+		var col := Color(0.7, 0.5, 1.0, 0.45)
+		if city != null and not city.enchant_target_valid(tile):
+			col = Color(1.0, 0.3, 0.3, 0.4)
+		draw_rect(Rect2(Vector2(tile) * map.ts, Vector2(map.ts, map.ts)), col)
+		return
 	if build_mode == "":
 		return
 	var tile: Vector2i = map.tile_of_px(get_global_mouse_position())

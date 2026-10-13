@@ -9,7 +9,7 @@
 	"enemy_count": 10,
 	"chest_count": 4,
 	"crystal_count": 6,
-	"enemy_weights": { "rat": 50, "skeleton": 35, "golem": 15 },
+	"enemy_weights": { "rat": 45, "skeleton": 30, "golem": 15, "antimage": 20 },
 	"hero": {
 		"speed": 140,
 		"radius": 10,

@@ -10,6 +10,7 @@
 		"attack_cooldown": 1.0,
 		"radius": 8,
 		"color": "#8d6e63",
+		"weak_school": "wild",
 		"drop_chance": 0.25,
 		"mana_chance": 0.3
 	},
@@ -24,6 +25,7 @@
 		"attack_cooldown": 1.2,
 		"radius": 9,
 		"color": "#bdbdbd",
+		"weak_school": "light",
 		"drop_chance": 0.4,
 		"mana_chance": 0.35
 	},
@@ -38,7 +40,23 @@
 		"attack_cooldown": 1.8,
 		"radius": 13,
 		"color": "#5d4037",
+		"weak_school": "nature",
 		"drop_chance": 0.7,
 		"mana_chance": 0.5
+	},
+	{
+		"id": "antimage",
+		"loc": "enemy.antimage",
+		"hp": 8,
+		"damage": 2,
+		"speed": 75,
+		"aggro": 140,
+		"attack_range": 20,
+		"attack_cooldown": 1.1,
+		"radius": 9,
+		"color": "#7e57c2",
+		"magic_immune": true,
+		"drop_chance": 0.5,
+		"mana_chance": 0.2
 	}
 ]

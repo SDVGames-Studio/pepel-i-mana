@@ -1,0 +1,397 @@
+Godot Engine v4.7.2.stable.steam.ed1daf0bf - https://godotengine.org
+
+[Локализация]
+  ok: loc/ru.json — валидный JSON-словарь
+  ok: ключ «menu.title» есть
+  ok: ключ «menu.version» есть
+  ok: ключ «menu.new_game» есть
+  ok: ключ «menu.exit» есть
+  ok: ключ «menu.continue_city» есть
+  ok: ключ «menu.setup_title» есть
+  ok: ключ «menu.residents» есть
+  ok: ключ «menu.start_level» есть
+  ok: ключ «menu.level.low» есть
+  ok: ключ «menu.level.normal» есть
+  ok: ключ «menu.level.high» есть
+  ok: ключ «menu.begin» есть
+  ok: ключ «menu.back» есть
+  ok: ключ «city.back_hint» есть
+  ok: ключ «city.last_run_ok» есть
+  ok: ключ «city.last_run_death» есть
+  ok: ключ «city.last_run_nothing» есть
+  ok: ключ «res.wood» есть
+  ok: ключ «res.stone» есть
+  ok: ключ «res.food» есть
+  ok: ключ «res.crystal» есть
+  ok: ключ «city.pop» есть
+  ok: ключ «city.day» есть
+  ok: ключ «city.night» есть
+  ok: ключ «city.paused» есть
+  ok: ключ «city.speed» есть
+  ok: ключ «city.build_menu» есть
+  ok: ключ «city.build_hint» есть
+  ok: ключ «city.need_resources» есть
+  ok: ключ «city.cant_build_here» есть
+  ok: ключ «city.built_done» есть
+  ok: ключ «city.site_started» есть
+  ok: ключ «city.deposited» есть
+  ok: ключ «city.no_free_worker» есть
+  ok: ключ «city.residents_panel» есть
+  ok: ключ «city.resident_line» есть
+  ok: ключ «city.enter_anomaly» есть
+  ok: ключ «city.hungry_warn» есть
+  ok: ключ «city.state.idle» есть
+  ok: ключ «city.state.going» есть
+  ok: ключ «city.state.work» есть
+  ok: ключ «city.state.build» есть
+  ok: ключ «city.state.sleep» есть
+  ok: ключ «city.state.rest» есть
+  ok: ключ «city.state.guard» есть
+  ok: ключ «city.state.hungry» есть
+  ok: ключ «prof.builder» есть
+  ok: ключ «prof.farmer» есть
+  ok: ключ «prof.lumberjack» есть
+  ok: ключ «prof.crafter» есть
+  ok: ключ «prof.guard» есть
+  ok: ключ «prof.acolyte» есть
+  ok: ключ «bld.house» есть
+  ok: ключ «bld.farm» есть
+  ok: ключ «bld.sawmill» есть
+  ok: ключ «bld.well» есть
+  ok: ключ «bld.warehouse» есть
+  ok: ключ «bld.workshop» есть
+  ok: ключ «bld.wall» есть
+  ok: ключ «bld.tower» есть
+  ok: ключ «bld.altar» есть
+  ok: ключ «bld.desc.house» есть
+  ok: ключ «bld.desc.farm» есть
+  ok: ключ «bld.desc.sawmill» есть
+  ok: ключ «bld.desc.well» есть
+  ok: ключ «bld.desc.warehouse» есть
+  ok: ключ «bld.desc.workshop» есть
+  ok: ключ «bld.desc.wall» есть
+  ok: ключ «bld.desc.tower» есть
+  ok: ключ «bld.desc.altar» есть
+  ok: ключ «dungeon.enter_hint» есть
+  ok: ключ «dungeon.hint_exit» есть
+  ok: ключ «dungeon.hint_chest» есть
+  ok: ключ «dungeon.hint_empty_chest» есть
+  ok: ключ «dungeon.mana_hungry» есть
+  ok: ключ «dungeon.got_item» есть
+  ok: ключ «dungeon.got_mana» есть
+  ok: ключ «hud.hp» есть
+  ok: ключ «hud.mana» есть
+  ok: ключ «hud.dash» есть
+  ok: ключ «hud.inventory» есть
+  ok: ключ «hud.loot_total» есть
+  ok: ключ «hud.minimap» есть
+  ok: ключ «hud.empty» есть
+  ok: ключ «enemy.rat» есть
+  ok: ключ «enemy.skeleton» есть
+  ok: ключ «enemy.golem» есть
+  ok: ключ «rarity.common» есть
+  ok: ключ «rarity.uncommon» есть
+  ok: ключ «rarity.rare» есть
+  ok: ключ «rarity.legendary» есть
+  ok: ключ «item.ash_shard» есть
+  ok: ключ «item.rusty_sword» есть
+  ok: ключ «item.stone_chip» есть
+  ok: ключ «item.mana_thread» есть
+  ok: ключ «item.old_shield» есть
+  ok: ключ «item.glass_orb» есть
+  ok: ключ «item.rune_sparks» есть
+  ok: ключ «item.echo_crystal» есть
+  ok: ключ «item.heart_of_ruins» есть
+  ok: ключ «item.rune_storm» есть
+  ok: ключ «item.rune_frost» есть
+  ok: ключ «item.rune_stone» есть
+  ok: ключ «item.rune_growth» есть
+  ok: ключ «item.rune_light» есть
+  ok: ключ «item.rune_shadow» есть
+  ok: ключ «item.rune_chaos» есть
+  ok: ключ «dungeon.hint_spells» есть
+  ok: ключ «magic.title» есть
+  ok: ключ «magic.pollution» есть
+  ok: ключ «magic.p_clean» есть
+  ok: ключ «magic.p_mild» есть
+  ok: ключ «magic.p_heart» есть
+  ok: ключ «magic.p_wild» есть
+  ok: ключ «magic.city_spells» есть
+  ok: ключ «magic.craft» есть
+  ok: ключ «magic.craft_pick» есть
+  ok: ключ «magic.craft_none» есть
+  ok: ключ «magic.craft_make» есть
+  ok: ключ «magic.craft_known» есть
+  ok: ключ «magic.craft_done» есть
+  ok: ключ «magic.craft_need_two» есть
+  ok: ключ «magic.enchant» есть
+  ok: ключ «magic.enchant_pick» есть
+  ok: ключ «magic.enchant_wrong» есть
+  ok: ключ «magic.enchant_done» есть
+  ok: ключ «magic.no_altar» есть
+  ok: ключ «magic.no_crystals» есть
+  ok: ключ «magic.no_rune» есть
+  ok: ключ «magic.no_mana» есть
+  ok: ключ «magic.cooldown» есть
+  ok: ключ «magic.cast_done» есть
+  ok: ключ «magic.wild_flash» есть
+  ok: ключ «magic.wild_surge» есть
+  ok: ключ «magic.wild_gift» есть
+  ok: ключ «city.any_bld» есть
+  ok: ключ «school.wild» есть
+  ok: ключ «school.light» есть
+  ok: ключ «school.nature» есть
+  ok: ключ «spell.fire_flash» есть
+  ok: ключ «spell.chain_bolt» есть
+  ok: ключ «spell.wild_resonance» есть
+  ok: ключ «spell.heal» есть
+  ok: ключ «spell.shield» есть
+  ok: ключ «spell.cleanse» есть
+  ok: ключ «spell.roots» есть
+  ok: ключ «spell.forest_gift» есть
+  ok: ключ «spell.thorns» есть
+  ok: ключ «spell.desc.fire_flash» есть
+  ok: ключ «spell.desc.chain_bolt» есть
+  ok: ключ «spell.desc.wild_resonance» есть
+  ok: ключ «spell.desc.heal» есть
+  ok: ключ «spell.desc.shield» есть
+  ok: ключ «spell.desc.cleanse» есть
+  ok: ключ «spell.desc.roots» есть
+  ok: ключ «spell.desc.forest_gift» есть
+  ok: ключ «spell.desc.thorns» есть
+  ok: ключ «ench.growth» есть
+  ok: ключ «ench.ward» есть
+  ok: ключ «ench.mana» есть
+  ok: ключ «ench.desc.growth» есть
+  ok: ключ «ench.desc.ward» есть
+  ok: ключ «ench.desc.mana» есть
+  ok: ключ «enemy.antimage» есть
+[Данные]
+  ok: version.json содержит version
+  ok: dungeon.json — валидный JSON-словарь
+  ok: dungeon.json содержит tile_size
+  ok: dungeon.json содержит map_w
+  ok: dungeon.json содержит map_h
+  ok: dungeon.json содержит max_rooms
+  ok: dungeon.json содержит enemy_count
+  ok: dungeon.json содержит hero
+  ok: dungeon.json содержит biome
+  ok: dungeon.json: параметры героя полны
+  ok: enemies.json — 4 типа врагов (M3: +антимаг)
+  ok: enemies.json: у всех врагов есть поля боя и дропа
+  ok: magic.json — валидный JSON-словарь
+  ok: magic.json — 3 школы
+  ok: magic.json — 9 заклинаний (3×3)
+  ok: magic.json — 9 рецептов из рун
+  ok: magic.json — 3 зачарования
+  ok: loot.json — 4 редкости
+  ok: loot.json — минимум 9 предметов
+  ok: city.json — валидный JSON-словарь
+  ok: city.json содержит tile_size
+  ok: city.json содержит map_w
+  ok: city.json содержит map_h
+  ok: city.json содержит day_length
+  ok: city.json содержит speeds
+  ok: city.json содержит start
+  ok: city.json содержит loot_to_pool
+  ok: city.json — 9 типов зданий (8 из ТЗ 4.1 + лесопилка)
+  ok: city.json: у зданий есть цена и время стройки
+  ok: city.json — 6 профессий
+  ok: city.json: каменная крошка -> камень в пул
+  ok: city.json: кристалл эха -> кристаллы маны
+[Скрипты]
+  ok: res://scripts/loc.gd компилируется
+  ok: res://scripts/main_menu.gd компилируется
+  ok: res://scripts/city.gd компилируется
+  ok: res://scripts/city_map.gd компилируется
+  ok: res://scripts/city_sim.gd компилируется
+  ok: res://scripts/city_view.gd компилируется
+  ok: res://scripts/city_hud.gd компилируется
+  ok: res://scripts/game.gd компилируется
+  ok: res://scripts/dungeon_gen.gd компилируется
+  ok: res://scripts/dungeon.gd компилируется
+  ok: res://scripts/dungeon_view.gd компилируется
+  ok: res://scripts/hero.gd компилируется
+  ok: res://scripts/enemy.gd компилируется
+  ok: res://scripts/chest.gd компилируется
+  ok: res://scripts/pickup.gd компилируется
+  ok: res://scripts/exit_marker.gd компилируется
+  ok: res://scripts/minimap.gd компилируется
+  ok: res://scripts/hud.gd компилируется
+  ok: res://scripts/magic.gd компилируется
+  ok: res://scripts/spell_fx.gd компилируется
+[Сцены]
+  ok: res://scenes/main_menu.tscn загружается
+  ok: res://scenes/main_menu.tscn создаётся
+  ok: res://scenes/city.tscn загружается
+  ok: res://scenes/city.tscn создаётся
+  ok: res://scenes/dungeon.tscn загружается
+  ok: res://scenes/dungeon.tscn создаётся
+[Генератор данжа]
+  ok: seed 42: две генерации дают одинаковую карту
+  ok: seed 42: расстановка спавнов совпадает
+  ok: карта содержит больше одной комнаты
+  ok: старт и выход стоят на полу
+  ok: старт и выход не совпадают
+  ok: разные seed дают разные карты
+  ok: выход достижим от старта
+  ok: все спавны на полу и достижимы
+[Рюкзак]
+  ok: стаки складываются (5+2=7)
+  ok: loot_total считает все единицы
+  ok: смерть: стак 7 теряет 4, остаётся 3
+  ok: смерть: стак 1 теряется целиком
+  ok: смерть: потеряно 5 из 8
+  ok: после смерти в рюкзаке 3 единицы
+[Карта города]
+  ok: seed 42: две генерации города одинаковы
+  ok: seed 42: аномалия на одном месте
+  ok: на карте есть деревья
+  ok: старт героя на проходимой земле
+  ok: вне карты непроходимо
+  ok: аномалия достижима пешком от старта
+  ok: AStar строит путь между тайлами
+  ok: частокол делает тайл непроходимым
+[Симуляция города]
+  ok: старт: дерево по уровню «норма»
+  ok: старт: кристаллы по уровню
+  ok: старт: 5 жителей (ответ №11)
+  ok: лимит жителей = стартовым без домов
+  ok: вместимость хранилища базовая
+  ok: утро нового города — день
+  ok: на воде строить нельзя
+  ok: без ресурсов стройка не начинается
+  ok: house: найдено место под стройку
+  ok: house: стройплощадка заложена
+  ok: house: площадка ждёт строителя
+  ok: house: строитель достроил за build_work
+  ok: дом даёт +2 к лимиту жителей
+  ok: warehouse: найдено место под стройку
+  ok: warehouse: стройплощадка заложена
+  ok: warehouse: площадка ждёт строителя
+  ok: warehouse: строитель достроил за build_work
+  ok: склад даёт +200 к вместимости
+  ok: wall: найдено место под стройку
+  ok: wall: стройплощадка заложена
+  ok: wall: площадка ждёт строителя
+  ok: wall: строитель достроил за build_work
+  ok: построенный частокол — преграда
+  ok: среди жителей есть фермер
+  ok: farm: найдено место под стройку
+  ok: farm: стройплощадка заложена
+  ok: farm: площадка ждёт строителя
+  ok: farm: строитель достроил за build_work
+  ok: фермер работает на ферме
+  ok: ферма производит еду
+  ok: без еды житель голодает
+  ok: еда вернулась — работа продолжается
+  ok: дом готов — есть где спать
+  ok: ночью фермер спит дома
+  ok: время 95% суток — ночь
+  ok: пауза: время не идёт
+  ok: скорость x3: тик 1 сек двигает время на 3
+  ok: каменная крошка ушла в пул камня
+  ok: кристаллы ушли в пул маны
+  ok: руна осталась в рюкзаке (нужна для M3)
+  ok: камень в пуле вырос на 5
+  ok: полное хранилище не принимает камень
+  ok: излишек остался в рюкзаке
+  ok: уровень «много»: 2 кристалла на старте
+  ok: altar: найдено место под стройку
+  ok: altar: стройплощадка заложена
+  ok: altar: площадка ждёт строителя
+  ok: altar: строитель достроил за build_work
+  ok: маг-ученик есть среди жителей
+  ok: работающий алтарь даёт благословение
+[Магия: рецепты и спеллбук]
+  ok: рецепт: искра+хаос = Огненная вспышка
+  ok: рецепт не зависит от порядка рун
+  ok: рецепт: хаос+хаос = Дикий резонанс
+  ok: неизвестная пара рун даёт пустой результат
+  ok: все руны (>=8) используются в рецептах
+  ok: у всех заклинаний известная школа
+  ok: 3 городских + 6 боевых заклинаний
+  ok: Game._init загрузил data/magic.json
+  ok: спеллбук пуста на новом Game
+  ok: learn_spell без дублей
+  ok: remove_item убирает запрошенное
+  ok: остаток стака после remove_item
+[Магия: город — загрязнение, заклинания, зачарование]
+  ok: новый город: полоса «чисто»
+  ok: при чистоте множитель производства 1.0
+  ok: 40 загрязнения — наэлектризовано
+  ok: полоса mild: ×1.05
+  ok: 70 — магическое сердце
+  ok: полоса heart: ×1.15
+  ok: add_pollution ограничен 100
+  ok: за день загрязнение падает на decay_per_day
+  ok: без алтаря городской каст невозможен
+  ok: altar: найдено место под стройку
+  ok: altar: стройплощадка заложена
+  ok: altar: площадка ждёт строителя
+  ok: altar: строитель достроил за build_work
+  ok: без кристаллов каст невозможен
+  ok: Дикий резонанс соткан у алтаря
+  ok: резонанс потратил 2 кристалла
+  ok: резонанс действует
+  ok: резонанс добавил 15 загрязнения
+  ok: второй каст сразу — упирается в кулдаун
+  ok: во время резонанса производство ×1.5
+  ok: Очищение сняло загрязнение в ноль
+  ok: Дары леса: +15 еды
+  ok: house: найдено место под стройку
+  ok: house: стройплощадка заложена
+  ok: house: площадка ждёт строителя
+  ok: house: строитель достроил за build_work
+  ok: farm: найдено место под стройку
+  ok: farm: стройплощадка заложена
+  ok: farm: площадка ждёт строителя
+  ok: farm: строитель достроил за build_work
+  ok: «Ярость урожая» не ставится на дом (цель — ферма)
+  ok: «Оберег» без руны камня невозможен
+  ok: ферма зачарована руной роста
+  ok: руна списана из рюкзака
+  ok: зачарование даёт ×1.25
+  ok: farm: найдено место под стройку
+  ok: farm: стройплощадка заложена
+  ok: farm: площадка ждёт строителя
+  ok: farm: строитель достроил за build_work
+  ok: зачарованная ферма даёт ровно +25% еды за то же время
+  ok: без зачарования запас маны обычный
+  ok: altar: найдено место под стройку
+  ok: altar: стройплощадка заложена
+  ok: altar: площадка ждёт строителя
+  ok: altar: строитель достроил за build_work
+  ok: алтарь зачарован «Мана-связью»
+  ok: зачарованный алтарь: +4 к запасу маны
+  ok: зачарованный алтарь: реген 5с
+  ok: house: найдено место под стройку
+  ok: house: стройплощадка заложена
+  ok: house: площадка ждёт строителя
+  ok: house: строитель достроил за build_work
+  ok: тик перешёл границу дня
+  ok: при переборе случилось дикое событие
+  ok: вспышка оглушила здание или случился прилив
+  ok: house: найдено место под стройку
+  ok: house: стройплощадка заложена
+  ok: house: площадка ждёт строителя
+  ok: house: строитель достроил за build_work
+  ok: дом под «Оберегом»
+  ok: Оберег: здание не оглушено
+  ok: вспышка выродилась в прилив (или шанс не выпал)
+  ok: farm: найдено место под стройку
+  ok: farm: стройплощадка заложена
+  ok: farm: площадка ждёт строителя
+  ok: farm: строитель достроил за build_work
+  ok: работник оглушённого здания стоит
+  ok: оглушённая ферма не даёт еды
+[Магия: уязвимости врагов]
+  ok: скелет уязвим к свету: урон ×2
+  ok: голем уязвим к природе: урон ×2
+  ok: крыса уязвима к дикой магии
+  ok: чужая школа — обычный урон
+  ok: антимаг иммунен к любой магии
+  ok: антимаг: даже «нейтральный» магический урон не проходит
+  ok: пустая школа у обычного врага — урон как есть (путь меча)
+  ok: у антимага нет уязвимой школы
+OK: все тесты пройдены

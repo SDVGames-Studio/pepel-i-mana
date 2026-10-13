@@ -10,6 +10,7 @@ var _res_label: Label
 var _pop_label: Label
 var _day_label: Label
 var _hungry_label: Label
+var _pollution_label: Label
 var _hint_label: Label
 var _toast_label: Label
 var _toast_time := 0.0
@@ -18,6 +19,18 @@ var _speed_btns: Array = []
 var _bld_btns: Array = []
 var _residents_panel: PanelContainer
 var _residents_text: RichTextLabel
+var _magic_panel: PanelContainer
+var _magic_scroll: ScrollContainer
+var _magic_box: VBoxContainer
+var _pollution_big: Label
+var _rune_slot_a: OptionButton
+var _rune_slot_b: OptionButton
+var _craft_result: Label
+var _craft_btn: Button
+var _city_spell_btns: Array = []   # [{btn, spell_id}]
+var _enchant_btns: Array = []      # [{btn, ench_id}]
+var _enchant_hint_label: Label
+var _enchant_colors: Dictionary = {}
 
 
 ## Вызвать до add_child.
@@ -57,11 +70,14 @@ func refresh() -> void:
 		_day_label.text = day_text
 		_day_label.add_theme_color_override("font_color", Color("#ffe9b0"))
 	_hungry_label.visible = float(sim.res["food"]) <= 0.0
+	_refresh_pollution()
 	_pause_btn.set_pressed_no_signal(bool(sim.paused))
 	for i in _speed_btns.size():
 		_speed_btns[i].set_pressed_no_signal(int(sim.speed) == int(cfg["speeds"][i]))
 	if _residents_panel.visible:
 		_residents_text.text = _residents_bbcode()
+	if _magic_panel.visible:
+		_refresh_magic()
 
 
 func toast(msg: String) -> void:
@@ -79,6 +95,203 @@ func toggle_residents() -> void:
 
 func residents_visible() -> bool:
 	return _residents_panel.visible
+
+
+func set_enchant_colors(colors: Dictionary) -> void:
+	_enchant_colors = colors
+
+
+## Подсказка под панелью зданий: что выбрано для зачарования.
+func set_enchant_hint(text: String) -> void:
+	_enchant_hint_label.text = text
+
+
+## --- Панель магии (M3, клавиша R) ---------------------------------------
+
+func toggle_magic() -> void:
+	_magic_panel.visible = not _magic_panel.visible
+	if _magic_panel.visible:
+		_rebuild_rune_slots()
+
+
+func magic_visible() -> bool:
+	return _magic_panel.visible
+
+
+func _build_magic_panel(root: Control) -> void:
+	_magic_panel = PanelContainer.new()
+	_magic_panel.add_theme_stylebox_override("panel", _panel_style())
+	_magic_panel.set_anchors_preset(Control.PRESET_CENTER)
+	_magic_panel.visible = false
+	root.add_child(_magic_panel)
+	_magic_scroll = ScrollContainer.new()
+	_magic_scroll.custom_minimum_size = Vector2(520, 560)
+	_magic_panel.add_child(_magic_scroll)
+	_magic_box = VBoxContainer.new()
+	_magic_box.add_theme_constant_override("separation", 8)
+	_magic_box.custom_minimum_size = Vector2(500, 0)
+	_magic_scroll.add_child(_magic_box)
+
+	var title := _label(26)
+	title.text = Loc.t("magic.title")
+	_magic_box.add_child(title)
+
+	_pollution_big = _label(20)
+	_magic_box.add_child(_pollution_big)
+
+	# городские заклинания (алтарь + кристаллы)
+	var spells_title := _label(20)
+	spells_title.text = Loc.t("magic.city_spells")
+	_magic_box.add_child(spells_title)
+	for def in Game.magic.spells():
+		if String(def["where"]) != "city":
+			continue
+		var spell_id := String(def["id"])
+		var btn := Button.new()
+		btn.custom_minimum_size = Vector2(0, 40)
+		btn.add_theme_font_size_override("font_size", 17)
+		btn.tooltip_text = Loc.t(String(def["desc"]))
+		btn.pressed.connect(func() -> void: city.cast_city_spell(spell_id))
+		_magic_box.add_child(btn)
+		_city_spell_btns.append({"btn": btn, "spell_id": spell_id})
+
+	# крафт: две руны -> заклинание (таблица рецептов, ответ №58)
+	var craft_title := _label(20)
+	craft_title.text = Loc.t("magic.craft")
+	_magic_box.add_child(craft_title)
+	var slots := HBoxContainer.new()
+	slots.add_theme_constant_override("separation", 8)
+	_magic_box.add_child(slots)
+	_rune_slot_a = OptionButton.new()
+	_rune_slot_b = OptionButton.new()
+	for slot in [_rune_slot_a, _rune_slot_b]:
+		slot.custom_minimum_size = Vector2(240, 36)
+		slot.item_selected.connect(func(_idx: int) -> void: _update_craft_preview())
+		slots.add_child(slot)
+	_craft_result = _label(18)
+	_magic_box.add_child(_craft_result)
+	_craft_btn = Button.new()
+	_craft_btn.text = Loc.t("magic.craft_make")
+	_craft_btn.custom_minimum_size = Vector2(0, 40)
+	_craft_btn.pressed.connect(_on_craft_pressed)
+	_magic_box.add_child(_craft_btn)
+
+	# зачарование зданий: руна + кристалл, затем клик по зданию
+	var ench_title := _label(20)
+	ench_title.text = Loc.t("magic.enchant")
+	_magic_box.add_child(ench_title)
+	for def in Game.magic.enchantments():
+		var ench_id := String(def["id"])
+		var btn := Button.new()
+		btn.custom_minimum_size = Vector2(0, 40)
+		btn.add_theme_font_size_override("font_size", 17)
+		btn.tooltip_text = Loc.t(String(def["desc"]))
+		btn.pressed.connect(func() -> void: city.set_enchant_mode(ench_id))
+		_magic_box.add_child(btn)
+		_enchant_btns.append({"btn": btn, "ench_id": ench_id})
+	_enchant_hint_label = _label(18)
+	_enchant_hint_label.add_theme_color_override("font_color", Color("#ffe082"))
+	_magic_box.add_child(_enchant_hint_label)
+
+
+## Выпадающие списки рун из рюкзака (перестраиваются при каждом открытии).
+func _rebuild_rune_slots() -> void:
+	for slot in [_rune_slot_a, _rune_slot_b]:
+		slot.clear()
+		for stack in Game.inventory:
+			var item_id := String(stack["id"])
+			if not item_id.begins_with("rune_"):
+				continue
+			var text := "%s ×%d" % [Loc.t(_rune_loc(item_id)), int(stack["count"])]
+			slot.add_item(text)
+			slot.set_item_metadata(slot.item_count - 1, item_id)
+	_update_craft_preview()
+
+
+func _rune_loc(item_id: String) -> String:
+	for item in _loot_items():
+		if String(item["id"]) == item_id:
+			return String(item["loc"])
+	return item_id
+
+
+func _loot_items() -> Array:
+	return _read_loot_json().get("items", [])
+
+
+func _read_loot_json() -> Dictionary:
+	var f := FileAccess.open("res://data/loot.json", FileAccess.READ)
+	if f == null:
+		return {}
+	var parsed: Variant = JSON.parse_string(f.get_as_text())
+	return parsed if parsed is Dictionary else {}
+
+
+func _selected_rune(slot: OptionButton) -> String:
+	if slot.selected < 0:
+		return ""
+	return String(slot.get_item_metadata(slot.selected))
+
+
+func _update_craft_preview() -> void:
+	var a := _selected_rune(_rune_slot_a)
+	var b := _selected_rune(_rune_slot_b)
+	if a == "" or b == "":
+		_craft_result.text = Loc.t("magic.craft_pick")
+		_craft_btn.disabled = true
+		return
+	var spell_id: String = Game.magic.recipe_result(a, b)
+	if spell_id == "":
+		_craft_result.text = Loc.t("magic.craft_none")
+		_craft_btn.disabled = true
+		return
+	var def: Dictionary = Game.magic.spell(spell_id)
+	_craft_result.text = "%s — %s" % [Loc.t(String(def["loc"])), Loc.t(String(def["desc"]))]
+	if Game.has_spell(spell_id):
+		_craft_result.text += " " + Loc.t("magic.craft_known")
+		_craft_btn.disabled = true
+	else:
+		_craft_btn.disabled = false
+
+
+func _on_craft_pressed() -> void:
+	city.craft_spell(_selected_rune(_rune_slot_a), _selected_rune(_rune_slot_b))
+	_rebuild_rune_slots()
+
+
+## Обновление панели: шкала, кнопки (активны только у работающего алтаря).
+func _refresh_magic() -> void:
+	_pollution_big.text = _pollution_text()
+	var altar_ok: bool = sim.altar_ready()
+	for entry in _city_spell_btns:
+		var def: Dictionary = Game.magic.spell(String(entry["spell_id"]))
+		entry["btn"].text = "%s (%d %s)" % [
+			Loc.t(String(def["loc"])), int(def.get("crystals_cost", 0)), Loc.t("res.crystal")]
+		entry["btn"].disabled = not altar_ok
+	for entry in _enchant_btns:
+		var def: Dictionary = Game.magic.enchantment(String(entry["ench_id"]))
+		entry["btn"].text = "%s (%d %s + %s)" % [
+			Loc.t(String(def["loc"])), int(def.get("crystals", 1)),
+			Loc.t("res.crystal"), _rune_loc(String(def["rune"]))]
+		entry["btn"].disabled = not altar_ok
+		if _enchant_colors.has(String(entry["ench_id"])):
+			entry["btn"].add_theme_color_override("font_color", _enchant_colors[String(entry["ench_id"])])
+
+
+func _refresh_pollution() -> void:
+	_pollution_label.text = _pollution_text()
+
+
+func _pollution_text() -> String:
+	var band := String(sim.pollution_band())
+	var text := Loc.t("magic.pollution") % [int(sim.pollution), Loc.t("magic.p_" + band)]
+	var col := "#c8c8c8"
+	match band:
+		"mild": col = "#a5d6a7"
+		"heart": col = "#ba68c8"
+		"wild": col = "#ff6b57"
+	_pollution_label.add_theme_color_override("font_color", Color(col))
+	return text
 
 
 func _build() -> void:
@@ -104,6 +317,8 @@ func _build() -> void:
 	_hungry_label = _label(20)
 	_hungry_label.add_theme_color_override("font_color", Color("#ff6b57"))
 	tl_box.add_child(_hungry_label)
+	_pollution_label = _label(20)
+	tl_box.add_child(_pollution_label)
 
 	# --- правый верх: пауза и скорость
 	var top_right := PanelContainer.new()
@@ -175,6 +390,8 @@ func _build() -> void:
 		btn.pressed.connect(func() -> void: city.set_build_mode(type_id))
 		bld_box.add_child(btn)
 		_bld_btns.append(btn)
+
+	_build_magic_panel(root)
 
 
 ## Описание здания для подсказки: название, цена, эффект.

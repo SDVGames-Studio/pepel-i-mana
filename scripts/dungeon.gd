@@ -10,6 +10,8 @@ const PickupScript := preload("res://scripts/pickup.gd")
 const ExitMarkerScript := preload("res://scripts/exit_marker.gd")
 const DungeonViewScript := preload("res://scripts/dungeon_view.gd")
 const HudScript := preload("res://scripts/hud.gd")
+const SpellFxScript := preload("res://scripts/spell_fx.gd")
+const CITY_CFG_PATH := "res://data/city.json"
 
 var params: Dictionary = {}
 var enemies_data: Array = []
@@ -25,6 +27,8 @@ var _visited: Dictionary = {}
 var _mana_acc := 0.0
 var _rng := RandomNumberGenerator.new()
 var _loot_rng := RandomNumberGenerator.new()
+var _zones: Array = []            # зоны «Терновых шипов»: {pos, radius, until, acc, dps}
+var _zone_time := 0.0
 
 
 func _ready() -> void:
@@ -57,6 +61,8 @@ func _ready() -> void:
 func _process(delta: float) -> void:
 	if hero.dead:
 		return
+	_zone_time += delta
+	_update_zones()
 	_update_fog()
 	_update_mana_hunger(delta)
 	_update_hint()
@@ -65,6 +71,21 @@ func _process(delta: float) -> void:
 		_try_interact()
 	if Input.is_action_just_pressed("inventory"):
 		hud.toggle_inventory()
+
+
+func _unhandled_input(event: InputEvent) -> void:
+	# слоты заклинаний 1–6 (спеллбук, порядок изучения)
+	if event is InputEventKey and event.pressed and not event.echo:
+		var idx := -1
+		match event.physical_keycode:
+			KEY_1: idx = 0
+			KEY_2: idx = 1
+			KEY_3: idx = 2
+			KEY_4: idx = 3
+			KEY_5: idx = 4
+			KEY_6: idx = 5
+		if idx >= 0 and idx < Game.spellbook.size():
+			_cast_spell(String(Game.spellbook[idx]))
 
 
 func _tile_to_pos(tile: Vector2i) -> Vector2:
@@ -152,12 +173,27 @@ func _build_hero() -> void:
 	hero = HeroScript.new()
 	var hero_params: Dictionary = params["hero"]
 	hero.setup(hero_params, int(hero_params["mana"]))
+	_apply_mana_params()
 	hero.position = _tile_to_pos(gen.start_tile)
 	hero.died.connect(_on_hero_died)
 	add_child(hero)
 	hero.set_camera_limits(Rect2(0, 0, gen.w * float(ts), gen.h * float(ts)))
 	# радиус фонаря — отдельный параметр (меньше радиуса обзора-памяти миникарты)
 	hero.make_light(float(params["hero"]["light_radius_tiles"]) * float(ts))
+
+
+## Мана героя (ответы №56 и №65): запас и регенерация; зачарованный алтарь
+## в городе увеличивает запас и ускоряет регенерацию.
+func _apply_mana_params() -> void:
+	var mana_cfg: Dictionary = _read_json(CITY_CFG_PATH).get("hero_mana", {})
+	var regen := float(mana_cfg.get("regen_period", 8.0))
+	var cap_extra := 0
+	if Game.city_sim != null and Game.city_sim.altar_enchanted():
+		cap_extra = int(mana_cfg.get("altar_cap_extra", 4))
+		regen = float(mana_cfg.get("altar_regen_period", 5.0))
+	hero.mana_max = int(params["hero"]["mana"]) + cap_extra
+	hero.mana = hero.mana_max
+	hero.mana_regen_period = regen
 
 
 func _build_enemies() -> void:
@@ -192,7 +228,135 @@ func _spawn_pickup(kind: String, item_id: String, pos: Vector2) -> void:
 	add_child(pickup)
 
 
-## Туман войны: миникарта рисуется только по реально пройденным тайлам.
+## --- Магия (M3): каст боевых заклинаний ---------------------------------
+
+## Каст по слоту спеллбука: мана, кулдаун, эффект, цвет школы.
+func _cast_spell(spell_id: String) -> void:
+	if hero.dead:
+		return
+	var def: Dictionary = Game.magic.spell(spell_id)
+	if def.is_empty() or String(def["where"]) != "dungeon":
+		return
+	if hero.spell_cd_left(spell_id) > 0.0:
+		return
+	var cost := int(def.get("mana_cost", 0))
+	if hero.mana < cost:
+		hud.toast(Loc.t("magic.no_mana"))
+		return
+	hero.mana -= cost
+	hero.set_spell_cd(spell_id, float(def.get("cooldown", 3.0)))
+	var params2: Dictionary = def.get("params", {})
+	var school := String(def["school"])
+	var col: Color = Game.magic.school_color(school)
+	match spell_id:
+		"fire_flash":
+			_spell_flash(params2, col)
+		"chain_bolt":
+			_spell_bolt(params2, col)
+		"heal":
+			_spell_heal(params2, col)
+		"shield":
+			_spell_shield(params2, col)
+		"roots":
+			_spell_roots(params2, col)
+		"thorns":
+			_spell_thorns(params2, col)
+	# дикая магия загрязняет регион (даже из данжа — город рядом)
+	if float(def.get("pollution", 0.0)) > 0.0 and Game.city_sim != null:
+		Game.city_sim.add_pollution(float(def["pollution"]))
+
+
+## Точка каста: курсор, не дальше range_px от героя.
+func _cast_point(range_px: float) -> Vector2:
+	var to: Vector2 = get_global_mouse_position() - hero.global_position
+	if to.length() <= range_px:
+		return hero.global_position + to
+	return hero.global_position + to.normalized() * range_px
+
+
+func _spell_flash(p2: Dictionary, col: Color) -> void:
+	var pos := _cast_point(float(p2.get("range", 200.0)))
+	_add_fx("burst", col, float(p2.get("radius", 46.0)), 0.4, pos)
+	for enemy in get_tree().get_nodes_in_group("enemies"):
+		if enemy.global_position.distance_to(pos) <= float(p2.get("radius", 46.0)) + float(enemy.p["radius"]):
+			enemy.take_damage(int(p2.get("damage", 4)), "wild")
+
+
+func _spell_bolt(p2: Dictionary, col: Color) -> void:
+	var in_range: Array = []
+	for enemy in get_tree().get_nodes_in_group("enemies"):
+		var d: float = enemy.global_position.distance_to(hero.global_position)
+		if d <= float(p2.get("radius", 170.0)):
+			in_range.append([d, enemy])
+	in_range.sort_custom(func(a, b) -> bool: return float(a[0]) < float(b[0]))
+	var points := PackedVector2Array([Vector2.ZERO])
+	var hits := 0
+	for entry in in_range:
+		if hits >= int(p2.get("targets", 3)):
+			break
+		var enemy = entry[1]
+		enemy.take_damage(int(p2.get("damage", 2)), "wild")
+		points.append(enemy.global_position - hero.global_position)
+		hits += 1
+	if hits > 0:
+		_add_fx("bolt", col, 0.0, 0.35, hero.global_position, points)
+
+
+func _spell_heal(p2: Dictionary, col: Color) -> void:
+	hero.heal(int(p2.get("heal", 5)))
+	_add_fx("ring", col, 26.0, 0.6, hero.global_position)
+
+
+func _spell_shield(p2: Dictionary, col: Color) -> void:
+	hero.cast_shield(float(p2.get("duration", 5.0)))
+	_add_fx("ring", col, 40.0, 0.8, hero.global_position)
+
+
+func _spell_roots(p2: Dictionary, col: Color) -> void:
+	var pos := _cast_point(float(p2.get("range", 200.0)))
+	_add_fx("burst", col, float(p2.get("radius", 58.0)), 0.6, pos)
+	for enemy in get_tree().get_nodes_in_group("enemies"):
+		if enemy.global_position.distance_to(pos) <= float(p2.get("radius", 58.0)) + float(enemy.p["radius"]):
+			enemy.stun_for(float(p2.get("stun", 3.0)))
+
+
+func _spell_thorns(p2: Dictionary, col: Color) -> void:
+	var pos := _cast_point(float(p2.get("range", 200.0)))
+	var radius := float(p2.get("radius", 58.0))
+	var duration := float(p2.get("duration", 4.0))
+	_zones.append({
+		"pos": pos, "radius": radius, "until": _zone_time + duration,
+		"acc": 0.0, "dps": int(p2.get("dps", 1)),
+	})
+	_add_fx("zone", col, radius, duration, pos)
+
+
+## Тик зон шипов: урон по времени всем врагам внутри.
+func _update_zones() -> void:
+	var i := 0
+	while i < _zones.size():
+		var zone: Dictionary = _zones[i]
+		if _zone_time >= float(zone["until"]):
+			_zones.remove_at(i)
+			continue
+		zone["acc"] = float(zone["acc"]) + get_process_delta_time()
+		while float(zone["acc"]) >= 1.0:
+			zone["acc"] = float(zone["acc"]) - 1.0
+			for enemy in get_tree().get_nodes_in_group("enemies"):
+				if enemy.global_position.distance_to(zone["pos"]) <= float(zone["radius"]) + float(enemy.p["radius"]):
+					enemy.take_damage(int(zone["dps"]), "nature")
+		i += 1
+
+
+func _add_fx(kind: String, col: Color, radius: float, duration: float,
+		pos: Vector2, points: PackedVector2Array = PackedVector2Array()) -> void:
+	var fx = SpellFxScript.new()
+	fx.setup(kind, col, radius, duration, points)
+	fx.position = pos
+	add_child(fx)
+
+
+
 func _update_fog() -> void:
 	var t := _pos_to_tile(hero.position)
 	var r := int(params["hero"]["vision_tiles"])
@@ -227,7 +391,7 @@ func _update_hint() -> void:
 	if chest != null:
 		hud.set_hint(Loc.t("dungeon.hint_chest"))
 		return
-	hud.set_hint("")
+	hud.set_hint(Loc.t("dungeon.hint_spells"))
 
 
 func _near_ladder() -> bool:
