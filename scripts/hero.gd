@@ -14,6 +14,10 @@ var _dash_left := 0.0
 var _dash_cd := 0.0
 var _attack_cd := 0.0
 var _invuln := 0.0
+var _lantern: PointLight2D = null
+var _flicker_time := 0.0
+
+const LANTERN_ENERGY := 1.15
 
 
 ## Вызвать до add_child: параметры героя и стартовая мана.
@@ -50,12 +54,18 @@ func set_camera_limits(rect: Rect2) -> void:
 	cam.limit_bottom = int(rect.end.y)
 
 
-## Фонарь героя: данж погашен (CanvasModulate в сцене данжа),
-## вокруг героя — мягкий круг света радиусом radius_px.
+## Фонарь героя: данж погашен (CanvasModulate в сцене данжа).
+## Тёплый «факельный» свет с резким спадом и тенями от стен:
+## за стенами (соседние комнаты, коридоры) света не видно.
 func make_light(radius_px: float) -> void:
 	var grad := Gradient.new()
-	grad.offsets = PackedFloat32Array([0.0, 0.55, 1.0])
-	grad.colors = PackedColorArray([Color(1, 1, 1), Color(0.85, 0.85, 0.9), Color(0, 0, 0)])
+	grad.offsets = PackedFloat32Array([0.0, 0.35, 0.75, 1.0])
+	grad.colors = PackedColorArray([
+		Color(1.0, 0.95, 0.85),
+		Color(0.95, 0.85, 0.68),
+		Color(0.35, 0.28, 0.2),
+		Color(0, 0, 0),
+	])
 	var tex := GradientTexture2D.new()
 	tex.gradient = grad
 	tex.fill = GradientTexture2D.FILL_RADIAL
@@ -67,13 +77,24 @@ func make_light(radius_px: float) -> void:
 	light.name = "Lantern"
 	light.texture = tex
 	light.texture_scale = radius_px * 2.0 / 256.0
-	light.energy = 1.1
+	light.color = Color(1.0, 0.87, 0.68)
+	light.energy = LANTERN_ENERGY
+	light.shadow_enabled = true
+	light.shadow_filter = PointLight2D.SHADOW_FILTER_PCF5
+	light.shadow_filter_smooth = 2.0
 	add_child(light)
+	_lantern = light
 
 
 func _physics_process(delta: float) -> void:
 	if dead:
 		return
+	_flicker_time += delta
+	if _lantern != null:
+		# дыхание факела: лёгкое неровное мерцание яркости
+		_lantern.energy = LANTERN_ENERGY * (0.94
+				+ 0.045 * absf(sin(_flicker_time * 8.0))
+				+ 0.03 * absf(sin(_flicker_time * 21.7)))
 	_dash_cd = maxf(0.0, _dash_cd - delta)
 	_attack_cd = maxf(0.0, _attack_cd - delta)
 	_invuln = maxf(0.0, _invuln - delta)

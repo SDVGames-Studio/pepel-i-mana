@@ -90,6 +90,7 @@ func _make_view() -> Node2D:
 
 
 ## Стены: один StaticBody2D, горизонтальные цепочки стен слеплены в один прямоугольник.
+## На каждый сегмент — LightOccluder2D: фонарь героя отбрасывает от стен настоящие тени.
 func _build_walls() -> void:
 	var body := StaticBody2D.new()
 	body.name = "Walls"
@@ -105,12 +106,24 @@ func _build_walls() -> void:
 			var x0 := x
 			while x < gen.w and gen.grid[y][x] == DungeonGenScript.TILE_WALL:
 				x += 1
+			var seg_w := (x - x0) * float(ts)
+			var center := Vector2((x0 + (x - x0) / 2.0) * float(ts), (y + 0.5) * float(ts))
 			var shape := CollisionShape2D.new()
 			var rect := RectangleShape2D.new()
-			rect.size = Vector2((x - x0) * float(ts), float(ts))
+			rect.size = Vector2(seg_w, float(ts))
 			shape.shape = rect
-			shape.position = Vector2((x0 + (x - x0) / 2.0) * float(ts), (y + 0.5) * float(ts))
+			shape.position = center
 			body.add_child(shape)
+			var occ := LightOccluder2D.new()
+			var poly := OccluderPolygon2D.new()
+			var hw := seg_w / 2.0
+			var hh := float(ts) / 2.0
+			poly.polygon = PackedVector2Array([
+				Vector2(-hw, -hh), Vector2(hw, -hh), Vector2(hw, hh), Vector2(-hw, hh),
+			])
+			occ.occluder = poly
+			occ.position = center
+			body.add_child(occ)
 
 
 func _build_exit() -> void:
@@ -143,8 +156,8 @@ func _build_hero() -> void:
 	hero.died.connect(_on_hero_died)
 	add_child(hero)
 	hero.set_camera_limits(Rect2(0, 0, gen.w * float(ts), gen.h * float(ts)))
-	# радиус фонаря = радиус обзора + 1 тайл мягкого края
-	hero.make_light((float(params["hero"]["vision_tiles"]) + 1.0) * float(ts))
+	# радиус фонаря — отдельный параметр (меньше радиуса обзора-памяти миникарты)
+	hero.make_light(float(params["hero"]["light_radius_tiles"]) * float(ts))
 
 
 func _build_enemies() -> void:

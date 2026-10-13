@@ -22,7 +22,8 @@
 		"dash_distance": 38,
 		"dash_time": 0.12,
 		"dash_cooldown": 1.5,
-		"vision_tiles": 6
+		"vision_tiles": 6,
+		"light_radius_tiles": 4.5
 	},
 	"mana_drain_period": 25.0,
 	"crystal_mana": 3,
@@ -32,6 +33,6 @@
 		"wall_color": "#241f1d",
 		"bg_color": "#141110",
 		"exit_color": "#d8c27a",
-		"ambient": "#131320"
+		"ambient": "#090910"
 	}
 }
