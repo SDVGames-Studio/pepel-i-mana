@@ -50,6 +50,27 @@ func set_camera_limits(rect: Rect2) -> void:
 	cam.limit_bottom = int(rect.end.y)
 
 
+## Фонарь героя: данж погашен (CanvasModulate в сцене данжа),
+## вокруг героя — мягкий круг света радиусом radius_px.
+func make_light(radius_px: float) -> void:
+	var grad := Gradient.new()
+	grad.offsets = PackedFloat32Array([0.0, 0.55, 1.0])
+	grad.colors = PackedColorArray([Color(1, 1, 1), Color(0.85, 0.85, 0.9), Color(0, 0, 0)])
+	var tex := GradientTexture2D.new()
+	tex.gradient = grad
+	tex.fill = GradientTexture2D.FILL_RADIAL
+	tex.fill_from = Vector2(0.5, 0.5)
+	tex.fill_to = Vector2(0.5, 0.0)
+	tex.width = 256
+	tex.height = 256
+	var light := PointLight2D.new()
+	light.name = "Lantern"
+	light.texture = tex
+	light.texture_scale = radius_px * 2.0 / 256.0
+	light.energy = 1.1
+	add_child(light)
+
+
 func _physics_process(delta: float) -> void:
 	if dead:
 		return

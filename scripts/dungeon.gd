@@ -39,6 +39,7 @@ func _ready() -> void:
 	gen = DungeonGenScript.new()
 	gen.generate(_seed_value, params)
 
+	_build_darkness()
 	add_child(_make_view())
 	_build_walls()
 	_build_exit()
@@ -72,6 +73,14 @@ func _tile_to_pos(tile: Vector2i) -> Vector2:
 
 func _pos_to_tile(pos: Vector2) -> Vector2i:
 	return Vector2i((pos / float(ts)).floor())
+
+
+## Тьма: весь данж гасится, видимость даёт только фонарь героя (hero.make_light).
+func _build_darkness() -> void:
+	var dark := CanvasModulate.new()
+	dark.name = "Darkness"
+	dark.color = Color(String(params["biome"]["ambient"]))
+	add_child(dark)
 
 
 func _make_view() -> Node2D:
@@ -134,6 +143,8 @@ func _build_hero() -> void:
 	hero.died.connect(_on_hero_died)
 	add_child(hero)
 	hero.set_camera_limits(Rect2(0, 0, gen.w * float(ts), gen.h * float(ts)))
+	# радиус фонаря = радиус обзора + 1 тайл мягкого края
+	hero.make_light((float(params["hero"]["vision_tiles"]) + 1.0) * float(ts))
 
 
 func _build_enemies() -> void:

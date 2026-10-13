@@ -31,6 +31,7 @@
 		"floor_color": "#4a4440",
 		"wall_color": "#241f1d",
 		"bg_color": "#141110",
-		"exit_color": "#d8c27a"
+		"exit_color": "#d8c27a",
+		"ambient": "#131320"
 	}
 }
