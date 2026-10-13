@@ -1,0 +1,67 @@
+{
+	"tile_size": 32,
+	"map_w": 44,
+	"map_h": 30,
+	"lakes": 3,
+	"rocks": 3,
+	"trees": 40,
+	"resident_speed": 70.0,
+	"day_length": 120.0,
+	"night_fraction": 0.3,
+	"speeds": [1, 2, 3],
+	"food_per_resident_day": 2.0,
+	"tired_at": 0.85,
+	"sleep_restore_no_home": 1.2,
+	"sleep_restore_home": 3.0,
+	"rest_fraction": 0.6,
+	"well_bonus": 0.5,
+	"pop_per_house": 2,
+	"storage_base": 150,
+	"storage_per_warehouse": 200,
+	"altar_boost": 1.1,
+	"colors": {
+		"grass": "#5d7a3a",
+		"grass_alt": "#577336",
+		"water": "#2e5f7a",
+		"rock": "#6e6a63",
+		"tree": "#3e5a2a",
+		"anomaly": "#b46ee0",
+		"site": "#c8b07a",
+		"done_border": "#3a3128"
+	},
+	"start": {
+		"residents_default": 5,
+		"residents_min": 1,
+		"residents_max": 12,
+		"professions": ["farmer", "lumberjack", "crafter", "builder", "guard"],
+		"levels": {
+			"low": {"wood": 30, "stone": 15, "food": 20, "crystal": 0},
+			"normal": {"wood": 60, "stone": 30, "food": 40, "crystal": 0},
+			"high": {"wood": 120, "stone": 60, "food": 80, "crystal": 2}
+		}
+	},
+	"professions": [
+		{"id": "builder", "loc": "prof.builder", "color": "#d9a066"},
+		{"id": "farmer", "loc": "prof.farmer", "color": "#8bc34a"},
+		{"id": "lumberjack", "loc": "prof.lumberjack", "color": "#a1887f"},
+		{"id": "crafter", "loc": "prof.crafter", "color": "#90a4ae"},
+		{"id": "guard", "loc": "prof.guard", "color": "#ef5350"},
+		{"id": "acolyte", "loc": "prof.acolyte", "color": "#ba68c8"}
+	],
+	"buildings": [
+		{"id": "house", "loc": "bld.house", "desc": "bld.desc.house", "color": "#c78d5b", "cost": {"wood": 15}, "build_work": 20, "effect": "pop"},
+		{"id": "farm", "loc": "bld.farm", "desc": "bld.desc.farm", "color": "#7cb342", "cost": {"wood": 10}, "build_work": 20, "worker": "farmer", "produce": {"res": "food", "per_day": 6}},
+		{"id": "sawmill", "loc": "bld.sawmill", "desc": "bld.desc.sawmill", "color": "#8d6e63", "cost": {"wood": 5, "stone": 5}, "build_work": 25, "worker": "lumberjack", "produce": {"res": "wood", "per_day": 6}},
+		{"id": "well", "loc": "bld.well", "desc": "bld.desc.well", "color": "#4fc3f7", "cost": {"stone": 10}, "build_work": 15, "effect": "sleep"},
+		{"id": "warehouse", "loc": "bld.warehouse", "desc": "bld.desc.warehouse", "color": "#ffb74d", "cost": {"wood": 15, "stone": 5}, "build_work": 25, "effect": "storage"},
+		{"id": "workshop", "loc": "bld.workshop", "desc": "bld.desc.workshop", "color": "#78909c", "cost": {"wood": 10, "stone": 10}, "build_work": 30, "worker": "crafter", "produce": {"res": "stone", "per_day": 3}},
+		{"id": "wall", "loc": "bld.wall", "desc": "bld.desc.wall", "color": "#9e9e9e", "cost": {"wood": 3}, "build_work": 5, "effect": "wall"},
+		{"id": "tower", "loc": "bld.tower", "desc": "bld.desc.tower", "color": "#e57373", "cost": {"wood": 10, "stone": 15}, "build_work": 30, "worker": "guard", "effect": "guard"},
+		{"id": "altar", "loc": "bld.altar", "desc": "bld.desc.altar", "color": "#ce93d8", "cost": {"stone": 10, "crystal": 2}, "build_work": 30, "worker": "acolyte", "effect": "altar"}
+	],
+	"loot_to_pool": {
+		"stone_chip": "stone",
+		"echo_crystal": "crystal"
+	},
+	"names": ["Мира", "Том", "Лана", "Борн", "Кира", "Ярл", "Нива", "Герд", "Ада", "Радан", "Ева", "Тар"]
+}
