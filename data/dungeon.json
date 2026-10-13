@@ -19,8 +19,8 @@
 		"attack_range": 30,
 		"attack_arc": 90,
 		"attack_cooldown": 0.4,
-		"dash_mult": 3.0,
-		"dash_time": 0.15,
+		"dash_distance": 38,
+		"dash_time": 0.12,
 		"dash_cooldown": 1.5,
 		"vision_tiles": 6
 	},

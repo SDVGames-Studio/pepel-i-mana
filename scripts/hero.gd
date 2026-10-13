@@ -1,6 +1,6 @@
 extends CharacterBody2D
-## Герой (M1): движение WASD/стрелки, рывок на Shift, удар ближнего боя
-## в сторону курсора мыши (Space или ЛКМ). Примитивы вместо спрайтов — арт в M8.
+## Герой (M1): движение WASD/стрелки, уворот-отпрыг на Space,
+## удар ближнего боя ЛКМ в сторону курсора. Примитивы вместо спрайтов — арт в M8.
 
 signal died
 
@@ -64,11 +64,17 @@ func _physics_process(delta: float) -> void:
 		_dash_cd = float(p["dash_cooldown"])
 	if _dash_left > 0.0:
 		_dash_left -= delta
-		velocity = facing * float(p["speed"]) * float(p["dash_mult"])
+		# отпрыг на фиксированную дистанцию от точки старта (об стену останавливается)
+		var dash_speed := float(p["dash_distance"]) / float(p["dash_time"])
+		velocity = facing * dash_speed
 	else:
 		velocity = dir * float(p["speed"])
 	move_and_slide()
-	if Input.is_action_just_pressed("attack"):
+
+
+func _unhandled_input(event: InputEvent) -> void:
+	if event is InputEventMouseButton and event.pressed \
+			and event.button_index == MOUSE_BUTTON_LEFT:
 		try_attack()
 
 
