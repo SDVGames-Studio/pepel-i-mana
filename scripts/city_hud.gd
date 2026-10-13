@@ -41,7 +41,7 @@ func _process(delta: float) -> void:
 func refresh() -> void:
 	if sim == null:
 		return
-	var cap := sim.storage_cap()
+	var cap: int = sim.storage_cap()
 	_res_label.text = "%s %d/%d   %s %d/%d   %s %d   %s %d" % [
 		Loc.t("res.wood"), int(sim.res["wood"]), cap,
 		Loc.t("res.stone"), int(sim.res["stone"]), cap,

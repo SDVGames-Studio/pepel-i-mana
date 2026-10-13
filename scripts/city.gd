@@ -199,7 +199,7 @@ func _unhandled_input(event: InputEvent) -> void:
 
 
 func _try_place() -> void:
-	var tile := map.tile_of_px(get_global_mouse_position())
+	var tile: Vector2i = map.tile_of_px(get_global_mouse_position())
 	if not sim.is_buildable_tile(tile):
 		hud.toast(Loc.t("city.cant_build_here"))
 		return

@@ -56,9 +56,9 @@ func _draw_terrain() -> void:
 
 
 func _draw_anomaly() -> void:
-	var c := colors["anomaly"]
+	var c: Color = colors["anomaly"]
 	var pulse := 0.75 + 0.25 * sin(Time.get_ticks_msec() / 300.0)
-	var center := map.tile_center_px(map.anomaly_tile)
+	var center: Vector2 = map.tile_center_px(map.anomaly_tile)
 	draw_circle(center, map.ts * 0.55 * pulse, Color(c.r, c.g, c.b, 0.35))
 	draw_circle(center, map.ts * 0.32, c)
 	draw_circle(center, map.ts * 0.14, c.lightened(0.4))
@@ -67,7 +67,7 @@ func _draw_anomaly() -> void:
 func _draw_buildings() -> void:
 	for b in sim.buildings:
 		var rect := Rect2(Vector2(b["tile"]) * map.ts, Vector2(map.ts, map.ts))
-		var col: Color = _bld_colors.get(String(b["type"]), Color.SAND)
+		var col: Color = _bld_colors.get(String(b["type"]), Color(0.91, 0.85, 0.62))
 		if not b["done"]:
 			# стройплощадка: каркас и полоса прогресса
 			draw_rect(rect.grow(-3), Color(col.r, col.g, col.b, 0.25))
@@ -99,7 +99,7 @@ func _draw_residents() -> void:
 func _draw_ghost() -> void:
 	if build_mode == "":
 		return
-	var tile := map.tile_of_px(get_global_mouse_position())
+	var tile: Vector2i = map.tile_of_px(get_global_mouse_position())
 	if not map.in_bounds(tile):
 		return
 	var ok: bool = sim.is_buildable_tile(tile) and sim.can_afford(_cost_of(build_mode))

@@ -71,7 +71,7 @@ func can_afford(cost: Dictionary) -> bool:
 func storage_cap() -> int:
 	var extra := 0
 	for b in buildings:
-		if b["done"] and _def(b)["effect"] == "storage":
+		if b["done"] and _def(b).get("effect", "") == "storage":
 			extra += int(cfg["storage_per_warehouse"])
 	return int(cfg["storage_base"]) + extra
 
@@ -79,7 +79,7 @@ func storage_cap() -> int:
 func pop_cap() -> int:
 	var houses := 0
 	for b in buildings:
-		if b["done"] and _def(b)["effect"] == "pop":
+		if b["done"] and _def(b).get("effect", "") == "pop":
 			houses += 1
 	return base_pop + houses * int(cfg["pop_per_house"])
 
@@ -96,7 +96,7 @@ func day_number() -> int:
 ## Благословение алтаря: есть готовый алтарь с работающим магом-учеником.
 func has_blessing() -> bool:
 	for b in buildings:
-		if b["done"] and _def(b)["effect"] == "altar" and int(b["worker"]) > 0:
+		if b["done"] and _def(b).get("effect", "") == "altar" and int(b["worker"]) > 0:
 			return true
 	return false
 
@@ -148,7 +148,7 @@ func _complete_site(site: Dictionary) -> void:
 	site["done"] = true
 	site["progress"] = 0.0
 	site["worker"] = -1
-	if _def(site)["effect"] == "wall":
+	if _def(site).get("effect", "") == "wall":
 		map.set_solid(site["tile"], true)
 	events.append({"type": "built", "bld": String(site["type"])})
 	_assign_jobs()
@@ -283,7 +283,7 @@ func _free_home(r: Dictionary) -> Dictionary:
 			var hb: Dictionary = other["home"]
 			counts[int(hb["id"])] = int(counts.get(int(hb["id"]), 0)) + 1
 	for b in buildings:
-		if not b["done"] or _def(b)["effect"] != "pop":
+		if not b["done"] or _def(b).get("effect", "") != "pop":
 			continue
 		if int(counts.get(int(b["id"]), 0)) >= int(cfg["pop_per_house"]):
 			continue
@@ -301,7 +301,7 @@ func _restore_rate(r: Dictionary, sleeping: bool) -> float:
 	if not sleeping:
 		base *= float(cfg["rest_fraction"])
 	for b in buildings:
-		if b["done"] and _def(b)["effect"] == "sleep":
+		if b["done"] and _def(b).get("effect", "") == "sleep":
 			base *= 1.0 + float(cfg["well_bonus"])
 			break
 	return base
