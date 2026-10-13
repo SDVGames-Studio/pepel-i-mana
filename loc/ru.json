@@ -11,6 +11,7 @@
 	"menu.level.normal": "Норма",
 	"menu.level.high": "Много",
 	"menu.begin": "Основать город",
+	"menu.back": "Назад",
 	"city.back_hint": "Esc — в меню, Tab — список жителей",
 	"city.last_run_ok": "Добыча доставлена в город: %s",
 	"city.last_run_death": "Вы погибли в данже. Потеряна половина добычи: %s",
