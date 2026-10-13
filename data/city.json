@@ -75,7 +75,7 @@
 	],
 	"buildings": [
 		{"id": "house", "loc": "bld.house", "desc": "bld.desc.house", "color": "#c78d5b", "cost": {"wood": 15}, "build_work": 20, "effect": "pop"},
-		{"id": "farm", "loc": "bld.farm", "desc": "bld.desc.farm", "color": "#7cb342", "cost": {"wood": 10}, "build_work": 20, "worker": "farmer", "produce": {"res": "food", "per_day": 6}},
+		{"id": "farm", "loc": "bld.farm", "desc": "bld.desc.farm", "color": "#7cb342", "cost": {"wood": 10}, "build_work": 20, "worker": "farmer", "produce": {"res": "food", "per_day": 12}},
 		{"id": "sawmill", "loc": "bld.sawmill", "desc": "bld.desc.sawmill", "color": "#8d6e63", "cost": {"wood": 5, "stone": 5}, "build_work": 25, "worker": "lumberjack", "produce": {"res": "wood", "per_day": 6}},
 		{"id": "well", "loc": "bld.well", "desc": "bld.desc.well", "color": "#4fc3f7", "cost": {"stone": 10}, "build_work": 15, "effect": "sleep"},
 		{"id": "warehouse", "loc": "bld.warehouse", "desc": "bld.desc.warehouse", "color": "#ffb74d", "cost": {"wood": 15, "stone": 5}, "build_work": 25, "effect": "storage"},

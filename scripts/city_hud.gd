@@ -488,6 +488,10 @@ func _residents_bbcode() -> String:
 			parts.append("[color=%s]%d%%[/color]" % [mood_col, mood])
 			parts.append(Loc.t(skill_key))
 		lines.append(" — ".join(parts))
+	# почему не идут беженцы и не рождаются дети (M4-фикс по фидбеку)
+	var block: String = sim.growth_block()
+	if block != "":
+		lines.append("[color=#ffb74d]%s[/color]" % Loc.t(block))
 	return "\n".join(lines)
 
 

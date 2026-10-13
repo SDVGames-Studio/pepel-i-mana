@@ -61,6 +61,7 @@ const REQUIRED_LOCALES := [
 	"city.state.child", "city.state.sick", "city.state.wounded",
 	"city.chronicle_panel", "city.refugee_came", "city.birth_toast", "city.grown_toast",
 	"city.died_toast", "city.wounded_toast", "city.skill_up_toast",
+	"city.growth_cap", "city.growth_food", "city.growth_mood",
 	"trait.hardworking", "trait.lazy", "trait.cheerful", "trait.grumpy",
 	"trait.brave", "trait.coward", "trait.magephobe", "trait.magiclover",
 	"trait.glutton", "trait.greedy",
@@ -449,14 +450,21 @@ func _test_city_sim() -> void:
 	_check(String(farmer["state"]) == "work", "фермер работает на ферме")
 	_check(float(sim.res["food"]) > food_before, "ферма производит еду")
 
-	# еда: жители едят; пустой пул — голод, работа стоит
+	# еда: жители едят; пустой пул — голодный безработный стоит, работающий трудится вполсилы
 	sim.cfg["food_per_resident_day"] = 2.0
 	sim.res["food"] = 0.0
+	var starving_mult: float = sim.work_mult(farmer)
+	_check(starving_mult <= 0.5, "голод режет работу вполсилы (%.2f)" % starving_mult)
 	sim.tick(0.5)
-	_check(String(farmer["state"]) == "hungry", "без еды житель голодает")
-	sim.res["food"] = 50.0
-	sim.tick(0.5)
-	_check(String(farmer["state"]) != "hungry", "еда вернулась — работа продолжается")
+	_check(String(farmer["state"]) == "work", "голодный фермер не бросает ферму (анти-тупик M4)")
+	var sim_h := _make_sim()
+	sim_h.res["food"] = 0.0
+	sim_h.tick(0.5)
+	var idle_guard: Dictionary = _resident_by_prof(sim_h, "guard")
+	_check(String(idle_guard["state"]) == "hungry", "без еды безработный голодает")
+	sim_h.res["food"] = 50.0
+	sim_h.tick(0.5)
+	_check(String(idle_guard["state"]) != "hungry", "еда вернулась — работа продолжается")
 
 	# ночь: жители спят (в построенном доме), кроме стража
 	sim.time = float(sim.cfg["day_length"]) * 0.95
@@ -605,6 +613,24 @@ func _test_people() -> void:
 	sim_r._roll_refugees()
 	_check(sim_r.residents.size() == pop_before + 1, "беженец пришёл сам")
 	_check(String(sim_r.chronicle[-1]["key"]) == "chron.refugee", "беженец записан в летопись")
+
+	# прирост города: беженцы не приходят без места или без запаса еды (M4-фикс фидбека)
+	var sim_g := _make_sim()
+	_check(String(sim_g.growth_block()) == "city.growth_cap", "прирост стоит: лимит жителей полон")
+	sim_g.people["refugees"]["chance_per_day"] = 1.0
+	sim_g._roll_refugees()
+	_check(sim_g.residents.size() == 5, "при полном лимите беженец не приходит")
+	_build_now(sim_g, "house")
+	sim_g.res["food"] = 2.0
+	_check(String(sim_g.growth_block()) == "city.growth_food", "прирост стоит: нет запаса еды")
+	sim_g._roll_refugees()
+	_check(sim_g.residents.size() == 5, "без запаса еды беженец не идёт в голодный город")
+	for r in sim_g.residents:
+		r["mood"] = 80.0
+	sim_g.res["food"] = 50.0
+	sim_g._roll_refugees()
+	_check(sim_g.residents.size() >= 6, "есть место и еда — беженцы приходят (волна 1-2)")
+
 	sim_r.people["births"]["chance_per_day"] = 1.0
 	sim_r._roll_births()
 	var child: Dictionary = {}

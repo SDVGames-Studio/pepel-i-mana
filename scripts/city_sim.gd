@@ -534,8 +534,8 @@ func _weighted_pick(weights: Dictionary) -> String:
 func _update_resident(r: Dictionary, dt: float) -> void:
 	var day_len := float(cfg["day_length"])
 	_update_mood(r, dt, day_len)
-	# голод: работы нет, стоит
-	if float(res["food"]) <= 0.0:
+	# голод: без дела — стоит; занятый работает вполсилы (иначе город умирает навсегда)
+	if float(res["food"]) <= 0.0 and r["site"] == null and r["bld"] == null:
 		r["state"] = "hungry"
 		r["path"] = PackedVector2Array()
 		return
@@ -768,6 +768,7 @@ func _friend_working(r: Dictionary) -> bool:
 
 
 ## Итоговый множитель работы: настроение + черты + навык + друг + мутация.
+## Пустой амбар режет работу до «голодных» 40% — но работа не встаёт совсем.
 func work_mult(r: Dictionary) -> float:
 	var mult := 1.0
 	var mood := float(r.get("mood", 50.0))
@@ -780,7 +781,9 @@ func work_mult(r: Dictionary) -> float:
 	if _friend_working(r):
 		mult *= float(people.get("friend_work", 1.1))
 	mult *= 1.0 + float(r.get("work_bonus", 0.0))
-	return clampf(mult, 0.4, 2.5)
+	if float(res["food"]) <= 0.0:
+		mult *= float(people.get("starving_work", 0.4))
+	return clampf(mult, 0.2, 2.5)
 
 
 ## Настроение плывёт к целевому: черты + загрязнение + потребности + события.
@@ -878,6 +881,25 @@ func _manned_towers() -> int:
 	return count
 
 
+## Запас еды хотя бы на день впереди — иначе город не тянется и приток стоит.
+func _food_reserve_ok() -> bool:
+	return float(res["food"]) >= float(residents.size()) * float(cfg["food_per_resident_day"])
+
+
+## Почему не растёт город (беженцы и рождения): "" — всё ок, иначе ключ локализации.
+func growth_block() -> String:
+	if residents.size() >= pop_cap():
+		return "city.growth_cap"
+	if not _food_reserve_ok():
+		return "city.growth_food"
+	var min_gate: float = minf(
+			float(people.get("refugees", {}).get("mood_gate", 45.0)),
+			float(people.get("births", {}).get("mood_gate", 60.0)))
+	if _avg_mood() < min_gate:
+		return "city.growth_mood"
+	return ""
+
+
 ## Дневной бросок: болезни и выздоровления (лекарь лечит, запущенная болезнь убивает).
 func _roll_ailments() -> void:
 	var acfg: Dictionary = people.get("ailments", {})
@@ -911,7 +933,7 @@ func _roll_refugees() -> void:
 	var rcfg: Dictionary = people.get("refugees", {})
 	if rcfg.is_empty() or residents.size() >= pop_cap():
 		return
-	if float(res["food"]) <= 0.0 or _avg_mood() < float(rcfg.get("mood_gate", 45.0)):
+	if not _food_reserve_ok() or _avg_mood() < float(rcfg.get("mood_gate", 45.0)):
 		return
 	var chance: float = float(rcfg.get("chance_per_day", 0.35)) \
 			+ minf(float(rcfg.get("tower_bonus", 0.1)) * _manned_towers(), float(rcfg.get("tower_bonus_max", 0.4)))
@@ -951,7 +973,7 @@ func _roll_births() -> void:
 	var bcfg: Dictionary = people.get("births", {})
 	if bcfg.is_empty() or residents.size() >= pop_cap():
 		return
-	if float(res["food"]) <= 0.0 or _avg_mood() < float(bcfg.get("mood_gate", 60.0)):
+	if not _food_reserve_ok() or _avg_mood() < float(bcfg.get("mood_gate", 60.0)):
 		return
 	if _event_rng.randf() >= float(bcfg.get("chance_per_day", 0.25)):
 		return
