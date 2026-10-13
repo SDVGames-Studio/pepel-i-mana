@@ -1,9 +1,45 @@
 extends Node
-## Автозагрузка: состояние между сценами — рюкзак героя и итог последнего забега.
-## Инвентарь без веса (решение заказчика, вопрос 52): стеки предметов, без лимита.
+## Автозагрузка: состояние между сценами — рюкзак героя, итог последнего
+## забега и город (M2). Инвентарь без веса (ответ 52), стеки без лимита.
+## Симуляция города тикается здесь: пока герой в данже, город продолжает жить.
+
+const CITY_CFG_PATH := "res://data/city.json"
+const CITY_SIM_SCRIPT := "res://scripts/city_sim.gd"
+const CITY_MAP_SCRIPT := "res://scripts/city_map.gd"
 
 var inventory: Array = []        # [{id: String, count: int}]
 var last_run_death := false      # true, если последний забег закончился гибелью
+var city_sim = null              # city_sim.gd, нетипизированно (грабли GDScript 4)
+var start_residents := 5         # настройки старта из меню (вопрос 11)
+var start_level := "normal"      # "low" | "normal" | "high"
+
+
+func _process(delta: float) -> void:
+	if city_sim != null:
+		city_sim.tick(delta)
+
+
+## Создать город с настройками старта (новая игра). Рюкзак героя очищается.
+func new_city() -> void:
+	inventory = []
+	last_run_death = false
+	var cfg: Variant = _read_json(CITY_CFG_PATH)
+	if not (cfg is Dictionary):
+		push_error("Не читается data/city.json")
+		return
+	var map_script: Script = load(CITY_MAP_SCRIPT)
+	var sim_script: Script = load(CITY_SIM_SCRIPT)
+	var city_map = map_script.new()
+	city_map.generate(randi(), cfg)
+	city_sim = sim_script.new()
+	city_sim.setup(city_map, cfg, start_residents, start_level)
+
+
+func _read_json(path: String) -> Variant:
+	var f := FileAccess.open(path, FileAccess.READ)
+	if f == null:
+		return null
+	return JSON.parse_string(f.get_as_text())
 
 
 ## Добавляет предмет в рюкзак, при совпадении складывается в стак.

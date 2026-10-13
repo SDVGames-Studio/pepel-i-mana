@@ -9,6 +9,7 @@ var hp := 1
 var mana := 0
 var facing := Vector2.RIGHT
 var dead := false
+var city_mode := false            # в городе: только ходьба, без боя и рывка
 
 var _dash_left := 0.0
 var _dash_cd := 0.0
@@ -99,6 +100,10 @@ func _physics_process(delta: float) -> void:
 	_attack_cd = maxf(0.0, _attack_cd - delta)
 	_invuln = maxf(0.0, _invuln - delta)
 	var dir := Input.get_vector("move_left", "move_right", "move_up", "move_down")
+	if city_mode:
+		velocity = dir * float(p["speed"])
+		move_and_slide()
+		return
 	if dir != Vector2.ZERO:
 		facing = dir.normalized()
 	if Input.is_action_just_pressed("dash") and _dash_cd <= 0.0 and dir != Vector2.ZERO:
@@ -115,8 +120,10 @@ func _physics_process(delta: float) -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
+	if city_mode:
+		return
 	if event is InputEventMouseButton and event.pressed \
-			and event.button_index == MOUSE_BUTTON_LEFT:
+				and event.button_index == MOUSE_BUTTON_LEFT:
 		try_attack()
 
 
