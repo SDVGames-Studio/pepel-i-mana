@@ -33,7 +33,7 @@
 		"residents_default": 5,
 		"residents_min": 1,
 		"residents_max": 12,
-		"professions": ["farmer", "lumberjack", "crafter", "builder", "guard"],
+		"professions": ["farmer", "lumberjack", "builder", "guard", "acolyte", "crafter"],
 		"levels": {
 			"low": {"wood": 30, "stone": 15, "food": 20, "crystal": 0},
 			"normal": {"wood": 60, "stone": 30, "food": 40, "crystal": 0},
