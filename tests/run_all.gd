@@ -55,6 +55,23 @@ const REQUIRED_LOCALES := [
 	"ench.growth", "ench.ward", "ench.mana",
 	"ench.desc.growth", "ench.desc.ward", "ench.desc.mana",
 	"enemy.antimage",
+	"menu.conflicts",
+	"prof.healer",
+	"bld.healer_hut", "bld.desc.healer_hut",
+	"city.state.child", "city.state.sick", "city.state.wounded",
+	"city.chronicle_panel", "city.refugee_came", "city.birth_toast", "city.grown_toast",
+	"city.died_toast", "city.wounded_toast", "city.skill_up_toast",
+	"trait.hardworking", "trait.lazy", "trait.cheerful", "trait.grumpy",
+	"trait.brave", "trait.coward", "trait.magephobe", "trait.magiclover",
+	"trait.glutton", "trait.greedy",
+	"skill.novice", "skill.expert", "skill.master",
+	"chron.sick", "chron.wounded", "chron.died_sick", "chron.refugee", "chron.birth",
+	"chron.grown", "chron.quarrel", "chron.friendship", "chron.discovery",
+	"chron.betrayal", "chron.betrayal_caught", "chron.mutation_good", "chron.mutation_bad",
+	"chron.skill_expert", "chron.skill_master",
+	"story.quarrel_toast", "story.friendship_toast", "story.discovery_toast",
+	"story.betrayal_toast", "story.betrayal_caught_toast",
+	"story.mutation_good_toast", "story.mutation_bad_toast",
 ]
 
 const ALL_SCRIPTS := [
@@ -80,6 +97,7 @@ func _initialize() -> void:
 	_test_game_inventory()
 	_test_city_map()
 	_test_city_sim()
+	_test_people()
 	_test_magic()
 	_test_magic_sim()
 	_test_spell_damage()
@@ -157,7 +175,7 @@ func _test_data() -> void:
 			"pollution", "hero_mana", "test_mode"]:
 		_check(city.has(key), "city.json содержит %s" % key)
 	var blds: Variant = city.get("buildings", [])
-	_check(blds is Array and blds.size() == 9, "city.json — 9 типов зданий (8 из ТЗ 4.1 + лесопилка)")
+	_check(blds is Array and blds.size() == 10, "city.json — 10 типов зданий (M4: + хижина лекаря)")
 	var bld_ok := true
 	if blds is Array:
 		for b in blds:
@@ -166,7 +184,20 @@ func _test_data() -> void:
 					bld_ok = false
 	_check(bld_ok, "city.json: у зданий есть цена и время стройки")
 	var profs: Variant = city.get("professions", [])
-	_check(profs is Array and profs.size() == 6, "city.json — 6 профессий")
+	_check(profs is Array and profs.size() == 7, "city.json — 7 профессий (M4: + лекарь)")
+	var speeds_ok := false
+	for s in city.get("speeds", []):
+		if int(s) == 10:
+			speeds_ok = true
+	_check(speeds_ok, "city.json — есть супер-скорость x10 (M4)")
+	var residents_data: Variant = _read_json("res://data/residents.json")
+	_check(residents_data is Dictionary, "residents.json — валидный JSON-словарь")
+	if residents_data is Dictionary:
+		_check((residents_data.get("traits", []) as Array).size() >= 8, "residents.json — минимум 8 черт")
+		_check(residents_data.has("refugees") and residents_data.has("births"),
+				"residents.json: настроены беженцы и рождения (ответ №27)")
+		_check(residents_data.has("ailments") and residents_data.has("stories"),
+				"residents.json: настроены болезни и события-истории")
 	var pool_map: Dictionary = city.get("loot_to_pool", {})
 	_check(pool_map.get("stone_chip", "") == "stone", "city.json: каменная крошка -> камень в пул")
 	_check(pool_map.get("echo_crystal", "") == "crystal", "city.json: кристалл эха -> кристаллы маны")
@@ -312,6 +343,10 @@ func _find_free_tile(sim: Object, near: Vector2i) -> Vector2i:
 ## Построить здание мгновенно: ставим площадку, телепортируем строителя, тикаем.
 func _build_now(sim: Object, type_id: String) -> Dictionary:
 	var builder: Dictionary = _resident_by_prof(sim, "builder")
+	# личности M4 не мешают стройке в тестах: строитель в идеальном состоянии
+	builder["mood"] = 100.0
+	builder["traits"] = []
+	builder["skill"] = 0.0
 	var near: Vector2i = sim.map.spawn_tile
 	var tile := _find_free_tile(sim, near)
 	_check(not tile == Vector2i(-1, -1), "%s: найдено место под стройку" % type_id)
@@ -478,6 +513,189 @@ func _test_city_sim() -> void:
 	_check(bool(sim4.has_blessing()), "работающий алтарь даёт благословение")
 
 
+# --- M4: жители-личности ----------------------------------------------------
+
+func _test_people() -> void:
+	print("[Жители-личности M4]")
+	var sim := _make_sim()
+	_check(sim.people.size() > 0, "симуляция загрузила residents.json")
+	var r0: Dictionary = sim.residents[0]
+	_check((r0["traits"] as Array).size() >= 1, "у жителя есть 1-2 черты характера")
+	_check(r0.has("mood") and r0.has("skill") and r0.has("friend"), "настроение, навык и дружба заведены")
+	_check(absf(float(r0["mood"]) - 50.0) < 30.0, "настроение на старте около базового")
+
+	# скорость x10 (просьба заказчика: смотреть рождения и истории)
+	var sim10 := _make_sim()
+	sim10.speed = 10
+	sim10.tick(1.0)
+	_check(absf(float(sim10.time) - 10.0) < 0.001, "супер-скорость x10: тик 1 сек двигает время на 10")
+
+	# навык растёт от работы; трудолюбивый сильнее ленивого
+	var sim_w := _make_sim()
+	sim_w.cfg["food_per_resident_day"] = 0.0
+	var farmer: Dictionary = _resident_by_prof(sim_w, "farmer")
+	farmer["skill"] = 0.0
+	_teleport(sim_w, farmer, sim_w.map.spawn_tile + Vector2i(2, 2))
+	var farm := _build_now(sim_w, "farm")
+	_teleport(sim_w, farmer, farm["tile"])
+	sim_w.tick(10.0)
+	_check(float(farmer["skill"]) > 0.0, "навык растёт от работы")
+	_check(int(farmer["rank"]) == 0, "ранг новичка — 0")
+	var hard: Dictionary = {"traits": ["hardworking"], "mood": 50.0, "skill": 0.0, "friend": -1, "work_bonus": 0.0}
+	var lazy: Dictionary = {"traits": ["lazy"], "mood": 50.0, "skill": 0.0, "friend": -1, "work_bonus": 0.0}
+	var hard_mult: float = sim_w.work_mult(hard)
+	var lazy_mult: float = sim_w.work_mult(lazy)
+	_check(hard_mult > lazy_mult, "трудолюбивый работает лучше ленивого")
+	hard["skill"] = 5.0
+	_check(sim_w.work_mult(hard) > hard_mult, "навык усиливает работу")
+
+	# настроение: голод валит его, черта маголюба на загрязнении поднимает
+	var sim_m := _make_sim()
+	var someone: Dictionary = sim_m.residents[0]
+	var mood_before := float(someone["mood"])
+	sim_m.res["food"] = 0.0
+	sim_m.tick(20.0)
+	_check(float(someone["mood"]) < mood_before, "голод снижает настроение")
+	var lover: Dictionary = {"traits": ["magiclover"], "mood": 50.0, "fatigue": 0.0, "home": {}, "friend": -1, "ail": ""}
+	var phobe: Dictionary = {"traits": ["magephobe"], "mood": 50.0, "fatigue": 0.0, "home": {}, "friend": -1, "ail": ""}
+	sim_m.pollution = 80.0
+	_check(sim_m._mood_target(lover) > sim_m._mood_target(phobe), "маголюб при загрязнении счастливее магофоба")
+
+	# лекарь: хижина занята, болезнь случается и лечится
+	var sim_s := _make_sim("high")
+	var healer: Dictionary = sim_s._new_resident("Ада", "healer", sim_s.map.spawn_tile)
+	sim_s.residents.append(healer)
+	var hut := _build_now(sim_s, "healer_hut")
+	_check(int(hut["worker"]) > 0, "лекарь занял хижину")
+	_check(bool(sim_s._healer_ready()), "работающий лекарь готов лечить")
+	sim_s.people["ailments"]["sick_chance"] = 1.0
+	sim_s._roll_ailments()
+	var sick_count := 0
+	for r in sim_s.residents:
+		if String(r.get("ail", "")) == "sick":
+			sick_count += 1
+	_check(sick_count > 0, "болезнь случилась (шанс 100%)")
+	sim_s.people["ailments"]["healer_recover_chance"] = 1.0
+	sim_s._roll_ailments()
+	var still_sick := 0
+	for r in sim_s.residents:
+		if String(r.get("ail", "")) != "":
+			still_sick += 1
+	_check(still_sick == 0, "лекарь вылечил всех больных")
+
+	# смерть жителя: горе городу, летопись
+	var sim_d := _make_sim()
+	var victim: Dictionary = sim_d.residents[1]
+	var mourner: Dictionary = sim_d.residents[0]
+	var mood_before_death := float(mourner["mood"])
+	sim_d._kill(victim, "chron.died_sick")
+	_check(sim_d.residents.size() == 4, "житель умер — его больше нет")
+	_check(float(mourner["mood"]) < mood_before_death, "смерть жителя роняет мораль остальных")
+	_check(sim_d.chronicle.size() > 0 and String(sim_d.chronicle[-1]["key"]) == "chron.died_sick",
+			"смерть попала в летопись")
+
+	# беженцы идут сами (ответ №27), рождения дают ребёнка, ребёнок вырастает
+	var sim_r := _make_sim("high")
+	_build_now(sim_r, "house")   # +2 к лимиту: место для пришельцев и новорождённых
+	for r in sim_r.residents:
+		r["mood"] = 80.0
+	var pop_before: int = sim_r.residents.size()
+	sim_r.people["refugees"]["chance_per_day"] = 1.0
+	sim_r.people["refugees"]["wave_max"] = 1
+	sim_r._roll_refugees()
+	_check(sim_r.residents.size() == pop_before + 1, "беженец пришёл сам")
+	_check(String(sim_r.chronicle[-1]["key"]) == "chron.refugee", "беженец записан в летопись")
+	sim_r.people["births"]["chance_per_day"] = 1.0
+	sim_r._roll_births()
+	var child: Dictionary = {}
+	for r in sim_r.residents:
+		if String(r["prof"]) == "":
+			child = r
+	_check(not child.is_empty(), "родился ребёнок (без профессии)")
+	_check(String(sim_r.chronicle[-1]["key"]) == "chron.birth", "рождение записано в летопись")
+	if not child.is_empty():
+		sim_r.people["births"]["child_days"] = 0.01
+		sim_r.tick(2.0)
+		_check(String(child["prof"]) != "", "ребёнок вырос и получил профессию")
+		_check((child["traits"] as Array).size() >= 1, "выросший получил черты характера")
+
+	# ссора (ответ №29): двое в минусе, галочка конфликтов выключает
+	var sim_q := _make_sim()
+	sim_q.conflicts = true
+	sim_q.residents[0]["traits"] = ["grumpy"]
+	for r in sim_q.residents:
+		r["mood"] = 50.0
+	sim_q.people["stories"]["chance_per_day"] = 1.0
+	sim_q.people["stories"]["weights"] = {"quarrel": 1}
+	sim_q._roll_stories()
+	var sad := 0
+	for r in sim_q.residents:
+		if float(r["mood"]) < 50.0:
+			sad += 1
+	_check(sad == 2, "ссора ухудшила настроение ровно двоим")
+	_check(String(sim_q.chronicle[-1]["key"]) == "chron.quarrel", "ссора записана в летопись")
+	sim_q.conflicts = false
+	for r in sim_q.residents:
+		r["mood"] = 50.0
+	sim_q._roll_stories()
+	_check(absf(float(sim_q.residents[0]["mood"]) - 50.0) < 0.001,
+			"галочка конфликтов выключает ссоры")
+
+	# кража (жадный в унынии; стража нет — сойдёт с рук)
+	var sim_b := _make_sim()
+	for r in sim_b.residents:
+		if String(r["prof"]) == "guard":
+			r["prof"] = "crafter"
+	sim_b.residents[0]["traits"] = ["greedy"]
+	sim_b.residents[0]["mood"] = 20.0
+	sim_b.people["stories"]["chance_per_day"] = 1.0
+	sim_b.people["stories"]["weights"] = {"betrayal": 1}
+	var food_before := float(sim_b.res["food"])
+	sim_b._roll_stories()
+	_check(float(sim_b.res["food"]) < food_before, "жадный в унынии украл еду")
+	_check(String(sim_b.chronicle[-1]["key"]) == "chron.betrayal", "кража записана в летопись")
+
+	# находка: опытный житель приносит ресурс в пул
+	var sim_f := _make_sim()
+	sim_f.residents[0]["skill"] = 3.0
+	sim_f.res["food"] = 0.0
+	sim_f.res["stone"] = 0.0
+	sim_f.res["crystal"] = 0.0
+	sim_f.people["stories"]["chance_per_day"] = 1.0
+	sim_f.people["stories"]["weights"] = {"discovery": 1}
+	sim_f._roll_stories()
+	_check(String(sim_f.chronicle[-1]["key"]) == "chron.discovery", "находка записана в летопись")
+	var res_sum: float = float(sim_f.res["food"]) + float(sim_f.res["stone"]) + float(sim_f.res["crystal"])
+	_check(res_sum > 0.0, "находка дала ресурс в пул")
+
+	# мутация (ответ №35): улучшение или болезнь
+	var sim_mu := _make_sim()
+	sim_mu.pollution = 50.0
+	sim_mu.people["stories"]["chance_per_day"] = 1.0
+	sim_mu.people["stories"]["weights"] = {"mutation": 1}
+	sim_mu._roll_stories()
+	var mutated := false
+	for r in sim_mu.residents:
+		if float(r.get("work_bonus", 0.0)) > 0.0 or String(r.get("ail", "")) == "sick":
+			mutated = true
+	_check(mutated, "дикая магия изменила жителя: улучшение или болезнь")
+
+	# дружба (ответ №34): друг за работой усиливает жителя
+	var sim_fr := _make_sim()
+	var f1: Dictionary = sim_fr.residents[0]
+	var f2: Dictionary = sim_fr.residents[1]
+	f1["mood"] = 60.0
+	f1["traits"] = []
+	f1["skill"] = 0.0
+	f1["work_bonus"] = 0.0
+	f1["friend"] = -1
+	var solo: float = sim_fr.work_mult(f1)
+	f1["friend"] = int(f2["id"])
+	f2["state"] = "work"
+	var duo: float = sim_fr.work_mult(f1)
+	_check(duo > solo, "друг за работой усиливает жителя")
+
+
 # --- M3: магия ------------------------------------------------------------
 
 func _make_magic() -> Object:
@@ -597,6 +815,10 @@ func _test_magic_sim() -> void:
 	var house_bld := _build_now(sim3, "house")   # дом заранее: его тик не попадёт в замер
 	var farm := _build_now(sim3, "farm")
 	var farmer: Dictionary = _resident_by_prof(sim3, "farmer")
+	# нейтрализуем личность: сравнение точное, без черт и настроения M4
+	farmer["traits"] = []
+	farmer["mood"] = 50.0
+	farmer["skill"] = 0.0
 	_teleport(sim3, farmer, farm["tile"])
 	sim3.tick(10.0)
 	var food_plain: float = float(sim3.res["food"])
@@ -615,6 +837,9 @@ func _test_magic_sim() -> void:
 	var sim4 := _make_sim()
 	sim4.cfg["food_per_resident_day"] = 0.0
 	var farmer4: Dictionary = _resident_by_prof(sim4, "farmer")
+	farmer4["traits"] = []
+	farmer4["mood"] = 50.0
+	farmer4["skill"] = 0.0
 	var farm4 := _build_now(sim4, "farm")
 	_teleport(sim4, farmer4, farm4["tile"])
 	var food4_start: float = float(sim4.res["food"])

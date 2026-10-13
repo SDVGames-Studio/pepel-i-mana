@@ -142,7 +142,7 @@ func _process(_delta: float) -> void:
 
 func _process_events() -> void:
 	for ev in sim.events:
-		var bld_name := _bld_name(String(ev["bld"]))
+		var bld_name := _bld_name(String(ev.get("bld", "")))
 		match String(ev["type"]):
 			"site":
 				hud.toast(Loc.t("city.site_started") % bld_name)
@@ -157,7 +157,40 @@ func _process_events() -> void:
 				hud.toast(Loc.t("magic.wild_surge"))
 			"wild_gift":
 				hud.toast(Loc.t("magic.wild_gift"))
+			"refugee":
+				hud.toast(Loc.t("city.refugee_came") % String(ev["name"]))
+			"birth":
+				hud.toast(Loc.t("city.birth_toast") % String(ev["name"]))
+			"grown":
+				hud.toast(Loc.t("city.grown_toast") % [String(ev["name"]), _prof_name(String(ev["prof"]))])
+			"died":
+				hud.toast(Loc.t("city.died_toast") % String(ev["name"]))
+			"wounded":
+				hud.toast(Loc.t("city.wounded_toast") % String(ev["name"]))
+			"skill_up":
+				hud.toast(Loc.t("city.skill_up_toast") % [String(ev["name"]), Loc.t("skill." + String(ev["rank"]))])
+			"quarrel":
+				hud.toast(Loc.t("story.quarrel_toast") % [String(ev["a"]), String(ev["b"])])
+			"friendship":
+				hud.toast(Loc.t("story.friendship_toast") % [String(ev["a"]), String(ev["b"])])
+			"discovery":
+				hud.toast(Loc.t("story.discovery_toast") % [String(ev["name"]), Loc.t("res." + String(ev["res"]))])
+			"betrayal":
+				hud.toast(Loc.t("story.betrayal_toast") % String(ev["name"]))
+			"betrayal_caught":
+				hud.toast(Loc.t("story.betrayal_caught_toast") % String(ev["name"]))
+			"mutation_good":
+				hud.toast(Loc.t("story.mutation_good_toast") % String(ev["name"]))
+			"mutation_bad":
+				hud.toast(Loc.t("story.mutation_bad_toast") % String(ev["name"]))
 	sim.events.clear()
+
+
+func _prof_name(prof_id: String) -> String:
+	for p in cfg["professions"]:
+		if String(p["id"]) == prof_id:
+			return Loc.t(String(p["loc"]))
+	return prof_id
 
 
 func _bld_name(type_id: String) -> String:
@@ -201,12 +234,16 @@ func _unhandled_input(event: InputEvent) -> void:
 				toggle_pause()
 			KEY_R:
 				hud.toggle_magic()
+			KEY_C:
+				hud.toggle_chronicle()
 			KEY_1:
 				set_speed(1)
 			KEY_2:
 				set_speed(2)
 			KEY_3:
 				set_speed(3)
+			KEY_4:
+				set_speed(10)
 	if event is InputEventMouseButton and event.pressed:
 		if event.button_index == MOUSE_BUTTON_LEFT and enchant_mode != "":
 			_try_enchant()
@@ -227,6 +264,8 @@ func _unhandled_input(event: InputEvent) -> void:
 			hud.toggle_magic()
 		elif hud.residents_visible():
 			hud.toggle_residents()
+		elif hud.chronicle_visible():
+			hud.toggle_chronicle()
 		else:
 			sim.paused = true
 			get_tree().change_scene_to_file(MENU_SCENE)

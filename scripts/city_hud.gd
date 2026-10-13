@@ -19,6 +19,8 @@ var _speed_btns: Array = []
 var _bld_btns: Array = []
 var _residents_panel: PanelContainer
 var _residents_text: RichTextLabel
+var _chron_panel: PanelContainer
+var _chron_text: RichTextLabel
 var _magic_panel: PanelContainer
 var _magic_scroll: ScrollContainer
 var _magic_box: VBoxContainer
@@ -76,6 +78,8 @@ func refresh() -> void:
 		_speed_btns[i].set_pressed_no_signal(int(sim.speed) == int(cfg["speeds"][i]))
 	if _residents_panel.visible:
 		_residents_text.text = _residents_bbcode()
+	if _chron_panel.visible:
+		_chron_text.text = _chronicle_bbcode()
 	if _magic_panel.visible:
 		_refresh_magic()
 
@@ -95,6 +99,14 @@ func toggle_residents() -> void:
 
 func residents_visible() -> bool:
 	return _residents_panel.visible
+
+
+func toggle_chronicle() -> void:
+	_chron_panel.visible = not _chron_panel.visible
+
+
+func chronicle_visible() -> bool:
+	return _chron_panel.visible
 
 
 func set_enchant_colors(colors: Dictionary) -> void:
@@ -361,11 +373,34 @@ func _build() -> void:
 	var rp_title := _label(22)
 	rp_title.text = Loc.t("city.residents_panel")
 	rp_box.add_child(rp_title)
+	var rp_scroll := ScrollContainer.new()
+	rp_scroll.custom_minimum_size = Vector2(390, 640)
+	rp_box.add_child(rp_scroll)
 	_residents_text = RichTextLabel.new()
 	_residents_text.bbcode_enabled = true
 	_residents_text.fit_content = true
-	_residents_text.custom_minimum_size = Vector2(390, 0)
-	rp_box.add_child(_residents_text)
+	_residents_text.custom_minimum_size = Vector2(370, 0)
+	rp_scroll.add_child(_residents_text)
+
+	# --- центр слева: летопись (C)
+	_chron_panel = PanelContainer.new()
+	_chron_panel.add_theme_stylebox_override("panel", _panel_style())
+	_chron_panel.visible = false
+	_set_rect(_chron_panel, Vector2(12, 210), Vector2(430, 480))
+	root.add_child(_chron_panel)
+	var ch_box := VBoxContainer.new()
+	_chron_panel.add_child(ch_box)
+	var ch_title := _label(22)
+	ch_title.text = Loc.t("city.chronicle_panel")
+	ch_box.add_child(ch_title)
+	var ch_scroll := ScrollContainer.new()
+	ch_scroll.custom_minimum_size = Vector2(410, 420)
+	ch_box.add_child(ch_scroll)
+	_chron_text = RichTextLabel.new()
+	_chron_text.bbcode_enabled = true
+	_chron_text.fit_content = true
+	_chron_text.custom_minimum_size = Vector2(390, 0)
+	ch_scroll.add_child(_chron_text)
 
 	# --- низ: подсказка + панель зданий
 	var bottom := VBoxContainer.new()
@@ -416,10 +451,76 @@ func _residents_bbcode() -> String:
 	var lines := PackedStringArray()
 	for r in sim.residents:
 		var state_key := "city.state." + String(r["state"])
-		var col := "#ff6b57" if String(r["state"]) == "hungry" else "#c8c8c8"
-		lines.append("%s — %s — [color=%s]%s[/color]" % [
-			String(r["name"]), _prof_loc(String(r["prof"])), col, Loc.t(state_key)])
+		var state_col := "#c8c8c8"
+		match String(r["state"]):
+			"hungry":
+				state_col = "#ff6b57"
+			"sick":
+				state_col = "#ffb74d"
+			"wounded":
+				state_col = "#ff8a65"
+			"child":
+				state_col = "#fff59d"
+		var parts := PackedStringArray()
+		parts.append("[b]%s[/b]" % String(r["name"]))
+		if String(r["prof"]) == "":
+			parts.append("[color=#fff59d]%s[/color]" % Loc.t("city.state.child"))
+		else:
+			parts.append(_prof_loc(String(r["prof"])))
+			var traits := PackedStringArray()
+			for t_id in r.get("traits", []):
+				traits.append(Loc.t("trait." + String(t_id)))
+			if not traits.is_empty():
+				parts.append("[color=#9fa8da]%s[/color]" % ", ".join(traits))
+		parts.append("[color=%s]%s[/color]" % [state_col, Loc.t(state_key)])
+		if String(r["prof"]) != "":
+			var mood := int(r.get("mood", 50.0))
+			var mood_col := "#c8c8c8"
+			if mood >= 70:
+				mood_col = "#a5d6a7"
+			elif mood <= 30:
+				mood_col = "#ff6b57"
+			var skill_key := "skill.novice"
+			if int(r.get("rank", 0)) >= 5:
+				skill_key = "skill.master"
+			elif int(r.get("rank", 0)) >= 3:
+				skill_key = "skill.expert"
+			parts.append("[color=%s]%d%%[/color]" % [mood_col, mood])
+			parts.append(Loc.t(skill_key))
+		lines.append(" — ".join(parts))
 	return "\n".join(lines)
+
+
+## Строка летописи: ключ + аргументы локализуются здесь (в симуляции — только id).
+func _chronicle_bbcode() -> String:
+	var lines := PackedStringArray()
+	var entries: Array = sim.chronicle
+	var start := maxi(0, entries.size() - 60)
+	for i in range(entries.size() - 1, start - 1, -1):
+		var e: Dictionary = entries[i]
+		lines.append("[color=#8d8d8d][День %d][/color] %s" % [int(e["day"]), _chron_text_of(e)])
+	return "\n".join(lines)
+
+
+func _chron_text_of(e: Dictionary) -> String:
+	var fmt: String = Loc.t(String(e["key"]))
+	var args: Array = []
+	for k in ["a", "b"]:
+		var v := String(e.get(k, ""))
+		if v != "":
+			args.append(_chron_arg(v))
+	if args.is_empty():
+		return fmt
+	return fmt % args
+
+
+func _chron_arg(v: String) -> String:
+	if v in ["wood", "stone", "food", "crystal"]:
+		return Loc.t("res." + v)
+	for prof in cfg["professions"]:
+		if String(prof["id"]) == v:
+			return Loc.t(String(prof["loc"]))
+	return v
 
 
 func _prof_loc(prof_id: String) -> String:

@@ -7,7 +7,12 @@ extends RefCounted
 ## городские заклинания (резонанс/очищение/дары леса) с кулдаунами,
 ## зачарование зданий руной + кристаллом, стан зданий от диких вспышек.
 ##
-## Житель: {id, name, prof, bld, site, home, state, pos, target, path, fatigue}
+## M4 (жители-личности): черты характера (data/residents.json), навык растёт
+## от работы, настроение (потребности+черты+события), беженцы и рождения,
+## болезни/раны и лекарь, смерть жителя → горе, летопись, события-истории.
+##
+## Житель: {id, name, prof, bld, site, home, state, pos, target, path, fatigue,
+##          traits, mood, skill, rank, age_days, ail, ail_days, friend, work_bonus}
 ## Здание: {id, type, tile, done, progress, worker, enchant, ench_mult, stun_left}
 
 const RESOURCES := ["wood", "stone", "food", "crystal"]
@@ -24,13 +29,20 @@ var paused := false
 var pollution := 0.0            # магическое загрязнение 0..100
 var resonance_left := 0.0       # остаток «Дикого резонанса», сек
 var resonance_mult := 1.0       # множитель производства резонанса
-var events: Array = []          # [{"type": "site"|"built"|"no_worker"|"wild_*", ...}] — читает сцена
+var events: Array = []          # [{"type": "site"|"built"|"no_worker"|"wild_*"|"died"|...}] — читает сцена
+var chronicle: Array = []       # летопись (M4): [{day, key, a, b}] — ключи локализации
 var base_pop := 0               # жители на старте — база лимита
+var conflicts := true           # ссоры и воровство включены (ответ №29, галочка в меню)
+var people: Dictionary = {}     # data/residents.json — черты, настроение, истории
 
 var _next_id := 1
+var _trait_map := {}            # id черты -> описание (из people["traits"])
 var _spell_ready := {}          # id городского заклинания -> время готовности
 var _event_rng := RandomNumberGenerator.new()
 var _last_event_day := 0
+var _last_daily_day := 0        # дневные броски M4: беженцы/рождения/болезни/истории
+
+const PEOPLE_CFG_PATH := "res://data/residents.json"
 
 
 ## Запуск новой игры: карта, стартовые ресурсы по уровню, жители с профессиями.
@@ -49,8 +61,15 @@ func setup(city_map, city_cfg: Dictionary, residents_count: int, level: String) 
 	resonance_mult = 1.0
 	_spell_ready = {}
 	_last_event_day = 0
+	chronicle = []
+	_last_daily_day = 1
 	_event_rng.randomize()
 	_next_id = 1
+	var people_data: Variant = _read_json_file(PEOPLE_CFG_PATH)
+	people = people_data if people_data is Dictionary else {}
+	_trait_map = {}
+	for td in people.get("traits", []):
+		_trait_map[String(td["id"])] = td
 	var levels: Dictionary = cfg["start"]["levels"]
 	var start_res: Dictionary = levels.get(level, levels["normal"])
 	for key in RESOURCES:
@@ -63,16 +82,64 @@ func setup(city_map, city_cfg: Dictionary, residents_count: int, level: String) 
 		var tile: Vector2i = map.spawn_tile + Vector2i(offset)
 		if not map.is_walkable(tile):
 			tile = map.spawn_tile
-		residents.append({
-			"id": _next_id, "name": String(names[i % names.size()]),
-			"prof": String(profs[i % profs.size()]),
-			"bld": null, "site": null, "home": null,
-			"state": "idle", "pos": map.tile_center_px(tile),
-			"target": Vector2i(-1, -1), "path": PackedVector2Array(),
-			"fatigue": 0.0,
-		})
+		residents.append(_new_resident(String(names[i % names.size()]), String(profs[i % profs.size()]), tile))
 		_next_id += 1
 	_assign_jobs()
+
+
+## Новый житель с личностью: черты, настроение, навык с нуля.
+func _new_resident(res_name: String, prof: String, tile: Vector2i) -> Dictionary:
+	var traits := _random_traits()
+	var r := {
+		"id": _next_id, "name": res_name, "prof": prof,
+		"bld": null, "site": null, "home": null,
+		"state": "idle", "pos": map.tile_center_px(tile),
+		"target": Vector2i(-1, -1), "path": PackedVector2Array(),
+		"fatigue": 0.0,
+		"traits": traits, "mood": _start_mood(traits),
+		"skill": 0.0, "rank": 0, "age_days": 100.0,
+		"ail": "", "ail_days": 0.0, "friend": -1, "work_bonus": 0.0,
+	}
+	return r
+
+
+func _start_mood(traits: Array) -> float:
+	var mood: float = float(people.get("mood_base", 50.0))
+	for t_id in traits:
+		var td: Dictionary = _trait_map.get(String(t_id), {})
+		mood += float(td.get("mood", 0.0))
+	return clampf(mood, 0.0, 100.0)
+
+
+## 1-2 случайные черты по весам, без повторов.
+func _random_traits() -> Array:
+	var tmin := int(people.get("traits_per_resident_min", 1))
+	var tmax := int(people.get("traits_per_resident_max", 2))
+	var tdefs: Array = people.get("traits", [])
+	var picked := {}
+	var out: Array = []
+	for i in _event_rng.randi_range(tmin, maxi(tmin, tmax)):
+		var total := 0
+		for td: Dictionary in tdefs:
+			if not picked.has(String(td["id"])):
+				total += int(td.get("weight", 1))
+		var roll := _event_rng.randi_range(1, maxi(1, total))
+		for td: Dictionary in tdefs:
+			if picked.has(String(td["id"])):
+				continue
+			roll -= int(td.get("weight", 1))
+			if roll <= 0:
+				picked[String(td["id"])] = true
+				out.append(String(td["id"]))
+				break
+	return out
+
+
+func _read_json_file(path: String) -> Variant:
+	var f := FileAccess.open(path, FileAccess.READ)
+	if f == null:
+		return null
+	return JSON.parse_string(f.get_as_text())
 
 
 # --- запросы для HUD и тестов -------------------------------------------
@@ -367,8 +434,14 @@ func tick(dt_raw: float) -> void:
 	var day_len := float(cfg["day_length"])
 	time += dt
 	day = int(time / day_len) + 1
-	# еда: все жители едят непрерывно; пусто — город голодает
-	var eat: float = float(cfg["food_per_resident_day"]) * dt / day_len * residents.size()
+	# еда: все жители едят непрерывно (обжора ×2, ребёнок ×0.5); пусто — город голодает
+	var eaters := 0.0
+	for r in residents:
+		var portion := _trait_prod(r, "food_mult")
+		if String(r["prof"]) == "":
+			portion *= float(people.get("child_food", 0.5))
+		eaters += portion
+	var eat: float = float(cfg["food_per_resident_day"]) * dt / day_len * eaters
 	res["food"] = maxf(0.0, float(res["food"]) - eat)
 	# магия (M3): резонанс, спад загрязнения, стан зданий, дикие события
 	if resonance_left > 0.0:
@@ -382,6 +455,13 @@ func tick(dt_raw: float) -> void:
 	_update_wild_events(pol_cfg, day_len)
 	for r in residents:
 		_update_resident(r, dt)
+	# люди (M4): раз в игровой день — болезни, беженцы, рождения, истории
+	if day > _last_daily_day:
+		_last_daily_day = day
+		_roll_ailments()
+		_roll_refugees()
+		_roll_births()
+		_roll_stories()
 
 
 ## Дикие события (ответ №61): при переборе загрязнения (>= band_wild) раз в день
@@ -416,6 +496,16 @@ func _wild_surge(pol_cfg: Dictionary) -> void:
 	for r in residents:
 		r["fatigue"] = float(r["fatigue"]) + float(pol_cfg.get("surge_fatigue", 0.2))
 	events.append({"type": "wild_surge"})
+	# дикая мана калечит (M4): случайный взрослый получает рану
+	var acfg: Dictionary = people.get("ailments", {})
+	var wounded_n := int(acfg.get("wounded_on_surge", 1))
+	var adults := _adults()
+	for i in wounded_n:
+		if adults.is_empty():
+			break
+		var r: Dictionary = adults[_event_rng.randi_range(0, adults.size() - 1)]
+		_make_ail(r, "wounded", "chron.wounded")
+		events.append({"type": "wounded", "name": String(r["name"])})
 
 
 ## Случайное готовое здание без «Оберега» (для дикой вспышки).
@@ -443,10 +533,25 @@ func _weighted_pick(weights: Dictionary) -> String:
 
 func _update_resident(r: Dictionary, dt: float) -> void:
 	var day_len := float(cfg["day_length"])
+	_update_mood(r, dt, day_len)
 	# голод: работы нет, стоит
 	if float(res["food"]) <= 0.0:
 		r["state"] = "hungry"
 		r["path"] = PackedVector2Array()
+		return
+	# ребёнок: растёт, не работает; повзрослел — получает профессию и черты
+	if String(r["prof"]) == "":
+		r["age_days"] = float(r.get("age_days", 0.0)) + dt / day_len
+		var bcfg: Dictionary = people.get("births", {})
+		if float(r["age_days"]) >= float(bcfg.get("child_days", 8.0)):
+			_grow_up(r)
+			return
+		r["state"] = "child"
+		r["path"] = PackedVector2Array()
+		return
+	# болен или ранен: идёт домой и лежит
+	if String(r.get("ail", "")) != "":
+		_lie_ill(r, dt)
 		return
 	var night := is_night()
 	# ночь: все, кроме стража на вышке, спят
@@ -534,8 +639,9 @@ func _do_build(r: Dictionary, site: Dictionary, dt: float) -> void:
 		return
 	if _arrived(r, site["tile"]):
 		r["state"] = "build"
-		site["progress"] = float(site["progress"]) + dt
+		site["progress"] = float(site["progress"]) + dt * work_mult(r)
 		r["fatigue"] += dt / float(cfg["day_length"])
+		_grow_skill(r, dt)
 		if float(site["progress"]) >= float(_def(site)["build_work"]):
 			r["site"] = null
 			_complete_site(site)
@@ -551,9 +657,10 @@ func _do_work(r: Dictionary, bld: Dictionary, dt: float) -> void:
 	if _arrived(r, bld["tile"]):
 		r["state"] = "work"
 		r["fatigue"] += dt / float(cfg["day_length"])
+		_grow_skill(r, dt)
 		var prod: Dictionary = _def(bld)["produce"]
 		var boost: float = float(cfg["altar_boost"]) if has_blessing() else 1.0
-		var amount: float = float(prod["per_day"]) * dt / float(cfg["day_length"]) * boost * production_mult(bld)
+		var amount: float = float(prod["per_day"]) * dt / float(cfg["day_length"]) * boost * production_mult(bld) * work_mult(r)
 		var key := String(prod["res"])
 		res[key] = minf(float(storage_cap()), float(res[key]) + amount)
 	else:
@@ -595,6 +702,438 @@ func _move_towards(r: Dictionary, tile: Vector2i, dt: float) -> void:
 			step = 0.0
 	r["pos"] = pos
 	r["path"] = path
+
+
+# --- жители-личности (M4) -------------------------------------------------
+
+func _trait_sum(r: Dictionary, key: String, base: float) -> float:
+	var total := base
+	for t_id in r.get("traits", []):
+		var td: Dictionary = _trait_map.get(String(t_id), {})
+		total += float(td.get(key, 0.0))
+	return total
+
+
+func _trait_prod(r: Dictionary, key: String) -> float:
+	var mult := 1.0
+	for t_id in r.get("traits", []):
+		var td: Dictionary = _trait_map.get(String(t_id), {})
+		mult *= float(td.get(key, 1.0))
+	return mult
+
+
+func _has_trait_flag(r: Dictionary, flag: String) -> bool:
+	for t_id in r.get("traits", []):
+		var td: Dictionary = _trait_map.get(String(t_id), {})
+		if bool(td.get(flag, false)):
+			return true
+	return false
+
+
+func _adults() -> Array:
+	var out: Array = []
+	for r in residents:
+		if String(r["prof"]) != "":
+			out.append(r)
+	return out
+
+
+func _avg_mood() -> float:
+	if residents.is_empty():
+		return float(people.get("mood_base", 50.0))
+	var total := 0.0
+	for r in residents:
+		total += float(r["mood"])
+	return total / residents.size()
+
+
+func _friend_alive(r: Dictionary) -> bool:
+	var fid := int(r.get("friend", -1))
+	if fid < 0:
+		return false
+	for other in residents:
+		if int(other["id"]) == fid:
+			return true
+	return false
+
+
+func _friend_working(r: Dictionary) -> bool:
+	var fid := int(r.get("friend", -1))
+	if fid < 0:
+		return false
+	for other in residents:
+		if int(other["id"]) == fid:
+			return String(other["state"]) == "work" or String(other["state"]) == "build"
+	return false
+
+
+## Итоговый множитель работы: настроение + черты + навык + друг + мутация.
+func work_mult(r: Dictionary) -> float:
+	var mult := 1.0
+	var mood := float(r.get("mood", 50.0))
+	if mood >= float(people.get("mood_good", 70.0)):
+		mult *= float(people.get("work_mood_good", 1.1))
+	elif mood <= float(people.get("mood_bad", 30.0)):
+		mult *= float(people.get("work_mood_bad", 0.7))
+	mult *= _trait_prod(r, "work_mult")
+	mult *= 1.0 + float(people.get("skill_prod", 0.08)) * float(r.get("skill", 0.0))
+	if _friend_working(r):
+		mult *= float(people.get("friend_work", 1.1))
+	mult *= 1.0 + float(r.get("work_bonus", 0.0))
+	return clampf(mult, 0.4, 2.5)
+
+
+## Настроение плывёт к целевому: черты + загрязнение + потребности + события.
+func _mood_target(r: Dictionary) -> float:
+	var target: float = float(people.get("mood_base", 50.0))
+	target += _trait_sum(r, "mood", 0.0)
+	target += _trait_sum(r, "pollution_mood", 0.0) * pollution
+	if float(res["food"]) <= 0.0:
+		target -= 35.0
+	if float(r["fatigue"]) >= float(cfg["tired_at"]):
+		target -= 10.0
+	if String(r.get("ail", "")) != "":
+		target -= 25.0
+	var home: Dictionary = r["home"] if r["home"] != null else {}
+	if not home.is_empty():
+		target += 8.0
+	else:
+		target -= 8.0
+	if _friend_alive(r):
+		target += float(people.get("friend_mood", 6.0))
+	return clampf(target, 0.0, 100.0)
+
+
+func _update_mood(r: Dictionary, dt: float, day_len: float) -> void:
+	var target := _mood_target(r)
+	var rate: float = float(people.get("mood_rate", 1.5))
+	r["mood"] = clampf(float(r["mood"]) + (target - float(r["mood"])) * rate * dt / day_len, 0.0, 100.0)
+
+
+## Навык растёт, пока житель работает; вехи — «опытный» и «мастер».
+func _grow_skill(r: Dictionary, dt: float) -> void:
+	var rate: float = float(people.get("skill_rate", 0.5)) * _trait_prod(r, "skill_rate")
+	var skill_max: float = float(people.get("skill_max", 5.0))
+	var before := float(r["skill"])
+	r["skill"] = minf(skill_max, before + rate * dt / float(cfg["day_length"]))
+	var expert_at: float = float(people.get("skill_expert_at", 3.0))
+	var rank := int(r.get("rank", 0))
+	if rank < 3 and float(r["skill"]) >= expert_at:
+		r["rank"] = 3
+		_chron("chron.skill_expert", String(r["name"]), String(r["prof"]))
+		events.append({"type": "skill_up", "name": String(r["name"]), "rank": "expert"})
+	elif rank < 5 and float(r["skill"]) >= skill_max - 0.001:
+		r["rank"] = 5
+		_chron("chron.skill_master", String(r["name"]), String(r["prof"]))
+		events.append({"type": "skill_up", "name": String(r["name"]), "rank": "master"})
+
+
+func _make_ail(r: Dictionary, kind: String, chron_key: String) -> void:
+	r["ail"] = kind
+	r["ail_days"] = 0.0
+	_chron(chron_key, String(r["name"]))
+
+
+## Больной/раненый идёт домой и лежит.
+func _lie_ill(r: Dictionary, dt: float) -> void:
+	if r["home"] == null:
+		r["home"] = _free_home(r)
+	var home: Dictionary = r["home"]
+	if not home.is_empty() and not _arrived(r, home["tile"]):
+		_move_towards(r, home["tile"], dt)
+		return
+	r["state"] = String(r["ail"])
+
+
+## Смерть жителя: летопись, тост, горе всем (храбрый/трусливый меняют силу).
+func _kill(r: Dictionary, chron_key: String) -> void:
+	_chron(chron_key, String(r["name"]))
+	events.append({"type": "died", "name": String(r["name"])})
+	var grief: float = float(people.get("grief_mood", 20.0))
+	for other in residents:
+		if other == r:
+			continue
+		var gm := _trait_prod(other, "grief_mult")
+		other["mood"] = clampf(float(other["mood"]) - grief * gm, 0.0, 100.0)
+	if r["bld"] != null:
+		(r["bld"] as Dictionary)["worker"] = -1
+	if r["site"] != null:
+		(r["site"] as Dictionary)["worker"] = -1
+	residents.erase(r)
+	_assign_jobs()
+
+
+func _healer_ready() -> bool:
+	for b in buildings:
+		if b["done"] and _def(b).get("effect", "") == "heal" and int(b["worker"]) > 0:
+			return true
+	return false
+
+
+func _manned_towers() -> int:
+	var count := 0
+	for b in buildings:
+		if b["done"] and _def(b).get("effect", "") == "guard" and int(b["worker"]) > 0:
+			count += 1
+	return count
+
+
+## Дневной бросок: болезни и выздоровления (лекарь лечит, запущенная болезнь убивает).
+func _roll_ailments() -> void:
+	var acfg: Dictionary = people.get("ailments", {})
+	for r in residents.duplicate():
+		if String(r["prof"]) == "":
+			continue
+		var ail := String(r.get("ail", ""))
+		if ail == "":
+			var chance: float = float(acfg.get("sick_chance", 0.02)) \
+					+ float(acfg.get("pollution_sick_extra", 0.1)) * pollution / 100.0
+			if _event_rng.randf() < chance:
+				_make_ail(r, "sick", "chron.sick")
+			continue
+		r["ail_days"] = float(r.get("ail_days", 0.0)) + 1.0
+		var recov: float = float(acfg.get("recover_chance", 0.25))
+		if _healer_ready():
+			recov = float(acfg.get("healer_recover_chance", 0.7))
+		if _event_rng.randf() < recov:
+			r["ail"] = ""
+			continue
+		var risk: float = float(acfg.get("death_chance", 0.04))
+		var overdue: float = float(r["ail_days"]) - float(acfg.get("death_risk_after_days", 3.0))
+		if overdue > 0.0:
+			risk += float(acfg.get("death_risk_growth", 0.05)) * overdue
+		if _event_rng.randf() < risk:
+			_kill(r, "chron.died_sick")
+
+
+## Дневной бросок: беженцы идут сами (ответ №27) — шанс выше при вышках со стражей.
+func _roll_refugees() -> void:
+	var rcfg: Dictionary = people.get("refugees", {})
+	if rcfg.is_empty() or residents.size() >= pop_cap():
+		return
+	if float(res["food"]) <= 0.0 or _avg_mood() < float(rcfg.get("mood_gate", 45.0)):
+		return
+	var chance: float = float(rcfg.get("chance_per_day", 0.35)) \
+			+ minf(float(rcfg.get("tower_bonus", 0.1)) * _manned_towers(), float(rcfg.get("tower_bonus_max", 0.4)))
+	if _event_rng.randf() >= chance:
+		return
+	var wave := _event_rng.randi_range(1, maxi(1, int(rcfg.get("wave_max", 2))))
+	for i in wave:
+		if residents.size() >= pop_cap():
+			break
+		var profs: Array = cfg["start"]["professions"]
+		var prof := String(profs[_event_rng.randi_range(0, profs.size() - 1)])
+		var names: Array = cfg["names"]
+		var r := _new_resident(String(names[_event_rng.randi_range(0, names.size() - 1)]), prof, _edge_tile())
+		residents.append(r)
+		_next_id += 1
+		_chron("chron.refugee", String(r["name"]), prof)
+		events.append({"type": "refugee", "name": String(r["name"]), "prof": prof})
+	_assign_jobs()
+
+
+func _edge_tile() -> Vector2i:
+	for attempt in 100:
+		var side := _event_rng.randi_range(0, 3)
+		var tile := Vector2i.ZERO
+		match side:
+			0: tile = Vector2i(_event_rng.randi_range(0, map.w - 1), 0)
+			1: tile = Vector2i(_event_rng.randi_range(0, map.w - 1), map.h - 1)
+			2: tile = Vector2i(0, _event_rng.randi_range(0, map.h - 1))
+			3: tile = Vector2i(map.w - 1, _event_rng.randi_range(0, map.h - 1))
+		if map.is_walkable(tile) and building_at(tile).is_empty():
+			return tile
+	return map.spawn_tile
+
+
+## Дневной бросок: рождение ребёнка у случайного взрослого, когда всем хорошо.
+func _roll_births() -> void:
+	var bcfg: Dictionary = people.get("births", {})
+	if bcfg.is_empty() or residents.size() >= pop_cap():
+		return
+	if float(res["food"]) <= 0.0 or _avg_mood() < float(bcfg.get("mood_gate", 60.0)):
+		return
+	if _event_rng.randf() >= float(bcfg.get("chance_per_day", 0.25)):
+		return
+	var adults := _adults()
+	if adults.is_empty():
+		return
+	var parent: Dictionary = adults[_event_rng.randi_range(0, adults.size() - 1)]
+	var names: Array = cfg["names"]
+	var child := _new_resident(String(names[_event_rng.randi_range(0, names.size() - 1)]), "", map.tile_of_px(parent["pos"]))
+	child["age_days"] = 0.0
+	child["traits"] = []
+	child["mood"] = float(people.get("mood_base", 50.0))
+	residents.append(child)
+	_next_id += 1
+	_chron("chron.birth", String(child["name"]))
+	events.append({"type": "birth", "name": String(child["name"])})
+
+
+## Ребёнок повзрослел: получает профессию (реже всех) и черты характера.
+func _grow_up(r: Dictionary) -> void:
+	var profs: Array = cfg["start"]["professions"]
+	var counts := {}
+	for other in residents:
+		if String(other["prof"]) != "":
+			counts[String(other["prof"])] = int(counts.get(String(other["prof"]), 0)) + 1
+	var best := ""
+	var best_count := 999999
+	for prof in profs:
+		var c := int(counts.get(String(prof), 0))
+		if c < best_count:
+			best_count = c
+			best = String(prof)
+	r["prof"] = best
+	r["traits"] = _random_traits()
+	r["age_days"] = 100.0
+	_chron("chron.grown", String(r["name"]), best)
+	events.append({"type": "grown", "name": String(r["name"]), "prof": best})
+	_assign_jobs()
+
+
+## Дневной бросок: события-истории про конкретных жителей (пункт плана M4).
+func _roll_stories() -> void:
+	var scfg: Dictionary = people.get("stories", {})
+	if scfg.is_empty():
+		return
+	if _event_rng.randf() >= float(scfg.get("chance_per_day", 0.5)):
+		return
+	match _weighted_pick(scfg.get("weights", {})):
+		"quarrel":
+			_story_quarrel(scfg)
+		"friendship":
+			_story_friendship(scfg)
+		"discovery":
+			_story_discovery(scfg)
+		"betrayal":
+			_story_betrayal(scfg)
+		"mutation":
+			_story_mutation(scfg)
+
+
+## Ссора (ответ №29, отключается галочкой): ворчун портит настроение ещё кому-то.
+func _story_quarrel(scfg: Dictionary) -> void:
+	if not conflicts or residents.size() < 2:
+		return
+	var instigators: Array = []
+	for r in _adults():
+		if _has_trait_flag(r, "instigator"):
+			instigators.append(r)
+	if instigators.is_empty():
+		return
+	var a: Dictionary = instigators[_event_rng.randi_range(0, instigators.size() - 1)]
+	var others: Array = []
+	for r in _adults():
+		if r != a:
+			others.append(r)
+	if others.is_empty():
+		return
+	var b: Dictionary = others[_event_rng.randi_range(0, others.size() - 1)]
+	var dm: float = float(scfg.get("quarrel_mood", -15.0))
+	for side in [a, b]:
+		side["mood"] = clampf(float(side["mood"]) + dm, 0.0, 100.0)
+	_chron("chron.quarrel", String(a["name"]), String(b["name"]))
+	events.append({"type": "quarrel", "a": String(a["name"]), "b": String(b["name"])})
+
+
+## Дружба (ответ №34): пара работает вместе эффективнее и бодрее духом.
+func _story_friendship(scfg: Dictionary) -> void:
+	var cands: Array = []
+	for r in _adults():
+		if int(r.get("friend", -1)) < 0 and float(r["mood"]) >= 50.0:
+			cands.append(r)
+	if cands.size() < 2:
+		return
+	var a: Dictionary = cands[_event_rng.randi_range(0, cands.size() - 1)]
+	var b: Dictionary = cands[_event_rng.randi_range(0, cands.size() - 1)]
+	if a == b:
+		return
+	a["friend"] = int(b["id"])
+	b["friend"] = int(a["id"])
+	var dm: float = float(scfg.get("friendship_mood", 10.0))
+	for side in [a, b]:
+		side["mood"] = clampf(float(side["mood"]) + dm, 0.0, 100.0)
+	_chron("chron.friendship", String(a["name"]), String(b["name"]))
+	events.append({"type": "friendship", "a": String(a["name"]), "b": String(b["name"])})
+
+
+## Находка (навык пригодился): излишек ресурса в общий пул.
+func _story_discovery(scfg: Dictionary) -> void:
+	var skilled: Array = []
+	var expert_at: float = float(people.get("skill_expert_at", 3.0))
+	for r in _adults():
+		if float(r.get("skill", 0.0)) >= expert_at:
+			skilled.append(r)
+	if skilled.is_empty():
+		return
+	var r: Dictionary = skilled[_event_rng.randi_range(0, skilled.size() - 1)]
+	var roll := _event_rng.randf()
+	var key := "food"
+	var amount: float = float(scfg.get("discovery_food", 12))
+	if roll > 0.8:
+		key = "crystal"
+		amount = float(scfg.get("discovery_crystal", 1))
+	elif roll > 0.4:
+		key = "stone"
+		amount = float(scfg.get("discovery_stone", 6))
+	_add_resource_capped(key, amount)
+	_chron("chron.discovery", String(r["name"]), key)
+	events.append({"type": "discovery", "name": String(r["name"]), "res": key})
+
+
+## Предательство (жадный в унынии крадёт еду; страж в городе — пойман).
+func _story_betrayal(scfg: Dictionary) -> void:
+	if not conflicts:
+		return
+	var thieves: Array = []
+	for r in _adults():
+		if _has_trait_flag(r, "can_steal") and float(r["mood"]) < 40.0:
+			thieves.append(r)
+	if thieves.is_empty():
+		return
+	var r: Dictionary = thieves[_event_rng.randi_range(0, thieves.size() - 1)]
+	var guard_near := false
+	for other in residents:
+		if String(other["prof"]) == "guard":
+			guard_near = true
+			break
+	if guard_near:
+		r["mood"] = clampf(float(r["mood"]) - 15.0, 0.0, 100.0)
+		_chron("chron.betrayal_caught", String(r["name"]))
+		events.append({"type": "betrayal_caught", "name": String(r["name"])})
+		return
+	var amount: float = minf(float(scfg.get("betrayal_food", 10)), float(res["food"]))
+	res["food"] = maxf(0.0, float(res["food"]) - amount)
+	var dm: float = float(scfg.get("betrayal_mood", -5.0))
+	for other in residents:
+		other["mood"] = clampf(float(other["mood"]) + dm, 0.0, 100.0)
+	_chron("chron.betrayal", String(r["name"]))
+	events.append({"type": "betrayal", "name": String(r["name"])})
+
+
+## Мутация (ответ №35): дикая магия меняет жителя — кому улучшение, кому болезнь.
+func _story_mutation(scfg: Dictionary) -> void:
+	if pollution < float(scfg.get("mutation_pollution", 30.0)):
+		return
+	var adults := _adults()
+	if adults.is_empty():
+		return
+	var r: Dictionary = adults[_event_rng.randi_range(0, adults.size() - 1)]
+	if _event_rng.randf() < 0.5:
+		r["work_bonus"] = float(r.get("work_bonus", 0.0)) + float(scfg.get("mutation_work_bonus", 0.1))
+		_chron("chron.mutation_good", String(r["name"]))
+		events.append({"type": "mutation_good", "name": String(r["name"])})
+	else:
+		_make_ail(r, "sick", "chron.mutation_bad")
+		events.append({"type": "mutation_bad", "name": String(r["name"])})
+
+
+## Летопись: хранит ключи локализации, текст собирает HUD.
+func _chron(key: String, a: String = "", b: String = "") -> void:
+	chronicle.append({"day": day, "key": key, "a": a, "b": b})
+	if chronicle.size() > 200:
+		chronicle.pop_front()
 
 
 # --- добыча из данжа -----------------------------------------------------

@@ -17,6 +17,7 @@ var spellbook: Array = []        # изученные заклинания: [id:
 var start_residents := 5         # настройки старта из меню (вопрос 11)
 var start_level := "normal"      # "low" | "normal" | "high"
 var test_mode := false           # тест-режим: много ресурсов, рун и добычи
+var conflicts_enabled := true    # ссоры и воровство жителей (ответ №29, галочка в меню)
 
 
 func _init() -> void:
@@ -49,6 +50,7 @@ func new_city() -> void:
 	city_map.generate(randi(), cfg)
 	city_sim = sim_script.new()
 	city_sim.setup(city_map, cfg, start_residents, start_level)
+	city_sim.conflicts = conflicts_enabled
 	if test_mode:
 		_apply_test_mode(cfg)
 

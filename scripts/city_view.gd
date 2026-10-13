@@ -104,10 +104,17 @@ func _draw_residents() -> void:
 	for r in sim.residents:
 		var pos: Vector2 = r["pos"]
 		var col: Color = _prof_colors.get(String(r["prof"]), Color.WHITE)
+		var child := String(r["prof"]) == ""
+		var radius := 4.0 if child else 6.0
+		var ail := String(r.get("ail", ""))
+		if ail == "sick":
+			col = Color("#9ccc65").darkened(0.25)
+		elif ail == "wounded":
+			col = col.lerp(Color("#c62828"), 0.55)
 		var sleeping: bool = r["state"] == "sleep" or r["state"] == "rest"
-		draw_circle(pos + Vector2(1, 2), 6.0, Color(0, 0, 0, 0.3))
-		draw_circle(pos, 6.0, col.darkened(0.35) if sleeping else col)
-		draw_circle(pos + Vector2(-1.5, -1.5), 2.0, Color(1, 1, 1, 0.5))
+		draw_circle(pos + Vector2(1, 2), radius, Color(0, 0, 0, 0.3))
+		draw_circle(pos, radius, col.darkened(0.35) if sleeping else col)
+		draw_circle(pos + Vector2(-1.5, -1.5), radius * 0.33, Color(1, 1, 1, 0.5))
 
 
 func _draw_ghost() -> void:

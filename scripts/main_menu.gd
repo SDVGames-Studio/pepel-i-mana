@@ -17,6 +17,7 @@ var _setup_box: VBoxContainer
 var _residents_spin: SpinBox
 var _level_option: OptionButton
 var _test_check: CheckButton
+var _conflicts_check: CheckButton
 
 
 func _ready() -> void:
@@ -108,6 +109,14 @@ func _build_setup() -> void:
 	_setup_box.add_child(test_check)
 	_test_check = test_check
 
+	var conflicts_check := CheckButton.new()
+	conflicts_check.text = Loc.t("menu.conflicts")
+	conflicts_check.button_pressed = true
+	conflicts_check.add_theme_font_size_override("font_size", 18)
+	conflicts_check.focus_mode = Control.FOCUS_NONE
+	_setup_box.add_child(conflicts_check)
+	_conflicts_check = conflicts_check
+
 	var begin := Button.new()
 	begin.text = Loc.t("menu.begin")
 	begin.add_theme_font_size_override("font_size", 24)
@@ -125,5 +134,6 @@ func _on_begin_pressed() -> void:
 	Game.start_residents = int(_residents_spin.value)
 	Game.start_level = LEVELS[_level_option.selected]
 	Game.test_mode = _test_check.button_pressed
+	Game.conflicts_enabled = _conflicts_check.button_pressed
 	Game.new_city()
 	get_tree().change_scene_to_file("res://scenes/city.tscn")
