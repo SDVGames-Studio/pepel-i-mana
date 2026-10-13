@@ -1,0 +1,22 @@
+{
+	"rarities": [
+		{ "id": "common", "loc": "rarity.common", "color": "#c8c8c8", "weight": 60 },
+		{ "id": "uncommon", "loc": "rarity.uncommon", "color": "#66bb6a", "weight": 25 },
+		{ "id": "rare", "loc": "rarity.rare", "color": "#42a5f5", "weight": 12 },
+		{ "id": "legendary", "loc": "rarity.legendary", "color": "#ffb300", "weight": 3 }
+	],
+	"items": [
+		{ "id": "ash_shard", "loc": "item.ash_shard", "rarity": "common", "value": 1 },
+		{ "id": "rusty_sword", "loc": "item.rusty_sword", "rarity": "common", "value": 2 },
+		{ "id": "stone_chip", "loc": "item.stone_chip", "rarity": "common", "value": 1 },
+		{ "id": "mana_thread", "loc": "item.mana_thread", "rarity": "uncommon", "value": 4 },
+		{ "id": "old_shield", "loc": "item.old_shield", "rarity": "uncommon", "value": 5 },
+		{ "id": "glass_orb", "loc": "item.glass_orb", "rarity": "uncommon", "value": 4 },
+		{ "id": "rune_sparks", "loc": "item.rune_sparks", "rarity": "rare", "value": 12 },
+		{ "id": "echo_crystal", "loc": "item.echo_crystal", "rarity": "rare", "value": 15 },
+		{ "id": "heart_of_ruins", "loc": "item.heart_of_ruins", "rarity": "legendary", "value": 40 }
+	],
+	"chest_items_min": 1,
+	"chest_items_max": 3,
+	"enemy_drop_chance": 0.35
+}

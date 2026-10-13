@@ -1,0 +1,44 @@
+[
+	{
+		"id": "rat",
+		"loc": "enemy.rat",
+		"hp": 3,
+		"damage": 1,
+		"speed": 90,
+		"aggro": 130,
+		"attack_range": 18,
+		"attack_cooldown": 1.0,
+		"radius": 8,
+		"color": "#8d6e63",
+		"drop_chance": 0.25,
+		"mana_chance": 0.3
+	},
+	{
+		"id": "skeleton",
+		"loc": "enemy.skeleton",
+		"hp": 6,
+		"damage": 2,
+		"speed": 60,
+		"aggro": 150,
+		"attack_range": 20,
+		"attack_cooldown": 1.2,
+		"radius": 9,
+		"color": "#bdbdbd",
+		"drop_chance": 0.4,
+		"mana_chance": 0.35
+	},
+	{
+		"id": "golem",
+		"loc": "enemy.golem",
+		"hp": 14,
+		"damage": 4,
+		"speed": 35,
+		"aggro": 110,
+		"attack_range": 24,
+		"attack_cooldown": 1.8,
+		"radius": 13,
+		"color": "#5d4037",
+		"drop_chance": 0.7,
+		"mana_chance": 0.5
+	}
+]
