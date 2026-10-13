@@ -6,7 +6,7 @@ signal died(enemy: Node)
 
 var p: Dictionary = {}
 var hp := 1
-var hero: Node2D = null
+var hero = null            # ссылка на героя — динамическая (свойства задаёт hero.gd)
 
 var _attack_timer := 0.0
 
@@ -35,8 +35,8 @@ func _physics_process(delta: float) -> void:
 		velocity = Vector2.ZERO
 		return
 	_attack_timer = maxf(0.0, _attack_timer - delta)
-	var to_hero := hero.global_position - global_position
-	var dist := to_hero.length()
+	var to_hero: Vector2 = hero.global_position - global_position
+	var dist: float = to_hero.length()
 	if dist <= float(p["attack_range"]) + float(hero.p["radius"]):
 		velocity = Vector2.ZERO
 		if _attack_timer <= 0.0:

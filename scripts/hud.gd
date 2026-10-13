@@ -5,10 +5,10 @@ extends CanvasLayer
 const BAR_W := 240.0
 const BAR_H := 18.0
 
-var hero: Node2D = null
-var gen: Object = null
+var hero = null           # герой — динамическая ссылка (свойства задаёт hero.gd)
+var gen = null
 var loot_data: Dictionary = {}
-var minimap: Control = null
+var minimap = null
 
 var _hp_fill: ColorRect
 var _mana_fill: ColorRect
@@ -25,7 +25,7 @@ var _toast_time := 0.0
 
 
 ## Вызвать до add_child: ссылки на героя, генерацию и данные лута.
-func init(hero_ref: Node2D, gen_ref: Object, loot: Dictionary) -> void:
+func init(hero_ref, gen_ref, loot: Dictionary) -> void:
 	hero = hero_ref
 	gen = gen_ref
 	loot_data = loot

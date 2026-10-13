@@ -19,7 +19,7 @@ var _rng := RandomNumberGenerator.new()
 
 
 ## Генерирует данж по параметрам из data/dungeon.json. Возвращает self.
-func generate(seed_value: int, params: Dictionary) -> "DungeonGen":
+func generate(seed_value: int, params: Dictionary) -> Object:
 	w = int(params["map_w"])
 	h = int(params["map_h"])
 	_rng.seed = seed_value
