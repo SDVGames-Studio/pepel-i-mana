@@ -15,7 +15,7 @@
 	"friend_mood": 6.0,
 	"friend_work": 1.1,
 	"child_food": 0.5,
-	"starving_work": 0.4,
+	"starving_work": 0.6,
 	"sub_work": 0.5,
 	"traits": [
 		{"id": "hardworking", "weight": 10, "work_mult": 1.15, "skill_rate": 1.3},

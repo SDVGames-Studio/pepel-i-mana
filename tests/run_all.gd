@@ -318,7 +318,7 @@ func _make_sim(level: String = "normal") -> Object:
 	var city_map = load("res://scripts/city_map.gd").new()
 	city_map.generate(7, cfg)
 	var sim = load("res://scripts/city_sim.gd").new()
-	sim.setup(city_map, cfg, 5, level)
+	sim.setup(city_map, cfg, 6, level)
 	return sim
 
 
@@ -412,8 +412,13 @@ func _test_city_sim() -> void:
 	var start: Dictionary = sim.cfg["start"]["levels"]["normal"]
 	_check(int(sim.res["wood"]) == int(start["wood"]), "старт: дерево по уровню «норма»")
 	_check(int(sim.res["crystal"]) == int(start["crystal"]), "старт: кристаллы по уровню")
-	_check(sim.residents.size() == 5, "старт: 5 жителей (ответ №11)")
-	_check(sim.pop_cap() == 5, "лимит жителей = стартовым без домов")
+	_check(sim.residents.size() == 6, "старт: 6 жителей, на одного больше (заказчик)")
+	var elder_started := false
+	for r in sim.residents:
+		if String(r["prof"]) == "elder":
+			elder_started = true
+	_check(elder_started, "в стартовом наборе есть староста — город растёт сам")
+	_check(sim.pop_cap() == 6, "лимит жителей = стартовым без домов")
 	_check(sim.storage_cap() == int(sim.cfg["storage_base"]), "вместимость хранилища базовая")
 	_check(not sim.is_night(), "утро нового города — день")
 
@@ -434,7 +439,7 @@ func _test_city_sim() -> void:
 
 	# дом: +2 к лимиту жителей
 	_build_now(sim, "house")
-	_check(sim.pop_cap() == 7, "дом даёт +2 к лимиту жителей")
+	_check(sim.pop_cap() == 8, "дом даёт +2 к лимиту жителей")
 	# склад: +200 к вместимости
 	_build_now(sim, "warehouse")
 	_check(sim.storage_cap() == int(sim.cfg["storage_base"]) + int(sim.cfg["storage_per_warehouse"]),
@@ -459,7 +464,7 @@ func _test_city_sim() -> void:
 	sim.cfg["food_per_resident_day"] = 2.0
 	sim.res["food"] = 0.0
 	var starving_mult: float = sim.work_mult(farmer)
-	_check(starving_mult <= 0.5, "голод режет работу вполсилы (%.2f)" % starving_mult)
+	_check(starving_mult <= 0.75, "голод режет работу почти вдвое (%.2f)" % starving_mult)
 	sim.tick(0.5)
 	_check(String(farmer["state"]) == "work", "голодный фермер не бросает ферму (анти-тупик M4)")
 	var sim_h := _make_sim()
@@ -602,7 +607,7 @@ func _test_people() -> void:
 	var mourner: Dictionary = sim_d.residents[0]
 	var mood_before_death := float(mourner["mood"])
 	sim_d._kill(victim, "chron.died_sick")
-	_check(sim_d.residents.size() == 4, "житель умер — его больше нет")
+	_check(sim_d.residents.size() == 5, "житель умер — его больше нет")
 	_check(float(mourner["mood"]) < mood_before_death, "смерть жителя роняет мораль остальных")
 	_check(sim_d.chronicle.size() > 0 and String(sim_d.chronicle[-1]["key"]) == "chron.died_sick",
 			"смерть попала в летопись")
@@ -624,17 +629,17 @@ func _test_people() -> void:
 	_check(String(sim_g.growth_block()) == "city.growth_cap", "прирост стоит: лимит жителей полон")
 	sim_g.people["refugees"]["chance_per_day"] = 1.0
 	sim_g._roll_refugees()
-	_check(sim_g.residents.size() == 5, "при полном лимите беженец не приходит")
+	_check(sim_g.residents.size() == 6, "при полном лимите беженец не приходит")
 	_build_now(sim_g, "house")
 	sim_g.res["food"] = 2.0
 	_check(String(sim_g.growth_block()) == "city.growth_food", "прирост стоит: нет запаса еды")
 	sim_g._roll_refugees()
-	_check(sim_g.residents.size() == 5, "без запаса еды беженец не идёт в голодный город")
+	_check(sim_g.residents.size() == 6, "без запаса еды беженец не идёт в голодный город")
 	for r in sim_g.residents:
 		r["mood"] = 80.0
 	sim_g.res["food"] = 50.0
 	sim_g._roll_refugees()
-	_check(sim_g.residents.size() >= 6, "есть место и еда — беженцы приходят (волна 1-2)")
+	_check(sim_g.residents.size() >= 7, "есть место и еда — беженцы приходят (волна 1-2)")
 
 	sim_r.people["births"]["chance_per_day"] = 1.0
 	sim_r._roll_births()
@@ -800,9 +805,33 @@ func _test_people() -> void:
 	sim_e._roll_autobuild()
 	_check(String(sim_e.buildings[-1]["type"]) == "farm", "при малом запасе еды староста строит ферму")
 	var sim_e2 := _make_sim("high")
+	for r in sim_e2.residents:
+		if String(r["prof"]) == "elder":
+			r["prof"] = "crafter"   # старосты нет — самострой запрещён
 	var buildings_before2: int = sim_e2.buildings.size()
 	sim_e2._roll_autobuild()
 	_check(sim_e2.buildings.size() == buildings_before2, "без старосты город сам не строит")
+
+	# крепостное кольцо: стены растут вокруг города, ворота свободны (заказчик)
+	var sim_wl := _make_sim()
+	var w1: Vector2i = sim_wl._next_wall_tile()
+	var off1: Vector2i = w1 - sim_wl.map.spawn_tile
+	_check(maxi(absi(off1.x), absi(off1.y)) == 6, "стены растут кольцом радиуса 6 вокруг города")
+	_check(not (off1.x == 0 or off1.y == 0), "на воротах кольца стены не будет")
+	var placed_walls := 0
+	var gate_broken := false
+	for i in 200:
+		var wt: Vector2i = sim_wl._next_wall_tile()
+		if wt == Vector2i(-1, -1):
+			break
+		if not sim_wl.place_building("wall", wt):
+			break
+		placed_walls += 1
+	for g in [Vector2i(0, -6), Vector2i(0, 6), Vector2i(-6, 0), Vector2i(6, 0)]:
+		if not sim_wl.building_at(sim_wl.map.spawn_tile + g).is_empty():
+			gate_broken = true
+	_check(placed_walls > 0, "стены кольца поставлены")
+	_check(not gate_broken, "четыре ворот (С/Ю/З/В) свободны для выхода из крепости")
 
 
 # --- M3: магия ------------------------------------------------------------

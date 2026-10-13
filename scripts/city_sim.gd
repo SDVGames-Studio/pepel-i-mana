@@ -82,7 +82,11 @@ func setup(city_map, city_cfg: Dictionary, residents_count: int, level: String) 
 		var tile: Vector2i = map.spawn_tile + Vector2i(offset)
 		if not map.is_walkable(tile):
 			tile = map.spawn_tile
-		residents.append(_new_resident(String(names[i % names.size()]), String(profs[i % profs.size()]), tile))
+		# последний стартовый житель — всегда староста (просьба заказчика)
+		var prof := String(profs[i % profs.size()])
+		if i == residents_count - 1:
+			prof = "elder"
+		residents.append(_new_resident(String(names[i % names.size()]), prof, tile))
 		_next_id += 1
 	_assign_jobs()
 
@@ -372,8 +376,34 @@ func _complete_site(site: Dictionary) -> void:
 	site["worker"] = -1
 	if _def(site).get("effect", "") == "wall":
 		map.set_solid(site["tile"], true)
+		_step_off_solid(site["tile"])
 	events.append({"type": "built", "bld": String(site["type"])})
 	_assign_jobs()
+
+
+## Житель стоял на тайле, где достроили стену, — шагает на свободный соседний,
+## иначе тайл становится сплошным и человек остаётся замурован навсегда.
+func _step_off_solid(tile: Vector2i) -> void:
+	for r in residents:
+		if map.tile_of_px(r["pos"]) != tile:
+			continue
+		var free := _nearest_walkable(tile)
+		if not free == Vector2i(-1, -1):
+			r["pos"] = map.tile_center_px(free)
+		r["target"] = Vector2i(-1, -1)
+		r["path"] = PackedVector2Array()
+
+
+func _nearest_walkable(tile: Vector2i) -> Vector2i:
+	for radius in range(1, 4):
+		for dy in range(-radius, radius + 1):
+			for dx in range(-radius, radius + 1):
+				if maxi(absi(dx), absi(dy)) != radius:
+					continue
+				var n: Vector2i = tile + Vector2i(dx, dy)
+				if map.is_walkable(n):
+					return n
+	return Vector2i(-1, -1)
 
 
 # --- жители --------------------------------------------------------------
@@ -787,6 +817,14 @@ func _move_towards(r: Dictionary, tile: Vector2i, dt: float) -> void:
 		r["path"] = map.path_px(r["pos"], tile)
 	var path: PackedVector2Array = r["path"]
 	if path.is_empty():
+		# страховка: замурован на сплошном тайле (стену достроили под ногами)
+		var here: Vector2i = map.tile_of_px(r["pos"])
+		if not map.is_walkable(here):
+			var free := _nearest_walkable(here)
+			if not free == Vector2i(-1, -1):
+				r["pos"] = map.tile_center_px(free)
+				r["target"] = Vector2i(-1, -1)
+				return
 		r["state"] = "idle"
 		return
 	var step: float = float(cfg["resident_speed"]) * dt
@@ -1065,21 +1103,79 @@ func _manage_target(r: Dictionary) -> Vector2i:
 	return near if map.is_walkable(near) else map.spawn_tile
 
 
-## Ежедневная стройка по нужде (просьба заказчика): дома при переполнении,
-## ферма при запасе еды меньше чем на два дня. Только если староста на ногах.
+## Ежедневная стройка по нужде (просьба заказчика): город растёт сам —
+## дом заранее при почти полном лимите, ферма при малом запасе еды,
+## крепостное кольцо стен с воротами. Игрок может строить поверх этого сам.
 func _roll_autobuild() -> void:
 	if not elder_present():
 		return
-	if growth_block() == "city.growth_cap" and not _autobuild_site_exists("house"):
+	# дом: места почти кончились
+	if residents.size() >= pop_cap() - 1 and not _autobuild_site_exists("house"):
 		var tile := _find_autobuild_tile()
 		if not tile == Vector2i(-1, -1) and place_building("house", tile):
-			_announce_autobuild("house")
+			_announce_autobuild("house", true)
 			return
+	# ферма: еды меньше чем на два дня (и есть кому работать)
 	var food_need: float = float(residents.size()) * float(cfg["food_per_resident_day"]) * 2.0
 	if float(res["food"]) < food_need and not _autobuild_site_exists("farm") and not _idle_farm_exists():
 		var tile2 := _find_autobuild_tile()
 		if not tile2 == Vector2i(-1, -1) and place_building("farm", tile2):
-			_announce_autobuild("farm")
+			_announce_autobuild("farm", true)
+			return
+	# крепостное кольцо: до двух звеньев в день, ворота остаются свободны.
+	# Стены ждут, пока есть недострой без работника или город не ест досыта.
+	if _unstaffed_site_exists() or not _food_reserve_ok():
+		return
+	var walls := 0
+	for i in 2:
+		var wtile := _next_wall_tile()
+		if wtile == Vector2i(-1, -1):
+			break
+		if not place_building("wall", wtile):
+			break
+		walls += 1
+	if walls > 0:
+		_announce_autobuild("wall", false)
+
+
+## Есть ли стройплощадка, за которую никто не взялся (строители не успевают).
+func _unstaffed_site_exists() -> bool:
+	for b in buildings:
+		if bool(b["done"]):
+			continue
+		var held := false
+		for r in residents:
+			if r["site"] == b:
+				held = true
+				break
+		if not held:
+			return true
+	return false
+
+
+## Радиус крепостного кольца стен от центра города.
+const WALL_RING := 6
+
+
+## Следующий тайл кольца стен (обход по часовой). Ворота — 4 середины сторон.
+func _next_wall_tile() -> Vector2i:
+	var c: Vector2i = map.spawn_tile
+	var ring := 2 * WALL_RING
+	for i in range(0, 4 * ring):
+		var side := i / ring
+		var step := i % ring
+		var off: Vector2i
+		match side:
+			0: off = Vector2i(-WALL_RING + step, -WALL_RING)
+			1: off = Vector2i(WALL_RING, -WALL_RING + step)
+			2: off = Vector2i(WALL_RING - step, WALL_RING)
+			3: off = Vector2i(-WALL_RING, WALL_RING - step)
+		if off.x == 0 or off.y == 0:
+			continue   # ворота на север, юг, запад и восток
+		var tile := c + off
+		if is_buildable_tile(tile):
+			return tile
+	return Vector2i(-1, -1)
 
 
 ## Готовая ферма без работника: строить новую бессмысленно — сперва некому работать.
@@ -1111,14 +1207,15 @@ func _find_autobuild_tile() -> Vector2i:
 	return Vector2i(-1, -1)
 
 
-func _announce_autobuild(type_id: String) -> void:
+func _announce_autobuild(type_id: String, toast: bool) -> void:
 	var manager := ""
 	for r in residents:
 		if String(r["prof"]) == "elder":
 			manager = String(r["name"])
 			break
 	_chron("chron.autobuild", manager, type_id)
-	events.append({"type": "autobuild", "name": manager, "bld": type_id})
+	if toast:
+		events.append({"type": "autobuild", "name": manager, "bld": type_id})
 
 
 ## Дневной бросок: болезни и выздоровления (лекарь лечит, запущенная болезнь убивает).
@@ -1215,14 +1312,18 @@ func _roll_births() -> void:
 
 ## Ребёнок повзрослел: получает профессию (реже всех) и черты характера.
 func _grow_up(r: Dictionary) -> void:
-	var profs: Array = cfg["start"]["professions"]
+	var pool: Array = []
+	if not elder_present():
+		pool.append("elder")   # город без старосты вырастит нового из повзрослевшего
+	for prof in cfg["start"]["professions"]:
+		pool.append(String(prof))
 	var counts := {}
 	for other in residents:
 		if String(other["prof"]) != "":
 			counts[String(other["prof"])] = int(counts.get(String(other["prof"]), 0)) + 1
 	var best := ""
 	var best_count := 999999
-	for prof in profs:
+	for prof in pool:
 		var c := int(counts.get(String(prof), 0))
 		if c < best_count:
 			best_count = c

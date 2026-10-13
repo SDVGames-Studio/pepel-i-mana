@@ -56,10 +56,10 @@
 		"done_border": "#3a3128"
 	},
 	"start": {
-		"residents_default": 5,
+		"residents_default": 6,
 		"residents_min": 1,
 		"residents_max": 12,
-		"professions": ["farmer", "lumberjack", "builder", "guard", "acolyte", "crafter", "healer", "elder", "bartender"],
+		"professions": ["farmer", "lumberjack", "builder", "guard", "acolyte", "crafter", "healer", "bartender"],
 		"levels": {
 			"low": {"wood": 30, "stone": 15, "food": 20, "crystal": 0},
 			"normal": {"wood": 60, "stone": 30, "food": 40, "crystal": 0},
