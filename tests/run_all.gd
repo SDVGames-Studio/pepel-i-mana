@@ -63,6 +63,10 @@ const REQUIRED_LOCALES := [
 	"city.died_toast", "city.wounded_toast", "city.skill_up_toast",
 	"city.growth_cap", "city.growth_food", "city.growth_mood",
 	"city.learned_toast", "chron.learned",
+	"city.autobuild_toast", "chron.autobuild",
+	"city.state.manage",
+	"prof.elder", "prof.mayor", "prof.bartender",
+	"bld.tavern", "bld.desc.tavern",
 	"trait.hardworking", "trait.lazy", "trait.cheerful", "trait.grumpy",
 	"trait.brave", "trait.coward", "trait.magephobe", "trait.magiclover",
 	"trait.glutton", "trait.greedy",
@@ -177,7 +181,7 @@ func _test_data() -> void:
 			"pollution", "hero_mana", "test_mode"]:
 		_check(city.has(key), "city.json содержит %s" % key)
 	var blds: Variant = city.get("buildings", [])
-	_check(blds is Array and blds.size() == 10, "city.json — 10 типов зданий (M4: + хижина лекаря)")
+	_check(blds is Array and blds.size() == 11, "city.json — 11 типов зданий (M4: + хижина лекаря, таверна)")
 	var bld_ok := true
 	if blds is Array:
 		for b in blds:
@@ -186,7 +190,7 @@ func _test_data() -> void:
 					bld_ok = false
 	_check(bld_ok, "city.json: у зданий есть цена и время стройки")
 	var profs: Variant = city.get("professions", [])
-	_check(profs is Array and profs.size() == 7, "city.json — 7 профессий (M4: + лекарь)")
+	_check(profs is Array and profs.size() == 9, "city.json — 9 профессий (M4: лекарь, староста, трактирщик)")
 	var speeds_ok := false
 	for s in city.get("speeds", []):
 		if int(s) == 10:
@@ -752,6 +756,53 @@ func _test_people() -> void:
 	var farm_l := {"done": true, "type": "farm", "worker": -1}
 	sim_l._substitute_into("farmer", taken, farm_l, false)
 	_check(int(farm_l["worker"]) == int(knowing["id"]), "выучивший профессию замещает первым")
+
+	# подмена вдвое хуже основной работы (просьба заказчика)
+	var sim_sb := _make_sim()
+	var plain: Dictionary = {"traits": [], "mood": 50.0, "skill": 0.0, "friend": -1, "work_bonus": 0.0, "sub_prof": ""}
+	var substituting: Dictionary = {"traits": [], "mood": 50.0, "skill": 0.0, "friend": -1, "work_bonus": 0.0, "sub_prof": "farmer"}
+	var plain_mult: float = sim_sb.work_mult(plain)
+	var sub_mult: float = sim_sb.work_mult(substituting)
+	_check(absf(plain_mult - sub_mult * 2.0) < 0.01, "неосновная профессия работает ровно вдвое хуже")
+
+	# таверна: тратит еду на пиво и поднимает настроение городу
+	var sim_t := _make_sim("high")
+	var tavern_keeper: Dictionary = sim_t._new_resident("Герд", "bartender", sim_t.map.spawn_tile)
+	sim_t.residents.append(tavern_keeper)
+	_build_now(sim_t, "tavern")
+	_check(int(sim_t.buildings[-1]["worker"]) == int(tavern_keeper["id"]), "трактирщик работает в таверне")
+	sim_t.res["food"] = 100.0
+	var food_before_tavern := float(sim_t.res["food"])
+	sim_t.cfg["food_per_resident_day"] = 0.0
+	sim_t.tick(10.0)
+	_check(float(sim_t.res["food"]) < food_before_tavern, "таверна забирает еду на пиво")
+	_check(bool(sim_t.tavern_active()), "таверна с пивом активна")
+	var pleased: Dictionary = {"traits": [], "mood": 50.0, "fatigue": 0.0, "home": {}, "friend": -1, "ail": ""}
+	var mood_with: float = sim_t._mood_target(pleased)
+	var sim_t2 := _make_sim("high")   # такой же город, но без таверны
+	var mood_without: float = sim_t2._mood_target(pleased)
+	_check(absf(mood_with - mood_without - 12.0) < 0.5, "пиво в таверне даёт ровно +12 к настроению")
+
+	# староста: обходит город и строит по нужде (дома при переполнении, ферма без запаса еды)
+	var sim_e := _make_sim("high")
+	var elder_r: Dictionary = sim_e._new_resident("Борн", "elder", sim_e.map.spawn_tile)
+	sim_e.residents.append(elder_r)
+	sim_e.tick(1.0)
+	_check(String(elder_r["state"]) == "manage", "староста обходит город")
+	_check(bool(sim_e.elder_present()), "староста на ногах — город может строить сам")
+	sim_e.people["refugees"]["chance_per_day"] = 0.0
+	var buildings_before: int = sim_e.buildings.size()
+	sim_e._roll_autobuild()
+	_check(sim_e.buildings.size() == buildings_before + 1, "староста заложил дом: мест жителям не хватает")
+	_check(String(sim_e.buildings[-1]["type"]) == "house", "автопостройка — это дом")
+	_check(String(sim_e.chronicle[-1]["key"]) == "chron.autobuild", "автопостройка записана в летопись")
+	sim_e.res["food"] = 4.0
+	sim_e._roll_autobuild()
+	_check(String(sim_e.buildings[-1]["type"]) == "farm", "при малом запасе еды староста строит ферму")
+	var sim_e2 := _make_sim("high")
+	var buildings_before2: int = sim_e2.buildings.size()
+	sim_e2._roll_autobuild()
+	_check(sim_e2.buildings.size() == buildings_before2, "без старосты город сам не строит")
 
 
 # --- M3: магия ------------------------------------------------------------

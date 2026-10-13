@@ -480,6 +480,8 @@ func _substitute_into(need: String, taken: Dictionary, bld: Dictionary, is_site:
 			continue
 		if String(r["prof"]) == "" or String(r.get("ail", "")) != "":
 			continue
+		if String(r["prof"]) == "elder":
+			continue   # староста управляет, а не замещает
 		if r["bld"] != null or r["site"] != null:
 			continue
 		if (r.get("prof_extra", []) as Array).has(need):
@@ -535,6 +537,7 @@ func tick(dt_raw: float) -> void:
 		eaters += portion
 	var eat: float = float(cfg["food_per_resident_day"]) * dt / day_len * eaters
 	res["food"] = maxf(0.0, float(res["food"]) - eat)
+	_tavern_beer(dt, day_len)
 	# магия (M3): резонанс, спад загрязнения, стан зданий, дикие события
 	if resonance_left > 0.0:
 		resonance_left = maxf(0.0, resonance_left - dt)
@@ -547,12 +550,13 @@ func tick(dt_raw: float) -> void:
 	_update_wild_events(pol_cfg, day_len)
 	for r in residents:
 		_update_resident(r, dt)
-	# люди (M4): раз в игровой день — болезни, беженцы, рождения, истории
+	# люди (M4): раз в игровой день — болезни, беженцы, рождения, стройка по нужде, истории
 	if day > _last_daily_day:
 		_last_daily_day = day
 		_roll_ailments()
 		_roll_refugees()
 		_roll_births()
+		_roll_autobuild()
 		_roll_stories()
 
 
@@ -665,6 +669,9 @@ func _update_resident(r: Dictionary, dt: float) -> void:
 			_do_work(r, r["bld"], dt)
 		else:
 			r["state"] = "idle"
+		return
+	if String(r["prof"]) == "elder":
+		_manage_walk(r, dt)
 		return
 	# страж ночью идёт на вышку
 	if night and String(r["prof"]) == "guard":
@@ -875,6 +882,9 @@ func work_mult(r: Dictionary) -> float:
 	if _friend_working(r):
 		mult *= float(people.get("friend_work", 1.1))
 	mult *= 1.0 + float(r.get("work_bonus", 0.0))
+	# подмена: работа не по основной профессии вдвое хуже (просьба заказчика)
+	if String(r.get("sub_prof", "")) != "":
+		mult *= float(people.get("sub_work", 0.5))
 	if float(res["food"]) <= 0.0:
 		mult *= float(people.get("starving_work", 0.4))
 	return clampf(mult, 0.2, 2.5)
@@ -898,6 +908,9 @@ func _mood_target(r: Dictionary) -> float:
 		target -= 8.0
 	if _friend_alive(r):
 		target += float(people.get("friend_mood", 6.0))
+	if tavern_active():
+		var tcfg: Dictionary = cfg.get("tavern", {})
+		target += float(tcfg.get("mood", 12.0))
 	return clampf(target, 0.0, 100.0)
 
 
@@ -992,6 +1005,120 @@ func growth_block() -> String:
 	if _avg_mood() < min_gate:
 		return "city.growth_mood"
 	return ""
+
+
+# --- таверна (излишки еды -> пиво -> настроение) ---------------------------
+
+## Хватает ли еды сверх дневного запаса: только тогда таверна варит пиво.
+func _tavern_surplus() -> bool:
+	var reserve: float = float(residents.size()) * float(cfg["food_per_resident_day"])
+	return float(res["food"]) > reserve + 1.0
+
+
+func tavern_active() -> bool:
+	var tcfg: Dictionary = cfg.get("tavern", {})
+	for b in buildings:
+		if b["done"] and _def(b).get("effect", "") == "tavern" and int(b["worker"]) > 0:
+			return _tavern_surplus()
+	return false
+
+
+## Работающая таверна пьёт только ИЗЛИШКИ еды сверх дневного запаса (просьба заказчика).
+func _tavern_beer(dt: float, day_len: float) -> void:
+	var tcfg: Dictionary = cfg.get("tavern", {})
+	for b in buildings:
+		if b["done"] and _def(b).get("effect", "") == "tavern" and int(b["worker"]) > 0:
+			var sip: float = float(tcfg.get("food_per_day", 8.0)) * dt / day_len
+			if _tavern_surplus():
+				res["food"] = maxf(0.0, float(res["food"]) - sip)
+
+
+# --- староста/мэр ----------------------------------------------------------
+
+## Староста на ногах (не болеет) — город может строить сам.
+func elder_present() -> bool:
+	for r in residents:
+		if String(r["prof"]) == "elder" and String(r.get("ail", "")) == "":
+			return true
+	return false
+
+
+## Староста не сидит: обходит здания и следит за порядком.
+func _manage_walk(r: Dictionary, dt: float) -> void:
+	if r["target"] == Vector2i(-1, -1) or _arrived(r, r["target"]):
+		var t := _manage_target(r)
+		if not t == Vector2i(-1, -1):
+			r["target"] = t
+	_move_towards(r, r["target"], dt)
+	r["state"] = "manage"
+
+
+func _manage_target(r: Dictionary) -> Vector2i:
+	for attempt in 20:
+		if buildings.is_empty():
+			break
+		var b: Dictionary = buildings[_event_rng.randi_range(0, buildings.size() - 1)]
+		var tile: Vector2i = (b["tile"] as Vector2i) + Vector2i(_event_rng.randi_range(-2, 2), _event_rng.randi_range(-2, 2))
+		if map.is_walkable(tile):
+			return tile
+	var near: Vector2i = map.spawn_tile + Vector2i(_event_rng.randi_range(-4, 4), _event_rng.randi_range(-4, 4))
+	return near if map.is_walkable(near) else map.spawn_tile
+
+
+## Ежедневная стройка по нужде (просьба заказчика): дома при переполнении,
+## ферма при запасе еды меньше чем на два дня. Только если староста на ногах.
+func _roll_autobuild() -> void:
+	if not elder_present():
+		return
+	if growth_block() == "city.growth_cap" and not _autobuild_site_exists("house"):
+		var tile := _find_autobuild_tile()
+		if not tile == Vector2i(-1, -1) and place_building("house", tile):
+			_announce_autobuild("house")
+			return
+	var food_need: float = float(residents.size()) * float(cfg["food_per_resident_day"]) * 2.0
+	if float(res["food"]) < food_need and not _autobuild_site_exists("farm") and not _idle_farm_exists():
+		var tile2 := _find_autobuild_tile()
+		if not tile2 == Vector2i(-1, -1) and place_building("farm", tile2):
+			_announce_autobuild("farm")
+
+
+## Готовая ферма без работника: строить новую бессмысленно — сперва некому работать.
+func _idle_farm_exists() -> bool:
+	for b in buildings:
+		if b["done"] and String(b["type"]) == "farm" and int(b["worker"]) <= 0:
+			return true
+	return false
+
+
+func _autobuild_site_exists(type_id: String) -> bool:
+	for b in buildings:
+		if not bool(b["done"]) and String(b["type"]) == type_id:
+			return true
+	return false
+
+
+## Ближайший к центру города свободный тайл (кольцами от спавна).
+func _find_autobuild_tile() -> Vector2i:
+	var center: Vector2i = map.spawn_tile
+	for radius in range(1, 9):
+		for dy in range(-radius, radius + 1):
+			for dx in range(-radius, radius + 1):
+				if maxi(absi(dx), absi(dy)) != radius:
+					continue
+				var tile := center + Vector2i(dx, dy)
+				if is_buildable_tile(tile):
+					return tile
+	return Vector2i(-1, -1)
+
+
+func _announce_autobuild(type_id: String) -> void:
+	var manager := ""
+	for r in residents:
+		if String(r["prof"]) == "elder":
+			manager = String(r["name"])
+			break
+	_chron("chron.autobuild", manager, type_id)
+	events.append({"type": "autobuild", "name": manager, "bld": type_id})
 
 
 ## Дневной бросок: болезни и выздоровления (лекарь лечит, запущенная болезнь убивает).

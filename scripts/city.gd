@@ -169,6 +169,8 @@ func _process_events() -> void:
 				hud.toast(Loc.t("city.wounded_toast") % String(ev["name"]))
 			"learned":
 				hud.toast(Loc.t("city.learned_toast") % [String(ev["name"]), _prof_name(String(ev["prof"]))])
+			"autobuild":
+				hud.toast(Loc.t("city.autobuild_toast") % [String(ev["name"]), _bld_name(String(ev["bld"]))])
 			"skill_up":
 				hud.toast(Loc.t("city.skill_up_toast") % [String(ev["name"]), Loc.t("skill." + String(ev["rank"]))])
 			"quarrel":
@@ -309,6 +311,9 @@ func _bld_hint(b: Dictionary) -> String:
 		desc = desc % int(b["produce"]["per_day"])
 	elif String(b.get("effect", "")) == "storage":
 		desc = desc % int(cfg["storage_per_warehouse"])
+	elif String(b.get("effect", "")) == "tavern":
+		var tcfg: Dictionary = cfg.get("tavern", {})
+		desc = desc % int(float(tcfg.get("food_per_day", 8.0)))
 	return "%s (%s; %s)" % [Loc.t(String(b["loc"])), ", ".join(parts), desc]
 
 

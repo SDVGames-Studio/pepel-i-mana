@@ -444,6 +444,9 @@ func _bld_tooltip(b: Dictionary) -> String:
 		desc = desc % int(b["produce"]["per_day"])
 	elif String(b.get("effect", "")) == "storage":
 		desc = desc % int(cfg["storage_per_warehouse"])
+	elif String(b.get("effect", "")) == "tavern":
+		var tcfg: Dictionary = cfg.get("tavern", {})
+		desc = desc % int(float(tcfg.get("food_per_day", 8.0)))
 	return "%s\n%s\n%s" % [Loc.t(String(b["loc"])), " / ".join(parts), desc]
 
 
@@ -535,6 +538,10 @@ func _chron_arg(v: String) -> String:
 
 
 func _prof_loc(prof_id: String) -> String:
+	if prof_id == "elder":
+		# в большом городе староста становится мэром
+		var title := "prof.mayor" if sim.residents.size() >= int(cfg.get("mayor_pop", 15)) else "prof.elder"
+		return Loc.t(title)
 	for prof in cfg["professions"]:
 		if String(prof["id"]) == prof_id:
 			return Loc.t(String(prof["loc"]))
