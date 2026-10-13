@@ -21,6 +21,7 @@
 	"hud.inventory": "Рюкзак (Tab)",
 	"hud.loot_total": "Добыча: %d",
 	"hud.minimap": "Карта",
+	"hud.empty": "рюкзак пуст",
 	"enemy.rat": "Пепельная крыса",
 	"enemy.skeleton": "Скелет-страж",
 	"enemy.golem": "Рунный голем",
