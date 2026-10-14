@@ -59,11 +59,12 @@ func refresh() -> void:
 	if sim == null:
 		return
 	var cap: int = sim.storage_cap()
-	_res_label.text = "%s %d/%d   %s %d/%d   %s %d   %s %d" % [
+	_res_label.text = "%s %d/%d   %s %d/%d   %s %d   %s %d   %s %d" % [
 		Loc.t("res.wood"), int(sim.res["wood"]), cap,
 		Loc.t("res.stone"), int(sim.res["stone"]), cap,
 		Loc.t("res.food"), int(sim.res["food"]),
 		Loc.t("res.crystal"), int(sim.res["crystal"]),
+		Loc.t("res.tools"), int(sim.res.get("tools", 0)),
 	]
 	_pop_label.text = Loc.t("city.pop") % [sim.residents.size(), sim.pop_cap()]
 	var day_text: String = Loc.t("city.day") % sim.day_number()

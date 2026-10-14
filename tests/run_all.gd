@@ -68,7 +68,9 @@ const REQUIRED_LOCALES := [
 	"city.hover_site", "city.hover_stun",
 	"city.state.manage",
 	"prof.elder", "prof.mayor", "prof.bartender",
+	"prof.miner", "res.tools",
 	"bld.tavern", "bld.desc.tavern",
+	"bld.quarry", "bld.desc.quarry",
 	"trait.hardworking", "trait.lazy", "trait.cheerful", "trait.grumpy",
 	"trait.brave", "trait.coward", "trait.magephobe", "trait.magiclover",
 	"trait.glutton", "trait.greedy",
@@ -183,16 +185,21 @@ func _test_data() -> void:
 			"pollution", "hero_mana", "test_mode", "autobuild_plan"]:
 		_check(city.has(key), "city.json содержит %s" % key)
 	var blds: Variant = city.get("buildings", [])
-	_check(blds is Array and blds.size() == 11, "city.json — 11 типов зданий (M4: + хижина лекаря, таверна)")
+	_check(blds is Array and blds.size() == 12, "city.json — 12 типов зданий (M4: + каменоломня)")
 	var bld_ok := true
 	if blds is Array:
 		for b in blds:
-			for key in ["id", "loc", "desc", "color", "cost", "build_work"]:
+			for key in ["id", "loc", "desc", "color", "cost", "build_work", "district"]:
 				if not (b is Dictionary and b.has(key)):
 					bld_ok = false
-	_check(bld_ok, "city.json: у зданий есть цена и время стройки")
+	_check(bld_ok, "city.json: у зданий есть цена, время стройки и район")
+	var districts := {}
+	for b in city.get("buildings", []):
+		if b is Dictionary:
+			districts[String(b["district"])] = true
+	_check(districts.has("living") and districts.has("work"), "город разбит на жилой и производственный районы")
 	var profs: Variant = city.get("professions", [])
-	_check(profs is Array and profs.size() == 9, "city.json — 9 профессий (M4: лекарь, староста, трактирщик)")
+	_check(profs is Array and profs.size() == 10, "city.json — 10 профессий (M4: + шахтёр)")
 	var speeds_ok := false
 	for s in city.get("speeds", []):
 		if int(s) == 10:
@@ -877,6 +884,46 @@ func _test_people() -> void:
 	var b_before: int = sim_d1.buildings.size()
 	sim_d1.tick(0.2)
 	_check(sim_d1.buildings.size() > b_before, "староста строит с первого дня")
+
+	# районы: дома — к западу, производство — к востоку (заказчик)
+	var sim_z := _make_sim()
+	var htile: Vector2i = sim_z._find_autobuild_tile("house")
+	var ftile: Vector2i = sim_z._find_autobuild_tile("farm")
+	_check(htile.x < sim_z.map.spawn_tile.x, "жилой район к западу от центра")
+	_check(ftile.x > sim_z.map.spawn_tile.x, "производственный район к востоку")
+
+	# каменоломня и мастерская — разные здания (заказчик)
+	var sim_st := _make_sim()
+	var miner_q: Dictionary = sim_st._new_resident("Герд", "miner", sim_st.map.spawn_tile)
+	sim_st.residents.append(miner_q)
+	sim_st._next_id += 1
+	sim_st.res["wood"] = 25.0
+	sim_st.res["stone"] = 10.0
+	var quarry := _build_now(sim_st, "quarry")
+	_check(int(quarry["worker"]) == int(miner_q["id"]), "шахтёр работает в каменоломне")
+	_teleport(sim_st, miner_q, quarry["tile"])
+	sim_st.cfg["food_per_resident_day"] = 0.0
+	var stone_before: float = float(sim_st.res["stone"])
+	sim_st.tick(10.0)
+	_check(float(sim_st.res["stone"]) > stone_before, "каменоломня добывает камень")
+	var crafter_q: Dictionary = sim_st._new_resident("Кира", "crafter", sim_st.map.spawn_tile)
+	sim_st.residents.append(crafter_q)
+	sim_st._next_id += 1
+	_build_now(sim_st, "workshop")
+	var workshop_q: Dictionary = sim_st.buildings[-1]
+	_check(crafter_q["bld"] != null and int((crafter_q["bld"] as Dictionary)["id"]) == int(workshop_q["id"]),
+			"мастер занял мастерскую")
+	sim_st.res["wood"] = 15.0
+	sim_st.res["stone"] = 10.0
+	_teleport(sim_st, crafter_q, workshop_q["tile"])
+	sim_st.time = 10.0   # утро: ночь в конце длинного теста усыпила бы мастера
+	sim_st.tick(20.0)
+	_check(float(sim_st.res["tools"]) > 0.0, "мастерская делает инструменты из дерева и камня")
+	var worker_probe: Dictionary = {"traits": [], "mood": 50.0, "skill": 0.0, "friend": -1, "work_bonus": 0.0, "sub_prof": ""}
+	sim_st.res["tools"] = 0.0
+	var plain_q: float = sim_st.work_mult(worker_probe)
+	sim_st.res["tools"] = 5.0
+	_check(sim_st.work_mult(worker_probe) > plain_q, "инструменты ускоряют работу")
 
 	# план города: староста строит сразу весь нужный набор по порядку (заказчик)
 	var sim_pl := _make_sim()

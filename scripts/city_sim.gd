@@ -15,7 +15,7 @@ extends RefCounted
 ##          traits, mood, skill, rank, age_days, ail, ail_days, friend, work_bonus}
 ## Здание: {id, type, tile, done, progress, worker, enchant, ench_mult, stun_left}
 
-const RESOURCES := ["wood", "stone", "food", "crystal"]
+const RESOURCES := ["wood", "stone", "food", "crystal", "tools"]
 
 var map = null                  # city_map.gd, нетипизированно (см. грабли GDScript)
 var cfg: Dictionary = {}
@@ -570,6 +570,13 @@ func tick(dt_raw: float) -> void:
 	var eat: float = float(cfg["food_per_resident_day"]) * dt / day_len * eaters
 	res["food"] = maxf(0.0, float(res["food"]) - eat)
 	_tavern_beer(dt, day_len)
+	# инструменты изнашиваются у работающих (мастерская обновляет запас)
+	var workers := 0
+	for r in residents:
+		if String(r["state"]) == "work" or String(r["state"]) == "build":
+			workers += 1
+	if workers > 0 and float(res.get("tools", 0.0)) > 0.0:
+		res["tools"] = maxf(0.0, float(res["tools"]) - float(cfg.get("tools_wear_per_day", 0.1)) * workers * dt / day_len)
 	# магия (M3): резонанс, спад загрязнения, стан зданий, дикие события
 	if resonance_left > 0.0:
 		resonance_left = maxf(0.0, resonance_left - dt)
@@ -793,10 +800,19 @@ func _do_work(r: Dictionary, bld: Dictionary, dt: float) -> void:
 		r["fatigue"] += dt / float(cfg["day_length"])
 		_grow_skill(r, dt)
 		var prod: Dictionary = _def(bld)["produce"]
+		# расход материалов (мастерская: дерево + камень -> инструменты)
+		var portion: float = dt / float(cfg["day_length"])
+		var inputs: Dictionary = prod.get("inputs", {})
+		for key in inputs:
+			if float(res.get(String(key), 0.0)) < float(inputs[key]) * portion:
+				r["state"] = "idle"   # материалы кончились — стоит
+				return
+		for key in inputs:
+			res[String(key)] = maxf(0.0, float(res[key]) - float(inputs[key]) * portion)
 		var boost: float = float(cfg["altar_boost"]) if has_blessing() else 1.0
 		var amount: float = float(prod["per_day"]) * dt / float(cfg["day_length"]) * boost * production_mult(bld) * work_mult(r)
-		var key := String(prod["res"])
-		res[key] = minf(float(storage_cap()), float(res[key]) + amount)
+		var key2 := String(prod["res"])
+		res[key2] = minf(float(storage_cap()), float(res[key2]) + amount)
 	else:
 		_move_towards(r, bld["tile"], dt)
 
@@ -926,9 +942,12 @@ func work_mult(r: Dictionary) -> float:
 	# подмена: работа не по основной профессии вдвое хуже (просьба заказчика)
 	if String(r.get("sub_prof", "")) != "":
 		mult *= float(people.get("sub_work", 0.5))
+	# инструменты из мастерской ускоряют всех, пока есть в хранилище
+	if float(res.get("tools", 0.0)) > 0.0:
+		mult *= float(cfg.get("tools_boost", 1.15))
 	if float(res["food"]) <= 0.0:
-		mult *= float(people.get("starving_work", 0.4))
-	return clampf(mult, 0.2, 2.5)
+		mult *= float(people.get("starving_work", 0.6))
+	return clampf(mult, 0.2, 3.0)
 
 
 ## Настроение плывёт к целевому: черты + загрязнение + потребности + события.
@@ -1125,13 +1144,13 @@ func _roll_autobuild() -> void:
 	# кризис: еды меньше чем на день — ферма вне очереди
 	var critical_food: float = float(residents.size()) * float(cfg["food_per_resident_day"])
 	if float(res["food"]) < critical_food and not _autobuild_site_exists("farm") and not _idle_farm_exists():
-		var tile := _find_autobuild_tile()
+		var tile := _find_autobuild_tile("farm")
 		if not tile == Vector2i(-1, -1) and place_building("farm", tile):
 			_announce_autobuild("farm", true)
 			return
 	# кризис: мест нет совсем — дом вне очереди
 	if residents.size() >= pop_cap() and not _autobuild_site_exists("house"):
-		var tile_h := _find_autobuild_tile()
+		var tile_h := _find_autobuild_tile("house")
 		if not tile_h == Vector2i(-1, -1) and place_building("house", tile_h):
 			_announce_autobuild("house", true)
 			return
@@ -1141,7 +1160,7 @@ func _roll_autobuild() -> void:
 		var need := _next_plan_need()
 		if need == "":
 			break
-		var tile_p := _find_autobuild_tile()
+		var tile_p := _find_autobuild_tile(need)
 		if tile_p == Vector2i(-1, -1):
 			break
 		if not place_building(need, tile_p):
@@ -1238,10 +1257,27 @@ func _autobuild_site_exists(type_id: String) -> bool:
 	return false
 
 
-## Ближайший к центру города свободный тайл (кольцами от спавна).
-func _find_autobuild_tile() -> Vector2i:
+## Тайл под самострой: районы (заказчик) — жилые здания к западу от центра,
+## производственные к востоку. Своё место в районе занято — общий поиск.
+func _find_autobuild_tile(type_id: String) -> Vector2i:
+	var district := "work"
+	for d in cfg["buildings"]:
+		if String(d["id"]) == type_id:
+			district = String(d.get("district", "work"))
+			break
 	var center: Vector2i = map.spawn_tile
-	for radius in range(1, 9):
+	if district == "living":
+		center += Vector2i(-4, 0)
+	else:
+		center += Vector2i(4, 0)
+	var tile := _ring_buildable(center, 4)
+	if not tile == Vector2i(-1, -1):
+		return tile
+	return _ring_buildable(map.spawn_tile, 8)
+
+
+func _ring_buildable(center: Vector2i, max_radius: int) -> Vector2i:
+	for radius in range(1, max_radius + 1):
 		for dy in range(-radius, radius + 1):
 			for dx in range(-radius, radius + 1):
 				if maxi(absi(dx), absi(dy)) != radius:
