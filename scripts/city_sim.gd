@@ -436,7 +436,27 @@ func placement_block(type_id: String, tile: Vector2i) -> String:
 		"near_forge":
 			if _nearest_building_type(tile, ["forge"], 2.0).is_empty():
 				return "city.placement_forge"
+		"forest":
+			# лесопилка — только у леса: лесоруб добывает именно деревья (заказчик)
+			if _nature_near(tile, [map.TILE_TREE], 2.0) == Vector2i(-1, -1):
+				return "city.placement_forest"
+		"rock":
+			# каменоломня — только у скал (заказчик)
+			if _nature_near(tile, [map.TILE_ROCK, map.TILE_ORE], 2.0) == Vector2i(-1, -1):
+				return "city.placement_rock"
 	return ""
+
+
+## Есть ли рядом (в радиусе, тайлах) тайл природы одного из видов. Возвращает его.
+func _nature_near(tile: Vector2i, kinds: Array, radius: float) -> Vector2i:
+	var r := int(ceilf(radius))
+	for dy in range(-r, r + 1):
+		for dx in range(-r, r + 1):
+			var t := tile + Vector2i(dx, dy)
+			if map.in_bounds(t) and Vector2(t).distance_to(Vector2(tile)) <= radius \
+					and map.grid[t.y][t.x] in kinds:
+				return t
+	return Vector2i(-1, -1)
 
 
 func _water_near(tile: Vector2i) -> bool:
@@ -725,6 +745,7 @@ func tick(dt_raw: float) -> void:
 		_roll_autobuild()
 		_roll_stories()
 		_roll_guards()
+		_roll_hunter()
 		_roll_animals()
 		_roll_storm()
 	_update_gates()   # достроенные за тик вышки/ворота сразу меняют проходимость
@@ -853,11 +874,16 @@ func _update_resident(r: Dictionary, dt: float) -> void:
 		_do_build(r, r["site"], dt)
 		return
 	if r["bld"] != null:
+		var bld_type := String(r["bld"]["type"])
 		if _def(r["bld"]).has("produce"):
-			_do_work(r, r["bld"], dt)
+			# добытчики работают у источника: лесоруб — у дерева, каменотёс — у скалы (заказчик)
+			if bld_type == "sawmill" or bld_type == "quarry":
+				_gather_work(r, r["bld"], dt)
+			else:
+				_do_work(r, r["bld"], dt)
 		elif guard_on_duty:
 			_guard_post(r, dt)   # на смене — стоит на посту (вышка рядом открывает ворота)
-		elif String(r["prof"]) == "guard" and _guard_help_build(r, dt):
+		elif String(r["prof"]) == "guard" and _help_build(r, dt):
 			pass                 # вне смены страж помогает городу строить (заказчик)
 		else:
 			r["state"] = "idle"
@@ -871,8 +897,8 @@ func _update_resident(r: Dictionary, dt: float) -> void:
 	if guard_on_duty:
 		_guard_post(r, dt)
 		return
-	if String(r["prof"]) == "guard" and _guard_help_build(r, dt):
-		return
+	if _help_build(r, dt):
+		return   # свободный житель в мирное время тоже помогает строить (заказчик)
 	r["state"] = "idle"
 
 
@@ -890,7 +916,7 @@ func _guard_post(r: Dictionary, dt: float) -> void:
 
 
 ## Страж вне смены помогает городу: строит ближайшую площадку. False — помогать нечем.
-func _guard_help_build(r: Dictionary, dt: float) -> bool:
+func _help_build(r: Dictionary, dt: float) -> bool:
 	if raid_active or _raid_warned:
 		return false   # при угрозе все силы — обороне
 	var site: Dictionary = {}
@@ -1037,25 +1063,91 @@ func _do_work(r: Dictionary, bld: Dictionary, dt: float) -> void:
 		r["state"] = "idle"
 		return
 	if _arrived(r, bld["tile"]):
-		r["state"] = "work"
-		r["fatigue"] += dt / float(cfg["day_length"])
-		_grow_skill(r, dt)
-		var prod: Dictionary = _def(bld)["produce"]
-		# расход материалов (мастерская: дерево + камень -> инструменты)
-		var portion: float = dt / float(cfg["day_length"])
-		var inputs: Dictionary = prod.get("inputs", {})
-		for key in inputs:
-			if float(res.get(String(key), 0.0)) < float(inputs[key]) * portion:
-				r["state"] = "idle"   # материалы кончились — стоит
-				return
-		for key in inputs:
-			res[String(key)] = maxf(0.0, float(res[key]) - float(inputs[key]) * portion)
-		var boost: float = float(cfg["altar_boost"]) if has_blessing() else 1.0
-		var amount: float = float(prod["per_day"]) * dt / float(cfg["day_length"]) * boost * production_mult(bld) * work_mult(r)
-		var key2 := String(prod["res"])
-		res[key2] = minf(float(storage_cap()), float(res[key2]) + amount)
+		_produce_tick(r, bld, dt)
 	else:
 		_move_towards(r, bld["tile"], dt)
+
+
+## Добытчик (лесоруб/каменотёс) работает у источника: ходит к дереву или скале
+## рядом со зданием и добывает именно там (заказчик). Источника нет — работает у здания.
+func _gather_work(r: Dictionary, bld: Dictionary, dt: float) -> void:
+	if float(bld.get("stun_left", 0.0)) > 0.0:
+		r["state"] = "idle"
+		return
+	var res_tile: Vector2i = _gather_target(r, bld)
+	if res_tile == Vector2i(-1, -1):
+		_produce_tick(r, bld, dt)
+		return
+	if map.tile_of_px(r["pos"]) != res_tile:
+		_move_towards(r, res_tile, dt)
+		return
+	_produce_tick(r, bld, dt)
+
+
+## Тайл, у которого добытчик работает: ближайший к зданию подходящий тайл природы
+## (для дерева — само дерево, для скалы — проходимый сосед). Кэшируется на жителе.
+func _gather_target(r: Dictionary, bld: Dictionary) -> Vector2i:
+	var kinds: Array = [map.TILE_TREE] if String(bld["type"]) == "sawmill" else [map.TILE_ROCK, map.TILE_ORE]
+	var cached: Vector2i = r.get("gath_tile", Vector2i(-1, -1))
+	if cached != Vector2i(-1, -1) and map.in_bounds(cached) and map.is_walkable(cached) \
+			and cached != (bld["tile"] as Vector2i):
+		return cached
+	var radius := int(cfg.get("gather_range", 6))
+	var best_kind := Vector2i(-1, -1)
+	var kind_d := INF
+	var best_near := Vector2i(-1, -1)
+	var near_d := INF
+	var bc: Vector2i = bld["tile"]
+	for dy in range(-radius, radius + 1):
+		for dx in range(-radius, radius + 1):
+			var t: Vector2i = bc + Vector2i(dx, dy)
+			if not map.in_bounds(t) or not map.is_walkable(t) or t == bc:
+				continue
+			var d: float = Vector2(t).distance_to(Vector2(bc))
+			if map.grid[t.y][t.x] in kinds:
+				# источник проходим (дерево) — стоим прямо на нём
+				if d < kind_d:
+					kind_d = d
+					best_kind = t
+			else:
+				# непроходимый источник (скала, руда) — стоим на соседнем тайле
+				for n in [t + Vector2i(1, 0), t + Vector2i(-1, 0), t + Vector2i(0, 1), t + Vector2i(0, -1)]:
+					if map.in_bounds(n) and map.grid[n.y][n.x] in kinds:
+						if d < near_d:
+							near_d = d
+							best_near = t
+						break
+	var best := best_kind if best_kind != Vector2i(-1, -1) else best_near
+	r["gath_tile"] = best
+	return best
+
+
+
+## Само производство: расход материалов, множители, добавка в пул. Общее для
+## работников у здания и добытчиков у источника.
+func _produce_tick(r: Dictionary, bld: Dictionary, dt: float) -> void:
+	r["state"] = "work"
+	r["fatigue"] += dt / float(cfg["day_length"])
+	_grow_skill(r, dt)
+	var prod: Dictionary = _def(bld)["produce"]
+	# расход материалов (мастерская: дерево + камень -> инструменты)
+	var portion: float = dt / float(cfg["day_length"])
+	var inputs: Dictionary = prod.get("inputs", {})
+	for key in inputs:
+		if float(res.get(String(key), 0.0)) < float(inputs[key]) * portion:
+			r["state"] = "idle"   # материалы кончились — стоит
+			return
+	for key in inputs:
+		res[String(key)] = maxf(0.0, float(res[key]) - float(inputs[key]) * portion)
+	var boost: float = float(cfg["altar_boost"]) if has_blessing() else 1.0
+	var amount: float = float(prod["per_day"]) * portion * boost * production_mult(bld) * work_mult(r)
+	var key2 := String(prod["res"])
+	res[key2] = minf(float(storage_cap()), float(res[key2]) + amount)
+	# шахта даёт и камень вместе с рудой (заказчик)
+	if prod.has("res2"):
+		var amount2: float = float(prod["per_day2"]) * portion * boost * production_mult(bld) * work_mult(r)
+		var key3 := String(prod["res2"])
+		res[key3] = minf(float(storage_cap()), float(res[key3]) + amount2)
 
 
 ## Закреплённое готовое здание с работником r (для вышки стража).
@@ -1610,9 +1702,26 @@ func _autobuild_site_exists(type_id: String) -> bool:
 	return false
 
 
-## Тайл под самострой: районы (заказчик) — жилые здания к западу от центра,
-## производственные к востоку. Своё место в районе занято — общий поиск.
+## Тайл под самострой: добытчики — у своего ресурса (заказчик), остальные —
+## по районам (жилые к западу, производственные к востоку). Своё место занято — общий поиск.
 func _find_autobuild_tile(type_id: String) -> Vector2i:
+	var place := ""
+	for d in cfg["buildings"]:
+		if String(d["id"]) == type_id:
+			place = String(d.get("place", ""))
+			break
+	if place == "ore":
+		var ore_t := _find_gather_tile(type_id, [map.TILE_ORE], true)
+		if not ore_t == Vector2i(-1, -1):
+			return ore_t
+	if place == "forest":
+		var forest_t := _find_gather_tile(type_id, [map.TILE_TREE], false)
+		if not forest_t == Vector2i(-1, -1):
+			return forest_t
+	if place == "rock":
+		var rock_t := _find_gather_tile(type_id, [map.TILE_ROCK, map.TILE_ORE], false)
+		if not rock_t == Vector2i(-1, -1):
+			return rock_t
 	var district := "work"
 	for d in cfg["buildings"]:
 		if String(d["id"]) == type_id:
@@ -1627,6 +1736,27 @@ func _find_autobuild_tile(type_id: String) -> Vector2i:
 	if not tile == Vector2i(-1, -1):
 		return tile
 	return _ring_buildable(map.spawn_tile, 8)
+
+
+## Ближайший к центру города тайл рядом с ресурсом, куда можно поставить здание.
+## on_resource — здание ставится прямо на тайл (шахта на руде).
+func _find_gather_tile(type_id: String, kinds: Array, on_resource: bool) -> Vector2i:
+	var best := Vector2i(-1, -1)
+	var best_d := INF
+	for y in map.h:
+		for x in map.w:
+			var t := Vector2i(x, y)
+			if on_resource:
+				if not (map.grid[y][x] in kinds) or not is_buildable_tile(t, type_id):
+					continue
+			else:
+				if not is_buildable_tile(t, type_id) or placement_block(type_id, t) != "":
+					continue
+			var d: float = Vector2(t).distance_to(Vector2(map.spawn_tile))
+			if d < best_d:
+				best_d = d
+				best = t
+	return best
 
 
 func _ring_buildable(center: Vector2i, max_radius: int) -> Vector2i:
@@ -2167,7 +2297,8 @@ func _raider_update(r: Dictionary, dt: float, tcfg: Dictionary) -> bool:
 		return false
 	r["atk_cd"] = maxf(0.0, float(r["atk_cd"]) - dt)
 	var p: Dictionary = r["p"]
-	# герой в городе и рядом — мутант отвлекается на чемпиона
+	# герой в городе и рядом — мутант отвлекается на чемпиона (путь как у жителей:
+	# напрямую он резал бы углы сквозь скалы — заказчик видел проходы насквозь)
 	if hero_alive:
 		var to_hero: Vector2 = hero_pos - (r["pos"] as Vector2)
 		if to_hero.length() <= float(p["aggro"]):
@@ -2176,7 +2307,7 @@ func _raider_update(r: Dictionary, dt: float, tcfg: Dictionary) -> bool:
 					r["atk_cd"] = float(p["attack_cooldown"])
 					events.append({"type": "hero_hit", "dmg": int(p["damage"])})
 			else:
-				_raider_walk_direct(r, to_hero.normalized() * float(p["speed"]) * dt)
+				_raider_move_to(r, map.tile_of_px(hero_pos), float(p["speed"]) * dt)
 			return true
 	var reach := float(p["attack_range"]) + float(map.ts) * 0.5
 	# здание в пределах досягаемости — крушим (иначе осцилляция «центр ↔ стена»:
@@ -2230,10 +2361,6 @@ func _raider_move_to(r: Dictionary, tile: Vector2i, step: float) -> void:
 			step = 0.0
 	r["pos"] = pos
 	r["path"] = path
-
-
-func _raider_walk_direct(r: Dictionary, shift: Vector2) -> void:
-	r["pos"] = (r["pos"] as Vector2) + shift
 
 
 ## Ближайшее к мутанту готовое здание с эффектом из wanted (пустой — любое).
@@ -2493,3 +2620,26 @@ func _assign_shifts() -> void:
 		if String(r["prof"]) == "guard":
 			r["shift"] = "day" if i % 2 == 0 else "night"
 			i += 1
+
+
+## Дневной бросок: зверь водится, а охотника нет — свободный взрослый становится
+## охотником (заказчик: никто не охотится, потому что профессию никто не давал).
+func _roll_hunter() -> void:
+	if animals.is_empty() or not _food_reserve_ok():
+		return
+	for r in residents:
+		if String(r["prof"]) == "hunter" and String(r.get("ail", "")) == "":
+			return   # охотник уже есть и на ногах
+	for r in residents:
+		if String(r["prof"]) in ["", "elder", "guard", "hunter"] or String(r.get("ail", "")) != "":
+			continue
+		if r["bld"] != null or r["site"] != null:
+			continue
+		r["prof"] = "hunter"
+		r["bld"] = null
+		r["site"] = null
+		r["sub_prof"] = ""
+		_chron("chron.hunter_trained", String(r["name"]))
+		events.append({"type": "hunter_trained", "name": String(r["name"])})
+		_assign_jobs()
+		return

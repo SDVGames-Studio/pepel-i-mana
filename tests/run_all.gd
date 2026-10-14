@@ -104,8 +104,10 @@ const REQUIRED_LOCALES := [
 	"bld.desc.mine", "bld.desc.smelter", "bld.desc.forge", "bld.desc.armory", "bld.desc.pier",
 	"prof.smelter", "prof.smith", "prof.armorer", "prof.hunter", "prof.fisher",
 	"city.placement_ore", "city.placement_water", "city.placement_forge",
+	"city.placement_forest", "city.placement_rock",
 	"city.state.hunt", "city.hunt_toast", "chron.hunt",
 	"city.guard_trained_toast", "chron.guard_trained",
+	"city.hunter_trained_toast", "chron.hunter_trained",
 	"city.dungeon_locked_hint", "city.dungeon_locked_toast", "dungeon.cleared_toast",
 	"city.armory_hint", "city.armory_bought_toast", "city.armory_max_toast", "city.armory_no_metal_toast",
 ]
@@ -141,6 +143,7 @@ func _initialize() -> void:
 	_test_forbidden_school()
 	_test_mutant_forest()
 	_test_defense()
+	_test_gathering()
 	if _fails == 0:
 		print("OK: все тесты пройдены")
 		quit(0)
@@ -384,12 +387,26 @@ func _teleport(sim: Object, r: Dictionary, tile: Vector2i) -> void:
 	r["path"] = PackedVector2Array()
 
 
-func _find_free_tile(sim: Object, near: Vector2i) -> Vector2i:
+func _find_free_tile(sim: Object, near: Vector2i, type_id: String = "") -> Vector2i:
+	# добытчики ставятся только у своего ресурса — ищем честное место
+	for d in sim.cfg["buildings"]:
+		if String(d["id"]) == type_id and String(d.get("place", "")) != "":
+			var kinds: Array = []
+			var on_resource := false
+			match String(type_id):
+				"mine":
+					kinds = [sim.map.TILE_ORE]
+					on_resource = true
+				"sawmill":
+					kinds = [sim.map.TILE_TREE]
+				"quarry":
+					kinds = [sim.map.TILE_ROCK, sim.map.TILE_ORE]
+			return sim._find_gather_tile(type_id, kinds, on_resource)
 	for radius in range(1, 8):
 		for dy in range(-radius, radius + 1):
 			for dx in range(-radius, radius + 1):
 				var tile := near + Vector2i(dx, dy)
-				if sim.is_buildable_tile(tile):
+				if sim.is_buildable_tile(tile) and sim.placement_block(type_id, tile) == "":
 					return tile
 	return Vector2i(-1, -1)
 
@@ -402,7 +419,7 @@ func _build_now(sim: Object, type_id: String) -> Dictionary:
 	builder["traits"] = []
 	builder["skill"] = 0.0
 	var near: Vector2i = sim.map.spawn_tile
-	var tile := _find_free_tile(sim, near)
+	var tile := _find_free_tile(sim, near, type_id)
 	_check(not tile == Vector2i(-1, -1), "%s: найдено место под стройку" % type_id)
 	_check(sim.place_building(type_id, tile), "%s: стройплощадка заложена" % type_id)
 	var site: Dictionary = sim.building_at(tile)
@@ -938,7 +955,8 @@ func _test_people() -> void:
 	_teleport(sim_st, miner_q, quarry["tile"])
 	sim_st.cfg["food_per_resident_day"] = 0.0
 	var stone_before: float = float(sim_st.res["stone"])
-	sim_st.tick(10.0)
+	sim_st.tick(10.0)   # первый тик — дойти до скалы
+	sim_st.tick(10.0)   # второй — добывать
 	_check(float(sim_st.res["stone"]) > stone_before, "каменоломня добывает камень")
 	var crafter_q: Dictionary = sim_st._new_resident("Кира", "crafter", sim_st.map.spawn_tile)
 	sim_st.residents.append(crafter_q)
@@ -1822,6 +1840,137 @@ func _test_defense() -> void:
 				farm_site = true
 	_check(sim_f1._food_deficit(), "баланс еды отрицательный (9 ртов против одной фермы)")
 	_check(farms_after > farms_before and farm_site, "при дефиците еды заложена ферма")
+
+
+## Блок M5.4: добыча у источника, туман по линии видимости, бездельники заняты.
+func _test_gathering() -> void:
+	print("[M5.4: добыча у источника]")
+	var sim := _make_sim()
+	sim._last_daily_day = 999
+	# лесопилка — только у леса
+	var tree_side := Vector2i(-1, -1)
+	var treeless := Vector2i(-1, -1)
+	for y in sim.map.h:
+		for x in sim.map.w:
+			var t := Vector2i(x, y)
+			if not sim.is_buildable_tile(t):
+				continue
+			if tree_side == Vector2i(-1, -1) and sim._nature_near(t, [sim.map.TILE_TREE], 2.0) != Vector2i(-1, -1) \
+					and sim.placement_block("sawmill", t) == "":
+				tree_side = t
+			if treeless == Vector2i(-1, -1) \
+					and sim._nature_near(t, [sim.map.TILE_TREE], 2.0) == Vector2i(-1, -1) \
+					and sim._nature_near(t, [sim.map.TILE_ROCK, sim.map.TILE_ORE], 2.0) == Vector2i(-1, -1) \
+					and sim._water_near(t) == false:
+				treeless = t
+	_check(tree_side != Vector2i(-1, -1), "нашлось место у леса")
+	_check(sim.placement_block("sawmill", tree_side) == "", "лесопилка ставится у леса")
+	_check(treeless != Vector2i(-1, -1) and sim.placement_block("sawmill", treeless) != "",
+			"лесопилка вдали от леса не ставится")
+	# каменоломня — только у скал
+	var rock_side := Vector2i(-1, -1)
+	for y in sim.map.h:
+		for x in sim.map.w:
+			var t := Vector2i(x, y)
+			if sim.is_buildable_tile(t) and sim._nature_near(t, [sim.map.TILE_ROCK, sim.map.TILE_ORE], 2.0) != Vector2i(-1, -1) \
+					and sim.placement_block("quarry", t) == "":
+				rock_side = t
+				break
+		if rock_side != Vector2i(-1, -1):
+			break
+	_check(rock_side != Vector2i(-1, -1) and sim.placement_block("quarry", rock_side) == "",
+			"каменоломня ставится у скал")
+	_check(sim.placement_block("quarry", treeless) != "", "каменоломня вдали от скал не ставится")
+	# самострой ищет место у ресурса
+	var auto_s: Vector2i = sim._find_autobuild_tile("sawmill")
+	_check(auto_s != Vector2i(-1, -1) and sim.placement_block("sawmill", auto_s) == "",
+			"самострой лесопилки — у леса")
+
+	# лесоруб рубит именно дерево: уходит из здания к лесу, дерево растёт
+	var sim_sg := _make_sim()
+	sim_sg._last_daily_day = 999
+	_add_resident(sim_sg, "Лана", "lumberjack")   # может быть не он назначен — берём закреплённого
+	var stile: Vector2i = _find_free_tile(sim_sg, sim_sg.map.spawn_tile, "sawmill")
+	var saw := _build_at(sim_sg, "sawmill", stile)
+	_check(bool(saw["done"]), "лесопилка построена у леса")
+	var worker_sg: Dictionary = {}
+	for r in sim_sg.residents:
+		if int(r["id"]) == int(saw["worker"]):
+			worker_sg = r
+	_check(not worker_sg.is_empty(), "за лесопилкой закреплён лесоруб")
+	_teleport(sim_sg, worker_sg, stile)
+	sim_sg.time = 10.0
+	var wood0: float = float(sim_sg.res["wood"])
+	sim_sg.tick(5.0)   # дойти до дерева
+	sim_sg.tick(5.0)   # рубить
+	_check(float(sim_sg.res["wood"]) > wood0, "лесоруб добывает дерево у леса")
+	var ptile: Vector2i = sim_sg.map.tile_of_px(worker_sg["pos"])
+	_check(sim_sg.map.grid[ptile.y][ptile.x] == sim_sg.map.TILE_TREE,
+			"лесоруб работает прямо у дерева, а не в здании")
+
+	# шахта даёт и руду, и камень (заказчик)
+	var sim_mi := _make_sim()
+	sim_mi._last_daily_day = 999
+	var miner_mi := _add_resident(sim_mi, "Герд", "miner")
+	var mtile: Vector2i = _ore_tile_of(sim_mi)
+	var mine_mi := _build_at(sim_mi, "mine", mtile)
+	_check(bool(mine_mi["done"]), "шахта построена")
+	_teleport(sim_mi, miner_mi, mtile)
+	sim_mi.time = 10.0
+	var iron0: float = float(sim_mi.res["iron"])
+	var stone0: float = float(sim_mi.res["stone"])
+	sim_mi.tick(5.0)
+	sim_mi.tick(5.0)
+	sim_mi.tick(5.0)
+	_check(float(sim_mi.res["iron"]) > iron0, "шахта даёт железную руду")
+	_check(float(sim_mi.res["stone"]) > stone0, "шахта даёт и камень")
+
+	# свободный житель в мирное время помогает строить (много бездельников — заказчик)
+	var sim_ih := _make_sim()
+	sim_ih._last_daily_day = 999
+	var farmer_ih: Dictionary = _resident_by_prof(sim_ih, "farmer")
+	var tile_ih: Vector2i = _find_free_tile(sim_ih, sim_ih.map.spawn_tile)
+	sim_ih.place_building("wall", tile_ih)
+	_teleport(sim_ih, farmer_ih, tile_ih)
+	sim_ih.time = 10.0
+	var prog_ih: float = float(sim_ih.building_at(tile_ih)["progress"])
+	sim_ih.tick(1.0)
+	_check(float(sim_ih.building_at(tile_ih)["progress"]) > prog_ih,
+			"свободный житель помогает строить")
+
+	# город сам обучает охотника, раз зверь водится (никто не охотился)
+	var sim_ht := _make_sim()
+	sim_ht._last_daily_day = 0
+	var hunter_before := false
+	for r in sim_ht.residents:
+		if String(r["prof"]) == "hunter":
+			hunter_before = true
+	_check(not hunter_before, "в стартовом наборе нет охотника")
+	sim_ht.tick(0.2)
+	var hunter_after := false
+	for r in sim_ht.residents:
+		if String(r["prof"]) == "hunter":
+			hunter_after = true
+	_check(hunter_after, "город обучил охотника — охота теперь будет")
+
+	# мутант не проходит сквозь стены и скалы (проходит путь, а не режет насквозь)
+	var sim_nc := _make_sim()
+	sim_nc._last_daily_day = 999
+	sim_nc.hero_alive = true
+	sim_nc.hero_pos = sim_nc.map.tile_center_px(sim_nc.map.spawn_tile)
+	var wall_nc: Vector2i = sim_nc.map.spawn_tile + Vector2i(3, 0)
+	_build_at(sim_nc, "wall", wall_nc)
+	_spawn_one_raider(sim_nc, "mutant", wall_nc + Vector2i(1, 0))
+	var never_clip := true
+	for i in 120:
+		sim_nc.tick(0.3)
+		if sim_nc.raiders.is_empty():
+			break
+		var rtile: Vector2i = sim_nc.map.tile_of_px(sim_nc.raiders[0]["pos"])
+		if not sim_nc.map.is_walkable(rtile):
+			never_clip = false
+			break
+	_check(never_clip, "мутант не проходит сквозь стены и скалы")
 
 
 func _test_forbidden_school() -> void:

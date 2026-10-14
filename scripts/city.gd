@@ -289,6 +289,8 @@ func _process_events() -> void:
 				hud.toast(Loc.t("city.hunt_toast") % [String(ev["name"]), int(ev["food"])])
 			"guard_trained":
 				hud.toast(Loc.t("city.guard_trained_toast") % String(ev["name"]))
+			"hunter_trained":
+				hud.toast(Loc.t("city.hunter_trained_toast") % String(ev["name"]))
 	sim.events.clear()
 
 

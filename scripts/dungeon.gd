@@ -433,11 +433,27 @@ func _update_fog() -> void:
 			if dx * dx + dy * dy > r * r:
 				continue
 			var p := Vector2i(t.x + dx, t.y + dy)
-			if gen.is_floor(p) and not _visited.has(p):
+			if gen.is_floor(p) and not _visited.has(p) and _line_of_sight(t, p):
 				_visited[p] = true
 				changed = true
 	if changed:
 		hud.minimap.update_state(t, _visited)
+
+
+## Зрение героя: тайл виден, только если линия от героя не упирается в стену —
+## карта не должна рисоваться там, где герой не был и не мог видеть (заказчик).
+func _line_of_sight(from: Vector2i, to: Vector2i) -> bool:
+	var dx := to.x - from.x
+	var dy := to.y - from.y
+	var steps := maxi(absi(dx), absi(dy))
+	var x := float(from.x)
+	var y := float(from.y)
+	for i in steps - 1:
+		x += float(dx) / float(steps)
+		y += float(dy) / float(steps)
+		if gen.tile_at(Vector2i(int(round(x)), int(round(y)))) == DungeonGenScript.TILE_WALL:
+			return false
+	return true
 
 
 ## Мана-голод (упрощённо): мана утекает по таймеру, на нуле — здоровье.

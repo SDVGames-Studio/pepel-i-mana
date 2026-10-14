@@ -83,6 +83,7 @@
 		"wound_on_raze_chance": 0.5
 	},
 	"guards": { "base": 2, "per_pop": 8 },
+	"gather_range": 6,
 	"hunting": { "animals": 8, "respawn_chance": 0.35, "hunt_food": 6.0, "hunt_time": 2.0, "roam_range": 15 },
 	"hero_kit": { "cost_metal": 3, "damage": 2, "armor": 1, "max": 3 },
 	"storm": {
@@ -140,9 +141,9 @@
 	"buildings": [
 		{"id": "house", "loc": "bld.house", "desc": "bld.desc.house", "color": "#c78d5b", "cost": {"wood": 15}, "build_work": 20, "effect": "pop", "district": "living"},
 		{"id": "farm", "loc": "bld.farm", "desc": "bld.desc.farm", "color": "#7cb342", "cost": {"wood": 10}, "build_work": 20, "worker": "farmer", "produce": {"res": "food", "per_day": 16}, "district": "work"},
-		{"id": "sawmill", "loc": "bld.sawmill", "desc": "bld.desc.sawmill", "color": "#8d6e63", "cost": {"wood": 5, "stone": 5}, "build_work": 25, "worker": "lumberjack", "produce": {"res": "wood", "per_day": 6}, "district": "work"},
+		{"id": "sawmill", "loc": "bld.sawmill", "desc": "bld.desc.sawmill", "color": "#8d6e63", "cost": {"wood": 5, "stone": 5}, "place": "forest", "build_work": 25, "worker": "lumberjack", "produce": {"res": "wood", "per_day": 6}, "district": "work"},
 		{"id": "well", "loc": "bld.well", "desc": "bld.desc.well", "color": "#4fc3f7", "cost": {"stone": 10}, "build_work": 15, "effect": "sleep", "district": "living"},
-		{"id": "quarry", "loc": "bld.quarry", "desc": "bld.desc.quarry", "color": "#757575", "cost": {"wood": 10}, "build_work": 25, "worker": "miner", "produce": {"res": "stone", "per_day": 6}, "district": "work"},
+		{"id": "quarry", "loc": "bld.quarry", "desc": "bld.desc.quarry", "color": "#757575", "cost": {"wood": 10}, "place": "rock", "build_work": 25, "worker": "miner", "produce": {"res": "stone", "per_day": 6}, "district": "work"},
 		{"id": "warehouse", "loc": "bld.warehouse", "desc": "bld.desc.warehouse", "color": "#ffb74d", "cost": {"wood": 15, "stone": 5}, "build_work": 25, "effect": "storage", "district": "work"},
 		{"id": "workshop", "loc": "bld.workshop", "desc": "bld.desc.workshop", "color": "#78909c", "cost": {"wood": 10, "stone": 10}, "build_work": 30, "worker": "crafter", "produce": {"res": "tools", "per_day": 3, "inputs": {"wood": 2, "stone": 2}}, "district": "work"},
 		{"id": "wall", "loc": "bld.wall", "desc": "bld.desc.wall", "color": "#9e9e9e", "cost": {"wood": 3}, "build_work": 5, "effect": "wall", "district": "work"},
@@ -151,7 +152,7 @@
 		{"id": "altar", "loc": "bld.altar", "desc": "bld.desc.altar", "color": "#ce93d8", "cost": {"stone": 10, "crystal": 2}, "build_work": 30, "worker": "acolyte", "effect": "altar", "district": "work"},
 		{"id": "healer_hut", "loc": "bld.healer_hut", "desc": "bld.desc.healer_hut", "color": "#80cbc4", "cost": {"wood": 10}, "build_work": 20, "worker": "healer", "effect": "heal", "district": "work"},
 		{"id": "tavern", "loc": "bld.tavern", "desc": "bld.desc.tavern", "color": "#d4a017", "cost": {"wood": 20, "stone": 10}, "build_work": 30, "worker": "bartender", "effect": "tavern", "district": "work"},
-		{"id": "mine", "loc": "bld.mine", "desc": "bld.desc.mine", "color": "#8d6e63", "cost": {"wood": 12}, "build_work": 30, "worker": "miner", "produce": {"res": "iron", "per_day": 6}, "place": "ore", "district": "work"},
+		{"id": "mine", "loc": "bld.mine", "desc": "bld.desc.mine", "color": "#8d6e63", "cost": {"wood": 12}, "build_work": 30, "worker": "miner", "produce": {"res": "iron", "per_day": 4, "res2": "stone", "per_day2": 4}, "place": "ore", "district": "work"},
 		{"id": "smelter", "loc": "bld.smelter", "desc": "bld.desc.smelter", "color": "#ff7043", "cost": {"stone": 15, "wood": 5}, "build_work": 35, "worker": "smelter", "produce": {"res": "metal", "per_day": 3, "inputs": {"iron": 2}}, "district": "work"},
 		{"id": "forge", "loc": "bld.forge", "desc": "bld.desc.forge", "color": "#e57373", "cost": {"stone": 15, "wood": 10}, "build_work": 35, "worker": "smith", "produce": {"res": "tools", "per_day": 4, "inputs": {"metal": 1}}, "district": "work"},
 		{"id": "armory", "loc": "bld.armory", "desc": "bld.desc.armory", "color": "#bcaaa4", "cost": {"stone": 15, "wood": 10, "metal": 2}, "build_work": 40, "worker": "armorer", "produce": {"res": "kits", "per_day": 1, "inputs": {"metal": 2}}, "place": "near_forge", "district": "work"},
