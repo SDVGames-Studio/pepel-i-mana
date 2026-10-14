@@ -98,6 +98,16 @@ const REQUIRED_LOCALES := [
 	"city.storm_strike_toast", "city.hero_down_toast",
 	"chron.raid", "chron.raid_siege", "chron.repelled", "chron.breach",
 	"chron.razed", "chron.storm_warn", "chron.storm", "chron.storm_end",
+	# --- M5.1: железо, охота, стражи, комплекты ---
+	"res.iron", "res.metal", "res.kits",
+	"bld.mine", "bld.smelter", "bld.forge", "bld.armory", "bld.pier",
+	"bld.desc.mine", "bld.desc.smelter", "bld.desc.forge", "bld.desc.armory", "bld.desc.pier",
+	"prof.smelter", "prof.smith", "prof.armorer", "prof.hunter", "prof.fisher",
+	"city.placement_ore", "city.placement_water", "city.placement_forge",
+	"city.state.hunt", "city.hunt_toast", "chron.hunt",
+	"city.guard_trained_toast", "chron.guard_trained",
+	"city.dungeon_locked_hint", "city.dungeon_locked_toast", "dungeon.cleared_toast",
+	"city.armory_hint", "city.armory_bought_toast", "city.armory_max_toast", "city.armory_no_metal_toast",
 ]
 
 const ALL_SCRIPTS := [
@@ -130,6 +140,7 @@ func _initialize() -> void:
 	_test_threat()
 	_test_forbidden_school()
 	_test_mutant_forest()
+	_test_defense()
 	if _fails == 0:
 		print("OK: все тесты пройдены")
 		quit(0)
@@ -204,7 +215,7 @@ func _test_data() -> void:
 			"pollution", "hero_mana", "test_mode", "autobuild_plan"]:
 		_check(city.has(key), "city.json содержит %s" % key)
 	var blds: Variant = city.get("buildings", [])
-	_check(blds is Array and blds.size() == 13, "city.json — 13 типов зданий (M4: + каменоломня, ворота)")
+	_check(blds is Array and blds.size() == 18, "city.json — 18 типов зданий (M5.1: шахта, плавильня, кузня, оружейная, пирс)")
 	var bld_ok := true
 	if blds is Array:
 		for b in blds:
@@ -218,7 +229,7 @@ func _test_data() -> void:
 			districts[String(b["district"])] = true
 	_check(districts.has("living") and districts.has("work"), "город разбит на жилой и производственный районы")
 	var profs: Variant = city.get("professions", [])
-	_check(profs is Array and profs.size() == 10, "city.json — 10 профессий (M4: + шахтёр)")
+	_check(profs is Array and profs.size() == 15, "city.json — 15 профессий (M5.1: плавильщик, кузнец, оружейник, охотник, рыбак)")
 	var speeds_ok := false
 	for s in city.get("speeds", []):
 		if int(s) == 10:
@@ -965,7 +976,17 @@ func _test_people() -> void:
 	_check(bool(gate_b["done"]), "ворота построены в проёме")
 	_check(not bool(sim_gt.is_gate_open(gate_b)), "без стража на вышке ворота закрыты")
 	_check(not sim_gt.map.is_walkable(gate_tile), "закрытые ворота непроходимы")
-	var tower_tile: Vector2i = gate_tile + Vector2i(2, 1)
+	# карта стала плотнее (M5.1) — вышку ставим на ближайшее свободное место
+	var tower_tile: Vector2i = Vector2i(-1, -1)
+	for dy in range(-2, 3):
+		for dx in range(-2, 3):
+			var t: Vector2i = gate_tile + Vector2i(dx, dy)
+			if sim_gt.is_buildable_tile(t):
+				tower_tile = t
+				break
+		if tower_tile != Vector2i(-1, -1):
+			break
+	_check(tower_tile != Vector2i(-1, -1), "у ворот есть место под вышку")
 	sim_gt.place_building("tower", tower_tile)
 	_teleport(sim_gt, builder_gt, tower_tile)
 	sim_gt.tick(30.5)
@@ -1308,10 +1329,10 @@ func _test_threat() -> void:
 	_check(String(sim.threat_stage()) == "calm", "стадия на старте — «тихо»")
 	# кривая угрозы: время и рост города её поднимают
 	var t0: float = sim.threat_value()
-	sim.time += 10.0 * float(sim.cfg["day_length"])
-	sim.day = 11
+	sim.time += 20.0 * float(sim.cfg["day_length"])
+	sim.day = 21
 	var grown_by_time: float = sim.threat_value() - t0
-	_check(grown_by_time > 0.5, "угроза растёт со временем (+%.2f за 10 дней)" % grown_by_time)
+	_check(grown_by_time > 0.5, "угроза растёт со временем (+%.2f за 20 дней)" % grown_by_time)
 	sim._last_daily_day = 999   # дневные броски (автостройка/беженцы) в тесте выключены
 	var farm := _build_at(sim, "farm", _find_free_tile(sim, sim.map.spawn_tile))
 	_check(bool(farm["done"]), "ферма построена")
@@ -1368,10 +1389,13 @@ func _test_threat() -> void:
 	var wall := _build_at(sim2, "wall", wall_tile)
 	_check(bool(wall["done"]), "стена у города достроена")
 	_check(not sim2.map.is_walkable(wall_tile), "готовая стена непроходима")
-	# страж-житель дерётся с мутантами в упор — для чистоты осады убираем его
+	# страж-житель и ополчение дерутся с мутантами — для чистоты осады оставляем
+	# только строителя (занят) и старосту, черты обнуляем (храбрые уходят в бой)
 	for r in sim2.residents.duplicate():
-		if String(r["prof"]) == "guard":
+		if String(r["prof"]) != "builder" and String(r["prof"]) != "elder":
 			sim2.residents.erase(r)
+	for r in sim2.residents:
+		r["traits"] = []
 	_spawn_one_raider(sim2, "brute", wall_tile + Vector2i(2, 0))
 	var razed_seen := false
 	for i in 1200:
@@ -1401,6 +1425,12 @@ func _test_threat() -> void:
 	var guard: Dictionary = _resident_by_prof(sim3, "guard")
 	_check(int(tower["worker"]) == int(guard["id"]), "страж закреплён за вышкой")
 	_teleport(sim3, guard, tower["tile"])
+	# ополчение перебило бы мутанта раньше вышки — оставляем стража и строителя
+	for r in sim3.residents.duplicate():
+		if not (r == guard or String(r["prof"]) == "builder"):
+			sim3.residents.erase(r)
+	for r in sim3.residents:
+		r["traits"] = []
 	_spawn_one_raider(sim3, "mutant", tower["tile"] + Vector2i(3, 0))
 	for i in 150:
 		sim3.tick(0.2)
@@ -1465,8 +1495,8 @@ func _test_threat() -> void:
 	# планировщик волн: предупреждение заранее, старт по расписанию
 	var sim7 := _make_sim()
 	sim7._last_daily_day = 999
-	sim7.time = 10.0 * float(sim7.cfg["day_length"])
-	sim7.day = 11
+	sim7.time = 13.0 * float(sim7.cfg["day_length"])
+	sim7.day = 14
 	sim7._next_raid_at = sim7.time + 1.0
 	sim7.tick(0.1)
 	_check(sim7._raid_warned, "предупреждение о волне объявлено заранее")
@@ -1486,6 +1516,248 @@ func _ward_test_farm_tile(sim: Object) -> Vector2i:
 		if bool(b["done"]) and String(b.get("enchant", "")) != "ward":
 			return b["tile"]
 	return Vector2i(-1, -1)
+
+
+## Первый тайл руды на карте.
+func _ore_tile_of(sim: Object) -> Vector2i:
+	for y in sim.map.h:
+		for x in sim.map.w:
+			if sim.map.grid[y][x] == sim.map.TILE_ORE:
+				return Vector2i(x, y)
+	return Vector2i(-1, -1)
+
+
+## Добавить жителя редкой профессии (в стартовом наборе её нет).
+func _add_resident(sim: Object, res_name: String, prof: String) -> Dictionary:
+	var r: Dictionary = sim._new_resident(res_name, prof, sim.map.spawn_tile)
+	sim.residents.append(r)
+	sim._next_id += 1
+	return r
+
+
+func _test_defense() -> void:
+	print("[M5.1: железо, охота, стражи, комплекты]")
+	var sim := _make_sim()
+	# размещения: шахта — на руде, пирс — у воды, оружейная — у кузни
+	var ore_tile: Vector2i = _ore_tile_of(sim)
+	_check(ore_tile != Vector2i(-1, -1), "на карте есть рудные жилы")
+	_check(sim.placement_block("mine", ore_tile) == "", "шахта ставится на руду")
+	_check(sim.placement_block("mine", sim.map.spawn_tile) != "", "шахта не ставится на траву")
+	var miner_r := _add_resident(sim, "Герд", "miner")   # шахтёр должен быть ДО достройки
+	var mine := _build_at(sim, "mine", ore_tile)
+	_check(bool(mine["done"]), "шахта построена прямо на жиле")
+	_teleport(sim, miner_r, mine["tile"])
+	var pier_tile := Vector2i(-1, -1)
+	for y in sim.map.h:
+		for x in sim.map.w:
+			if sim.map.grid[y][x] != sim.map.TILE_WATER:
+				continue
+			for n in [Vector2i(x, y) + Vector2i(1, 0), Vector2i(x, y) + Vector2i(-1, 0),
+					Vector2i(x, y) + Vector2i(0, 1), Vector2i(x, y) + Vector2i(0, -1)]:
+				if sim.is_buildable_tile(n, "pier") and sim.placement_block("pier", n) == "":
+					pier_tile = n
+					break
+			if pier_tile != Vector2i(-1, -1):
+				break
+		if pier_tile != Vector2i(-1, -1):
+			break
+	_check(pier_tile != Vector2i(-1, -1), "у воды нашлось место под пирс")
+	_check(sim.placement_block("pier", sim.map.spawn_tile) != "", "пирс вдали от воды не ставится")
+	var forge := _build_at(sim, "forge", _find_free_tile(sim, sim.map.spawn_tile))
+	_check(bool(forge["done"]), "кузня построена")
+	var near_forge: Vector2i = _find_free_tile(sim, forge["tile"])
+	_check(sim.placement_block("armory", near_forge) == "", "оружейная ставится рядом с кузней")
+	var far_tile: Vector2i = _find_free_tile(sim, sim.map.spawn_tile + Vector2i(10, 0))
+	_check(sim.placement_block("armory", far_tile) != "", "оружейная вдали от кузни не ставится")
+
+	# цепочка металла: руда → металл → инструменты/комплекты
+	# (тики копят время: тест уходит в ночь — возвращаем утро, иначе рабочие спят)
+	sim.time = 10.0
+	var iron0: float = float(sim.res["iron"])
+	sim.tick(20.0)
+	_check(float(sim.res["iron"]) > iron0, "шахта добывает железную руду")
+	var smelter_r := _add_resident(sim, "Ада", "smelter")
+	var smelt := _build_at(sim, "smelter", _find_free_tile(sim, sim.map.spawn_tile))
+	_check(bool(smelt["done"]) and int(smelt["worker"]) == int(smelter_r["id"]), "плавильщик в плавильне")
+	sim.time = 10.0
+	sim.res["iron"] = 20.0
+	sim.res["metal"] = 0.0
+	_teleport(sim, smelter_r, smelt["tile"])
+	sim.tick(30.0)
+	_check(float(sim.res["metal"]) > 0.0, "плавильня превращает руду в металл")
+	sim.time = 10.0
+	var smith_r := _add_resident(sim, "Борн", "smith")
+	sim.res["metal"] = 10.0
+	sim.res["tools"] = 0.0
+	_teleport(sim, smith_r, forge["tile"])
+	sim.tick(30.0)
+	_check(float(sim.res["tools"]) > 0.0, "кузня куёт металлические инструменты")
+	sim.res["stone"] = 30.0   # плавильня и кузня съели весь камень
+	sim.res["metal"] = 20.0
+	# оружейная требует кузню в радиусе 2 по прямой — ищем такой тайл честно
+	var armory_tile := Vector2i(-1, -1)
+	for radius in range(1, 3):
+		for dy in range(-radius, radius + 1):
+			for dx in range(-radius, radius + 1):
+				var t: Vector2i = (forge["tile"] as Vector2i) + Vector2i(dx, dy)
+				if sim.is_buildable_tile(t, "armory") and sim.placement_block("armory", t) == "":
+					armory_tile = t
+					break
+			if armory_tile != Vector2i(-1, -1):
+				break
+		if armory_tile != Vector2i(-1, -1):
+			break
+	_check(armory_tile != Vector2i(-1, -1), "рядом с кузней нашлось место под оружейную")
+	var armorer_r := _add_resident(sim, "Нива", "armorer")   # работник до достройки
+	var armory := _build_at(sim, "armory", armory_tile)
+	_check(bool(armory["done"]), "оружейная построена у кузни")
+	sim.res["metal"] = 20.0
+	sim.res["kits"] = 0.0
+	sim.time = 10.0
+	_teleport(sim, armorer_r, armory["tile"])
+	sim.tick(60.0)
+	_check(float(sim.res["kits"]) > 0.0, "оружейная собирает боевые комплекты")
+
+	# охота: охотник добывает зверя, еда в пул (зверь бродит — даём время на погоню)
+	var sim_h := _make_sim()
+	sim_h._last_daily_day = 999
+	_check(not sim_h.animals.is_empty(), "зверь ходит по карте")
+	var hunter_r := _add_resident(sim_h, "Ярл", "hunter")
+	var prey: Dictionary = sim_h.animals[0]
+	_teleport(sim_h, hunter_r, sim_h.map.tile_of_px(prey["pos"]))
+	var food0: float = float(sim_h.res["food"])
+	var animals0: int = sim_h.animals.size()
+	for i in 300:
+		if sim_h.time > 70.0:
+			sim_h.time = 10.0   # не уходить в ночь: охотник уснёт
+		sim_h.tick(0.5)
+		if sim_h.animals.size() < animals0:
+			break
+	_check(float(sim_h.res["food"]) > food0, "охотник принёс еду")
+	_check(sim_h.animals.size() < animals0, "зверь добыт")
+
+	# стражи: двое на постоянке, смены день/ночь
+	var sim_g2 := _make_sim()
+	sim_g2._last_daily_day = 0
+	sim_g2.tick(0.2)
+	var guards := 0
+	var shifts := {}
+	for r in sim_g2.residents:
+		if String(r["prof"]) == "guard":
+			guards += 1
+			shifts[String(r.get("shift", "day"))] = true
+	_check(guards >= 2, "на постоянке минимум двое стражей")
+	_check(shifts.has("day") and shifts.has("night"), "смены: дневная и ночная")
+
+	# ополчение: свободный житель бьёт мутанта
+	var sim_m2 := _make_sim()
+	sim_m2._last_daily_day = 999
+	var fighter: Dictionary = _resident_by_prof(sim_m2, "acolyte")
+	fighter["traits"] = []
+	var raider_m := _spawn_one_raider(sim_m2, "mutant", sim_m2.map.spawn_tile + Vector2i(2, 0))
+	_teleport(sim_m2, fighter, sim_m2.map.spawn_tile + Vector2i(1, 0))
+	var hp_m0: int = int(raider_m["hp"])
+	sim_m2.tick(0.3)
+	_check(int(raider_m["hp"]) < hp_m0, "ополченец бьёт мутанта")
+
+	# комплект: боец берёт его в оружейке и бьёт вдвое сильнее
+	var sim_k2 := _make_sim()
+	sim_k2._last_daily_day = 999
+	sim_k2.res["metal"] = 20.0
+	sim_k2.res["stone"] = 30.0
+	for r in sim_k2.residents.duplicate():
+		if not (String(r["prof"]) in ["acolyte", "builder", "elder"]):
+			sim_k2.residents.erase(r)
+	for r in sim_k2.residents:
+		r["traits"] = []
+	var forge_k := _build_at(sim_k2, "forge", _find_free_tile(sim_k2, sim_k2.map.spawn_tile))
+	var armory_k_tile := Vector2i(-1, -1)
+	for radius in range(1, 3):
+		for dy in range(-radius, radius + 1):
+			for dx in range(-radius, radius + 1):
+				var t: Vector2i = (forge_k["tile"] as Vector2i) + Vector2i(dx, dy)
+				if sim_k2.is_buildable_tile(t, "armory") and sim_k2.placement_block("armory", t) == "":
+					armory_k_tile = t
+					break
+			if armory_k_tile != Vector2i(-1, -1):
+				break
+		if armory_k_tile != Vector2i(-1, -1):
+			break
+	_check(armory_k_tile != Vector2i(-1, -1), "в кит-тесте нашлось место у кузни")
+	var armory_k := _build_at(sim_k2, "armory", armory_k_tile)
+	_check(bool(armory_k["done"]), "оружейная в кит-тесте построена")
+	# строитель больше не нужен: он тоже ополченец и перехватил бы комплект и мутанта
+	for r in sim_k2.residents.duplicate():
+		if String(r["prof"]) == "builder":
+			sim_k2.residents.erase(r)
+	var soldier: Dictionary = _resident_by_prof(sim_k2, "acolyte")
+	# подмена M4 могла усадить ученика в кузню/оружейную — освобождаем бойца
+	if soldier["bld"] != null:
+		(soldier["bld"] as Dictionary)["worker"] = -1
+	if soldier["site"] != null:
+		(soldier["site"] as Dictionary)["worker"] = -1
+	soldier["bld"] = null
+	soldier["site"] = null
+	soldier["sub_prof"] = ""
+	sim_k2.res["kits"] = 1.0
+	_teleport(sim_k2, soldier, armory_k["tile"])
+	# волна живёт, но рейдер далеко (у аномалии): боец успевает снарядиться
+	var raider_k := _spawn_one_raider(sim_k2, "mutant", sim_k2.map.anomaly_tile)
+	sim_k2.tick(0.1)
+	_check(bool(soldier.get("kit", false)) and float(sim_k2.res["kits"]) == 0.0,
+			"боец взял комплект в оружейке")
+	_teleport(sim_k2, raider_k, armory_k["tile"] + Vector2i(1, 0))
+	_teleport(sim_k2, soldier, armory_k["tile"])
+	var hp_k0: int = int(raider_k["hp"])
+	sim_k2.tick(0.3)
+	_check(hp_k0 - int(raider_k["hp"]) == 2, "с комплектом удар вдвое сильнее (1×2)")
+
+	# трус прячется уже при предупреждении
+	var sim_c2 := _make_sim()
+	sim_c2._last_daily_day = 999
+	var coward: Dictionary = _resident_by_prof(sim_c2, "farmer")
+	coward["traits"] = ["coward"]
+	sim_c2._raid_warned = true
+	sim_c2.tick(0.1)
+	_check(String(coward["state"]) == "hide", "трус прячется с момента предупреждения")
+
+	# рост волн: следующая позже (+2 дня) и сильнее
+	var sim_w2 := _make_sim()
+	sim_w2._last_daily_day = 999
+	sim_w2._next_raid_at = 999999999.0
+	sim_w2._spawn_raid(1, false)
+	sim_w2.raiders.clear()
+	sim_w2._raid_end(true)
+	var eta: float = sim_w2.raid_eta_days()
+	_check(eta > 2.5, "после волны интервал вырос до %.1f дня (+2)" % eta)
+	sim_w2._spawn_raid(1, false)
+	var r2: Dictionary = sim_w2.raiders[0]
+	var expected: int = int(round(float(r2["p"]["hp"]) * (1.0 + sim_w2.threat_value() * 0.04 + 1 * 0.15)))
+	_check(int(r2["max_hp"]) == expected, "вторая волна крепче: формула роста работает")
+
+	# данж: зачистка закрывает его на 10 дней, герой носит комплекты
+	var game3: Node = load("res://scripts/game.gd").new()
+	_check(game3.dungeon_available(0), "новый данж доступен")
+	game3.register_dungeon_clear(5, 10)
+	_check(game3.dungeon_clears == 1, "зачистка посчитана")
+	_check(not game3.dungeon_available(10), "сразу после зачистки данж закрыт")
+	_check(game3.dungeon_available(15), "через 10 дней данж снова работает")
+	game3.free()
+	var game4: Node = load("res://scripts/game.gd").new()
+	var sim_k3 := _make_sim()
+	sim_k3.res["metal"] = 10.0
+	_check(String(game4.buy_hero_kit(sim_k3.cfg, sim_k3)) == "", "герой купил комплект")
+	_check(int(game4.hero_kits) == 1 and float(sim_k3.res["metal"]) == 7.0, "металл списан за комплект")
+	var kit_bonus: Dictionary = game4.hero_kit_bonus(sim_k3.cfg)
+	_check(int(kit_bonus["damage"]) == 2 and int(kit_bonus["armor"]) == 1, "комплект: +2 урона, +1 броня")
+	game4.buy_hero_kit(sim_k3.cfg, sim_k3)
+	game4.buy_hero_kit(sim_k3.cfg, sim_k3)
+	_check(String(game4.buy_hero_kit(sim_k3.cfg, sim_k3)) == "armory_max", "больше трёх комплектов нельзя")
+	sim_k3.res["metal"] = 0.0
+	var game5: Node = load("res://scripts/game.gd").new()
+	_check(String(game5.buy_hero_kit(sim_k3.cfg, sim_k3)) == "no_metal", "без металла комплект не собрать")
+	game4.free()
+	game5.free()
 
 
 func _test_forbidden_school() -> void:

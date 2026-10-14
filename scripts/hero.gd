@@ -12,6 +12,8 @@ var mana_regen_period := 8.0      # сек на +1 ману (ответ №65: �
 var facing := Vector2.RIGHT
 var dead := false
 var city_mode := false            # в городе: только ходьба, без боя и рывка
+var bonus_damage := 0             # боевые комплекты героя из оружейки (M5.1)
+var bonus_armor := 0              # плоское снижение входящего урона
 
 var _dash_left := 0.0
 var _dash_cd := 0.0
@@ -151,7 +153,7 @@ func try_attack() -> void:
 			continue
 		if absf(facing.angle_to(to_enemy)) > deg_to_rad(float(p["attack_arc"])) / 2.0:
 			continue
-		enemy.take_damage(int(p["damage"]))
+		enemy.take_damage(int(p["damage"]) + bonus_damage)
 	queue_redraw()
 	get_tree().create_timer(0.15).timeout.connect(queue_redraw)
 
@@ -166,7 +168,7 @@ func city_attack(sim) -> int:
 	if to_mouse.length() > 4.0:
 		facing = to_mouse.normalized()
 	var hits: int = sim.hero_slash(global_position, facing,
-			float(p["attack_range"]), float(p["attack_arc"]), int(p["damage"]))
+			float(p["attack_range"]), float(p["attack_arc"]), int(p["damage"]) + bonus_damage)
 	queue_redraw()
 	get_tree().create_timer(0.15).timeout.connect(queue_redraw)
 	return hits
@@ -175,7 +177,7 @@ func city_attack(sim) -> int:
 func take_damage(dmg: int) -> void:
 	if _invuln > 0.0 or dead or _shield_left > 0.0:
 		return
-	hp = maxi(0, hp - dmg)
+	hp = maxi(0, hp - maxi(0, dmg - bonus_armor))
 	_invuln = 0.5
 	queue_redraw()
 	if hp <= 0:

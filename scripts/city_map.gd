@@ -6,6 +6,7 @@ const TILE_GRASS := 0
 const TILE_WATER := 1
 const TILE_ROCK := 2
 const TILE_TREE := 3
+const TILE_ORE := 4       # скала с железной рудой — под ней можно поставить шахту (M5+)
 
 var w := 0
 var h := 0
@@ -37,12 +38,15 @@ func _generate_once(seed_value: int, params: Dictionary) -> void:
 		row.resize(w)
 		row.fill(TILE_GRASS)
 		grid.append(row)
-	# озёра и скалы — круглые пятна, не у краёв
+	# озёра и скалы — круглые пятна, не у краёв; скал больше и они крупнее (M5+)
 	for i in int(params["lakes"]):
 		_blob(_random_inner_tile(rng), rng.randi_range(2, 4), TILE_WATER)
 	for i in int(params["rocks"]):
-		_blob(_random_inner_tile(rng), rng.randi_range(2, 3), TILE_ROCK)
-	# деревья поодиночке на траве
+		_blob(_random_inner_tile(rng), rng.randi_range(3, 4), TILE_ROCK)
+	# рудные жилы: железо в скалах и на голой земле — места под шахту (M5+)
+	for i in int(params.get("ore_spots", 0)):
+		_ore_blob(_random_inner_tile(rng), rng.randi_range(1, 2))
+	# деревья поодиночке на траве — лес гуще (M5+)
 	var placed := 0
 	var guard := 0
 	while placed < int(params["trees"]) and guard < int(params["trees"]) * 20:
@@ -70,6 +74,17 @@ func _blob(center: Vector2i, radius: int, kind: int) -> void:
 				continue
 			if Vector2(x, y).distance_to(Vector2(center)) <= radius:
 				grid[y][x] = kind
+
+
+## Рудная жила: железо поверх скал и травы, но не поверх воды.
+func _ore_blob(center: Vector2i, radius: int) -> void:
+	for y in range(center.y - radius, center.y + radius + 1):
+		for x in range(center.x - radius, center.x + radius + 1):
+			if x < 0 or y < 0 or x >= w or y >= h:
+				continue
+			if Vector2(x, y).distance_to(Vector2(center)) <= radius \
+					and (grid[y][x] == TILE_GRASS or grid[y][x] == TILE_ROCK):
+				grid[y][x] = TILE_ORE
 
 
 func _clear_around(center: Vector2i, radius: int) -> void:
@@ -102,9 +117,10 @@ func in_bounds(p: Vector2i) -> bool:
 	return p.x >= 0 and p.y >= 0 and p.x < w and p.y < h
 
 
-## Проходимость ландшафта (без учёта зданий).
+## Проходимость ландшафта (без учёта зданий). Руда — как скала: непроходима.
 func is_nature_walkable(p: Vector2i) -> bool:
-	return in_bounds(p) and grid[p.y][p.x] != TILE_WATER and grid[p.y][p.x] != TILE_ROCK
+	return in_bounds(p) and grid[p.y][p.x] != TILE_WATER and grid[p.y][p.x] != TILE_ROCK \
+			and grid[p.y][p.x] != TILE_ORE
 
 
 func _setup_astar() -> void:

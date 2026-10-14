@@ -198,6 +198,10 @@ func _build_hero() -> void:
 	var hero_params: Dictionary = params["hero"]
 	hero.setup(hero_params, int(hero_params["mana"]))
 	_apply_mana_params()
+	# боевые комплекты героя из оружейки: +урон, +броня (M5.1)
+	var kit: Dictionary = Game.hero_kit_bonus(_read_json(CITY_CFG_PATH))
+	hero.bonus_damage = int(kit["damage"])
+	hero.bonus_armor = int(kit["armor"])
 	hero.position = _tile_to_pos(gen.start_tile)
 	hero.died.connect(_on_hero_died)
 	add_child(hero)
@@ -220,10 +224,20 @@ func _apply_mana_params() -> void:
 	hero.mana_regen_period = regen
 
 
+## Враги данжа: с каждой полной зачисткой сильнее (M5.1).
+func _scaled_enemy(data: Dictionary) -> Dictionary:
+	var growth: Dictionary = params.get("clear_growth", {})
+	var n := int(Game.dungeon_clears)
+	var out := data.duplicate()
+	out["hp"] = int(round(float(data["hp"]) * (1.0 + float(growth.get("hp_per_clear", 0.3)) * n)))
+	out["damage"] = int(data["damage"]) + n * int(growth.get("damage_per_clear", 1))
+	return out
+
+
 func _build_enemies() -> void:
 	for i in gen.enemy_spawns.size():
 		var enemy = EnemyScript.new()
-		enemy.setup(_pick_enemy_data())
+		enemy.setup(_scaled_enemy(_pick_enemy_data()))
 		enemy.position = _tile_to_pos(gen.enemy_spawns[i])
 		enemy.hero = hero
 		enemy.died.connect(_on_enemy_died)
@@ -550,6 +564,20 @@ func _on_enemy_died(enemy) -> void:
 		_spawn_pickup("item", String(_roll_item()["id"]), enemy.position)
 	if _loot_rng.randf() < float(enemy.p["mana_chance"]):
 		_spawn_pickup("mana", "", enemy.position + Vector2(12, 6))
+	_check_dungeon_cleared()
+
+
+## Все враги мертвы — данж зачищен: 10 дней не работает, следующая версия сильнее (M5.1).
+func _check_dungeon_cleared() -> void:
+	for e in get_tree().get_nodes_in_group("enemies"):
+		if is_instance_valid(e) and int(e["hp"]) > 0:
+			return
+	var growth: Dictionary = params.get("clear_growth", {})
+	var day := 0
+	if Game.city_sim != null:
+		day = int(Game.city_sim.day)
+	Game.register_dungeon_clear(day, int(growth.get("lock_days", 10)))
+	hud.toast(Loc.t("dungeon.cleared_toast") % int(growth.get("lock_days", 10)))
 
 
 ## Смерть героя: потеря половины лута и выброс в город, игра продолжается.

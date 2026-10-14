@@ -18,6 +18,9 @@ var start_residents := 5         # настройки старта из меню
 var start_level := "normal"      # "low" | "normal" | "high"
 var test_mode := false           # тест-режим: много ресурсов, рун и добычи
 var conflicts_enabled := true    # ссоры и воровство жителей (ответ №29, галочка в меню)
+var dungeon_clears := 0          # полных зачисток данжа (M5.1: с каждой сильнее)
+var dungeon_lock_day := 0        # данж восстановится к этому дню города (M5.1)
+var hero_kits := 0               # боевые комплекты героя из оружейки (M5.1)
 
 
 func _init() -> void:
@@ -40,6 +43,9 @@ func new_city() -> void:
 	inventory = []
 	spellbook = []
 	last_run_death = false
+	dungeon_clears = 0
+	dungeon_lock_day = 0
+	hero_kits = 0
 	var cfg: Variant = _read_json(CITY_CFG_PATH)
 	if not (cfg is Dictionary):
 		push_error("Не читается data/city.json")
@@ -143,3 +149,39 @@ func lose_half_loot() -> int:
 		lost_total += lost
 	inventory = inventory.filter(func(stack: Dictionary) -> bool: return int(stack["count"]) > 0)
 	return lost_total
+
+
+## --- данж: зачистки и восстановление (M5.1) -------------------------------
+
+## Данж доступен в этот день города?
+func dungeon_available(day: int) -> bool:
+	return day >= dungeon_lock_day
+
+
+## Данж полностью зачищен: восстанавливается lock_days дней, следующая версия сильнее.
+func register_dungeon_clear(day: int, lock_days: int) -> void:
+	dungeon_clears += 1
+	dungeon_lock_day = day + lock_days
+
+
+## --- комплекты героя (M5.1) ------------------------------------------------
+
+## Надеть комплект из оружейки: +урон и +броня герою. true — надет.
+func buy_hero_kit(city_cfg: Dictionary, sim) -> String:
+	var kcfg: Dictionary = city_cfg.get("hero_kit", {})
+	if int(kcfg.get("max", 3)) > 0 and hero_kits >= int(kcfg.get("max", 3)):
+		return "armory_max"
+	if sim == null or float(sim.res.get("metal", 0.0)) < float(kcfg.get("cost_metal", 3)):
+		return "no_metal"
+	sim.res["metal"] = float(sim.res["metal"]) - float(kcfg.get("cost_metal", 3))
+	hero_kits += 1
+	return ""
+
+
+## Бонусы героя от комплектов: {damage, armor}.
+func hero_kit_bonus(city_cfg: Dictionary) -> Dictionary:
+	var kcfg: Dictionary = city_cfg.get("hero_kit", {})
+	return {
+		"damage": hero_kits * int(kcfg.get("damage", 2)),
+		"armor": hero_kits * int(kcfg.get("armor", 1)),
+	}

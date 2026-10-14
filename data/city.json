@@ -3,8 +3,9 @@
 	"map_w": 44,
 	"map_h": 30,
 	"lakes": 3,
-	"rocks": 3,
-	"trees": 40,
+	"rocks": 6,
+	"ore_spots": 4,
+	"trees": 80,
 	"resident_speed": 70.0,
 	"day_length": 120.0,
 	"night_fraction": 0.3,
@@ -45,11 +46,14 @@
 		"altar_regen_period": 5.0
 	},
 	"threat": {
-		"start_day": 3.0,
+		"start_day": 10.0,
 		"min_threat": 1.0,
 		"base_gap_days": 1.2,
 		"gap_min_days": 0.6,
 		"gap_shrink": 0.04,
+		"wave_growth_gap_days": 2.0,
+		"wave_growth_size": 1,
+		"wave_growth_hp": 0.15,
 		"day_growth": 0.35,
 		"city_growth": 0.08,
 		"siege_from_threat": 8.0,
@@ -66,6 +70,9 @@
 		"tower_cd": 1.2,
 		"guard_damage": 2,
 		"guard_cd": 1.0,
+		"militia_damage": 1,
+		"militia_cd": 1.5,
+		"kit_damage_mult": 2.0,
 		"bld_hp": { "wall": 30, "gate": 40, "tower": 30, "default": 20 },
 		"brute_bld_mult": 3.0,
 		"reward_crystals": 2,
@@ -75,6 +82,9 @@
 		"repelled_mood": 8.0,
 		"wound_on_raze_chance": 0.5
 	},
+	"guards": { "base": 2, "per_pop": 8 },
+	"hunting": { "animals": 8, "respawn_chance": 0.35, "hunt_food": 6.0, "hunt_time": 2.0, "roam_range": 15 },
+	"hero_kit": { "cost_metal": 3, "damage": 2, "armor": 1, "max": 3 },
 	"storm": {
 		"base_chance": 0.02,
 		"pollution_chance": 0.25,
@@ -103,7 +113,7 @@
 		"residents_default": 6,
 		"residents_min": 1,
 		"residents_max": 12,
-		"professions": ["farmer", "lumberjack", "builder", "guard", "acolyte", "crafter", "healer", "bartender", "miner"],
+		"professions": ["farmer", "lumberjack", "builder", "guard", "acolyte", "crafter", "healer", "bartender", "miner", "smelter", "smith", "armorer", "hunter", "fisher"],
 		"levels": {
 			"low": {"wood": 30, "stone": 15, "food": 20, "crystal": 0},
 			"normal": {"wood": 60, "stone": 30, "food": 40, "crystal": 0},
@@ -120,7 +130,12 @@
 		{"id": "healer", "loc": "prof.healer", "color": "#4db6ac"},
 		{"id": "elder", "loc": "prof.elder", "color": "#ffd54f"},
 		{"id": "bartender", "loc": "prof.bartender", "color": "#ffb300"},
-		{"id": "miner", "loc": "prof.miner", "color": "#b0bec5"}
+		{"id": "miner", "loc": "prof.miner", "color": "#b0bec5"},
+		{"id": "smelter", "loc": "prof.smelter", "color": "#ff8a65"},
+		{"id": "smith", "loc": "prof.smith", "color": "#f48fb1"},
+		{"id": "armorer", "loc": "prof.armorer", "color": "#ce93d8"},
+		{"id": "hunter", "loc": "prof.hunter", "color": "#a1887f"},
+		{"id": "fisher", "loc": "prof.fisher", "color": "#4dd0e1"}
 	],
 	"buildings": [
 		{"id": "house", "loc": "bld.house", "desc": "bld.desc.house", "color": "#c78d5b", "cost": {"wood": 15}, "build_work": 20, "effect": "pop", "district": "living"},
@@ -135,7 +150,12 @@
 		{"id": "tower", "loc": "bld.tower", "desc": "bld.desc.tower", "color": "#e57373", "cost": {"wood": 10, "stone": 15}, "build_work": 30, "worker": "guard", "effect": "guard", "district": "work"},
 		{"id": "altar", "loc": "bld.altar", "desc": "bld.desc.altar", "color": "#ce93d8", "cost": {"stone": 10, "crystal": 2}, "build_work": 30, "worker": "acolyte", "effect": "altar", "district": "work"},
 		{"id": "healer_hut", "loc": "bld.healer_hut", "desc": "bld.desc.healer_hut", "color": "#80cbc4", "cost": {"wood": 10}, "build_work": 20, "worker": "healer", "effect": "heal", "district": "work"},
-		{"id": "tavern", "loc": "bld.tavern", "desc": "bld.desc.tavern", "color": "#d4a017", "cost": {"wood": 20, "stone": 10}, "build_work": 30, "worker": "bartender", "effect": "tavern", "district": "work"}
+		{"id": "tavern", "loc": "bld.tavern", "desc": "bld.desc.tavern", "color": "#d4a017", "cost": {"wood": 20, "stone": 10}, "build_work": 30, "worker": "bartender", "effect": "tavern", "district": "work"},
+		{"id": "mine", "loc": "bld.mine", "desc": "bld.desc.mine", "color": "#8d6e63", "cost": {"wood": 12}, "build_work": 30, "worker": "miner", "produce": {"res": "iron", "per_day": 6}, "place": "ore", "district": "work"},
+		{"id": "smelter", "loc": "bld.smelter", "desc": "bld.desc.smelter", "color": "#ff7043", "cost": {"stone": 15, "wood": 5}, "build_work": 35, "worker": "smelter", "produce": {"res": "metal", "per_day": 3, "inputs": {"iron": 2}}, "district": "work"},
+		{"id": "forge", "loc": "bld.forge", "desc": "bld.desc.forge", "color": "#e57373", "cost": {"stone": 15, "wood": 10}, "build_work": 35, "worker": "smith", "produce": {"res": "tools", "per_day": 4, "inputs": {"metal": 1}}, "district": "work"},
+		{"id": "armory", "loc": "bld.armory", "desc": "bld.desc.armory", "color": "#bcaaa4", "cost": {"stone": 15, "wood": 10, "metal": 2}, "build_work": 40, "worker": "armorer", "produce": {"res": "kits", "per_day": 1, "inputs": {"metal": 2}}, "place": "near_forge", "district": "work"},
+		{"id": "pier", "loc": "bld.pier", "desc": "bld.desc.pier", "color": "#4dd0e1", "cost": {"wood": 12}, "build_work": 25, "worker": "fisher", "produce": {"res": "food", "per_day": 10}, "place": "water", "district": "work"}
 	],
 	"loot_to_pool": {
 		"stone_chip": "stone",

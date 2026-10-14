@@ -27,6 +27,7 @@
 	},
 	"mana_drain_period": 25.0,
 	"crystal_mana": 3,
+	"clear_growth": { "lock_days": 10, "hp_per_clear": 0.3, "damage_per_clear": 1 },
 	"test_mode": {
 		"chest_items_min": 3,
 		"chest_items_max": 5,

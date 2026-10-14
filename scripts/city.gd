@@ -22,6 +22,7 @@ var enchant_mode := ""          # выбранное зачарование (M3)
 var _modulate: CanvasModulate
 var _static_body: StaticBody2D
 var _near_anomaly := false
+var _near_armory: Dictionary = {}   # оружейка рядом с героем (E — комплект героя)
 
 
 func _ready() -> void:
@@ -72,6 +73,9 @@ func _spawn_hero() -> void:
 	hero = hero_script.new()
 	hero.city_mode = true
 	hero.setup(dungeon_cfg["hero"], 0)
+	var kit: Dictionary = Game.hero_kit_bonus(cfg)
+	hero.bonus_damage = int(kit["damage"])
+	hero.bonus_armor = int(kit["armor"])
 	hero.position = map.tile_center_px(map.spawn_tile)
 	add_child(hero)
 	hero.set_camera_limits(Rect2(0, 0, map.w * map.ts, map.h * map.ts))
@@ -156,10 +160,25 @@ func _process(_delta: float) -> void:
 	_process_events()
 	_update_hover()
 	_near_anomaly = hero.position.distance_to(map.tile_center_px(map.anomaly_tile)) < map.ts * 1.7
+	_near_armory = _armory_near_hero()
 	if _near_anomaly:
-		hud.set_hint(Loc.t("city.enter_anomaly"))
+		if Game.dungeon_available(sim.day_number()):
+			hud.set_hint(Loc.t("city.enter_anomaly"))
+		else:
+			hud.set_hint(Loc.t("city.dungeon_locked_hint") % (Game.dungeon_lock_day - sim.day_number()))
+	elif not _near_armory.is_empty():
+		hud.set_hint(Loc.t("city.armory_hint") % int(cfg.get("hero_kit", {}).get("cost_metal", 3)))
 	elif build_mode == "":
 		hud.set_hint(_default_hint())
+
+
+## Оружейка рядом с героем (M5.1): за металл герой надевает боевой комплект.
+func _armory_near_hero() -> Dictionary:
+	for b in sim.buildings:
+		if bool(b["done"]) and String(b["type"]) == "armory" \
+				and hero.position.distance_to(map.tile_center_px(b["tile"])) < map.ts * 1.7:
+			return b
+	return {}
 
 
 ## Название здания под курсором — тултип у мыши (просьба заказчика).
@@ -266,6 +285,10 @@ func _process_events() -> void:
 				hud.toast(Loc.t("city.storm_strike_toast") % bld_name)
 			"hero_hit":
 				hero.take_damage(int(ev["dmg"]))
+			"hunt":
+				hud.toast(Loc.t("city.hunt_toast") % [String(ev["name"]), int(ev["food"])])
+			"guard_trained":
+				hud.toast(Loc.t("city.guard_trained_toast") % String(ev["name"]))
 	sim.events.clear()
 
 
@@ -321,9 +344,16 @@ func _on_hero_down() -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
-	if event.is_action_pressed("interact") and _near_anomaly:
-		_enter_dungeon()
-		return
+	if event.is_action_pressed("interact"):
+		if _near_anomaly:
+			if Game.dungeon_available(sim.day_number()):
+				_enter_dungeon()
+			else:
+				hud.toast(Loc.t("city.dungeon_locked_toast") % (Game.dungeon_lock_day - sim.day_number()))
+			return
+		if not _near_armory.is_empty():
+			_buy_hero_kit()
+			return
 	if event.is_action_pressed("inventory"):
 		hud.toggle_residents()
 		return
@@ -374,7 +404,7 @@ func _unhandled_input(event: InputEvent) -> void:
 
 func _try_place() -> void:
 	var tile: Vector2i = map.tile_of_px(get_global_mouse_position())
-	if not sim.is_buildable_tile(tile):
+	if not sim.is_buildable_tile(tile, build_mode):
 		hud.toast(Loc.t("city.cant_build_here"))
 		return
 	var cost: Dictionary = {}
@@ -383,6 +413,10 @@ func _try_place() -> void:
 			cost = b["cost"]
 	if not sim.can_afford(cost):
 		hud.toast(Loc.t("city.need_resources"))
+		return
+	var block: String = sim.placement_block(build_mode, tile)
+	if block != "":
+		hud.toast(Loc.t(block))
 		return
 	sim.place_building(build_mode, tile)
 
@@ -489,6 +523,20 @@ func _try_enchant() -> void:
 func set_speed(value: int) -> void:
 	sim.speed = value
 	sim.paused = false
+
+
+## Комплект героя из оружейки: металл из пула, бонусы урона/брони (M5.1).
+func _buy_hero_kit() -> void:
+	var err: String = Game.buy_hero_kit(cfg, sim)
+	if err == "":
+		var kit: Dictionary = Game.hero_kit_bonus(cfg)
+		hero.bonus_damage = int(kit["damage"])
+		hero.bonus_armor = int(kit["armor"])
+		hud.toast(Loc.t("city.armory_bought_toast") % Game.hero_kits)
+	elif err == "armory_max":
+		hud.toast(Loc.t("city.armory_max_toast"))
+	else:
+		hud.toast(Loc.t("city.armory_no_metal_toast"))
 
 
 func _enter_dungeon() -> void:

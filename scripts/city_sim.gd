@@ -22,7 +22,7 @@ extends RefCounted
 ## Рейдер: {id, type, p(строка enemies.json), hp, max_hp, pos, target, path,
 ##          atk_cd, goal(тайл), mode(advance|break|fight|flee)}
 
-const RESOURCES := ["wood", "stone", "food", "crystal", "tools"]
+const RESOURCES := ["wood", "stone", "food", "crystal", "tools", "iron", "metal", "kits"]
 
 var map = null                  # city_map.gd, нетипизированно (см. грабли GDScript)
 var cfg: Dictionary = {}
@@ -52,6 +52,7 @@ var storm_state := ""           # "" | "warn" | "active"
 var storm_left := 0.0           # сек до конца бури / до начала (warn)
 var hero_pos := Vector2.ZERO    # где герой в городе (сцена обновляет каждый кадр)
 var hero_alive := false         # герой в городе и на ногах
+var animals: Array = []         # дикие животные для охоты: {id, pos, target, path, idle}
 
 var _next_id := 1
 var _trait_map := {}            # id черты -> описание (из people["traits"])
@@ -96,6 +97,9 @@ func setup(city_map, city_cfg: Dictionary, residents_count: int, level: String) 
 	storm_state = ""
 	storm_left = 0.0
 	hero_alive = false
+	animals = []
+	for i in int(cfg.get("hunting", {}).get("animals", 8)):
+		animals.append(_new_animal())
 	_next_raid_at = 0.0
 	_raid_warned = false
 	_storm_struck_at = 0.0
@@ -380,19 +384,26 @@ func building_at(tile: Vector2i) -> Dictionary:
 
 # --- стройка -------------------------------------------------------------
 
-## Тайл годен под стройку: проходимая суша, нет здания, не аномалия.
-func is_buildable_tile(tile: Vector2i) -> bool:
+## Тайл годен под стройку: проходимая суша (или руда под шахту), нет здания, не аномалия.
+func is_buildable_tile(tile: Vector2i, type_id := "") -> bool:
 	if not map.in_bounds(tile) or tile == map.anomaly_tile:
 		return false
 	if not map.is_nature_walkable(tile):
-		return false
+		# шахту ставим прямо на рудную жилу (заказчик: место под шахту)
+		if type_id == "mine" and map.grid[tile.y][tile.x] == map.TILE_ORE:
+			pass
+		else:
+			return false
 	return building_at(tile).is_empty()
 
 
 ## Заложить стройплощадку: ресурсы списываются сразу (ответ №16 — достраивают рабочие).
+## Особые здания требуют места: шахта — руда, пирс — вода рядом, оружейная — кузня рядом.
 func place_building(type_id: String, tile: Vector2i) -> bool:
 	var def := _def({"type": type_id})
-	if def.is_empty() or not is_buildable_tile(tile) or not can_afford(def["cost"]):
+	if def.is_empty() or not is_buildable_tile(tile, type_id) or not can_afford(def["cost"]):
+		return false
+	if placement_block(type_id, tile) != "":
 		return false
 	for key in def["cost"]:
 		res[key] = int(res[key]) - int(def["cost"][key])
@@ -406,6 +417,47 @@ func place_building(type_id: String, tile: Vector2i) -> bool:
 	events.append({"type": "site", "bld": type_id})
 	_assign_jobs()
 	return true
+
+
+## Почему здание нельзя поставить здесь: ключ локализации или "" (для тоста сцены).
+func placement_block(type_id: String, tile: Vector2i) -> String:
+	var place := ""
+	for d in cfg["buildings"]:
+		if String(d["id"]) == type_id:
+			place = String(d.get("place", ""))
+			break
+	match place:
+		"ore":
+			if map.in_bounds(tile) and map.grid[tile.y][tile.x] != map.TILE_ORE:
+				return "city.placement_ore"
+		"water":
+			if not _water_near(tile):
+				return "city.placement_water"
+		"near_forge":
+			if _nearest_building_type(tile, ["forge"], 2.0).is_empty():
+				return "city.placement_forge"
+	return ""
+
+
+func _water_near(tile: Vector2i) -> bool:
+	for n in [tile + Vector2i(1, 0), tile + Vector2i(-1, 0), tile + Vector2i(0, 1), tile + Vector2i(0, -1)]:
+		if map.in_bounds(n) and map.grid[n.y][n.x] == map.TILE_WATER:
+			return true
+	return false
+
+
+## Ближайшее готовое здание одного из типов в радиусе (тайлах), {} — нет.
+func _nearest_building_type(tile: Vector2i, types: Array, radius: float) -> Dictionary:
+	var best: Dictionary = {}
+	var best_d := radius
+	for b in buildings:
+		if not bool(b["done"]) or not (String(b["type"]) in types):
+			continue
+		var d: float = Vector2(b["tile"]).distance_to(Vector2(tile))
+		if d <= best_d:
+			best_d = d
+			best = b
+	return best
 
 
 ## Запас прочности здания (M5): стены/ворота крепче, остальное — базовое.
@@ -660,6 +712,7 @@ func tick(dt_raw: float) -> void:
 	_update_wild_events(pol_cfg, day_len)
 	_update_storm(dt, day_len)
 	_update_threat(dt, day_len)
+	_update_animals(dt)
 	for r in residents:
 		_update_resident(r, dt)
 	# люди (M4): раз в игровой день — преемник старосты, болезни, беженцы, рождения, стройка, истории
@@ -671,6 +724,8 @@ func tick(dt_raw: float) -> void:
 		_roll_births()
 		_roll_autobuild()
 		_roll_stories()
+		_roll_guards()
+		_roll_animals()
 		_roll_storm()
 	_update_gates()   # достроенные за тик вышки/ворота сразу меняют проходимость
 
@@ -765,16 +820,27 @@ func _update_resident(r: Dictionary, dt: float) -> void:
 		_lie_ill(r, dt)
 		return
 	var night := is_night()
-	# атака мутантов (M5): страж выходит на бой, трус прячется дома
-	if raid_active:
-		if String(r["prof"]) == "guard":
-			_guard_fight(r, dt)
-			return
+	var tcfg: Dictionary = cfg.get("threat", {})
+	# угроза (M5+): трус прячется сразу с предупреждения, бойцы снаряжаются в оружейке
+	if raid_active or _raid_warned:
 		if _has_trait_flag(r, "flees"):
 			_flee_home(r, dt)
 			return
-	# ночь: все, кроме стража на вышке, спят
-	if night and String(r["prof"]) != "guard":
+		if String(r["prof"]) == "guard":
+			_defender_update(r, dt, float(tcfg.get("guard_damage", 2)), float(tcfg.get("guard_cd", 1.0)))
+			return
+	if raid_active:
+		# ополчение: бьются все свободные взрослые и храбрые работники (заказчик)
+		var free := r["site"] == null and r["bld"] == null
+		if (free or _has_trait_flag(r, "fearless")) \
+				and String(r["prof"]) != "" and String(r["prof"]) != "elder":
+			_defender_update(r, dt, float(tcfg.get("militia_damage", 1)), float(tcfg.get("militia_cd", 1.5)))
+			return
+	# ночь: спят все, кроме стража ночной смены (дежурство день/ночь — заказчик)
+	var guard_on_duty := String(r["prof"]) == "guard" \
+			and ((night and String(r.get("shift", "day")) == "night") \
+				or (not night and String(r.get("shift", "day")) == "day"))
+	if night and not guard_on_duty:
 		_sleep(r, dt)
 		return
 	# сильная усталость: отдых в любое время
@@ -793,11 +859,13 @@ func _update_resident(r: Dictionary, dt: float) -> void:
 		else:
 			r["state"] = "idle"
 		return
+	if String(r["prof"]) == "hunter":
+		_hunt(r, dt)
+		return
 	if String(r["prof"]) == "elder":
 		_manage_walk(r, dt)
 		return
-	# страж ночью идёт на вышку
-	if night and String(r["prof"]) == "guard":
+	if guard_on_duty:
 		var tower := _assigned_done(r, "guard")
 		if not tower.is_empty():
 			if _arrived(r, tower["tile"]):
@@ -855,30 +923,52 @@ func _restore_rate(r: Dictionary, sleeping: bool) -> float:
 	return base
 
 
-## Страж в бою (M5): у вышки стоит на посту (стреляет сама вышка), без вышки —
-## сам ищет ближайшего мутанта и бьёт в упор.
-func _guard_fight(r: Dictionary, dt: float) -> void:
-	var tower := _assigned_done(r, "guard")
-	if not tower.is_empty():
-		if _arrived(r, tower["tile"]):
-			r["state"] = "guard"
-			r["fatigue"] += dt / float(cfg["day_length"])
+## Боец (страж или ополченец) при угрозе: без комплекта идёт в оружейку
+## (страж перед осадой снаряжается и ждёт — заказчик), с комплектом бьёт сильнее.
+func _defender_update(r: Dictionary, dt: float, dmg: float, cd: float) -> void:
+	var tcfg: Dictionary = cfg.get("threat", {})
+	var armory := _done_building_of_type("armory")
+	# снаряжение: в хранилище есть комплекты, боец ещё без него
+	if not bool(r.get("kit", false)) and float(res.get("kits", 0.0)) > 0.0 and not armory.is_empty():
+		if _arrived(r, armory["tile"]):
+			res["kits"] = maxf(0.0, float(res["kits"]) - 1.0)
+			r["kit"] = true
 		else:
-			_move_towards(r, tower["tile"], dt)
-		return
-	var target := _nearest_raider(r["pos"], float(map.ts) * 8.0)
+			_move_towards(r, armory["tile"], dt)
+			return
+	var mult := float(tcfg.get("kit_damage_mult", 2.0)) if bool(r.get("kit", false)) else 1.0
+	var target := _nearest_raider(r["pos"], float(map.ts) * 10.0)
 	if target.is_empty():
-		r["state"] = "idle"
+		# волна ещё в пути: страж ждёт на вышке, ополчение — в центре города
+		if String(r["prof"]) == "guard":
+			var tower := _assigned_done(r, "guard")
+			if not tower.is_empty():
+				if _arrived(r, tower["tile"]):
+					r["state"] = "guard"
+				else:
+					_move_towards(r, tower["tile"], dt)
+				return
+		if not _arrived(r, map.spawn_tile + Vector2i(1, 0)):
+			_move_towards(r, map.spawn_tile + Vector2i(1, 0), dt)
+		else:
+			r["state"] = "guard"
 		return
 	var dist: float = (target["pos"] as Vector2).distance_to(r["pos"])
 	if dist <= float(map.ts) * 1.5:
 		r["atk_cd"] = maxf(0.0, float(r.get("atk_cd", 0.0)) - dt)
 		if float(r["atk_cd"]) <= 0.0:
-			r["atk_cd"] = float(cfg.get("threat", {}).get("guard_cd", 1.0))
-			_hit_raider(target, int(cfg.get("threat", {}).get("guard_damage", 2)))
+			r["atk_cd"] = cd
+			_hit_raider(target, int(round(dmg * mult)))
 		r["state"] = "guard"
 	else:
 		_move_towards(r, map.tile_of_px(target["pos"]), dt)
+
+
+func _done_building_of_type(type_id: String) -> Dictionary:
+	for b in buildings:
+		if bool(b["done"]) and String(b["type"]) == type_id:
+			return b
+	return {}
 
 
 ## Трус прячется дома, пока в городе мутанты.
@@ -1194,8 +1284,17 @@ func _kill(r: Dictionary, chron_key: String) -> void:
 		(r["bld"] as Dictionary)["worker"] = -1
 	if r["site"] != null:
 		(r["site"] as Dictionary)["worker"] = -1
+	if bool(r.get("kit", false)):
+		res["kits"] = float(res.get("kits", 0.0)) + 1.0   # комплект вернулся в хранилище
 	residents.erase(r)
 	_assign_jobs()
+
+
+func _resident_by_id(res_id: int) -> Dictionary:
+	for r in residents:
+		if int(r["id"]) == res_id:
+			return r
+	return {}
 
 
 func _healer_ready() -> bool:
@@ -1863,7 +1962,9 @@ func raid_eta_days() -> float:
 
 func _schedule_next_raid() -> void:
 	var tcfg: Dictionary = cfg.get("threat", {})
+	# каждая прошедшая волна сильнее, а следующая приходит на 2 дня позже (заказчик)
 	var gap: float = float(tcfg.get("base_gap_days", 1.2)) \
+			+ float(tcfg.get("wave_growth_gap_days", 2.0)) * float(raid_count) \
 			- float(tcfg.get("gap_shrink", 0.04)) * threat_value()
 	_raid_gap_days = maxf(gap, float(tcfg.get("gap_min_days", 0.6)))
 	_next_raid_at = time + _raid_gap_days * float(cfg["day_length"])
@@ -1909,7 +2010,12 @@ func _spawn_raid(size: int, siege: bool) -> void:
 	raid_siege = siege
 	raid_count += 1
 	razed_this_raid = 0
-	var hp_mult := 1.0 + threat_value() * float(tcfg.get("hp_per_threat", 0.04))
+	# каждая следующая волна сильнее (заказчик): больше размер и прочность тварей
+	var wave_no := raid_count - 1
+	size = clampi(size + wave_no * int(tcfg.get("wave_growth_size", 1)), 1,
+			int(tcfg.get("raid_size_max", 10)) + wave_no)
+	var hp_mult := 1.0 + threat_value() * float(tcfg.get("hp_per_threat", 0.04)) \
+			+ float(wave_no) * float(tcfg.get("wave_growth_hp", 0.15))
 	for i in size:
 		var def := _pick_raider_def(tcfg)
 		if def.is_empty():
@@ -1985,7 +2091,12 @@ func _shoot_towers(dt: float, tcfg: Dictionary) -> void:
 		if target.is_empty():
 			continue
 		b["cd"] = float(tcfg.get("tower_cd", 1.2))
-		_hit_raider(target, int(tcfg.get("tower_damage", 2)))
+		# комплект стража усиливает и выстрелы его вышки
+		var mult := 1.0
+		var worker := _resident_by_id(int(b["worker"]))
+		if not worker.is_empty() and bool(worker.get("kit", false)):
+			mult = float(tcfg.get("kit_damage_mult", 2.0))
+		_hit_raider(target, int(round(float(tcfg.get("tower_damage", 2)) * mult)))
 
 
 func _nearest_raider(from_px: Vector2, radius_px: float) -> Dictionary:
@@ -2200,3 +2311,136 @@ func _storm_strike_target() -> Dictionary:
 	if candidates.is_empty():
 		return {}
 	return candidates[_event_rng.randi_range(0, candidates.size() - 1)]
+
+
+# --- охота, животные, стражи (M5.1) ------------------------------------------
+
+func _new_animal() -> Dictionary:
+	_next_id += 1
+	return {"id": _next_id, "pos": _random_walkable_px(), "target": Vector2i(-1, -1),
+			"path": PackedVector2Array(), "idle": _event_rng.randf_range(0.0, 4.0)}
+
+
+func _random_walkable_px() -> Vector2:
+	for attempt in 60:
+		var tile := Vector2i(_event_rng.randi_range(1, map.w - 2), _event_rng.randi_range(1, map.h - 2))
+		if map.is_walkable(tile) and building_at(tile).is_empty():
+			return map.tile_center_px(tile)
+	return map.tile_center_px(map.spawn_tile)
+
+
+## Животные бродят по карте (чистая симуляция — без графики, для оптимизации).
+func _update_animals(dt: float) -> void:
+	for a in animals:
+		a["idle"] = float(a["idle"]) - dt
+		if float(a["idle"]) > 0.0:
+			continue
+		a["idle"] = _event_rng.randf_range(2.0, 6.0)
+		var here: Vector2i = map.tile_of_px(a["pos"])
+		var goal: Vector2i = here + Vector2i(_event_rng.randi_range(-3, 3), _event_rng.randi_range(-3, 3))
+		if map.is_walkable(goal):
+			a["target"] = goal
+			a["path"] = map.path_px(a["pos"], goal)
+	var path: PackedVector2Array = PackedVector2Array()
+	for a in animals:
+		path = a["path"]
+		if (path as PackedVector2Array).is_empty():
+			continue
+		var pos: Vector2 = a["pos"]
+		var step: float = 30.0 * dt
+		while step > 0.0 and not (path as PackedVector2Array).is_empty():
+			var to_next: Vector2 = path[0] - pos
+			var dist := to_next.length()
+			if dist <= step:
+				pos = path[0]
+				step -= dist
+				path.remove_at(0)
+			else:
+				pos += to_next / dist * step
+				step = 0.0
+		a["pos"] = pos
+		a["path"] = path
+
+
+func _nearest_animal(from_px: Vector2, radius_px: float) -> Dictionary:
+	var best: Dictionary = {}
+	var best_d := radius_px
+	for a in animals:
+		var d: float = (a["pos"] as Vector2).distance_to(from_px)
+		if d < best_d:
+			best_d = d
+			best = a
+	return best
+
+
+## Охотник: догоняет зверя, разделывает (hunt_time), еда в пул.
+func _hunt(r: Dictionary, dt: float) -> void:
+	var hcfg: Dictionary = cfg.get("hunting", {})
+	var prey := _nearest_animal(r["pos"], float(hcfg.get("roam_range", 15)) * float(map.ts))
+	if prey.is_empty():
+		r["state"] = "idle"
+		return
+	if (prey["pos"] as Vector2).distance_to(r["pos"]) <= float(map.ts) * 1.3:
+		r["state"] = "hunt"
+		r["hunt_t"] = float(r.get("hunt_t", 0.0)) + dt
+		if float(r["hunt_t"]) >= float(hcfg.get("hunt_time", 2.0)):
+			r["hunt_t"] = 0.0
+			animals.erase(prey)
+			var food: float = float(hcfg.get("hunt_food", 6.0))
+			_add_resource_capped("food", food)
+			_chron("chron.hunt", String(r["name"]), str(int(food)))
+			events.append({"type": "hunt", "name": String(r["name"]), "food": int(food)})
+	else:
+		r["hunt_t"] = 0.0
+		_move_towards(r, map.tile_of_px(prey["pos"]), dt)
+
+
+## Дневной бросок: зверьё восстанавливается.
+func _roll_animals() -> void:
+	var hcfg: Dictionary = cfg.get("hunting", {})
+	if hcfg.is_empty():
+		return
+	if animals.size() >= int(hcfg.get("animals", 8)):
+		return
+	if _event_rng.randf() < float(hcfg.get("respawn_chance", 0.35)):
+		animals.append(_new_animal())
+
+
+## Дневной бросок: город держит стражей — двое на постоянке (день и ночь),
+## больше при росте населения; берут свободных взрослых, если есть еда (заказчик).
+func _roll_guards() -> void:
+	var gcfg: Dictionary = cfg.get("guards", {})
+	if gcfg.is_empty():
+		return
+	var desired: int = int(gcfg.get("base", 2)) + residents.size() / maxi(1, int(gcfg.get("per_pop", 8)))
+	var have := 0
+	for r in residents:
+		if String(r["prof"]) == "guard":
+			have += 1
+	if have >= desired or not _food_reserve_ok():
+		return
+	for r in residents:
+		if have >= desired:
+			break
+		if String(r["prof"]) in ["", "elder", "guard"] or String(r.get("ail", "")) != "":
+			continue
+		if r["bld"] != null or r["site"] != null:
+			continue
+		r["prof"] = "guard"
+		r["bld"] = null
+		r["site"] = null
+		r["sub_prof"] = ""
+		have += 1
+		_chron("chron.guard_trained", String(r["name"]))
+		events.append({"type": "guard_trained", "name": String(r["name"])})
+	_assign_shifts()
+	_assign_jobs()
+
+
+## Смены стражей: первый — дневной, второй — ночной, дальше чередуются.
+func _assign_shifts() -> void:
+	var i := 0
+	for r in residents:
+		if String(r["prof"]) == "guard":
+			r["shift"] = "day" if i % 2 == 0 else "night"
+			i += 1

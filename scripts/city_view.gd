@@ -33,9 +33,19 @@ func _draw() -> void:
 	_draw_terrain()
 	_draw_anomaly()
 	_draw_buildings()
+	_draw_animals()
 	_draw_raiders()
 	_draw_residents()
 	_draw_ghost()
+
+
+## Дикие животные (M5.1): цель охотника.
+func _draw_animals() -> void:
+	for a in sim.animals:
+		var pos: Vector2 = a["pos"]
+		draw_circle(pos + Vector2(1, 2), 5.0, Color(0, 0, 0, 0.3))
+		draw_circle(pos, 5.0, Color("#8d6e63"))
+		draw_circle(pos + Vector2(-1.5, -1.5), 1.8, Color(1, 1, 1, 0.5))
 
 
 func _draw_terrain() -> void:
@@ -53,6 +63,12 @@ func _draw_terrain() -> void:
 				map.TILE_ROCK:
 					draw_rect(rect, colors["rock"])
 					draw_circle(_center(x, y), map.ts * 0.3, colors["rock"].lightened(0.15))
+				map.TILE_ORE:
+					# рудная жила: скала с ржавыми вкраплениями железа (M5.1)
+					draw_rect(rect, colors["rock"].darkened(0.1))
+					draw_circle(_center(x, y), map.ts * 0.3, Color("#8d6e63").darkened(0.2))
+					draw_circle(_center(x, y) + Vector2(-4, -3), map.ts * 0.12, Color("#e07a3f"))
+					draw_circle(_center(x, y) + Vector2(5, 4), map.ts * 0.09, Color("#e07a3f"))
 				map.TILE_TREE:
 					draw_rect(rect, grass if (x + y) % 2 == 0 else grass_alt)
 					draw_circle(_center(x, y) + Vector2(0, 3), map.ts * 0.38, colors["tree"])
@@ -165,7 +181,7 @@ func _draw_ghost() -> void:
 	var tile: Vector2i = map.tile_of_px(get_global_mouse_position())
 	if not map.in_bounds(tile):
 		return
-	var ok: bool = sim.is_buildable_tile(tile) and sim.can_afford(_cost_of(build_mode))
+	var ok: bool = sim.is_buildable_tile(tile, build_mode) and sim.can_afford(_cost_of(build_mode))
 	var col := Color(0.5, 1.0, 0.5, 0.4) if ok else Color(1.0, 0.3, 0.3, 0.4)
 	draw_rect(Rect2(Vector2(tile) * map.ts, Vector2(map.ts, map.ts)), col)
 
