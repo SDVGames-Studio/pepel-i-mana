@@ -70,7 +70,7 @@ func _spawn_hero() -> void:
 	hero.set_camera_limits(Rect2(0, 0, map.w * map.ts, map.h * map.ts))
 
 
-## Коллизии героя: вода, скалы и все готовые здания.
+## Коллизии героя: вода, скалы и все готовые здания (открытые ворота проходимы).
 func _rebuild_collision() -> void:
 	for child in _static_body.get_children():
 		child.queue_free()
@@ -81,6 +81,8 @@ func _rebuild_collision() -> void:
 				blocked[Vector2i(x, y)] = true
 	for b in sim.buildings:
 		if b["done"]:
+			if _bld_effect(b) == "gate" and sim.is_gate_open(b):
+				continue
 			blocked[b["tile"]] = true
 	for tile: Vector2i in blocked:
 		var shape := CollisionShape2D.new()
@@ -89,6 +91,14 @@ func _rebuild_collision() -> void:
 		shape.shape = rect
 		shape.position = map.tile_center_px(tile)
 		_static_body.add_child(shape)
+
+
+## Эффект здания из конфига (для ворот и прочих особых зданий).
+func _bld_effect(b: Dictionary) -> String:
+	for d in cfg["buildings"]:
+		if String(d["id"]) == String(b["type"]):
+			return String(d.get("effect", ""))
+	return ""
 
 
 func _deposit_loot() -> void:
@@ -164,6 +174,8 @@ func _hover_text(b: Dictionary) -> String:
 		return Loc.t("city.hover_site") % [bld_name, pct]
 	if float(b.get("stun_left", 0.0)) > 0.0:
 		return Loc.t("city.hover_stun") % bld_name
+	if _bld_effect(b) == "gate":
+		return "%s • %s" % [bld_name, Loc.t("city.gate_open" if sim.is_gate_open(b) else "city.gate_closed")]
 	if String(b.get("enchant", "")) != "":
 		return "%s • %s" % [bld_name, Loc.t("ench." + String(b["enchant"]))]
 	return bld_name
@@ -202,6 +214,9 @@ func _process_events() -> void:
 				hud.toast(Loc.t("city.autobuild_toast") % [String(ev["name"]), _bld_name(String(ev["bld"]))])
 			"promoted":
 				hud.toast(Loc.t("city.promoted_toast") % String(ev["name"]))
+			"gate":
+				hud.toast(Loc.t("city.gate_open" if bool(ev["open"]) else "city.gate_closed"))
+				_rebuild_collision()
 			"skill_up":
 				hud.toast(Loc.t("city.skill_up_toast") % [String(ev["name"]), Loc.t("skill." + String(ev["rank"]))])
 			"quarrel":

@@ -71,6 +71,7 @@ const REQUIRED_LOCALES := [
 	"prof.miner", "res.tools",
 	"bld.tavern", "bld.desc.tavern",
 	"bld.quarry", "bld.desc.quarry",
+	"bld.gate", "bld.desc.gate", "city.gate_open", "city.gate_closed",
 	"trait.hardworking", "trait.lazy", "trait.cheerful", "trait.grumpy",
 	"trait.brave", "trait.coward", "trait.magephobe", "trait.magiclover",
 	"trait.glutton", "trait.greedy",
@@ -185,7 +186,7 @@ func _test_data() -> void:
 			"pollution", "hero_mana", "test_mode", "autobuild_plan"]:
 		_check(city.has(key), "city.json содержит %s" % key)
 	var blds: Variant = city.get("buildings", [])
-	_check(blds is Array and blds.size() == 12, "city.json — 12 типов зданий (M4: + каменоломня)")
+	_check(blds is Array and blds.size() == 13, "city.json — 13 типов зданий (M4: + каменоломня, ворота)")
 	var bld_ok := true
 	if blds is Array:
 		for b in blds:
@@ -924,6 +925,28 @@ func _test_people() -> void:
 	var plain_q: float = sim_st.work_mult(worker_probe)
 	sim_st.res["tools"] = 5.0
 	_check(sim_st.work_mult(worker_probe) > plain_q, "инструменты ускоряют работу")
+
+	# ворота в стене: без стража закрыты, вышка со стражем рядом открывает (заказчик)
+	var sim_gt := _make_sim()
+	sim_gt.res["wood"] = 30.0
+	sim_gt.res["stone"] = 30.0
+	var gate_tile: Vector2i = sim_gt.map.spawn_tile + Vector2i(0, -4)
+	while not sim_gt.is_buildable_tile(gate_tile):
+		gate_tile += Vector2i(0, -1)
+	sim_gt.place_building("gate", gate_tile)
+	var builder_gt: Dictionary = _resident_by_prof(sim_gt, "builder")
+	_teleport(sim_gt, builder_gt, gate_tile)
+	sim_gt.tick(15.5)
+	var gate_b: Dictionary = sim_gt.building_at(gate_tile)
+	_check(bool(gate_b["done"]), "ворота построены в проёме")
+	_check(not bool(sim_gt.is_gate_open(gate_b)), "без стража на вышке ворота закрыты")
+	_check(not sim_gt.map.is_walkable(gate_tile), "закрытые ворота непроходимы")
+	var tower_tile: Vector2i = gate_tile + Vector2i(2, 1)
+	sim_gt.place_building("tower", tower_tile)
+	_teleport(sim_gt, builder_gt, tower_tile)
+	sim_gt.tick(30.5)
+	_check(bool(sim_gt.is_gate_open(gate_b)), "страж на ближней вышке открыл ворота")
+	_check(sim_gt.map.is_walkable(gate_tile), "открытые ворота проходимы")
 
 	# план города: староста строит сразу весь нужный набор по порядку (заказчик)
 	var sim_pl := _make_sim()

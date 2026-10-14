@@ -41,6 +41,7 @@ var _spell_ready := {}          # id городского заклинания -
 var _event_rng := RandomNumberGenerator.new()
 var _last_event_day := 0
 var _last_daily_day := 0        # дневные броски M4: беженцы/рождения/болезни/истории
+var _gate_state := {}           # id ворот -> открыты? (страж на ближней вышке)
 
 const PEOPLE_CFG_PATH := "res://data/residents.json"
 
@@ -62,6 +63,7 @@ func setup(city_map, city_cfg: Dictionary, residents_count: int, level: String) 
 	_spell_ready = {}
 	_last_event_day = 0
 	chronicle = []
+	_gate_state = {}
 	_last_daily_day = 0   # дневные броски (в т.ч. стройка) — с первого дня (заказчик)
 	_event_rng.randomize()
 	_next_id = 1
@@ -377,6 +379,8 @@ func _complete_site(site: Dictionary) -> void:
 	if _def(site).get("effect", "") == "wall":
 		map.set_solid(site["tile"], true)
 		_step_off_solid(site["tile"])
+	if _def(site).get("effect", "") == "gate":
+		_update_gates()   # ворота при достройке сразу закрываются/открываются
 	events.append({"type": "built", "bld": String(site["type"])})
 	_assign_jobs()
 
@@ -586,6 +590,7 @@ func tick(dt_raw: float) -> void:
 	for b in buildings:
 		if float(b.get("stun_left", 0.0)) > 0.0:
 			b["stun_left"] = maxf(0.0, float(b["stun_left"]) - dt)
+	_update_gates()
 	_update_wild_events(pol_cfg, day_len)
 	for r in residents:
 		_update_resident(r, dt)
@@ -598,6 +603,7 @@ func tick(dt_raw: float) -> void:
 		_roll_births()
 		_roll_autobuild()
 		_roll_stories()
+	_update_gates()   # достроенные за тик вышки/ворота сразу меняют проходимость
 
 
 ## Дикие события (ответ №61): при переборе загрязнения (>= band_wild) раз в день
@@ -860,6 +866,36 @@ func _move_towards(r: Dictionary, tile: Vector2i, dt: float) -> void:
 			step = 0.0
 	r["pos"] = pos
 	r["path"] = path
+
+
+# --- ворота в стене ---------------------------------------------------------
+
+## Ворота открыты, если рядом (≤3 тайлов) стоит вышка со стражем (заказчик).
+func _gate_open(gate: Dictionary) -> bool:
+	for b in buildings:
+		if b["done"] and _def(b).get("effect", "") == "guard" and int(b["worker"]) > 0:
+			if Vector2(b["tile"]).distance_to(Vector2(gate["tile"])) <= 3.0:
+				return true
+	return false
+
+
+func is_gate_open(gate: Dictionary) -> bool:
+	if not bool(gate["done"]):
+		return false
+	return bool(_gate_state.get(str(gate["id"]), false))
+
+
+## При смене состояния — тайл ворот становится проходимым или стеной.
+func _update_gates() -> void:
+	for b in buildings:
+		if not bool(b["done"]) or _def(b).get("effect", "") != "gate":
+			continue
+		var open := _gate_open(b)
+		var key := str(b["id"])
+		if not _gate_state.has(key) or bool(_gate_state[key]) != open:
+			_gate_state[key] = open
+			map.set_solid(b["tile"], not open)
+			events.append({"type": "gate", "open": open})
 
 
 # --- жители-личности (M4) -------------------------------------------------
@@ -1175,16 +1211,68 @@ func _roll_autobuild() -> void:
 		return
 	if float(res["wood"]) < 12:
 		return
-	var walls := 0
-	for i in 2:
-		var wtile := _next_wall_tile()
-		if wtile == Vector2i(-1, -1):
-			break
-		if not place_building("wall", wtile):
-			break
-		walls += 1
-	if walls > 0:
-		_announce_autobuild("wall", false)
+	# кольцо ещё не замкнуто — два звена в день
+	if not _next_wall_tile() == Vector2i(-1, -1):
+		var walls := 0
+		for i in 2:
+			var wtile := _next_wall_tile()
+			if wtile == Vector2i(-1, -1):
+				break
+			if not place_building("wall", wtile):
+				break
+			walls += 1
+		if walls > 0:
+			_announce_autobuild("wall", false)
+		return
+	# кольцо готово: строим ворота в проёмах (заказчик)
+	for off in _gate_offsets():
+		var gt: Vector2i = map.spawn_tile + (off as Vector2i)
+		if building_at(gt).is_empty():
+			if not is_buildable_tile(gt):
+				continue   # на воде/камне ворот не будет — природная преграда
+			if place_building("gate", gt):
+				_announce_autobuild("gate", true)
+			return
+	# у каждых ворот — вышка: страж на ней открывает ворота
+	for off in _gate_offsets():
+		var gt2: Vector2i = map.spawn_tile + (off as Vector2i)
+		var gate_b: Dictionary = building_at(gt2)
+		if gate_b.is_empty() or not bool(gate_b["done"]):
+			continue   # проём без ворот или ворота ещё строятся
+		if not _manned_tower_near(gt2):
+			var tt := _tower_tile_near(gt2)
+			if tt == Vector2i(-1, -1):
+				continue
+			if place_building("tower", tt):
+				_announce_autobuild("tower", true)
+			return
+
+
+## Четыре проёма кольца: север, юг, запад, восток.
+func _gate_offsets() -> Array:
+	return [Vector2i(0, -WALL_RING), Vector2i(0, WALL_RING), Vector2i(-WALL_RING, 0), Vector2i(WALL_RING, 0)]
+
+
+func _manned_tower_near(tile: Vector2i) -> bool:
+	for b in buildings:
+		if b["done"] and _def(b).get("effect", "") == "guard" and int(b["worker"]) > 0:
+			if Vector2(b["tile"]).distance_to(Vector2(tile)) <= 3.0:
+				return true
+	return false
+
+
+## Тайл под вышку у ворот — внутри кольца, ближе к центру города.
+func _tower_tile_near(gate_tile: Vector2i) -> Vector2i:
+	for radius in range(1, 4):
+		for dy in range(-radius, radius + 1):
+			for dx in range(-radius, radius + 1):
+				if maxi(absi(dx), absi(dy)) != radius:
+					continue
+				var tile := gate_tile + Vector2i(dx, dy)
+				if is_buildable_tile(tile) \
+						and Vector2(tile).distance_to(Vector2(map.spawn_tile)) < Vector2(gate_tile).distance_to(Vector2(map.spawn_tile)):
+					return tile
+	return Vector2i(-1, -1)
 
 
 ## Первое строение из плана города, которого ещё нет в нужном количестве.
