@@ -1434,6 +1434,12 @@ func _roll_autobuild() -> void:
 		if not tile == Vector2i(-1, -1) and place_building("farm", tile):
 			_announce_autobuild("farm", true)
 			return
+	# еда идёт в минус: производство меньше расхода — нужна ещё ферма, пока не выправится (заказчик)
+	if _food_deficit() and not _autobuild_site_exists("farm") and not _idle_farm_exists():
+		var tile_d := _find_autobuild_tile("farm")
+		if not tile_d == Vector2i(-1, -1) and place_building("farm", tile_d):
+			_announce_autobuild("farm", true)
+			return
 	# кризис: мест нет совсем — дом вне очереди
 	if residents.size() >= pop_cap() and not _autobuild_site_exists("house"):
 		var tile_h := _find_autobuild_tile("house")
@@ -1578,6 +1584,15 @@ func _next_wall_tile() -> Vector2i:
 		if is_buildable_tile(tile):
 			return tile
 	return Vector2i(-1, -1)
+
+
+## Еда идёт в минус: суммарное производство ферм меньше дневного расхода города.
+func _food_deficit() -> bool:
+	var production := 0.0
+	for b in buildings:
+		if bool(b["done"]) and String(b["type"]) == "farm":
+			production += float(_def(b)["produce"]["per_day"]) * float(b.get("ench_mult", 1.0))
+	return production < float(residents.size()) * float(cfg["food_per_resident_day"])
 
 
 ## Готовая ферма без работника: строить новую бессмысленно — сперва некому работать.
@@ -1998,7 +2013,9 @@ func _schedule_next_raid() -> void:
 			+ float(tcfg.get("wave_growth_gap_days", 2.0)) * float(raid_count) \
 			- float(tcfg.get("gap_shrink", 0.04)) * threat_value()
 	_raid_gap_days = maxf(gap, float(tcfg.get("gap_min_days", 0.6)))
-	_next_raid_at = time + _raid_gap_days * float(cfg["day_length"])
+	# первая волна — не раньше start_day, как бы ни разросся город (заказчик: на 4-й день пришла)
+	_next_raid_at = maxf(time + _raid_gap_days * float(cfg["day_length"]),
+			float(tcfg.get("start_day", 10.0)) * float(cfg["day_length"]) + 1.0)
 	_raid_warned = false
 
 
@@ -2019,8 +2036,9 @@ func _update_threat(dt: float, day_len: float) -> void:
 		events.append({"type": "raid_warn", "eta": raid_eta_days()})
 		return
 	if time >= _next_raid_at:
-		if threat_value() < float(tcfg.get("min_threat", 1.0)):
-			_next_raid_at = time + 0.5 * day_len   # город ещё мал — мутанты не идут
+		if float(day) < float(tcfg.get("start_day", 10.0)) \
+				or threat_value() < float(tcfg.get("min_threat", 1.0)):
+			_next_raid_at = time + 0.5 * day_len   # город ещё мал или рано — мутанты не идут
 			return
 		var siege := threat_value() >= float(tcfg.get("siege_from_threat", 8.0)) \
 				and _raid_rng.randf() < float(tcfg.get("siege_chance", 0.35))

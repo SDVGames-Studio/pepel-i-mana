@@ -851,6 +851,7 @@ func _test_people() -> void:
 	_check(String(elder_r["state"]) == "manage", "староста обходит город")
 	_check(bool(sim_e.elder_present()), "староста на ногах — город может строить сам")
 	sim_e.people["refugees"]["chance_per_day"] = 0.0
+	_build_now(sim_e, "farm")   # баланс еды положительный — дефицит не перебивает кризис дома
 	var buildings_before: int = sim_e.buildings.size()
 	sim_e._roll_autobuild()
 	_check(sim_e.buildings.size() == buildings_before + 1, "староста заложил дом: мест жителям не хватает")
@@ -996,6 +997,7 @@ func _test_people() -> void:
 	# план города: староста строит сразу весь нужный набор по порядку (заказчик)
 	var sim_pl := _make_sim()
 	_build_now(sim_pl, "house")   # дом есть — теснота не перебивает план
+	_build_now(sim_pl, "farm")    # и баланс еды положительный — ферма не перебивает план
 	var plan: Array = sim_pl.cfg.get("autobuild_plan", [])
 	_check(plan.size() >= 10, "в плане города весь набор строений")
 	_check(String(plan[0]) == "sawmill", "план начинается с лесопилки — иначе дереву не взяться")
@@ -1023,6 +1025,7 @@ func _test_people() -> void:
 	var elder_w: Dictionary = sim_w2._new_resident("Ярл", "elder", sim_w2.map.spawn_tile)
 	sim_w2.residents.append(elder_w)
 	sim_w2.res["food"] = 30.0
+	_build_now(sim_w2, "farm")   # баланс еды положительный — стены, а не ферма
 	_build_now(sim_w2, "house")
 	_build_now(sim_w2, "house")
 	var wtile: Vector2i = sim_w2.map.spawn_tile + Vector2i(7, 0)
@@ -1779,6 +1782,46 @@ func _test_defense() -> void:
 	sim_gh.tick(1.0)
 	_check(float(sim_gh.building_at(site_tile)["progress"]) > prog0,
 			"страж вне смены помогает строить")
+
+	# волны не выходят раньше 10-го дня, как бы ни разросся город (на 4-й день пришла)
+	var sim_e1 := _make_sim()
+	sim_e1._last_daily_day = 999
+	sim_e1.time = 5.0 * float(sim_e1.cfg["day_length"])
+	sim_e1.day = 6
+	sim_e1._next_raid_at = sim_e1.time + 0.5   # планировщик зовёт волну прямо сейчас
+	sim_e1.tick(1.0)
+	_check(not sim_e1.raid_active and sim_e1.raiders.is_empty(), "до 10-го дня волн нет")
+	sim_e1.time = 10.5 * float(sim_e1.cfg["day_length"])
+	sim_e1.day = 11
+	sim_e1.cfg["threat"]["min_threat"] = 0.0   # маленький город не откладывает волну
+	sim_e1._next_raid_at = sim_e1.time + 0.5
+	sim_e1.tick(1.0)
+	_check(sim_e1.raid_active, "после 10-го дня волна приходит по расписанию")
+
+	# еда идёт в минус — город строит ферму, даже если запас ещё есть (заказчик)
+	var sim_f1 := _make_sim()
+	sim_f1._last_daily_day = 0   # дневные броски включены — работает самострой
+	var extra := 0
+	while sim_f1.residents.size() < 9:
+		var r_x: Dictionary = sim_f1._new_resident("Тар%d" % extra, "farmer", sim_f1.map.spawn_tile)
+		sim_f1.residents.append(r_x)
+		sim_f1._next_id += 1
+		extra += 1
+	sim_f1.res["food"] = 200.0   # запас полный — старое правило «меньше дня еды» молчало бы
+	var farms_before := 0
+	for b in sim_f1.buildings:
+		if String(b["type"]) == "farm":
+			farms_before += 1
+	sim_f1.tick(0.2)
+	var farms_after := 0
+	var farm_site := false
+	for b in sim_f1.buildings:
+		if String(b["type"]) == "farm":
+			farms_after += 1
+			if not bool(b["done"]):
+				farm_site = true
+	_check(sim_f1._food_deficit(), "баланс еды отрицательный (9 ртов против одной фермы)")
+	_check(farms_after > farms_before and farm_site, "при дефиците еды заложена ферма")
 
 
 func _test_forbidden_school() -> void:
