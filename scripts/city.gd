@@ -133,11 +133,40 @@ func _process(_delta: float) -> void:
 	hud.refresh()
 	_update_daylight()
 	_process_events()
+	_update_hover()
 	_near_anomaly = hero.position.distance_to(map.tile_center_px(map.anomaly_tile)) < map.ts * 1.7
 	if _near_anomaly:
 		hud.set_hint(Loc.t("city.enter_anomaly"))
 	elif build_mode == "":
 		hud.set_hint(_default_hint())
+
+
+## Название здания под курсором — тултип у мыши (просьба заказчика).
+func _update_hover() -> void:
+	if build_mode != "" or enchant_mode != "":
+		hud.set_hover_info("", Vector2.ZERO)
+		return
+	var b: Dictionary = sim.building_at(map.tile_of_px(get_global_mouse_position()))
+	if b.is_empty():
+		hud.set_hover_info("", Vector2.ZERO)
+		return
+	hud.set_hover_info(_hover_text(b), get_viewport().get_mouse_position())
+
+
+func _hover_text(b: Dictionary) -> String:
+	var bld_name := _bld_name(String(b["type"]))
+	if not bool(b["done"]):
+		var work := 1.0
+		for d in cfg["buildings"]:
+			if String(d["id"]) == String(b["type"]):
+				work = float(d["build_work"])
+		var pct := int(clampf(float(b["progress"]) / work * 100.0, 0.0, 100.0))
+		return Loc.t("city.hover_site") % [bld_name, pct]
+	if float(b.get("stun_left", 0.0)) > 0.0:
+		return Loc.t("city.hover_stun") % bld_name
+	if String(b.get("enchant", "")) != "":
+		return "%s • %s" % [bld_name, Loc.t("ench." + String(b["enchant"]))]
+	return bld_name
 
 
 func _process_events() -> void:

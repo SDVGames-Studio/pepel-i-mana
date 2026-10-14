@@ -58,6 +58,8 @@
 	"chron.autobuild": "%s распорядился построить: %s",
 	"city.promoted_toast": "%s — новый староста города",
 	"chron.promoted": "%s стал новым старостой",
+	"city.hover_site": "%s — стройка %d%%",
+	"city.hover_stun": "%s — оглушено дикой магией",
 	"city.refugee_came": "Беженец %s присоединился к городу",
 	"city.birth_toast": "Родился ребёнок: %s",
 	"city.grown_toast": "%s вырос — теперь %s",

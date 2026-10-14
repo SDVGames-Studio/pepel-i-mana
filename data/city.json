@@ -18,7 +18,7 @@
 	"pop_per_house": 2,
 	"mayor_pop": 15,
 	"tavern": {"food_per_day": 8.0, "mood": 12.0},
-	"autobuild_plan": ["sawmill", "farm", "farm", "house", "well", "warehouse", "workshop", "farm", "house", "house", "healer_hut", "tavern", "altar"],
+	"autobuild_plan": ["sawmill", "farm", "farm", "house", "well", "warehouse", "workshop", "house", "house", "healer_hut", "tavern", "altar"],
 	"storage_base": 150,
 	"storage_per_warehouse": 200,
 	"altar_boost": 1.1,
@@ -80,7 +80,7 @@
 	],
 	"buildings": [
 		{"id": "house", "loc": "bld.house", "desc": "bld.desc.house", "color": "#c78d5b", "cost": {"wood": 15}, "build_work": 20, "effect": "pop"},
-		{"id": "farm", "loc": "bld.farm", "desc": "bld.desc.farm", "color": "#7cb342", "cost": {"wood": 10}, "build_work": 20, "worker": "farmer", "produce": {"res": "food", "per_day": 12}},
+		{"id": "farm", "loc": "bld.farm", "desc": "bld.desc.farm", "color": "#7cb342", "cost": {"wood": 10}, "build_work": 20, "worker": "farmer", "produce": {"res": "food", "per_day": 16}},
 		{"id": "sawmill", "loc": "bld.sawmill", "desc": "bld.desc.sawmill", "color": "#8d6e63", "cost": {"wood": 5, "stone": 5}, "build_work": 25, "worker": "lumberjack", "produce": {"res": "wood", "per_day": 6}},
 		{"id": "well", "loc": "bld.well", "desc": "bld.desc.well", "color": "#4fc3f7", "cost": {"stone": 10}, "build_work": 15, "effect": "sleep"},
 		{"id": "warehouse", "loc": "bld.warehouse", "desc": "bld.desc.warehouse", "color": "#ffb74d", "cost": {"wood": 15, "stone": 5}, "build_work": 25, "effect": "storage"},

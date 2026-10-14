@@ -62,7 +62,7 @@ func setup(city_map, city_cfg: Dictionary, residents_count: int, level: String) 
 	_spell_ready = {}
 	_last_event_day = 0
 	chronicle = []
-	_last_daily_day = 1
+	_last_daily_day = 0   # дневные броски (в т.ч. стройка) — с первого дня (заказчик)
 	_event_rng.randomize()
 	_next_id = 1
 	var people_data: Variant = _read_json_file(PEOPLE_CFG_PATH)

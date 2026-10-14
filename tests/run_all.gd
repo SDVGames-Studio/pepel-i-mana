@@ -65,6 +65,7 @@ const REQUIRED_LOCALES := [
 	"city.learned_toast", "chron.learned",
 	"city.autobuild_toast", "chron.autobuild",
 	"city.promoted_toast", "chron.promoted",
+	"city.hover_site", "city.hover_stun",
 	"city.state.manage",
 	"prof.elder", "prof.mayor", "prof.bartender",
 	"bld.tavern", "bld.desc.tavern",
@@ -197,6 +198,9 @@ func _test_data() -> void:
 		if int(s) == 10:
 			speeds_ok = true
 	_check(speeds_ok, "city.json — есть супер-скорость x10 (M4)")
+	for b in city.get("buildings", []):
+		if b is Dictionary and String(b.get("id", "")) == "farm":
+			_check(int(b["produce"]["per_day"]) == 16, "поле эффективнее: 16 еды в день с работника")
 	var residents_data: Variant = _read_json("res://data/residents.json")
 	_check(residents_data is Dictionary, "residents.json — валидный JSON-словарь")
 	if residents_data is Dictionary:
@@ -320,6 +324,9 @@ func _make_sim(level: String = "normal") -> Object:
 	city_map.generate(7, cfg)
 	var sim = load("res://scripts/city_sim.gd").new()
 	sim.setup(city_map, cfg, 6, level)
+	# в игре дневные броски идут с первого дня; в тестах фиксируем день 1,
+	# чтобы тики строек не вызывали случайно беженцев и событий
+	sim._last_daily_day = 1
 	return sim
 
 
@@ -595,6 +602,11 @@ func _test_people() -> void:
 		if String(r.get("ail", "")) == "sick":
 			sick_count += 1
 	_check(sick_count > 0, "болезнь случилась (шанс 100%)")
+	_check(not bool(sim_s._healer_ready()), "болеющий лекарь не держит хижину (место освобождено)")
+	healer["ail"] = ""   # лекарь выздоровел и вернулся на пост
+	sim_s._assign_jobs()
+	_check(bool(sim_s._healer_ready()), "выздоровевший лекарь вернулся в хижину")
+	sim_s.people["ailments"]["sick_chance"] = 0.0
 	sim_s.people["ailments"]["healer_recover_chance"] = 1.0
 	sim_s._roll_ailments()
 	var still_sick := 0
@@ -858,6 +870,13 @@ func _test_people() -> void:
 			gate_broken = true
 	_check(placed_walls > 0, "стены кольца поставлены")
 	_check(not gate_broken, "четыре ворот (С/Ю/З/В) свободны для выхода из крепости")
+
+	# стройка с первого дня (заказчик): первые тики дня 1 уже дают план
+	var sim_d1 := _make_sim()
+	sim_d1._last_daily_day = 0   # как в реальной игре
+	var b_before: int = sim_d1.buildings.size()
+	sim_d1.tick(0.2)
+	_check(sim_d1.buildings.size() > b_before, "староста строит с первого дня")
 
 	# план города: староста строит сразу весь нужный набор по порядку (заказчик)
 	var sim_pl := _make_sim()

@@ -21,6 +21,8 @@ var _residents_panel: PanelContainer
 var _residents_text: RichTextLabel
 var _chron_panel: PanelContainer
 var _chron_text: RichTextLabel
+var _hover_panel: PanelContainer
+var _hover_label: Label
 var _magic_panel: PanelContainer
 var _magic_scroll: ScrollContainer
 var _magic_box: VBoxContainer
@@ -111,6 +113,20 @@ func chronicle_visible() -> bool:
 
 func set_enchant_colors(colors: Dictionary) -> void:
 	_enchant_colors = colors
+
+
+## Подсказка у курсора: название здания под мышью (пустой текст — скрыть).
+func set_hover_info(text: String, screen_pos: Vector2) -> void:
+	if text == "":
+		_hover_panel.visible = false
+		return
+	_hover_label.text = text
+	_hover_panel.reset_size()
+	var viewport_size: Vector2 = _hover_panel.get_viewport_rect().size
+	var pos: Vector2 = screen_pos + Vector2(14, 18)
+	pos = pos.min(viewport_size - _hover_panel.size - Vector2(4, 4))
+	_hover_panel.position = pos
+	_hover_panel.visible = true
 
 
 ## Подсказка под панелью зданий: что выбрано для зачарования.
@@ -360,6 +376,16 @@ func _build() -> void:
 	_toast_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_toast_label.grow_horizontal = Control.GROW_DIRECTION_BOTH
 	root.add_child(_toast_label)
+
+	# --- тултип у курсора: название здания под мышью
+	_hover_panel = PanelContainer.new()
+	_hover_panel.add_theme_stylebox_override("panel", _panel_style())
+	_hover_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_hover_panel.visible = false
+	root.add_child(_hover_panel)
+	_hover_label = _label(16)
+	_hover_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_hover_panel.add_child(_hover_label)
 
 	# --- центр справа: список жителей (Tab)
 	_residents_panel = PanelContainer.new()
