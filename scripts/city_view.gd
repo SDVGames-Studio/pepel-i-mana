@@ -33,6 +33,7 @@ func _draw() -> void:
 	_draw_terrain()
 	_draw_anomaly()
 	_draw_buildings()
+	_draw_raiders()
 	_draw_residents()
 	_draw_ghost()
 
@@ -98,6 +99,37 @@ func _draw_buildings() -> void:
 			var flash := 0.5 + 0.5 * sin(Time.get_ticks_msec() / 120.0)
 			draw_arc(rect.get_center(), map.ts * 0.4, 0.0, TAU, 20,
 					Color(0.9, 0.4, 1.0, 0.4 + 0.4 * flash), 2.0)
+		# прочность (M5): повреждённое здание показывает полоску
+		if bool(b["done"]) and float(b.get("hp", 999.0)) < float(_bld_max_hp(String(b["type"]))):
+			var frac2 := clampf(float(b["hp"]) / float(_bld_max_hp(String(b["type"]))), 0.0, 1.0)
+			draw_rect(Rect2(rect.position + Vector2(4, -7), Vector2(map.ts - 8, 4)), Color(0.15, 0.1, 0.1))
+			draw_rect(Rect2(rect.position + Vector2(4, -7), Vector2((map.ts - 8) * frac2, 4)), Color("#8bc34a"))
+
+
+## Мутанты-рейдеры (M5): круг с полоской здоровья, как враги данжа.
+func _draw_raiders() -> void:
+	for r in sim.raiders:
+		var pos: Vector2 = r["pos"]
+		var rad := float(r["p"]["radius"])
+		var col := Color(String(r["p"]["color"]))
+		draw_circle(pos + Vector2(1, 2), rad, Color(0, 0, 0, 0.3))
+		draw_circle(pos, rad, col)
+		draw_circle(pos + Vector2(-1.5, -1.5), rad * 0.33, Color(1, 1, 1, 0.5))
+		if int(r["hp"]) < int(r["max_hp"]):
+			var frac := clampf(float(r["hp"]) / float(r["max_hp"]), 0.0, 1.0)
+			draw_rect(Rect2(pos + Vector2(-12, -rad - 8), Vector2(24, 4)), Color(0.15, 0.1, 0.1))
+			draw_rect(Rect2(pos + Vector2(-12, -rad - 8), Vector2(24.0 * frac, 4)), Color(0.9, 0.25, 0.25))
+		# осадный мутант выделен — игрок видит, кто ломает стены
+		if String(r["type"]) == "brute":
+			draw_arc(pos, rad + 3.0, 0.0, TAU, 20, Color(0.9, 0.3, 0.2, 0.6), 2.0)
+
+
+func _bld_max_hp(type_id: String) -> float:
+	var hp_cfg: Dictionary = sim.cfg.get("threat", {}).get("bld_hp", {})
+	for d in sim.cfg["buildings"]:
+		if String(d["id"]) == type_id:
+			return float(hp_cfg.get(String(d.get("effect", "default")), hp_cfg.get("default", 20)))
+	return float(hp_cfg.get("default", 20))
 
 
 func _draw_residents() -> void:

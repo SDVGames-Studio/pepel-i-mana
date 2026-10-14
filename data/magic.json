@@ -2,7 +2,8 @@
 	"schools": [
 		{ "id": "wild", "loc": "school.wild", "color": "#ff7043" },
 		{ "id": "light", "loc": "school.light", "color": "#ffd54f" },
-		{ "id": "nature", "loc": "school.nature", "color": "#66bb6a" }
+		{ "id": "nature", "loc": "school.nature", "color": "#66bb6a" },
+		{ "id": "forbidden", "loc": "school.forbidden", "color": "#b041c0" }
 	],
 	"spells": [
 		{
@@ -58,6 +59,24 @@
 			"school": "nature", "where": "dungeon",
 			"mana_cost": 3, "crystals_cost": 0, "cooldown": 6.0, "pollution": 0.0,
 			"params": { "radius": 58.0, "duration": 4.0, "dps": 1, "range": 200.0 }
+		},
+		{
+			"id": "corrupt_blast", "loc": "spell.corrupt_blast", "desc": "spell.desc.corrupt_blast",
+			"school": "forbidden", "where": "dungeon",
+			"mana_cost": 5, "crystals_cost": 0, "cooldown": 7.0, "pollution": 8.0,
+			"params": { "damage": 8, "radius": 64.0, "range": 200.0 }
+		},
+		{
+			"id": "plague", "loc": "spell.plague", "desc": "spell.desc.plague",
+			"school": "forbidden", "where": "dungeon",
+			"mana_cost": 4, "crystals_cost": 0, "cooldown": 9.0, "pollution": 6.0,
+			"params": { "radius": 64.0, "duration": 6.0, "dps": 2, "range": 200.0 }
+		},
+		{
+			"id": "drain_life", "loc": "spell.drain_life", "desc": "spell.desc.drain_life",
+			"school": "forbidden", "where": "dungeon",
+			"mana_cost": 4, "crystals_cost": 0, "cooldown": 8.0, "pollution": 5.0,
+			"params": { "damage": 3, "targets": 2, "radius": 180.0, "heal_per_target": 2 }
 		}
 	],
 	"recipes": [
@@ -69,7 +88,10 @@
 		{ "a": "rune_light", "b": "rune_frost", "spell": "cleanse" },
 		{ "a": "rune_growth", "b": "rune_stone", "spell": "roots" },
 		{ "a": "rune_growth", "b": "rune_storm", "spell": "forest_gift" },
-		{ "a": "rune_growth", "b": "rune_shadow", "spell": "thorns" }
+		{ "a": "rune_growth", "b": "rune_shadow", "spell": "thorns" },
+		{ "a": "rune_shadow", "b": "rune_chaos", "spell": "corrupt_blast" },
+		{ "a": "rune_shadow", "b": "rune_shadow", "spell": "plague" },
+		{ "a": "rune_chaos", "b": "rune_frost", "spell": "drain_life" }
 	],
 	"enchantments": [
 		{

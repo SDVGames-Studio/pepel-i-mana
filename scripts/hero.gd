@@ -156,6 +156,22 @@ func try_attack() -> void:
 	get_tree().create_timer(0.15).timeout.connect(queue_redraw)
 
 
+## Удар в городе (M5): урон мутантам считает симуляция — герой только целится
+## и показывает замах. Возвращает, скольких мутантов задел.
+func city_attack(sim) -> int:
+	if _attack_cd > 0.0 or dead:
+		return 0
+	_attack_cd = float(p["attack_cooldown"])
+	var to_mouse := get_global_mouse_position() - global_position
+	if to_mouse.length() > 4.0:
+		facing = to_mouse.normalized()
+	var hits: int = sim.hero_slash(global_position, facing,
+			float(p["attack_range"]), float(p["attack_arc"]), int(p["damage"]))
+	queue_redraw()
+	get_tree().create_timer(0.15).timeout.connect(queue_redraw)
+	return hits
+
+
 func take_damage(dmg: int) -> void:
 	if _invuln > 0.0 or dead or _shield_left > 0.0:
 		return

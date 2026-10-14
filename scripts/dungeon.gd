@@ -14,6 +14,7 @@ const SpellFxScript := preload("res://scripts/spell_fx.gd")
 const CITY_CFG_PATH := "res://data/city.json"
 
 var params: Dictionary = {}
+var biome: Dictionary = {}        # активный биом (M5: руины или лес-мутант)
 var enemies_data: Array = []
 var loot_data: Dictionary = {}
 # ссылки на скрипты других узлов — динамические, без типов движка (свойств у них нет)
@@ -39,6 +40,7 @@ func _ready() -> void:
 	_seed_value = int(Time.get_unix_time_from_system())
 	_rng.seed = _seed_value
 	_loot_rng.seed = _seed_value + 1
+	biome = _pick_biome()
 
 	gen = DungeonGenScript.new()
 	gen.generate(_seed_value, params)
@@ -56,6 +58,25 @@ func _ready() -> void:
 	hud.init(hero, gen, loot_data)
 	add_child(hud)
 	hud.minimap.setup(gen)
+	# дикий регион: посещение леса-мутанта добавляет городу загрязнения (M5)
+	var pol := float(biome.get("pollution_on_visit", 0.0))
+	if pol > 0.0 and Game.city_sim != null:
+		Game.city_sim.add_pollution(pol)
+
+
+## Биом данжа по весам (M5): руины спокойнее, лес-мутант опаснее и жирнее.
+func _pick_biome() -> Dictionary:
+	var biomes: Dictionary = params.get("biomes", {})
+	var weights: Dictionary = params.get("biome_weights", {})
+	var total := 0
+	for w: int in weights.values():
+		total += w
+	var roll := _rng.randi_range(1, maxi(1, total))
+	for id in weights:
+		roll -= int(weights[id])
+		if roll <= 0 and biomes.has(id):
+			return biomes[id]
+	return biomes.get("ruins", params.get("biome", {}))
 
 
 func _process(delta: float) -> void:
@@ -74,7 +95,7 @@ func _process(delta: float) -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
-	# слоты заклинаний 1–6 (спеллбук, порядок изучения)
+	# слоты заклинаний 1–9 (спеллбук, порядок изучения; с M5 — 9 боевых школ-заклинаний)
 	if event is InputEventKey and event.pressed and not event.echo:
 		var idx := -1
 		match event.physical_keycode:
@@ -84,6 +105,9 @@ func _unhandled_input(event: InputEvent) -> void:
 			KEY_4: idx = 3
 			KEY_5: idx = 4
 			KEY_6: idx = 5
+			KEY_7: idx = 6
+			KEY_8: idx = 7
+			KEY_9: idx = 8
 		if idx >= 0 and idx < Game.spellbook.size():
 			_cast_spell(String(Game.spellbook[idx]))
 
@@ -100,13 +124,13 @@ func _pos_to_tile(pos: Vector2) -> Vector2i:
 func _build_darkness() -> void:
 	var dark := CanvasModulate.new()
 	dark.name = "Darkness"
-	dark.color = Color(String(params["biome"]["ambient"]))
+	dark.color = Color(String(biome["ambient"]))
 	add_child(dark)
 
 
 func _make_view() -> Node2D:
 	var view = DungeonViewScript.new()
-	view.setup(gen, ts, params["biome"])
+	view.setup(gen, ts, biome)
 	return view
 
 
@@ -149,7 +173,7 @@ func _build_walls() -> void:
 
 func _build_exit() -> void:
 	var marker = ExitMarkerScript.new()
-	marker.marker_color = Color(String(params["biome"]["exit_color"]))
+	marker.marker_color = Color(String(biome["exit_color"]))
 	# на тайл в стороне от точки спавна, но всегда внутри стартовой комнаты
 	marker.position = _tile_to_pos(gen.start_tile) + Vector2(float(ts), 0)
 	marker.name = "ExitLadder"
@@ -206,9 +230,10 @@ func _build_enemies() -> void:
 		add_child(enemy)
 
 
-## Взвешенный случайный тип врага (enemy_weights в data/dungeon.json).
+## Взвешенный случайный тип врага: свой набор у каждого биома (M5),
+## общий — из data/dungeon.json -> "enemy_weights".
 func _pick_enemy_data() -> Dictionary:
-	var weights: Dictionary = params["enemy_weights"]
+	var weights: Dictionary = biome.get("enemy_weights", params["enemy_weights"])
 	var total := 0
 	for w: int in weights.values():
 		total += w
@@ -261,6 +286,12 @@ func _cast_spell(spell_id: String) -> void:
 			_spell_roots(params2, col)
 		"thorns":
 			_spell_thorns(params2, col)
+		"corrupt_blast":
+			_spell_flash(params2, col)
+		"plague":
+			_spell_thorns(params2, col)
+		"drain_life":
+			_spell_drain(params2, col)
 	# дикая магия загрязняет регион (даже из данжа — город рядом)
 	if float(def.get("pollution", 0.0)) > 0.0 and Game.city_sim != null:
 		Game.city_sim.add_pollution(float(def["pollution"]))
@@ -329,6 +360,28 @@ func _spell_thorns(p2: Dictionary, col: Color) -> void:
 		"acc": 0.0, "dps": int(p2.get("dps", 1)),
 	})
 	_add_fx("zone", col, radius, duration, pos)
+
+
+## Вытягивание жизни (запретная школа, M5): бьёт ближайших и лечит героя.
+func _spell_drain(p2: Dictionary, col: Color) -> void:
+	var in_range: Array = []
+	for enemy in get_tree().get_nodes_in_group("enemies"):
+		var d: float = enemy.global_position.distance_to(hero.global_position)
+		if d <= float(p2.get("radius", 180.0)):
+			in_range.append([d, enemy])
+	in_range.sort_custom(func(a, b) -> bool: return float(a[0]) < float(b[0]))
+	var points := PackedVector2Array([Vector2.ZERO])
+	var hits := 0
+	for entry in in_range:
+		if hits >= int(p2.get("targets", 2)):
+			break
+		var enemy = entry[1]
+		enemy.take_damage(int(p2.get("damage", 3)), "forbidden")
+		points.append(enemy.global_position - hero.global_position)
+		hits += 1
+	if hits > 0:
+		hero.heal(int(p2.get("heal_per_target", 2)) * hits)
+		_add_fx("bolt", col, 0.0, 0.35, hero.global_position, points)
 
 
 ## Тик зон шипов: урон по времени всем врагам внутри.
@@ -432,7 +485,7 @@ func _open_chest(chest: Node) -> void:
 	if Game.test_mode and not test_cfg.is_empty():
 		min_i = int(test_cfg.get("chest_items_min", min_i))
 		max_i = int(test_cfg.get("chest_items_max", max_i))
-	var count := _loot_rng.randi_range(min_i, max_i)
+	var count := _loot_rng.randi_range(min_i, max_i) + int(biome.get("loot_bonus", 0))
 	for i in count:
 		var item := _roll_item()
 		Game.add_item(String(item["id"]))

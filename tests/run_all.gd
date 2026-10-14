@@ -83,6 +83,21 @@ const REQUIRED_LOCALES := [
 	"story.quarrel_toast", "story.friendship_toast", "story.discovery_toast",
 	"story.betrayal_toast", "story.betrayal_caught_toast",
 	"story.mutation_good_toast", "story.mutation_bad_toast",
+	# --- M5: угрозы и оборона ---
+	"biome.ruins", "biome.mutant_forest", "school.forbidden",
+	"spell.corrupt_blast", "spell.plague", "spell.drain_life",
+	"spell.desc.corrupt_blast", "spell.desc.plague", "spell.desc.drain_life",
+	"enemy.mutant", "enemy.brute", "enemy.spitter",
+	"city.threat_line", "city.threat_eta",
+	"city.threat_stage.calm", "city.threat_stage.unease",
+	"city.threat_stage.danger", "city.threat_stage.siege",
+	"city.threat_warn", "city.threat_raid", "city.threat_storm", "city.threat_storm_warn",
+	"city.raid_warn", "city.raid_toast", "city.raid_siege_toast",
+	"city.raid_repelled_toast", "city.raid_breached_toast", "city.razed_toast",
+	"city.storm_warn_toast", "city.storm_start_toast", "city.storm_end_toast",
+	"city.storm_strike_toast", "city.hero_down_toast",
+	"chron.raid", "chron.raid_siege", "chron.repelled", "chron.breach",
+	"chron.razed", "chron.storm_warn", "chron.storm", "chron.storm_end",
 ]
 
 const ALL_SCRIPTS := [
@@ -112,6 +127,9 @@ func _initialize() -> void:
 	_test_magic()
 	_test_magic_sim()
 	_test_spell_damage()
+	_test_threat()
+	_test_forbidden_school()
+	_test_mutant_forest()
 	if _fails == 0:
 		print("OK: все тесты пройдены")
 		quit(0)
@@ -152,13 +170,13 @@ func _test_data() -> void:
 	var dungeon: Variant = _read_json("res://data/dungeon.json")
 	_check(dungeon is Dictionary, "dungeon.json — валидный JSON-словарь")
 	if dungeon is Dictionary:
-		for key in ["tile_size", "map_w", "map_h", "max_rooms", "enemy_count", "hero", "biome"]:
+		for key in ["tile_size", "map_w", "map_h", "max_rooms", "enemy_count", "hero", "biomes", "biome_weights"]:
 			_check(dungeon.has(key), "dungeon.json содержит %s" % key)
 		var hero: Variant = dungeon.get("hero", {})
 		_check(hero is Dictionary and hero.has("speed") and hero.has("dash_cooldown"),
 				"dungeon.json: параметры героя полны")
 	var enemies: Variant = _read_json("res://data/enemies.json")
-	_check(enemies is Array and enemies.size() == 4, "enemies.json — 4 типа врагов (M3: +антимаг)")
+	_check(enemies is Array and enemies.size() == 7, "enemies.json — 7 типов врагов (M3: +антимаг, M5: +мутанты)")
 	if enemies is Array:
 		var fields_ok := true
 		for enemy in enemies:
@@ -169,9 +187,9 @@ func _test_data() -> void:
 	var magic: Variant = _read_json("res://data/magic.json")
 	_check(magic is Dictionary, "magic.json — валидный JSON-словарь")
 	if magic is Dictionary:
-		_check((magic.get("schools", []) as Array).size() == 3, "magic.json — 3 школы")
-		_check((magic.get("spells", []) as Array).size() == 9, "magic.json — 9 заклинаний (3×3)")
-		_check((magic.get("recipes", []) as Array).size() == 9, "magic.json — 9 рецептов из рун")
+		_check((magic.get("schools", []) as Array).size() == 4, "magic.json — 4 школы (M5: +запретная)")
+		_check((magic.get("spells", []) as Array).size() == 12, "magic.json — 12 заклинаний (M5: 3 запретных)")
+		_check((magic.get("recipes", []) as Array).size() == 12, "magic.json — 12 рецептов из рун")
 		_check((magic.get("enchantments", []) as Array).size() == 3, "magic.json — 3 зачарования")
 	var loot: Variant = _read_json("res://data/loot.json")
 	_check(loot is Dictionary and (loot.get("rarities", []) as Array).size() == 4,
@@ -335,6 +353,9 @@ func _make_sim(level: String = "normal") -> Object:
 	# в игре дневные броски идут с первого дня; в тестах фиксируем день 1,
 	# чтобы тики строек не вызывали случайно беженцев и событий
 	sim._last_daily_day = 1
+	# волны мутантов в обычных тестах выключены: мир M5 живёт по своим правилам,
+	# проверяется отдельно в _test_threat (там волны зовутся вручную)
+	sim._next_raid_at = 999999999.0
 	return sim
 
 
@@ -935,6 +956,9 @@ func _test_people() -> void:
 		gate_tile += Vector2i(0, -1)
 	sim_gt.place_building("gate", gate_tile)
 	var builder_gt: Dictionary = _resident_by_prof(sim_gt, "builder")
+	# M4-черты («ленивый») замедляют стройку — в этом тесте они не при чём
+	builder_gt["mood"] = 100.0
+	builder_gt["traits"] = []
 	_teleport(sim_gt, builder_gt, gate_tile)
 	sim_gt.tick(15.5)
 	var gate_b: Dictionary = sim_gt.building_at(gate_tile)
@@ -1041,7 +1065,7 @@ func _test_magic() -> void:
 		else:
 			dungeon_count += 1
 	_check(refs_ok, "у всех заклинаний известная школа")
-	_check(city_count == 3 and dungeon_count == 6, "3 городских + 6 боевых заклинаний")
+	_check(city_count == 3 and dungeon_count == 9, "3 городских + 9 боевых заклинаний (M5: +3 запретных)")
 	# спеллбук в Game: изучение, дубли, удаление предметов
 	var game: Node = load("res://scripts/game.gd").new()
 	_check(game.magic != null, "Game._init загрузил data/magic.json")
@@ -1241,4 +1265,293 @@ func _test_spell_damage() -> void:
 			"пустая школа у обычного врага — урон как есть (путь меча)")
 	_check(String(by_id["antimage"].get("weak_school", "")) == "",
 			"у антимага нет уязвимой школы")
+
+
+# --- M5: угрозы и оборона -------------------------------------------------
+
+## Построить здание в конкретном тайле мгновенно (строитель телепортируется).
+func _build_at(sim: Object, type_id: String, tile: Vector2i) -> Dictionary:
+	var builder: Dictionary = _resident_by_prof(sim, "builder")
+	builder["mood"] = 100.0
+	builder["traits"] = []
+	builder["skill"] = 0.0
+	_check(sim.place_building(type_id, tile), "%s: стройплощадка в заданном тайле" % type_id)
+	var work := 1.0
+	for d in sim.cfg["buildings"]:
+		if String(d["id"]) == type_id:
+			work = float(d["build_work"])
+	_teleport(sim, builder, tile)
+	sim.tick(work + 0.1)
+	return sim.building_at(tile)
+
+
+## Волна из одного мутанта заданного типа в заданном тайле (детерминированно).
+func _spawn_one_raider(sim: Object, type_id: String, tile: Vector2i) -> Dictionary:
+	sim._enemies_cfg = _read_json("res://data/enemies.json")
+	sim._spawn_raid(1, false)
+	var r: Dictionary = sim.raiders[0]
+	for e: Dictionary in sim._enemies_cfg:
+		if String(e["id"]) == type_id:
+			r["p"] = e
+			r["type"] = type_id
+	r["pos"] = sim.map.tile_center_px(tile)
+	r["path"] = PackedVector2Array()
+	return r
+
+
+func _test_threat() -> void:
+	print("[Угрозы и оборона]")
+	var sim := _make_sim()
+	sim._next_raid_at = 999999999.0   # автоплан волн отключён — зовём вручную
+	_check(not sim.raid_active and sim.raiders.is_empty(), "старт: атак нет")
+	_check(sim.threat_value() >= 0.0, "угроза считается с первого дня")
+	_check(String(sim.threat_stage()) == "calm", "стадия на старте — «тихо»")
+	# кривая угрозы: время и рост города её поднимают
+	var t0: float = sim.threat_value()
+	sim.time += 10.0 * float(sim.cfg["day_length"])
+	sim.day = 11
+	var grown_by_time: float = sim.threat_value() - t0
+	_check(grown_by_time > 0.5, "угроза растёт со временем (+%.2f за 10 дней)" % grown_by_time)
+	sim._last_daily_day = 999   # дневные броски (автостройка/беженцы) в тесте выключены
+	var farm := _build_at(sim, "farm", _find_free_tile(sim, sim.map.spawn_tile))
+	_check(bool(farm["done"]), "ферма построена")
+	var grown_by_city: float = sim.threat_value() - t0
+	_check(grown_by_city > grown_by_time, "готовые здания добавляют угрозы")
+
+	# ворота: со стражем у вышки открыты (стройки — ДО волны: страх режет работу)
+	var gate_tile := Vector2i(-1, -1)
+	for off in sim._gate_offsets():
+		var t: Vector2i = sim.map.spawn_tile + (off as Vector2i)
+		if sim.is_buildable_tile(t):
+			gate_tile = t
+			break
+	_check(gate_tile != Vector2i(-1, -1), "нашёлся проём под ворота")
+	var gate := _build_at(sim, "gate", gate_tile)
+	_check(bool(gate["done"]), "ворота достроены")
+	var tower_g := _build_at(sim, "tower", _find_free_tile(sim, gate_tile))
+	_check(bool(tower_g["done"]), "вышка у ворот достроена")
+	var guard_g: Dictionary = _resident_by_prof(sim, "guard")
+	_teleport(sim, guard_g, tower_g["tile"])
+	sim.tick(0.1)
+	_check(sim._gate_open(gate), "страж на ближней вышке открывает ворота")
+
+	# волна: прямым вызовом (детерминированно)
+	var mood_before: float = float(sim.residents[0]["mood"])
+	sim._spawn_raid(3, false)
+	_check(sim.raid_active, "волна началась")
+	_check(sim.raiders.size() == 3, "в волне 3 мутанта")
+	_check(sim.raid_count == 1, "счётчик волн увеличился")
+	_check(float(sim.residents[0]["mood"]) < mood_before, "город напуган атакой")
+	sim._spawn_raid(1, false)
+	_check(not sim._gate_open(gate), "при атаке ворота захлопнуты")
+	# отбитая волна: конец, награда, событие
+	sim.raiders.clear()
+	sim._raid_end(true)
+	var crystal_before: int = int(sim.res["crystal"])
+	sim._spawn_raid(1, false)
+	sim.raiders.clear()
+	sim._raid_end(true)
+	_check(not sim.raid_active, "волна кончилась, когда мутантов не осталось")
+	_check(int(sim.res["crystal"]) > crystal_before, "за отбитую атаку — кристаллы")
+	var repelled_seen := false
+	for ev in sim.events:
+		if String(ev["type"]) == "raid_repelled":
+			repelled_seen = true
+	_check(repelled_seen, "событие «атака отбита» дошло до сцены")
+
+	# мутант ломает стену
+	var sim2 := _make_sim()
+	sim2._next_raid_at = 999999999.0
+	sim2._last_daily_day = 999
+	sim2.time = 10.0 * float(sim2.cfg["day_length"])
+	var wall_tile: Vector2i = sim2.map.spawn_tile + Vector2i(4, 0)
+	var wall := _build_at(sim2, "wall", wall_tile)
+	_check(bool(wall["done"]), "стена у города достроена")
+	_check(not sim2.map.is_walkable(wall_tile), "готовая стена непроходима")
+	# страж-житель дерётся с мутантами в упор — для чистоты осады убираем его
+	for r in sim2.residents.duplicate():
+		if String(r["prof"]) == "guard":
+			sim2.residents.erase(r)
+	_spawn_one_raider(sim2, "brute", wall_tile + Vector2i(2, 0))
+	var razed_seen := false
+	for i in 1200:
+		sim2.tick(0.2)
+		if sim2.building_at(wall_tile).is_empty():
+			razed_seen = true
+			break
+	_check(razed_seen, "осадный мутант разрушил стену")
+	_check(sim2.map.is_walkable(wall_tile), "на месте стены снова можно ходить")
+	_check(int(sim2.razed_this_raid) >= 1, "разрушение учтено в счёте осады")
+	# норма потерь набрана — осада удалась, мутанты уходят, город жив
+	var defeat_razes: int = int(sim2.cfg["threat"]["defeat_razes"])
+	sim2.razed_this_raid = defeat_razes
+	sim2._spawn_raid(1, false)
+	sim2.razed_this_raid = defeat_razes
+	sim2.tick(0.1)
+	_check(not sim2.raid_active, "волна уходит, когда разрушена норма зданий")
+	_check(sim2.residents.size() > 0, "провал осады не убивает игру")
+
+	# вышка со стражем отстреливает мутанта
+	var sim3 := _make_sim()
+	sim3._next_raid_at = 999999999.0
+	sim3._last_daily_day = 999
+	sim3.time = 10.0 * float(sim3.cfg["day_length"])
+	var tower := _build_now(sim3, "tower")
+	_check(bool(tower["done"]), "вышка построена")
+	var guard: Dictionary = _resident_by_prof(sim3, "guard")
+	_check(int(tower["worker"]) == int(guard["id"]), "страж закреплён за вышкой")
+	_teleport(sim3, guard, tower["tile"])
+	_spawn_one_raider(sim3, "mutant", tower["tile"] + Vector2i(3, 0))
+	for i in 150:
+		sim3.tick(0.2)
+		if sim3.raiders.is_empty():
+			break
+	_check(sim3.raiders.is_empty(), "вышка со стражем отстрелила мутанта")
+
+	# удар героя в городе
+	var sim4 := _make_sim()
+	sim4._next_raid_at = 999999999.0
+	sim4._last_daily_day = 999
+	var target := _spawn_one_raider(sim4, "mutant", sim4.map.spawn_tile + Vector2i(1, 0))
+	var hp_before: int = int(target["hp"])
+	var hits: int = sim4.hero_slash(sim4.map.tile_center_px(sim4.map.spawn_tile),
+			Vector2.RIGHT, 60.0, 90.0, 5)
+	_check(hits >= 1, "герой задел мутанта в дуге удара")
+	_check(int(target["hp"]) < hp_before, "урон героя дошёл до мутанта")
+	var misses: int = sim4.hero_slash(sim4.map.tile_center_px(sim4.map.spawn_tile),
+			Vector2.LEFT, 60.0, 90.0, 5)
+	_check(misses == 0, "удар в другую сторону не задевает")
+
+	# магическая буря: предупреждение, удары по зданиям, рост порчи
+	var sim5 := _make_sim()
+	sim5._next_raid_at = 999999999.0
+	sim5._last_daily_day = 999
+	var barn := _build_now(sim5, "warehouse")
+	_check(bool(barn["done"]), "склад построен под удар бури")
+	sim5.storm_state = "warn"
+	sim5.storm_left = 0.1
+	sim5.tick(0.2)
+	_check(String(sim5.storm_state) == "active", "после предупреждения буря началась")
+	var struck := false
+	for i in 200:
+		sim5.tick(0.5)
+		var cur: Dictionary = sim5.building_at(barn["tile"])
+		if cur.is_empty() or float(cur["hp"]) < float(sim5._bld_max_hp("warehouse")):
+			struck = true
+			break
+	_check(struck, "буря бьёт по зданиям")
+	_check(sim5.pollution > 0.0, "буря растит загрязнение")
+	# «Оберег» защищает: кроме зачарованного склада есть незаищищённая ферма
+	var sim6 := _make_sim()
+	sim6._next_raid_at = 999999999.0
+	sim6._last_daily_day = 999
+	var warded := _build_now(sim6, "warehouse")
+	warded["enchant"] = "ward"
+	_build_now(sim6, "farm")
+	var day_len: float = float(sim6.cfg["day_length"])
+	sim6.storm_state = "active"
+	sim6.storm_left = 2.0 * day_len
+	sim6._storm_struck_at = sim6.time - day_len
+	var farm_ever_struck := false
+	for i in 80:
+		sim6.tick(0.5)
+		if sim6.building_at(_ward_test_farm_tile(sim6)).is_empty():
+			farm_ever_struck = true
+	_check(farm_ever_struck, "удары бури уходят в незаищищённые здания")
+	var warded_now: Dictionary = sim6.building_at(warded["tile"])
+	_check(not warded_now.is_empty() and float(warded_now["hp"]) >= float(sim6._bld_max_hp("warehouse")),
+			"«Оберег» оберегает здание от удара бури")
+
+	# планировщик волн: предупреждение заранее, старт по расписанию
+	var sim7 := _make_sim()
+	sim7._last_daily_day = 999
+	sim7.time = 10.0 * float(sim7.cfg["day_length"])
+	sim7.day = 11
+	sim7._next_raid_at = sim7.time + 1.0
+	sim7.tick(0.1)
+	_check(sim7._raid_warned, "предупреждение о волне объявлено заранее")
+	var warn_seen := false
+	for ev in sim7.events:
+		if String(ev["type"]) == "raid_warn":
+			warn_seen = true
+	_check(warn_seen, "событие-предупреждение ушло в сцену")
+	sim7.events.clear()
+	sim7.tick(1.5)
+	_check(sim7.raid_active and sim7.raiders.size() >= 1, "волна началась по расписанию")
+
+
+## Тайл фермы в sim6 теста бури (первое готовое здание без «Оберега»).
+func _ward_test_farm_tile(sim: Object) -> Vector2i:
+	for b in sim.buildings:
+		if bool(b["done"]) and String(b.get("enchant", "")) != "ward":
+			return b["tile"]
+	return Vector2i(-1, -1)
+
+
+func _test_forbidden_school() -> void:
+	print("[Запретная школа]")
+	var magic: Variant = _read_json("res://data/magic.json")
+	var schools := {}
+	for s: Dictionary in magic["schools"]:
+		schools[String(s["id"])] = s
+	_check(schools.has("forbidden"), "школа «запретная» есть в data/magic.json")
+	var magic_obj = load("res://scripts/magic.gd").new()
+	magic_obj.setup(magic)
+	# рецепты из существующих рун
+	_check(String(magic_obj.recipe_result("rune_shadow", "rune_chaos")) == "corrupt_blast",
+			"тень+хаос = Порча-взрыв")
+	_check(String(magic_obj.recipe_result("rune_shadow", "rune_shadow")) == "plague",
+			"тень+тень = Чума")
+	_check(String(magic_obj.recipe_result("rune_chaos", "rune_frost")) == "drain_life",
+			"хаос+стужа = Вытягивание жизни")
+	var spells := {}
+	for sp: Dictionary in magic["spells"]:
+		spells[String(sp["id"])] = sp
+	for id in ["corrupt_blast", "plague", "drain_life"]:
+		_check(spells.has(id), "заклинание «%s» описано" % id)
+		if spells.has(id):
+			_check(String(spells[id]["school"]) == "forbidden", "%s — запретная школа" % id)
+			_check(float(spells[id].get("pollution", 0.0)) > 0.0,
+					"%s имеет цену: порчу города" % id)
+	# мутанты уязвимы к запретной школе
+	var enemies: Array = _read_json("res://data/enemies.json")
+	var by_id := {}
+	for e: Dictionary in enemies:
+		by_id[String(e["id"])] = e
+	var enemy_script: Script = load("res://scripts/enemy.gd")
+	for m in ["mutant", "brute", "spitter"]:
+		_check(by_id.has(m), "враг «%s» есть в данных" % m)
+		if by_id.has(m):
+			_check(String(by_id[m]["weak_school"]) == "forbidden", "%s уязвим к запретной школе" % m)
+	_check(int(enemy_script.calc_spell_damage(by_id["mutant"], 4, "forbidden")) == 8,
+			"запретная школа бьёт мутанта ×2")
+	# каст городских проверок не требует — портит город при касте в данже:
+	# полю pollution у заклинаний доверяет dungeon.gd (строки каста), тут проверяем сим
+	var sim := _make_sim()
+	var pol0: float = sim.pollution
+	sim.add_pollution(float(spells["corrupt_blast"]["pollution"]))
+	_check(sim.pollution > pol0, "цена запретной школы растит загрязнение города")
+
+
+func _test_mutant_forest() -> void:
+	print("[Лес-мутант: биом данжа]")
+	var params: Variant = _read_json("res://data/dungeon.json")
+	_check(params.has("biomes") and params.has("biome_weights"), "биомы и веса описаны в data/dungeon.json")
+	var biomes: Dictionary = params["biomes"]
+	_check(biomes.has("ruins") and biomes.has("mutant_forest"), "ровно два биома: руины и лес-мутант")
+	var mf: Dictionary = biomes["mutant_forest"]
+	for key in ["floor_color", "wall_color", "ambient", "enemy_weights", "loot_bonus", "pollution_on_visit"]:
+		_check(mf.has(key), "у леса-мутанта есть «%s»" % key)
+	_check(int(mf.get("loot_bonus", 0)) > 0, "лес-мутант жирнее по луту")
+	_check(float(mf.get("pollution_on_visit", 0.0)) > 0.0, "визит в лес портит город")
+	var weights: Dictionary = mf["enemy_weights"]
+	_check(int(weights.get("mutant", 0)) > 0 and int(weights.get("brute", 0)) > 0,
+			"в лесу живут мутанты и осадные громилы")
+	# генератор данжа работает на структуре без старого ключа "biome"
+	var gen = load("res://scripts/dungeon_gen.gd").new()
+	var cfg: Dictionary = params
+	gen.generate(13, cfg)
+	_check(gen.rooms.size() >= 2, "генератор строит данж на новых данных биомов")
+	var dungeon_script: Script = load("res://scripts/dungeon.gd")
+	_check(dungeon_script.can_instantiate(), "скрипт данжа парсится (выбор биома внутри)")
 

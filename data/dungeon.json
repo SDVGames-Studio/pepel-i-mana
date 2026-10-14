@@ -33,12 +33,28 @@
 		"enemy_drop_chance": 1.0,
 		"rune_per_chest": 1
 	},
-	"biome": {
-		"id": "ruins",
-		"floor_color": "#4a4440",
-		"wall_color": "#241f1d",
-		"bg_color": "#141110",
-		"exit_color": "#d8c27a",
-		"ambient": "#090910"
+	"biome_weights": { "ruins": 65, "mutant_forest": 35 },
+	"biomes": {
+		"ruins": {
+			"loc": "biome.ruins",
+			"floor_color": "#4a4440",
+			"wall_color": "#241f1d",
+			"bg_color": "#141110",
+			"exit_color": "#d8c27a",
+			"ambient": "#090910",
+			"loot_bonus": 0,
+			"pollution_on_visit": 0.0
+		},
+		"mutant_forest": {
+			"loc": "biome.mutant_forest",
+			"floor_color": "#3c4a2c",
+			"wall_color": "#1c2a18",
+			"bg_color": "#0d140b",
+			"exit_color": "#9fd45a",
+			"ambient": "#070d07",
+			"enemy_weights": { "mutant": 40, "brute": 25, "spitter": 20, "rat": 15 },
+			"loot_bonus": 1,
+			"pollution_on_visit": 2.0
+		}
 	}
 }

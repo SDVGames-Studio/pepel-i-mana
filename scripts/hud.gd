@@ -128,7 +128,7 @@ func _build() -> void:
 	_build_inventory_panel(root)
 
 
-## Панель заклинаний (M3): до 6 слотов спеллбука, клавиши 1–6.
+## Панель заклинаний (M3): до 9 слотов спеллбука, клавиши 1–9 (M5).
 func _build_spell_bar(root: Control) -> void:
 	var bar := HBoxContainer.new()
 	bar.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
@@ -137,7 +137,7 @@ func _build_spell_bar(root: Control) -> void:
 	bar.position.y = -54.0
 	bar.add_theme_constant_override("separation", 6)
 	root.add_child(bar)
-	for i in 6:
+	for i in 9:
 		var panel := PanelContainer.new()
 		var style := StyleBoxFlat.new()
 		style.bg_color = Color(0.08, 0.07, 0.06, 0.85)

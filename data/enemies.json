@@ -58,5 +58,50 @@
 		"magic_immune": true,
 		"drop_chance": 0.5,
 		"mana_chance": 0.2
+	},
+	{
+		"id": "mutant",
+		"loc": "enemy.mutant",
+		"hp": 5,
+		"damage": 2,
+		"speed": 80,
+		"aggro": 150,
+		"attack_range": 20,
+		"attack_cooldown": 1.0,
+		"radius": 9,
+		"color": "#7cb342",
+		"weak_school": "forbidden",
+		"drop_chance": 0.35,
+		"mana_chance": 0.3
+	},
+	{
+		"id": "brute",
+		"loc": "enemy.brute",
+		"hp": 16,
+		"damage": 4,
+		"speed": 40,
+		"aggro": 120,
+		"attack_range": 24,
+		"attack_cooldown": 1.8,
+		"radius": 13,
+		"color": "#33691e",
+		"weak_school": "forbidden",
+		"drop_chance": 0.7,
+		"mana_chance": 0.5
+	},
+	{
+		"id": "spitter",
+		"loc": "enemy.spitter",
+		"hp": 4,
+		"damage": 2,
+		"speed": 60,
+		"aggro": 180,
+		"attack_range": 96,
+		"attack_cooldown": 1.6,
+		"radius": 8,
+		"color": "#9e9d24",
+		"weak_school": "forbidden",
+		"drop_chance": 0.4,
+		"mana_chance": 0.4
 	}
 ]

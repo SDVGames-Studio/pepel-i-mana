@@ -11,6 +11,7 @@ var _pop_label: Label
 var _day_label: Label
 var _hungry_label: Label
 var _pollution_label: Label
+var _threat_label: Label
 var _hint_label: Label
 var _toast_label: Label
 var _toast_time := 0.0
@@ -76,6 +77,7 @@ func refresh() -> void:
 		_day_label.add_theme_color_override("font_color", Color("#ffe9b0"))
 	_hungry_label.visible = float(sim.res["food"]) <= 0.0
 	_refresh_pollution()
+	_refresh_threat()
 	_pause_btn.set_pressed_no_signal(bool(sim.paused))
 	for i in _speed_btns.size():
 		_speed_btns[i].set_pressed_no_signal(int(sim.speed) == int(cfg["speeds"][i]))
@@ -315,6 +317,37 @@ func _refresh_pollution() -> void:
 	_pollution_label.text = _pollution_text()
 
 
+## Индикатор угрозы (M5): стадия и время до волны; поверх — буря и атака.
+func _refresh_threat() -> void:
+	if sim.raid_active:
+		_threat_label.text = Loc.t("city.threat_raid") % sim.raiders.size()
+		_threat_label.add_theme_color_override("font_color", Color("#ff5252"))
+		return
+	if sim.storm_state == "active":
+		_threat_label.text = Loc.t("city.threat_storm")
+		_threat_label.add_theme_color_override("font_color", Color("#b041c0"))
+		return
+	if sim.storm_state == "warn":
+		_threat_label.text = Loc.t("city.threat_storm_warn")
+		_threat_label.add_theme_color_override("font_color", Color("#ba68c8"))
+		return
+	var eta: float = sim.raid_eta_days()
+	if sim._raid_warned:
+		_threat_label.text = Loc.t("city.threat_warn") % "%.1f" % eta
+		_threat_label.add_theme_color_override("font_color", Color("#ffb74d"))
+		return
+	var stage := String(sim.threat_stage())
+	_threat_label.text = "%s · %s" % [Loc.t("city.threat_line") % Loc.t("city.threat_stage." + stage),
+			Loc.t("city.threat_eta") % "%.1f" % eta]
+	match stage:
+		"unease":
+			_threat_label.add_theme_color_override("font_color", Color("#ffe082"))
+		"danger", "siege":
+			_threat_label.add_theme_color_override("font_color", Color("#ffab91"))
+		_:
+			_threat_label.add_theme_color_override("font_color", Color("#a5d6a7"))
+
+
 func _pollution_text() -> String:
 	var band := String(sim.pollution_band())
 	var text := Loc.t("magic.pollution") % [int(sim.pollution), Loc.t("magic.p_" + band)]
@@ -352,6 +385,8 @@ func _build() -> void:
 	tl_box.add_child(_hungry_label)
 	_pollution_label = _label(20)
 	tl_box.add_child(_pollution_label)
+	_threat_label = _label(20)
+	tl_box.add_child(_threat_label)
 
 	# --- правый верх: пауза и скорость
 	var top_right := PanelContainer.new()
@@ -561,6 +596,9 @@ func _chron_arg(v: String) -> String:
 	for prof in cfg["professions"]:
 		if String(prof["id"]) == v:
 			return Loc.t(String(prof["loc"]))
+	for b in cfg["buildings"]:
+		if String(b["id"]) == v:
+			return Loc.t(String(b["loc"]))
 	return v
 
 

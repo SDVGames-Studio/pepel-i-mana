@@ -11,9 +11,16 @@ extends RefCounted
 ## от работы, настроение (потребности+черты+события), беженцы и рождения,
 ## болезни/раны и лекарь, смерть жителя → горе, летопись, события-истории.
 ##
+## M5 (угрозы и оборона): нарастающая кривая угрозы (время+размер города),
+## волны мутантов из аномалии и осады (ломают стены/ворота), вышки и стражи
+## реально воюют, магическая буря портит здания, участие героя (hero_slash),
+## провал осады — потеря зданий, но не игры.
+##
 ## Житель: {id, name, prof, bld, site, home, state, pos, target, path, fatigue,
 ##          traits, mood, skill, rank, age_days, ail, ail_days, friend, work_bonus}
-## Здание: {id, type, tile, done, progress, worker, enchant, ench_mult, stun_left}
+## Здание: {id, type, tile, done, progress, worker, enchant, ench_mult, stun_left, hp}
+## Рейдер: {id, type, p(строка enemies.json), hp, max_hp, pos, target, path,
+##          atk_cd, goal(тайл), mode(advance|break|fight|flee)}
 
 const RESOURCES := ["wood", "stone", "food", "crystal", "tools"]
 
@@ -35,6 +42,17 @@ var base_pop := 0               # жители на старте — база л
 var conflicts := true           # ссоры и воровство включены (ответ №29, галочка в меню)
 var people: Dictionary = {}     # data/residents.json — черты, настроение, истории
 
+# --- M5: угрозы -----------------------------------------------------------
+var raiders: Array = []         # мутанты текущей волны
+var raid_active := false        # идёт атака/осада
+var raid_siege := false         # текущая волна — осада (ломает здания)
+var raid_count := 0             # всего волн с начала игры
+var razed_this_raid := 0        # зданий снесено мутантами в этой волне
+var storm_state := ""           # "" | "warn" | "active"
+var storm_left := 0.0           # сек до конца бури / до начала (warn)
+var hero_pos := Vector2.ZERO    # где герой в городе (сцена обновляет каждый кадр)
+var hero_alive := false         # герой в городе и на ногах
+
 var _next_id := 1
 var _trait_map := {}            # id черты -> описание (из people["traits"])
 var _spell_ready := {}          # id городского заклинания -> время готовности
@@ -42,6 +60,12 @@ var _event_rng := RandomNumberGenerator.new()
 var _last_event_day := 0
 var _last_daily_day := 0        # дневные броски M4: беженцы/рождения/болезни/истории
 var _gate_state := {}           # id ворот -> открыты? (страж на ближней вышке)
+var _next_raid_at := 0.0        # время следующей волны, сек
+var _raid_gap_days := 1.2       # длительность текущего интервала между волнами
+var _raid_warned := false       # предупреждение уже объявлено
+var _raid_rng := RandomNumberGenerator.new()
+var _bld_id := 1                # счётчик id рейдеров/снарядов (общий с зданиями не нужен)
+var _storm_struck_at := 0.0     # время последнего удара бури по зданию
 
 const PEOPLE_CFG_PATH := "res://data/residents.json"
 
@@ -64,8 +88,20 @@ func setup(city_map, city_cfg: Dictionary, residents_count: int, level: String) 
 	_last_event_day = 0
 	chronicle = []
 	_gate_state = {}
+	raiders = []
+	raid_active = false
+	raid_siege = false
+	raid_count = 0
+	razed_this_raid = 0
+	storm_state = ""
+	storm_left = 0.0
+	hero_alive = false
+	_next_raid_at = 0.0
+	_raid_warned = false
+	_storm_struck_at = 0.0
 	_last_daily_day = 0   # дневные броски (в т.ч. стройка) — с первого дня (заказчик)
 	_event_rng.randomize()
+	_raid_rng.randomize()
 	_next_id = 1
 	var people_data: Variant = _read_json_file(PEOPLE_CFG_PATH)
 	people = people_data if people_data is Dictionary else {}
@@ -105,7 +141,7 @@ func _new_resident(res_name: String, prof: String, tile: Vector2i) -> Dictionary
 		"traits": traits, "mood": _start_mood(traits),
 		"skill": 0.0, "rank": 0, "age_days": 100.0,
 		"ail": "", "ail_days": 0.0, "friend": -1, "work_bonus": 0.0,
-		"prof_extra": [], "sub_prof": "",
+		"prof_extra": [], "sub_prof": "", "atk_cd": 0.0,
 	}
 	return r
 
@@ -327,7 +363,6 @@ func _take_item(inventory: Array, item_id: String, count: int) -> void:
 				continue
 		i += 1
 
-
 ## Определение здания по типу.
 func _def(b: Dictionary) -> Dictionary:
 	for d in cfg["buildings"]:
@@ -365,11 +400,42 @@ func place_building(type_id: String, tile: Vector2i) -> bool:
 		"id": _next_id, "type": type_id, "tile": tile,
 		"done": false, "progress": 0.0, "worker": -1,
 		"enchant": "", "ench_mult": 1.0, "stun_left": 0.0,
+		"hp": float(_bld_max_hp(type_id)),
 	})
 	_next_id += 1
 	events.append({"type": "site", "bld": type_id})
 	_assign_jobs()
 	return true
+
+
+## Запас прочности здания (M5): стены/ворота крепче, остальное — базовое.
+func _bld_max_hp(type_id: String) -> int:
+	var hp_cfg: Dictionary = cfg.get("threat", {}).get("bld_hp", {})
+	for d in cfg["buildings"]:
+		if String(d["id"]) == type_id:
+			return int(hp_cfg.get(String(d.get("effect", "default")), hp_cfg.get("default", 20)))
+	return int(hp_cfg.get("default", 20))
+
+
+## Урон зданию от мутантов и бури; на нуле прочности здание разрушается.
+func _damage_building(b: Dictionary, amount: float) -> void:
+	b["hp"] = float(b.get("hp", float(_bld_max_hp(String(b["type"]))))) - amount
+	if float(b["hp"]) > 0.0:
+		return
+	# разрушено: рабочее место освобождается, стена перестаёт быть преградой
+	if int(b["worker"]) > 0:
+		for r in residents:
+			if int(r["id"]) == int(b["worker"]):
+				r["bld"] = null
+				r["site"] = null
+				r["sub_prof"] = ""
+				break
+		b["worker"] = -1
+	if _def(b).get("effect", "") in ["wall", "gate"]:
+		map.set_solid(b["tile"], false)
+	buildings.erase(b)
+	events.append({"type": "razed", "bld": String(b["type"])})
+	_chron("chron.razed", String(b["type"]))
 
 
 func _complete_site(site: Dictionary) -> void:
@@ -592,6 +658,8 @@ func tick(dt_raw: float) -> void:
 			b["stun_left"] = maxf(0.0, float(b["stun_left"]) - dt)
 	_update_gates()
 	_update_wild_events(pol_cfg, day_len)
+	_update_storm(dt, day_len)
+	_update_threat(dt, day_len)
 	for r in residents:
 		_update_resident(r, dt)
 	# люди (M4): раз в игровой день — преемник старосты, болезни, беженцы, рождения, стройка, истории
@@ -603,6 +671,7 @@ func tick(dt_raw: float) -> void:
 		_roll_births()
 		_roll_autobuild()
 		_roll_stories()
+		_roll_storm()
 	_update_gates()   # достроенные за тик вышки/ворота сразу меняют проходимость
 
 
@@ -696,6 +765,14 @@ func _update_resident(r: Dictionary, dt: float) -> void:
 		_lie_ill(r, dt)
 		return
 	var night := is_night()
+	# атака мутантов (M5): страж выходит на бой, трус прячется дома
+	if raid_active:
+		if String(r["prof"]) == "guard":
+			_guard_fight(r, dt)
+			return
+		if _has_trait_flag(r, "flees"):
+			_flee_home(r, dt)
+			return
 	# ночь: все, кроме стража на вышке, спят
 	if night and String(r["prof"]) != "guard":
 		_sleep(r, dt)
@@ -776,6 +853,43 @@ func _restore_rate(r: Dictionary, sleeping: bool) -> float:
 			base *= 1.0 + float(cfg["well_bonus"])
 			break
 	return base
+
+
+## Страж в бою (M5): у вышки стоит на посту (стреляет сама вышка), без вышки —
+## сам ищет ближайшего мутанта и бьёт в упор.
+func _guard_fight(r: Dictionary, dt: float) -> void:
+	var tower := _assigned_done(r, "guard")
+	if not tower.is_empty():
+		if _arrived(r, tower["tile"]):
+			r["state"] = "guard"
+			r["fatigue"] += dt / float(cfg["day_length"])
+		else:
+			_move_towards(r, tower["tile"], dt)
+		return
+	var target := _nearest_raider(r["pos"], float(map.ts) * 8.0)
+	if target.is_empty():
+		r["state"] = "idle"
+		return
+	var dist: float = (target["pos"] as Vector2).distance_to(r["pos"])
+	if dist <= float(map.ts) * 1.5:
+		r["atk_cd"] = maxf(0.0, float(r.get("atk_cd", 0.0)) - dt)
+		if float(r["atk_cd"]) <= 0.0:
+			r["atk_cd"] = float(cfg.get("threat", {}).get("guard_cd", 1.0))
+			_hit_raider(target, int(cfg.get("threat", {}).get("guard_damage", 2)))
+		r["state"] = "guard"
+	else:
+		_move_towards(r, map.tile_of_px(target["pos"]), dt)
+
+
+## Трус прячется дома, пока в городе мутанты.
+func _flee_home(r: Dictionary, dt: float) -> void:
+	if r["home"] == null:
+		r["home"] = _free_home(r)
+	var home: Dictionary = r["home"]
+	if not home.is_empty() and not _arrived(r, home["tile"]):
+		_move_towards(r, home["tile"], dt)
+		return
+	r["state"] = "hide"
 
 
 func _do_build(r: Dictionary, site: Dictionary, dt: float) -> void:
@@ -871,7 +985,10 @@ func _move_towards(r: Dictionary, tile: Vector2i, dt: float) -> void:
 # --- ворота в стене ---------------------------------------------------------
 
 ## Ворота открыты, если рядом (≤3 тайлов) стоит вышка со стражем (заказчик).
+## При надвигающейся или идущей атаке ворота ЗАКРЫТЫ всегда (M5).
 func _gate_open(gate: Dictionary) -> bool:
+	if raid_active or _raid_warned:
+		return false
 	for b in buildings:
 		if b["done"] and _def(b).get("effect", "") == "guard" and int(b["worker"]) > 0:
 			if Vector2(b["tile"]).distance_to(Vector2(gate["tile"])) <= 3.0:
@@ -981,6 +1098,9 @@ func work_mult(r: Dictionary) -> float:
 	# инструменты из мастерской ускоряют всех, пока есть в хранилище
 	if float(res.get("tools", 0.0)) > 0.0:
 		mult *= float(cfg.get("tools_boost", 1.15))
+	# атака мутантов: работы вполсилы, только храбрые не боятся (M5)
+	if raid_active and not _has_trait_flag(r, "fearless"):
+		mult *= float(cfg.get("threat", {}).get("fear_work", 0.75))
 	if float(res["food"]) <= 0.0:
 		mult *= float(people.get("starving_work", 0.6))
 	return clampf(mult, 0.2, 3.0)
@@ -1702,3 +1822,381 @@ func deposit_loot(inventory: Array) -> Dictionary:
 			stack["count"] = want - got
 			i += 1
 	return added
+
+
+# --- угрозы и оборона (M5) --------------------------------------------------
+
+var _enemies_cfg: Array = []    # data/enemies.json — параметры мутантов
+
+
+## Сила угрозы: растёт со временем и размером города (ТЗ 4.3, решение №12).
+func threat_value() -> float:
+	var tcfg: Dictionary = cfg.get("threat", {})
+	var city_value := 0
+	for b in buildings:
+		if bool(b["done"]):
+			city_value += 1
+	city_value += residents.size()
+	return maxf(0.0, float(day - int(tcfg.get("start_day", 3.0)))) * float(tcfg.get("day_growth", 0.35)) \
+			+ float(city_value) * float(tcfg.get("city_growth", 0.08))
+
+
+## Стадия угрозы для HUD: calm / unease / danger / siege.
+func threat_stage() -> String:
+	var tcfg: Dictionary = cfg.get("threat", {})
+	var v := threat_value()
+	if v >= float(tcfg.get("siege_from_threat", 8.0)):
+		return "siege"
+	if v >= 3.0:
+		return "danger"
+	if v >= float(tcfg.get("min_threat", 1.0)):
+		return "unease"
+	return "calm"
+
+
+## Сколько дней до следующей волны (для индикатора HUD).
+func raid_eta_days() -> float:
+	if raid_active:
+		return 0.0
+	return maxf(0.0, (_next_raid_at - time) / float(cfg["day_length"]))
+
+
+func _schedule_next_raid() -> void:
+	var tcfg: Dictionary = cfg.get("threat", {})
+	var gap: float = float(tcfg.get("base_gap_days", 1.2)) \
+			- float(tcfg.get("gap_shrink", 0.04)) * threat_value()
+	_raid_gap_days = maxf(gap, float(tcfg.get("gap_min_days", 0.6)))
+	_next_raid_at = time + _raid_gap_days * float(cfg["day_length"])
+	_raid_warned = false
+
+
+## Планировщик волн: предупреждение за warn_fraction интервала, затем атака.
+func _update_threat(dt: float, day_len: float) -> void:
+	var tcfg: Dictionary = cfg.get("threat", {})
+	if tcfg.is_empty():
+		return
+	if raid_active:
+		_update_raid(dt, day_len)
+		return
+	if _next_raid_at <= 0.0:
+		_schedule_next_raid()
+		return
+	var warn_at: float = _next_raid_at - float(tcfg.get("warn_fraction", 0.3)) * _raid_gap_days * day_len
+	if not _raid_warned and time >= warn_at:
+		_raid_warned = true
+		events.append({"type": "raid_warn", "eta": raid_eta_days()})
+		return
+	if time >= _next_raid_at:
+		if threat_value() < float(tcfg.get("min_threat", 1.0)):
+			_next_raid_at = time + 0.5 * day_len   # город ещё мал — мутанты не идут
+			return
+		var siege := threat_value() >= float(tcfg.get("siege_from_threat", 8.0)) \
+				and _raid_rng.randf() < float(tcfg.get("siege_chance", 0.35))
+		var size := int(float(tcfg.get("raid_size_base", 2)) + threat_value() * float(tcfg.get("raid_size_threat", 0.3)))
+		size = clampi(size, 1, int(tcfg.get("raid_size_max", 10)))
+		if siege:
+			size += int(tcfg.get("siege_size_bonus", 4))
+		_spawn_raid(size, siege)
+
+
+## Волна мутантов из аномалии: size тварей, siege — осада покрупнее.
+func _spawn_raid(size: int, siege: bool) -> void:
+	if _enemies_cfg.is_empty():
+		var ed: Variant = _read_json_file("res://data/enemies.json")
+		_enemies_cfg = ed if ed is Array else []
+	var tcfg: Dictionary = cfg.get("threat", {})
+	raid_active = true
+	raid_siege = siege
+	raid_count += 1
+	razed_this_raid = 0
+	var hp_mult := 1.0 + threat_value() * float(tcfg.get("hp_per_threat", 0.04))
+	for i in size:
+		var def := _pick_raider_def(tcfg)
+		if def.is_empty():
+			break
+		var hp := int(round(float(def["hp"]) * hp_mult))
+		raiders.append({
+			"id": _next_id, "type": String(def["id"]), "p": def,
+			"hp": hp, "max_hp": hp,
+			"pos": _spawn_tile_near_anomaly(),
+			"target": Vector2i(-1, -1), "path": PackedVector2Array(),
+			"atk_cd": 0.0, "mode": "advance",
+		})
+		_next_id += 1
+	for r in residents:
+		r["mood"] = clampf(float(r["mood"]) + float(tcfg.get("raid_mood", -15.0)), 0.0, 100.0)
+	events.append({"type": "raid_start", "siege": siege, "count": raiders.size()})
+	_chron("chron.raid_siege" if siege else "chron.raid", str(raiders.size()))
+	_update_gates()   # ворота захлопываются
+
+
+func _pick_raider_def(tcfg: Dictionary) -> Dictionary:
+	var weights: Dictionary = tcfg.get("enemy_weights", {})
+	var total := 0
+	for w: int in weights.values():
+		total += w
+	var roll := _raid_rng.randi_range(1, maxi(1, total))
+	for def: Dictionary in _enemies_cfg:
+		roll -= int(weights.get(String(def["id"]), 0))
+		if roll <= 0:
+			return def
+	return _enemies_cfg[0] if not _enemies_cfg.is_empty() else {}
+
+
+func _spawn_tile_near_anomaly() -> Vector2:
+	for attempt in 40:
+		var off := Vector2i(_raid_rng.randi_range(-3, 3), _raid_rng.randi_range(-3, 3))
+		var tile: Vector2i = map.anomaly_tile + off
+		if map.is_walkable(tile):
+			return map.tile_center_px(tile)
+	return map.tile_center_px(map.anomaly_tile)
+
+
+## Тик волны: движение мутантов, атаки по герою и зданиям, огонь вышек.
+func _update_raid(dt: float, _day_len: float) -> void:
+	var tcfg: Dictionary = cfg.get("threat", {})
+	_shoot_towers(dt, tcfg)
+	var i := 0
+	while i < raiders.size():
+		var r: Dictionary = raiders[i]
+		if not _raider_update(r, dt, tcfg):
+			raiders.remove_at(i)
+			continue
+		i += 1
+	if raiders.is_empty():
+		_raid_end(true)
+		return
+	if razed_this_raid >= int(tcfg.get("defeat_razes", 3)):
+		_raid_end(false)
+
+
+## Вышка со стражем бьёт ближайшего мутанта в радиусе (страж реально воюет).
+func _shoot_towers(dt: float, tcfg: Dictionary) -> void:
+	var range_px := float(tcfg.get("tower_range", 4.5)) * float(map.ts)
+	for b in buildings:
+		if not bool(b["done"]) or _def(b).get("effect", "") != "guard" or int(b["worker"]) <= 0:
+			continue
+		if float(b.get("stun_left", 0.0)) > 0.0:
+			continue
+		b["cd"] = float(b.get("cd", 0.0)) - dt
+		if float(b["cd"]) > 0.0:
+			continue
+		var target: Dictionary = _nearest_raider(map.tile_center_px(b["tile"]), range_px)
+		if target.is_empty():
+			continue
+		b["cd"] = float(tcfg.get("tower_cd", 1.2))
+		_hit_raider(target, int(tcfg.get("tower_damage", 2)))
+
+
+func _nearest_raider(from_px: Vector2, radius_px: float) -> Dictionary:
+	var best: Dictionary = {}
+	var best_d := radius_px
+	for r in raiders:
+		var d: float = (r["pos"] as Vector2).distance_to(from_px)
+		if d < best_d:
+			best_d = d
+			best = r
+	return best
+
+
+## ИИ мутанта: герой рядом — дерётся с героем; здание в досягаемости — ломает;
+## путь к центру открыт — идёт; заперт стеной — идёт к ближайшей стене/воротам.
+## Возвращает false, если мутант погиб или волне нечего делать (убрать из списка).
+func _raider_update(r: Dictionary, dt: float, tcfg: Dictionary) -> bool:
+	if int(r["hp"]) <= 0:
+		return false
+	r["atk_cd"] = maxf(0.0, float(r["atk_cd"]) - dt)
+	var p: Dictionary = r["p"]
+	# герой в городе и рядом — мутант отвлекается на чемпиона
+	if hero_alive:
+		var to_hero: Vector2 = hero_pos - (r["pos"] as Vector2)
+		if to_hero.length() <= float(p["aggro"]):
+			if to_hero.length() <= float(p["attack_range"]) + 12.0:
+				if float(r["atk_cd"]) <= 0.0:
+					r["atk_cd"] = float(p["attack_cooldown"])
+					events.append({"type": "hero_hit", "dmg": int(p["damage"])})
+			else:
+				_raider_walk_direct(r, to_hero.normalized() * float(p["speed"]) * dt)
+			return true
+	var reach := float(p["attack_range"]) + float(map.ts) * 0.5
+	# здание в пределах досягаемости — крушим (иначе осцилляция «центр ↔ стена»:
+	# обходной путь всегда существует, и мутант ни разу не ударит)
+	var near := _nearest_building_of(r, [])
+	if not near.is_empty() and (r["pos"] as Vector2).distance_to(map.tile_center_px(near["tile"])) <= reach:
+		if float(r["atk_cd"]) <= 0.0:
+			r["atk_cd"] = float(p["attack_cooldown"])
+			var mult := float(tcfg.get("brute_bld_mult", 3.0)) if String(r["type"]) == "brute" else 1.0
+			_damage_building(near, float(p["damage"]) * mult)
+			if not buildings.has(near):
+				razed_this_raid += 1
+		return true
+	# путь к центру открыт — идём
+	var path: PackedVector2Array = map.path_px(r["pos"], map.spawn_tile)
+	if path.size() > 1:
+		_raider_move_to(r, map.spawn_tile, float(p["speed"]) * dt)
+		return true
+	# заперты в кольце: идём ломать ближайшую стену или ворота
+	var b := _nearest_building_of(r, ["wall", "gate"])
+	if b.is_empty():
+		b = near
+	if b.is_empty():
+		return false   # город пуст — волне нечего делать
+	var goal := _walkable_next_to(b["tile"])
+	if goal == Vector2i(-1, -1):
+		return true
+	_raider_move_to(r, goal, float(p["speed"]) * dt)
+	return true
+
+
+## Движение мутанта по кэшированному пути (как у жителей): без кэша путь
+## перестраивается каждый тик и мутант дёргается на границе тайла на месте.
+func _raider_move_to(r: Dictionary, tile: Vector2i, step: float) -> void:
+	if r["target"] != tile:
+		r["target"] = tile
+		r["path"] = map.path_px(r["pos"], tile)
+	var path: PackedVector2Array = r["path"]
+	if path.is_empty():
+		return
+	var pos: Vector2 = r["pos"]
+	while step > 0.0 and not path.is_empty():
+		var to_next: Vector2 = path[0] - pos
+		var dist := to_next.length()
+		if dist <= step:
+			pos = path[0]
+			step -= dist
+			path.remove_at(0)
+		else:
+			pos += to_next / dist * step
+			step = 0.0
+	r["pos"] = pos
+	r["path"] = path
+
+
+func _raider_walk_direct(r: Dictionary, shift: Vector2) -> void:
+	r["pos"] = (r["pos"] as Vector2) + shift
+
+
+## Ближайшее к мутанту готовое здание с эффектом из wanted (пустой — любое).
+func _nearest_building_of(r: Dictionary, wanted: Array) -> Dictionary:
+	var best: Dictionary = {}
+	var best_d := INF
+	for b in buildings:
+		if not bool(b["done"]):
+			continue
+		if not wanted.is_empty() and not (_def(b).get("effect", "") in wanted):
+			continue
+		var d: float = map.tile_center_px(b["tile"]).distance_to(r["pos"])
+		if d < best_d:
+			best_d = d
+			best = b
+	return best
+
+
+func _walkable_next_to(tile: Vector2i) -> Vector2i:
+	for n in [tile + Vector2i(1, 0), tile + Vector2i(-1, 0), tile + Vector2i(0, 1), tile + Vector2i(0, -1)]:
+		if map.is_walkable(n):
+			return n
+	return Vector2i(-1, -1)
+
+
+## Урон мутанту (вышка, страж, герой). Слабость к школе не учитывается — урон физический.
+func _hit_raider(r: Dictionary, dmg: int) -> void:
+	r["hp"] = int(r["hp"]) - dmg
+	if int(r["hp"]) <= 0:
+		raiders.erase(r)
+
+
+## Удар героя в городе (участие в обороне): дуга в сторону курсора. Возвращает, скольких задел.
+func hero_slash(origin_px: Vector2, facing: Vector2, range_px: float, arc_deg: float, dmg: int) -> int:
+	var hits := 0
+	for r in raiders.duplicate():
+		var to: Vector2 = (r["pos"] as Vector2) - origin_px
+		if to.length() > range_px + float(r["p"]["radius"]):
+			continue
+		if absf(facing.angle_to(to)) > deg_to_rad(arc_deg) / 2.0:
+			continue
+		_hit_raider(r, dmg)
+		hits += 1
+	if raid_active and raiders.is_empty():
+		_raid_end(true)
+	return hits
+
+
+## Конец волны: true — отбита (награда), false — осада удалась (город понёс потери).
+func _raid_end(defended: bool) -> void:
+	raid_active = false
+	raiders.clear()
+	var tcfg: Dictionary = cfg.get("threat", {})
+	if defended:
+		var reward := int(tcfg.get("reward_crystals", 2))
+		_add_resource_capped("crystal", reward)
+		for r in residents:
+			r["mood"] = clampf(float(r["mood"]) + float(tcfg.get("repelled_mood", 8.0)), 0.0, 100.0)
+		events.append({"type": "raid_repelled", "crystals": reward})
+		_chron("chron.repelled")
+	else:
+		events.append({"type": "raid_breached", "razed": razed_this_raid})
+		_chron("chron.breach")
+	razed_this_raid = 0
+	_schedule_next_raid()
+	_update_gates()   # ворота снова по правилу стража
+
+
+## --- магическая буря (M5) ---------------------------------------------------
+
+## Дневной бросок: буря редка сама по себе и частит с загрязнением.
+func _roll_storm() -> void:
+	if storm_state != "" or residents.is_empty():
+		return
+	var scfg: Dictionary = cfg.get("storm", {})
+	if scfg.is_empty():
+		return
+	var chance: float = float(scfg.get("base_chance", 0.02)) \
+			+ float(scfg.get("pollution_chance", 0.25)) * pollution / 100.0
+	if _event_rng.randf() >= chance:
+		return
+	storm_state = "warn"
+	storm_left = float(scfg.get("warn_days", 0.3)) * float(cfg["day_length"])
+	events.append({"type": "storm_warn"})
+	_chron("chron.storm_warn")
+
+
+func _update_storm(dt: float, day_len: float) -> void:
+	if storm_state == "":
+		return
+	var scfg: Dictionary = cfg.get("storm", {})
+	storm_left = maxf(0.0, storm_left - dt)
+	if storm_state == "warn":
+		if storm_left <= 0.0:
+			storm_state = "active"
+			storm_left = float(scfg.get("duration_days", 0.6)) * day_len
+			_storm_struck_at = time
+			for r in residents:
+				r["mood"] = clampf(float(r["mood"]) + float(scfg.get("mood_hit", -10.0)), 0.0, 100.0)
+			events.append({"type": "storm_start"})
+			_chron("chron.storm")
+		return
+	# активная буря: портит воздух и бьёт по зданиям («Оберег» защищает)
+	add_pollution(float(scfg.get("pollution_per_day", 10.0)) * dt / day_len)
+	if time - _storm_struck_at >= float(scfg.get("strike_period_days", 0.12)) * day_len:
+		_storm_struck_at = time
+		var target := _storm_strike_target()
+		if not target.is_empty():
+			_damage_building(target, float(scfg.get("strike_damage", 12)))
+			if buildings.has(target):
+				events.append({"type": "storm_strike", "bld": String(target["type"])})
+	if storm_left <= 0.0:
+		storm_state = ""
+		events.append({"type": "storm_end"})
+		_chron("chron.storm_end")
+
+
+## Случайное готовое здание без «Оберега» — цель удара бури.
+func _storm_strike_target() -> Dictionary:
+	var candidates: Array = []
+	for b in buildings:
+		if bool(b["done"]) and String(b.get("enchant", "")) != "ward":
+			candidates.append(b)
+	if candidates.is_empty():
+		return {}
+	return candidates[_event_rng.randi_range(0, candidates.size() - 1)]

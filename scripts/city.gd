@@ -48,7 +48,14 @@ func _ready() -> void:
 	add_child(hud)
 	hud.set_enchant_colors(_enchant_colors())
 	hud.set_hint(_default_hint())
+	hero.died.connect(_on_hero_down)
 	_deposit_loot()
+
+
+func _exit_tree() -> void:
+	# ушли в данж/меню: мутантам некого преследовать
+	if sim != null:
+		sim.hero_alive = false
 
 
 ## Цвета зачарований для подсветки зданий и кнопок панели магии.
@@ -139,6 +146,10 @@ func _leftover_line() -> String:
 
 
 func _process(_delta: float) -> void:
+	# герой в городе: мутанты могут гнаться за ним (M5)
+	if not hero.dead:
+		sim.hero_pos = hero.global_position
+		sim.hero_alive = true
 	view.queue_redraw()
 	hud.refresh()
 	_update_daylight()
@@ -233,6 +244,28 @@ func _process_events() -> void:
 				hud.toast(Loc.t("story.mutation_good_toast") % String(ev["name"]))
 			"mutation_bad":
 				hud.toast(Loc.t("story.mutation_bad_toast") % String(ev["name"]))
+			# --- угрозы (M5) ---
+			"raid_warn":
+				hud.toast(Loc.t("city.raid_warn") % "%.1f" % float(ev["eta"]))
+			"raid_start":
+				hud.toast(Loc.t("city.raid_siege_toast" if bool(ev["siege"]) else "city.raid_toast") % int(ev["count"]))
+			"raid_repelled":
+				hud.toast(Loc.t("city.raid_repelled_toast") % int(ev["crystals"]))
+			"raid_breached":
+				hud.toast(Loc.t("city.raid_breached_toast") % int(ev["razed"]))
+			"razed":
+				hud.toast(Loc.t("city.razed_toast") % bld_name)
+				_rebuild_collision()
+			"storm_warn":
+				hud.toast(Loc.t("city.storm_warn_toast"))
+			"storm_start":
+				hud.toast(Loc.t("city.storm_start_toast"))
+			"storm_end":
+				hud.toast(Loc.t("city.storm_end_toast"))
+			"storm_strike":
+				hud.toast(Loc.t("city.storm_strike_toast") % bld_name)
+			"hero_hit":
+				hero.take_damage(int(ev["dmg"]))
 	sim.events.clear()
 
 
@@ -269,6 +302,22 @@ func _update_daylight() -> void:
 	var pol_cfg: Dictionary = cfg.get("pollution", {})
 	var pol_t := clampf(sim.pollution / maxf(1.0, float(pol_cfg.get("max", 100.0))), 0.0, 1.0)
 	_modulate.color = _modulate.color.lerp(Color(0.82, 0.68, 0.95), pol_t * 0.3)
+	# магическая буря (M5): небо наливается грозой
+	if sim.storm_state == "active":
+		_modulate.color = _modulate.color.lerp(Color(0.6, 0.5, 0.85), 0.4)
+	elif sim.storm_state == "warn":
+		_modulate.color = _modulate.color.lerp(Color(0.7, 0.6, 0.9), 0.2)
+
+
+## Герой пал в городе (M5): не умирает окончательно — жители оттаскивают к центру.
+func _on_hero_down() -> void:
+	if sim.raid_active:
+		sim.hero_alive = false
+	hud.toast(Loc.t("city.hero_down_toast"))
+	hero.dead = false
+	hero.hp = maxi(1, int(hero.p["hp"]) / 3)
+	hero.position = map.tile_center_px(map.spawn_tile)
+	hero.queue_redraw()
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -305,6 +354,8 @@ func _unhandled_input(event: InputEvent) -> void:
 			_try_place()
 		elif event.button_index == MOUSE_BUTTON_RIGHT and build_mode != "":
 			set_build_mode("")
+		elif event.button_index == MOUSE_BUTTON_LEFT:
+			hero.city_attack(sim)   # ЛКМ без режима — удар героя в городе (M5)
 	elif event.is_action_pressed("ui_cancel"):
 		if build_mode != "":
 			set_build_mode("")
