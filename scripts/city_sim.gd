@@ -853,9 +853,12 @@ func _update_resident(r: Dictionary, dt: float) -> void:
 		_do_build(r, r["site"], dt)
 		return
 	if r["bld"] != null:
-		# производственное здание; без выработки (вышка стража) — просто пост
 		if _def(r["bld"]).has("produce"):
 			_do_work(r, r["bld"], dt)
+		elif guard_on_duty:
+			_guard_post(r, dt)   # на смене — стоит на посту (вышка рядом открывает ворота)
+		elif String(r["prof"]) == "guard" and _guard_help_build(r, dt):
+			pass                 # вне смены страж помогает городу строить (заказчик)
 		else:
 			r["state"] = "idle"
 		return
@@ -866,15 +869,43 @@ func _update_resident(r: Dictionary, dt: float) -> void:
 		_manage_walk(r, dt)
 		return
 	if guard_on_duty:
-		var tower := _assigned_done(r, "guard")
-		if not tower.is_empty():
-			if _arrived(r, tower["tile"]):
-				r["state"] = "guard"
-				r["fatigue"] += dt / day_len
-			else:
-				_move_towards(r, tower["tile"], dt)
-			return
+		_guard_post(r, dt)
+		return
+	if String(r["prof"]) == "guard" and _guard_help_build(r, dt):
+		return
 	r["state"] = "idle"
+
+
+## Страж на посту: стоит у закреплённой вышки.
+func _guard_post(r: Dictionary, dt: float) -> void:
+	var tower := _assigned_done(r, "guard")
+	if not tower.is_empty():
+		if _arrived(r, tower["tile"]):
+			r["state"] = "guard"
+			r["fatigue"] += dt / float(cfg["day_length"])
+		else:
+			_move_towards(r, tower["tile"], dt)
+	else:
+		r["state"] = "idle"
+
+
+## Страж вне смены помогает городу: строит ближайшую площадку. False — помогать нечем.
+func _guard_help_build(r: Dictionary, dt: float) -> bool:
+	if raid_active or _raid_warned:
+		return false   # при угрозе все силы — обороне
+	var site: Dictionary = {}
+	var best_d := INF
+	for b in buildings:
+		if bool(b["done"]):
+			continue
+		var d: float = map.tile_center_px(b["tile"]).distance_to(r["pos"])
+		if d < best_d:
+			best_d = d
+			site = b
+	if site.is_empty():
+		return false
+	_do_build(r, site, dt)
+	return true
 
 
 func _sleep(r: Dictionary, dt: float) -> void:

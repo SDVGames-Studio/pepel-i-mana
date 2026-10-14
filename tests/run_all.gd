@@ -1759,6 +1759,27 @@ func _test_defense() -> void:
 	game4.free()
 	game5.free()
 
+	# стартовый город: 10 жителей (заказчик: поселение должно вывозить)
+	var game6: Node = load("res://scripts/game.gd").new()
+	game6.new_city()
+	_check(game6.city_sim.residents.size() == 10, "новый город: 10 жителей на старте")
+	_check(game6.city_sim.pop_cap() >= 10, "лимит жителей вмещает стартовый набор")
+	game6.free()
+
+	# страж вне смены помогает на стройке (заказчик: стража тоже должна помогать)
+	var sim_gh := _make_sim()
+	sim_gh._last_daily_day = 999
+	var guard_h: Dictionary = _resident_by_prof(sim_gh, "guard")
+	guard_h["shift"] = "night"   # сейчас день — он вне смены
+	var site_tile: Vector2i = _find_free_tile(sim_gh, sim_gh.map.spawn_tile)
+	sim_gh.place_building("wall", site_tile)
+	_teleport(sim_gh, guard_h, site_tile)
+	sim_gh.time = 10.0
+	var prog0: float = float(sim_gh.building_at(site_tile)["progress"])
+	sim_gh.tick(1.0)
+	_check(float(sim_gh.building_at(site_tile)["progress"]) > prog0,
+			"страж вне смены помогает строить")
+
 
 func _test_forbidden_school() -> void:
 	print("[Запретная школа]")
