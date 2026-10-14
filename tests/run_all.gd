@@ -64,6 +64,7 @@ const REQUIRED_LOCALES := [
 	"city.growth_cap", "city.growth_food", "city.growth_mood",
 	"city.learned_toast", "chron.learned",
 	"city.autobuild_toast", "chron.autobuild",
+	"city.promoted_toast", "chron.promoted",
 	"city.state.manage",
 	"prof.elder", "prof.mayor", "prof.bartender",
 	"bld.tavern", "bld.desc.tavern",
@@ -178,7 +179,7 @@ func _test_data() -> void:
 	if not (city is Dictionary):
 		return
 	for key in ["tile_size", "map_w", "map_h", "day_length", "speeds", "start", "loot_to_pool",
-			"pollution", "hero_mana", "test_mode"]:
+			"pollution", "hero_mana", "test_mode", "autobuild_plan"]:
 		_check(city.has(key), "city.json содержит %s" % key)
 	var blds: Variant = city.get("buildings", [])
 	_check(blds is Array and blds.size() == 11, "city.json — 11 типов зданий (M4: + хижина лекаря, таверна)")
@@ -521,8 +522,9 @@ func _test_city_sim() -> void:
 	_check(full_inv.size() == 1 and int(full_inv[0]["count"]) == 10, "излишек остался в рюкзаке")
 
 	# алтарь маны: маг-ученик даёт благословение (петля: данж -> кристаллы -> буст)
-	var sim4 := _make_sim("high")
-	_check(int(sim4.res["crystal"]) == 2, "уровень «много»: 2 кристалла на старте")
+	var sim4 := _make_sim()
+	_check(int(sim4.cfg["start"]["levels"]["high"]["crystal"]) == 2, "уровень «много» даёт 2 кристалла (конфиг)")
+	sim4.res["crystal"] = 2.0   # кристаллы принесены из данжа
 	var altar := _build_now(sim4, "altar")
 	var acolyte: Dictionary = _resident_by_prof(sim4, "acolyte")
 	_check(not acolyte.is_empty(), "маг-ученик есть среди жителей")
@@ -580,7 +582,7 @@ func _test_people() -> void:
 	_check(sim_m._mood_target(lover) > sim_m._mood_target(phobe), "маголюб при загрязнении счастливее магофоба")
 
 	# лекарь: хижина занята, болезнь случается и лечится
-	var sim_s := _make_sim("high")
+	var sim_s := _make_sim()
 	var healer: Dictionary = sim_s._new_resident("Ада", "healer", sim_s.map.spawn_tile)
 	sim_s.residents.append(healer)
 	var hut := _build_now(sim_s, "healer_hut")
@@ -613,7 +615,8 @@ func _test_people() -> void:
 			"смерть попала в летопись")
 
 	# беженцы идут сами (ответ №27), рождения дают ребёнка, ребёнок вырастает
-	var sim_r := _make_sim("high")
+	var sim_r := _make_sim()
+	sim_r.res["food"] = 30.0   # запас еды на всех — иначе беженцы не придут
 	_build_now(sim_r, "house")   # +2 к лимиту: место для пришельцев и новорождённых
 	for r in sim_r.residents:
 		r["mood"] = 80.0
@@ -771,7 +774,7 @@ func _test_people() -> void:
 	_check(absf(plain_mult - sub_mult * 2.0) < 0.01, "неосновная профессия работает ровно вдвое хуже")
 
 	# таверна: тратит еду на пиво и поднимает настроение городу
-	var sim_t := _make_sim("high")
+	var sim_t := _make_sim()
 	var tavern_keeper: Dictionary = sim_t._new_resident("Герд", "bartender", sim_t.map.spawn_tile)
 	sim_t.residents.append(tavern_keeper)
 	_build_now(sim_t, "tavern")
@@ -784,12 +787,12 @@ func _test_people() -> void:
 	_check(bool(sim_t.tavern_active()), "таверна с пивом активна")
 	var pleased: Dictionary = {"traits": [], "mood": 50.0, "fatigue": 0.0, "home": {}, "friend": -1, "ail": ""}
 	var mood_with: float = sim_t._mood_target(pleased)
-	var sim_t2 := _make_sim("high")   # такой же город, но без таверны
+	var sim_t2 := _make_sim()   # такой же город, но без таверны
 	var mood_without: float = sim_t2._mood_target(pleased)
 	_check(absf(mood_with - mood_without - 12.0) < 0.5, "пиво в таверне даёт ровно +12 к настроению")
 
 	# староста: обходит город и строит по нужде (дома при переполнении, ферма без запаса еды)
-	var sim_e := _make_sim("high")
+	var sim_e := _make_sim()
 	var elder_r: Dictionary = sim_e._new_resident("Борн", "elder", sim_e.map.spawn_tile)
 	sim_e.residents.append(elder_r)
 	sim_e.tick(1.0)
@@ -804,13 +807,36 @@ func _test_people() -> void:
 	sim_e.res["food"] = 4.0
 	sim_e._roll_autobuild()
 	_check(String(sim_e.buildings[-1]["type"]) == "farm", "при малом запасе еды староста строит ферму")
-	var sim_e2 := _make_sim("high")
+	var sim_e2 := _make_sim()
 	for r in sim_e2.residents:
 		if String(r["prof"]) == "elder":
 			r["prof"] = "crafter"   # старосты нет — самострой запрещён
 	var buildings_before2: int = sim_e2.buildings.size()
 	sim_e2._roll_autobuild()
 	_check(sim_e2.buildings.size() == buildings_before2, "без старосты город сам не строит")
+
+	# преемственность: староста погиб — самым опытным становится новый староста
+	var sim_pr := _make_sim()
+	var dead_elder: Dictionary = _resident_by_prof(sim_pr, "elder")
+	var heir: Dictionary = sim_pr.residents[0]
+	if heir == dead_elder:
+		heir = sim_pr.residents[1]
+	heir["skill"] = 4.0
+	sim_pr._kill(dead_elder, "chron.died_sick")
+	sim_pr._ensure_elder()
+	_check(String(heir["prof"]) == "elder", "самый опытный стал новым старостой")
+	_check(String(sim_pr.chronicle[-1]["key"]) == "chron.promoted", "назначение записано в летопись")
+
+	# заболел — освободил рабочее место, здоровый замещающий подхватил (анти-стопор)
+	var sim_il := _make_sim()
+	sim_il.res["food"] = 30.0
+	_build_now(sim_il, "farm")
+	var farmer_il: Dictionary = _resident_by_prof(sim_il, "farmer")
+	sim_il._make_ail(farmer_il, "sick", "chron.sick")
+	_check(farmer_il["bld"] == null, "заболел — рабочее место освобождено")
+	var farm_il: Dictionary = sim_il.buildings[-1]
+	_check(int(farm_il["worker"]) > 0 and int(farm_il["worker"]) != int(farmer_il["id"]),
+			"здоровый замещающий встал на ферму")
 
 	# крепостное кольцо: стены растут вокруг города, ворота свободны (заказчик)
 	var sim_wl := _make_sim()
@@ -832,6 +858,58 @@ func _test_people() -> void:
 			gate_broken = true
 	_check(placed_walls > 0, "стены кольца поставлены")
 	_check(not gate_broken, "четыре ворот (С/Ю/З/В) свободны для выхода из крепости")
+
+	# план города: староста строит сразу весь нужный набор по порядку (заказчик)
+	var sim_pl := _make_sim()
+	_build_now(sim_pl, "house")   # дом есть — теснота не перебивает план
+	var plan: Array = sim_pl.cfg.get("autobuild_plan", [])
+	_check(plan.size() >= 10, "в плане города весь набор строений")
+	_check(String(plan[0]) == "sawmill", "план начинается с лесопилки — иначе дереву не взяться")
+	var count_before: int = sim_pl.buildings.size()
+	sim_pl._roll_autobuild()
+	var has_first := false
+	for b in sim_pl.buildings:
+		if String(b["type"]) == String(plan[0]):
+			has_first = true
+	_check(has_first, "план начинается с первого строения")
+	_check(sim_pl.buildings.size() - count_before == 2, "стройка идёт сразу: два здания за день")
+	sim_pl._roll_autobuild()
+	sim_pl._roll_autobuild()
+	var first_type := String(plan[0])
+	var first_count := 0
+	for b in sim_pl.buildings:
+		if String(b["type"]) == first_type:
+			first_count += 1
+	var wanted: int = mini(3, sim_pl._plan_count(plan, first_type))
+	_check(first_count == wanted, "по плану: %s ×%d" % [first_type, wanted])
+
+	# стены строятся последними: план выполнен, но есть недострой — стены ждут (заказчик)
+	var sim_w2 := _make_sim()
+	sim_w2.cfg["autobuild_plan"] = []   # весь план города уже выполнен
+	var elder_w: Dictionary = sim_w2._new_resident("Ярл", "elder", sim_w2.map.spawn_tile)
+	sim_w2.residents.append(elder_w)
+	sim_w2.res["food"] = 30.0
+	_build_now(sim_w2, "house")
+	_build_now(sim_w2, "house")
+	var wtile: Vector2i = sim_w2.map.spawn_tile + Vector2i(7, 0)
+	while not sim_w2.is_buildable_tile(wtile):
+		wtile += Vector2i(1, 0)
+	sim_w2.place_building("well", wtile)
+	sim_w2._roll_autobuild()
+	var walls_mid := 0
+	for b in sim_w2.buildings:
+		if String(b["type"]) == "wall":
+			walls_mid += 1
+	_check(walls_mid == 0, "стены не начинаются, пока есть недостроенное здание")
+	var builder_w: Dictionary = _resident_by_prof(sim_w2, "builder")
+	_teleport(sim_w2, builder_w, wtile)
+	sim_w2.tick(15.5)
+	sim_w2._roll_autobuild()
+	var walls_after := 0
+	for b in sim_w2.buildings:
+		if String(b["type"]) == "wall":
+			walls_after += 1
+	_check(walls_after == 2, "все строения готовы — началась защита: кольцо (два звена в день)")
 
 
 # --- M3: магия ------------------------------------------------------------
@@ -912,7 +990,8 @@ func _test_magic_sim() -> void:
 	_check(absf(float(sim.pollution) - 48.0) < 0.1, "за день загрязнение падает на decay_per_day")
 
 	# городские заклинания: нужен алтарь, кристаллы, кулдаун
-	var sim2 := _make_sim("high")
+	var sim2 := _make_sim()
+	sim2.res["crystal"] = 3.0   # кристаллы из данжа
 	var resonance_def: Dictionary = magic.spell("wild_resonance")
 	var err: String = sim2.cast_city_spell(resonance_def)
 	_check(err == "no_altar", "без алтаря городской каст невозможен")
@@ -988,7 +1067,8 @@ func _test_magic_sim() -> void:
 			"зачарованная ферма даёт ровно +25% еды за то же время")
 
 	# зачарование алтаря «Мана»: параметры маны героя
-	var sim5 := _make_sim("high")
+	var sim5 := _make_sim()
+	sim5.res["crystal"] = 3.0   # кристаллы из данжа
 	var mana_before: Dictionary = sim5.hero_mana_params()
 	_check(int(mana_before["cap_extra"]) == 0, "без зачарования запас маны обычный")
 	_build_now(sim5, "altar")

@@ -56,6 +56,8 @@
 	"chron.learned": "%s освоил профессию (%s)",
 	"city.autobuild_toast": "%s распорядился строить: %s",
 	"chron.autobuild": "%s распорядился построить: %s",
+	"city.promoted_toast": "%s — новый староста города",
+	"chron.promoted": "%s стал новым старостой",
 	"city.refugee_came": "Беженец %s присоединился к городу",
 	"city.birth_toast": "Родился ребёнок: %s",
 	"city.grown_toast": "%s вырос — теперь %s",

@@ -539,11 +539,13 @@ func def_has_worker(b: Dictionary) -> bool:
 	return _def(b).has("worker")
 
 
-## Свободный житель профессии prof (ничем не занят и не закреплён).
+## Свободный житель профессии prof (ничем не занят, здоров и не закреплён).
 func _free_resident(prof: String, taken: Dictionary) -> Dictionary:
 	for r in residents:
 		if taken.has(int(r["id"])):
 			continue
+		if String(r.get("ail", "")) != "":
+			continue   # больной работу не получает
 		if String(r["prof"]) == prof and r["bld"] == null and r["site"] == null:
 			return r
 	return {}
@@ -580,9 +582,10 @@ func tick(dt_raw: float) -> void:
 	_update_wild_events(pol_cfg, day_len)
 	for r in residents:
 		_update_resident(r, dt)
-	# люди (M4): раз в игровой день — болезни, беженцы, рождения, стройка по нужде, истории
+	# люди (M4): раз в игровой день — преемник старосты, болезни, беженцы, рождения, стройка, истории
 	if day > _last_daily_day:
 		_last_daily_day = day
+		_ensure_elder()
 		_roll_ailments()
 		_roll_refugees()
 		_roll_births()
@@ -980,6 +983,15 @@ func _make_ail(r: Dictionary, kind: String, chron_key: String) -> void:
 	r["ail"] = kind
 	r["ail_days"] = 0.0
 	_chron(chron_key, String(r["name"]))
+	# болеющий не держит рабочее место: здоровый замещающий подхватит (анти-стопор)
+	if r["bld"] != null:
+		(r["bld"] as Dictionary)["worker"] = -1
+	if r["site"] != null:
+		(r["site"] as Dictionary)["worker"] = -1
+	r["bld"] = null
+	r["site"] = null
+	r["sub_prof"] = ""
+	_assign_jobs()
 
 
 ## Больной/раненый идёт домой и лежит.
@@ -1103,28 +1115,46 @@ func _manage_target(r: Dictionary) -> Vector2i:
 	return near if map.is_walkable(near) else map.spawn_tile
 
 
-## Ежедневная стройка по нужде (просьба заказчика): город растёт сам —
-## дом заранее при почти полном лимите, ферма при малом запасе еды,
-## крепостное кольцо стен с воротами. Игрок может строить поверх этого сам.
+## Ежедневный самострой (просьба заказчика): город строится СРАЗУ по плану —
+## весь нужный набор строений, без ожидания кризисов. Кризисы (голод, теснота)
+## идут вне очереди. Когда план выполнен и все здания достроены — обустройство
+## защиты: крепостное кольцо стен с воротами. Игрок строит что хочет поверх.
 func _roll_autobuild() -> void:
 	if not elder_present():
 		return
-	# дом: места почти кончились
-	if residents.size() >= pop_cap() - 1 and not _autobuild_site_exists("house"):
+	# кризис: еды меньше чем на день — ферма вне очереди
+	var critical_food: float = float(residents.size()) * float(cfg["food_per_resident_day"])
+	if float(res["food"]) < critical_food and not _autobuild_site_exists("farm") and not _idle_farm_exists():
 		var tile := _find_autobuild_tile()
-		if not tile == Vector2i(-1, -1) and place_building("house", tile):
-			_announce_autobuild("house", true)
-			return
-	# ферма: еды меньше чем на два дня (и есть кому работать)
-	var food_need: float = float(residents.size()) * float(cfg["food_per_resident_day"]) * 2.0
-	if float(res["food"]) < food_need and not _autobuild_site_exists("farm") and not _idle_farm_exists():
-		var tile2 := _find_autobuild_tile()
-		if not tile2 == Vector2i(-1, -1) and place_building("farm", tile2):
+		if not tile == Vector2i(-1, -1) and place_building("farm", tile):
 			_announce_autobuild("farm", true)
 			return
-	# крепостное кольцо: до двух звеньев в день, ворота остаются свободны.
-	# Стены ждут, пока есть недострой без работника или город не ест досыта.
-	if _unstaffed_site_exists() or not _food_reserve_ok():
+	# кризис: мест нет совсем — дом вне очереди
+	if residents.size() >= pop_cap() and not _autobuild_site_exists("house"):
+		var tile_h := _find_autobuild_tile()
+		if not tile_h == Vector2i(-1, -1) and place_building("house", tile_h):
+			_announce_autobuild("house", true)
+			return
+	# план города: сразу строим всё нужное по порядку, до двух зданий в день
+	var built := 0
+	for i in 2:
+		var need := _next_plan_need()
+		if need == "":
+			break
+		var tile_p := _find_autobuild_tile()
+		if tile_p == Vector2i(-1, -1):
+			break
+		if not place_building(need, tile_p):
+			continue   # не по карману — попробуем следующее нужное
+		_announce_autobuild(need, true)
+		built += 1
+	if built > 0:
+		return
+	# обустройство защиты: кольцо стен — только когда ВСЕ здания достроены,
+	# еды хватает и есть запас дерева на важные постройки
+	if _any_unfinished_building() or not _food_reserve_ok():
+		return
+	if float(res["wood"]) < 12:
 		return
 	var walls := 0
 	for i in 2:
@@ -1138,17 +1168,32 @@ func _roll_autobuild() -> void:
 		_announce_autobuild("wall", false)
 
 
-## Есть ли стройплощадка, за которую никто не взялся (строители не успевают).
-func _unstaffed_site_exists() -> bool:
+## Первое строение из плана города, которого ещё нет в нужном количестве.
+func _next_plan_need() -> String:
+	var plan: Array = cfg.get("autobuild_plan", [])
+	var counts := {}
 	for b in buildings:
-		if bool(b["done"]):
-			continue
-		var held := false
-		for r in residents:
-			if r["site"] == b:
-				held = true
-				break
-		if not held:
+		counts[String(b["type"])] = int(counts.get(String(b["type"]), 0)) + 1
+	for type_id in plan:
+		var t := String(type_id)
+		if int(counts.get(t, 0)) < _plan_count(plan, t):
+			return t
+	return ""
+
+
+func _plan_count(plan: Array, type_id: String) -> int:
+	var n := 0
+	for t in plan:
+		if String(t) == type_id:
+			n += 1
+	return n
+
+
+## Есть ли хоть одно недостроенное здание — стены начинаются в полностью
+## застроенном городе, а не вперемешку с домами и фермами.
+func _any_unfinished_building() -> bool:
+	for b in buildings:
+		if not bool(b["done"]):
 			return true
 	return false
 
@@ -1218,6 +1263,31 @@ func _announce_autobuild(type_id: String, toast: bool) -> void:
 		events.append({"type": "autobuild", "name": manager, "bld": type_id})
 
 
+## Староста погиб — город не остаётся без управления: старостой становится
+## самый опытный взрослый (просьба заказчика: город должен расти сам).
+func _ensure_elder() -> void:
+	for r in residents:
+		if String(r["prof"]) == "elder":
+			return
+	var best: Dictionary = {}
+	for r in _adults():
+		if best.is_empty() or float(r.get("skill", 0.0)) > float(best.get("skill", 0.0)):
+			best = r
+	if best.is_empty():
+		return
+	if best["bld"] != null:
+		(best["bld"] as Dictionary)["worker"] = -1
+	if best["site"] != null:
+		(best["site"] as Dictionary)["worker"] = -1
+	best["bld"] = null
+	best["site"] = null
+	best["sub_prof"] = ""
+	best["prof"] = "elder"
+	_chron("chron.promoted", String(best["name"]))
+	events.append({"type": "promoted", "name": String(best["name"])})
+	_assign_jobs()
+
+
 ## Дневной бросок: болезни и выздоровления (лекарь лечит, запущенная болезнь убивает).
 func _roll_ailments() -> void:
 	var acfg: Dictionary = people.get("ailments", {})
@@ -1237,6 +1307,7 @@ func _roll_ailments() -> void:
 			recov = float(acfg.get("healer_recover_chance", 0.7))
 		if _event_rng.randf() < recov:
 			r["ail"] = ""
+			_assign_jobs()   # выздоровел — вернулся в раздачу работы
 			continue
 		var risk: float = float(acfg.get("death_chance", 0.04))
 		var overdue: float = float(r["ail_days"]) - float(acfg.get("death_risk_after_days", 3.0))

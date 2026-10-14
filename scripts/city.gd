@@ -171,6 +171,8 @@ func _process_events() -> void:
 				hud.toast(Loc.t("city.learned_toast") % [String(ev["name"]), _prof_name(String(ev["prof"]))])
 			"autobuild":
 				hud.toast(Loc.t("city.autobuild_toast") % [String(ev["name"]), _bld_name(String(ev["bld"]))])
+			"promoted":
+				hud.toast(Loc.t("city.promoted_toast") % String(ev["name"]))
 			"skill_up":
 				hud.toast(Loc.t("city.skill_up_toast") % [String(ev["name"]), Loc.t("skill." + String(ev["rank"]))])
 			"quarrel":
