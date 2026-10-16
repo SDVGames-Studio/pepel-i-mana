@@ -151,6 +151,26 @@ const REQUIRED_LOCALES := [
 	"spell.desc.stone_skin", "spell.desc.harvest_blessing", "spell.desc.soul_burn", "spell.desc.void_rift",
 	"item.rune_ash", "item.rune_blood", "item.rune_echo", "item.rune_thorn",
 	"item.rune_sun", "item.rune_void", "item.rune_core", "item.boss_trophy",
+	# --- M8: карта мира «как в RimWorld» ---
+	"res.coins", "res.coins_short", "city.exit_world",
+	"world.day", "world.hint", "world.hint_enter_city", "world.hint_enter_loc",
+	"world.hint_trade", "world.hint_obelisk", "world.obelisk_used",
+	"world.fog", "world.impassable", "world.already_here", "world.no_path",
+	"world.travel_toast", "world.travel_cancel", "world.arrived", "world.cleared",
+	"world.poi.city", "world.poi.dungeon", "world.poi.ruins", "world.poi.camp",
+	"world.poi.settlement", "world.poi.caravan", "world.poi.obelisk",
+	"world.faction.traders", "world.faction.bandits", "world.faction.cult",
+	"world.strength", "world.status_ok", "world.status_fallen", "world.under_siege",
+	"world.obelisk_desc", "world.you_here", "world.days_away", "world.cleared_short",
+	"world.travel_btn", "world.close_btn", "world.coins_got", "world.map_found",
+	"world.obelisk_seen", "world.siege_start", "world.siege_fell", "world.siege_repelled",
+	"world.resettle", "world.poi_reborn", "world.caravan_moved",
+	"chron.world_siege", "chron.world_fell", "chron.world_repelled", "chron.world_resettle",
+	"world.trade_title", "world.buy_title", "world.sell_title", "world.barter_title",
+	"world.rune_title", "world.buy_btn", "world.sell_btn", "world.barter_btn",
+	"world.rune_btn", "world.trade_note", "world.bought", "world.sold",
+	"world.bartered", "world.rune_bought", "world.no_coins", "world.no_res",
+	"world.no_runes", "world.storage_full",
 ]
 
 const ALL_SCRIPTS := [
@@ -163,6 +183,8 @@ const ALL_SCRIPTS := [
 	"res://scripts/minimap.gd", "res://scripts/hud.gd",
 	"res://scripts/magic.gd", "res://scripts/spell_fx.gd",
 	"res://scripts/skills.gd", "res://scripts/trap.gd",
+	"res://scripts/world.gd", "res://scripts/world_map.gd",
+	"res://scripts/world_sim.gd", "res://scripts/world_view.gd", "res://scripts/world_hud.gd",
 ]
 
 var _fails := 0
@@ -188,6 +210,7 @@ func _initialize() -> void:
 	_test_gathering()
 	_test_m6()
 	_test_m7()
+	_test_m8()
 	if _fails == 0:
 		print("OK: все тесты пройдены")
 		quit(0)
@@ -329,7 +352,8 @@ func _test_scripts() -> void:
 
 func _test_scenes() -> void:
 	print("[Сцены]")
-	for path in ["res://scenes/main_menu.tscn", "res://scenes/city.tscn", "res://scenes/dungeon.tscn"]:
+	for path in ["res://scenes/main_menu.tscn", "res://scenes/city.tscn", "res://scenes/dungeon.tscn",
+			"res://scenes/world.tscn"]:
 		var packed: PackedScene = load(path)
 		_check(packed != null, "%s загружается" % path)
 		if packed == null:
@@ -2611,3 +2635,189 @@ func _test_m7() -> void:
 			and int(hero_b.get("skill_tree_total_nodes", 0)) == 9 \
 			and String(balance.get("_note", "")).length() > 0
 	_check(balance_ok, "data/balance.json согласован с city/loot/skills конфигами")
+
+
+# --- M8: карта мира «как в RimWorld» ---------------------------------------
+
+func _test_m8() -> void:
+	print("[M8: карта мира]")
+	var wcfg_v: Variant = _read_json("res://data/world.json")
+	_check(wcfg_v is Dictionary, "world.json — валидный JSON-словарь")
+	if not (wcfg_v is Dictionary):
+		return
+	var wcfg: Dictionary = wcfg_v
+	for key in ["map_w", "map_h", "tile_size", "biomes", "pois", "sim", "trade", "tiles_per_day"]:
+		_check(wcfg.has(key), "world.json содержит %s" % key)
+
+	# детерминизм: тот же сид — та же карта и те же точки интереса
+	var map_a = load("res://scripts/world_map.gd").new()
+	var map_b = load("res://scripts/world_map.gd").new()
+	map_a.generate(12345, wcfg)
+	map_b.generate(12345, wcfg)
+	var same: bool = map_a.w == map_b.w and map_a.h == map_b.h and map_a.grid == map_b.grid \
+			and map_a.pois.size() == map_b.pois.size()
+	if same:
+		for i in map_a.pois.size():
+			if map_a.pois[i]["tile"] != map_b.pois[i]["tile"] \
+					or String(map_a.pois[i]["kind"]) != String(map_b.pois[i]["kind"]):
+				same = false
+				break
+	_check(same, "карта мира детерминирована по сиду")
+
+	# состав точек интереса (пункт плана M8: аномалии-данжи, руины, лагеря, поселения)
+	var kinds := {}
+	var dungeon_biomes := {}
+	for poi in map_a.pois:
+		kinds[String(poi["kind"])] = int(kinds.get(String(poi["kind"]), 0)) + 1
+		if String(poi["kind"]) == "dungeon" and String(poi["biome"]) != "":
+			dungeon_biomes[String(poi["biome"])] = true
+	_check(int(kinds.get("city", 0)) == 1, "на карте есть город игрока")
+	_check(int(kinds.get("dungeon", 0)) >= 5, "городская аномалия + 4 данжа биомов на карте")
+	_check(dungeon_biomes.size() == 4, "данжи всех 4 биомов M7 представлены")
+	_check(int(kinds.get("ruins", 0)) >= 1, "руины на карте")
+	_check(int(kinds.get("camp", 0)) >= 1, "лагеря бандитов на карте")
+	_check(int(kinds.get("settlement", 0)) >= 3, "3 поселения на карте")
+	_check(int(kinds.get("caravan", 0)) >= 1, "караван торговцев на карте")
+	_check(int(kinds.get("obelisk", 0)) >= 1, "обелиски на карте")
+	var factions := {}
+	var pois_on_land := true
+	for poi in map_a.pois:
+		if String(poi["kind"]) == "settlement":
+			factions[String(poi["faction"])] = true
+		if not map_a.is_walkable(poi["tile"]):
+			pois_on_land = false
+	_check(factions.has("traders") and factions.has("cult"), "поселения торговцев и культа (бандиты — в лагерях)")
+	_check(pois_on_land, "все точки интереса на проходимой суше")
+	var reachable := true
+	for poi in map_a.pois:
+		if map_a.tile_path(map_a.city_tile, poi["tile"]).is_empty():
+			reachable = false
+	_check(reachable, "от города до каждой точки интереса есть путь")
+
+	# время пути в днях: биом дороже, дорога быстрее (пункт плана M8)
+	var days_to_anomaly := 0
+	for poi in map_a.pois:
+		if String(poi["kind"]) == "dungeon" and String(poi["biome"]) == "":
+			days_to_anomaly = map_a.travel_days(map_a.city_tile, poi["tile"])
+	_check(days_to_anomaly >= 1, "время пути считается в днях (до аномалии ≥ 1)")
+	var forest_cost := -1.0
+	var road_cost := -1.0
+	var plains_cost := -1.0
+	for y in map_a.h:
+		for x in map_a.w:
+			var t := Vector2i(x, y)
+			match int(map_a.grid[y][x]):
+				map_a.TILE_FOREST:
+					forest_cost = map_a.tile_cost(t)
+				map_a.TILE_ROAD:
+					road_cost = map_a.tile_cost(t)
+				map_a.TILE_PLAINS:
+					plains_cost = map_a.tile_cost(t)
+	_check(plains_cost > 0.0 and forest_cost > plains_cost, "лес идётся дороже равнины")
+	_check(road_cost > 0.0 and road_cost < plains_cost, "старая дорога быстрее равнины")
+
+	# туман войны
+	_check(map_a.is_explored(map_a.city_tile), "окрестности города открыты с самого начала")
+	var hidden := 0
+	for poi in map_a.pois:
+		if not bool(poi["discovered"]):
+			hidden += 1
+	_check(hidden > 0, "далёкие точки интереса скрыты туманом войны")
+	var fog_before: int = map_a.fog.size()
+	map_a.reveal_around(map_a.city_tile + Vector2i(12, 8), 5)
+	_check(map_a.fog.size() > fog_before, "исследование открывает туман войны")
+	var opened: Array = map_a.reveal_far(2)
+	_check(opened.size() == 2, "карты и обелиски открывают далёкие места (ответ №24)")
+
+	# мир живёт программно (ответ №92): осады, переселение, воскрешение данжей
+	var scfg: Dictionary = wcfg.duplicate(true)
+	scfg["sim"] = wcfg["sim"].duplicate(true)
+	scfg["sim"]["siege_chance_per_day"] = 0.9
+	scfg["sim"]["siege_days"] = 1
+	scfg["sim"]["resettle_min_days"] = 1
+	scfg["sim"]["resettle_chance"] = 1.0
+	scfg["sim"]["dungeon_reset_days"] = 3
+	scfg["sim"]["caravan_move_days"] = 2
+	sim_m8_setup(map_b, scfg)
+
+
+func sim_m8_setup(map_b, scfg: Dictionary) -> void:
+	var sim = load("res://scripts/world_sim.gd").new()
+	sim.setup(map_b, scfg, 777)
+	var ruin: Dictionary = {}
+	var caravan: Dictionary = {}
+	var camp_strength0 := 0.0
+	for poi in map_b.pois:
+		match String(poi["kind"]):
+			"ruins":
+				ruin = poi
+			"caravan":
+				caravan = poi
+			"camp":
+				camp_strength0 += float(poi["strength"])
+	sim.mark_cleared(int(ruin["id"]))
+	_check(int(ruin["cleared_day"]) == 0, "зачистка локации отмечается в мире")
+	_check(not sim.poi_enterable(ruin), "в зачищенный данж нельзя войти, пока он не сгустится заново")
+	var caravan_tile0: Vector2i = caravan["tile"]
+	var saw_siege := false
+	var saw_outcome := false
+	var saw_resettle := false
+	var saw_reborn := false
+	var caravan_moved := false
+	for i in 90:
+		for ev: Dictionary in sim.advance_day():
+			match String(ev["type"]):
+				"siege_start":
+					saw_siege = true
+				"siege_fell", "siege_repelled":
+					saw_outcome = true
+				"resettle":
+					saw_resettle = true
+				"poi_reborn":
+					saw_reborn = true
+				"caravan_moved":
+					caravan_moved = true
+	var camp_strength1 := 0.0
+	for poi in map_b.pois:
+		if String(poi["kind"]) == "camp":
+			camp_strength1 += float(poi["strength"])
+	_check(camp_strength1 > camp_strength0, "лагеря бандитов растут со временем")
+	_check(saw_siege, "бандиты осаждают поселения — мир живёт без игрока (ответ №92)")
+	_check(saw_outcome, "осады решаются: поселение падает или отбивается")
+	_check(saw_resettle, "павшие поселения переселяются другими фракциями (ответ №4)")
+	_check(saw_reborn, "зачищенные локации сгущаются заново")
+	_check(sim.poi_enterable(ruin), "сгустившийся заново данж снова принимает героя")
+	_check(caravan_moved, "караван перебирается по миру")
+	_check(sim.chronicle.size() > 0, "мировые события пишутся в летопись")
+
+	# торговля (ответ №40): монеты + живой обмен
+	var pool := {"food": 50.0, "wood": 0.0, "stone": 0.0, "crystal": 0.0}
+	var coins := 20
+	var out: Dictionary = sim.trade_buy(pool, coins, "wood", 5, caravan, 9999)
+	var wood_cost: int = int(ceilf(sim.buy_price("wood", caravan) * 5))
+	_check(String(out["err"]) == "" and int(out["coins"]) == coins - wood_cost,
+			"покупка ресурсов за монеты (у каравана — скидка)")
+	_check(float(pool["wood"]) == 5.0, "купленное попадает в пул города (караван доставляет)")
+	_check(String(sim.trade_buy(pool, 1, "stone", 100, caravan, 9999)["err"]) == "no_coins",
+			"без монет покупки нет")
+	var sell_out: Dictionary = sim.trade_sell(pool, 0, "wood", 3, caravan)
+	_check(String(sell_out["err"]) == "" and float(pool["wood"]) == 2.0 and int(sell_out["coins"]) > 0,
+			"продажа ресурсов приносит монеты")
+	var out4: Dictionary = sim.trade_barter(pool, {"give": "food", "get": "stone", "give_n": 3, "get_n": 2})
+	_check(String(out4["err"]) == "" and float(pool["food"]) == 47.0 and float(pool["stone"]) == 2.0,
+			"живой обмен: ресурс на ресурс по таблице")
+	var inv: Array = []
+	var rune_id: String = sim.cult_rune_offer()
+	_check(rune_id != "", "культ предлагает руну")
+	var rune_out: Dictionary = sim.trade_rune(inv, 30, rune_id)
+	_check(String(rune_out["err"]) == "" and inv.size() == 1 and String(inv[0]["id"]) == rune_id,
+			"руна культа покупается за монеты в рюкзак")
+	_check(String(sim.trade_rune(inv, 0, rune_id)["err"]) == "no_coins", "без монет руну не продадут")
+	_check(String(sim.trade_rune(inv, 30, "")["err"]) == "no_runes", "рун у культа нет — продажи нет")
+	_check(sim.coin_reward({"kind": "camp"}) > 0, "за лагерь бандитов платят монетами")
+
+	# край города: выход на карту мира
+	var city_cfg: Dictionary = _read_json("res://data/city.json")
+	var cmap = load("res://scripts/city_map.gd").new()
+	cmap.generate(999, city_cfg)
+	_check(cmap.is_walkable(cmap.world_exit_tile), "в городе есть проходимый выход на карту мира")
