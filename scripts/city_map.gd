@@ -102,10 +102,12 @@ func _clear_around(center: Vector2i, radius: int) -> void:
 				grid[y][x] = TILE_GRASS
 
 
-## Связность: от старта BFS-ом достижимы аномалия и заметная доля суши.
+## Связность: от старта BFS-ом достижимы аномалия, выход на карту мира
+## и заметная доля суши (иначе герой не дойдёт до края — карта перегенерируется).
 func _connected() -> bool:
 	var reachable := _reachable_from(spawn_tile)
-	return reachable.has(anomaly_tile) and reachable.size() >= w * h / 2
+	return reachable.has(anomaly_tile) and reachable.has(world_exit_tile) \
+			and reachable.size() >= w * h / 2
 
 
 func _reachable_from(from: Vector2i) -> Dictionary:

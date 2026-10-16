@@ -38,6 +38,7 @@ var poi_id := 0                  # id точки интереса, из кото
 var poi_coins := 0               # монеты за зачистку лагеря/руин (M8)
 var world_hero_tile := Vector2i(-1, -1)   # тайл героя на карте мира
 var city_return_tile := Vector2i(-1, -1)  # тайл героя при возврате в город
+var world_active := false        # игрок сейчас на карте мира («Продолжить» вернёт туда, M8)
 
 
 func _init() -> void:
@@ -77,6 +78,7 @@ func new_city() -> void:
 	poi_coins = 0
 	world_hero_tile = Vector2i(-1, -1)
 	city_return_tile = Vector2i(-1, -1)
+	world_active = false
 	if skills != null:
 		skills.reset()
 	new_world()

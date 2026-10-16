@@ -48,7 +48,11 @@ func _read_json(path: String) -> Variant:
 
 
 func _on_continue_pressed() -> void:
-	get_tree().change_scene_to_file("res://scenes/city.tscn")
+	# возвращаем туда, где игрок был: карта мира или город (M8)
+	if Game.world_active and Game.world_map != null:
+		get_tree().change_scene_to_file("res://scenes/world.tscn")
+	else:
+		get_tree().change_scene_to_file("res://scenes/city.tscn")
 
 
 func _on_new_game_pressed() -> void:
@@ -116,6 +120,14 @@ func _build_setup() -> void:
 	conflicts_check.focus_mode = Control.FOCUS_NONE
 	_setup_box.add_child(conflicts_check)
 	_conflicts_check = conflicts_check
+
+	# идёт игра — предупреждаем, что новая её затрёт (фидбек приёмки M8)
+	if Game.city_sim != null:
+		var warn := Label.new()
+		warn.text = Loc.t("menu.new_game_warn")
+		warn.add_theme_font_size_override("font_size", 16)
+		warn.add_theme_color_override("font_color", Color("#ff8a80"))
+		_setup_box.add_child(warn)
 
 	var begin := Button.new()
 	begin.text = Loc.t("menu.begin")

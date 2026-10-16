@@ -31,6 +31,9 @@ func _ready() -> void:
 		Game.new_world()
 	map = Game.world_map
 	sim = Game.world_sim
+	Game.world_active = true   # «Продолжить» из меню вернёт на карту мира
+	if Game.city_sim != null:
+		Game.city_sim.paused = false   # город живёт, пока герой на большой карте
 	# вернулись из локации — герой там, где вошёл; иначе у города
 	if Game.world_hero_tile.x >= 0 and map.in_bounds(Game.world_hero_tile):
 		hero_tile = Game.world_hero_tile

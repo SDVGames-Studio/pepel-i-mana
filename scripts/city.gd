@@ -38,6 +38,7 @@ func _ready() -> void:
 		Game.new_city()
 	sim = Game.city_sim
 	sim.paused = false
+	Game.world_active = false   # вернулись в город — «Продолжить» откроет город
 	map = sim.map
 	cfg = _read_json(CITY_CFG_PATH)
 	view = load(VIEW_SCRIPT).new()
@@ -702,7 +703,8 @@ func _enter_world() -> void:
 
 
 func _default_hint() -> String:
-	return "%s   ·   %s" % [Loc.t("city.enter_anomaly"), Loc.t("city.back_hint")]
+	return "%s   ·   %s   ·   %s" % [Loc.t("city.enter_anomaly"),
+			Loc.t("city.world_exit_hint"), Loc.t("city.back_hint")]
 
 
 ## Подсветка зданий под курсором в режиме зачарования — рисует view.

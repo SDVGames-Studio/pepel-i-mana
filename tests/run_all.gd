@@ -152,7 +152,8 @@ const REQUIRED_LOCALES := [
 	"item.rune_ash", "item.rune_blood", "item.rune_echo", "item.rune_thorn",
 	"item.rune_sun", "item.rune_void", "item.rune_core", "item.boss_trophy",
 	# --- M8: карта мира «как в RimWorld» ---
-	"res.coins", "res.coins_short", "city.exit_world",
+	"res.coins", "res.coins_short", "city.exit_world", "city.world_exit_hint",
+	"menu.new_game_warn",
 	"world.day", "world.hint", "world.hint_enter_city", "world.hint_enter_loc",
 	"world.hint_trade", "world.hint_obelisk", "world.obelisk_used",
 	"world.fog", "world.impassable", "world.already_here", "world.no_path",
@@ -2816,8 +2817,14 @@ func sim_m8_setup(map_b, scfg: Dictionary) -> void:
 	_check(String(sim.trade_rune(inv, 30, "")["err"]) == "no_runes", "рун у культа нет — продажи нет")
 	_check(sim.coin_reward({"kind": "camp"}) > 0, "за лагерь бандитов платят монетами")
 
-	# край города: выход на карту мира
+	# край города: выход на карту мира — проходим и ДОСТИЖИМ пешком от старта
+	# (иначе герой не доберётся до края — «не переходит на карту мира»)
 	var city_cfg: Dictionary = _read_json("res://data/city.json")
-	var cmap = load("res://scripts/city_map.gd").new()
-	cmap.generate(999, city_cfg)
-	_check(cmap.is_walkable(cmap.world_exit_tile), "в городе есть проходимый выход на карту мира")
+	var exit_ok := true
+	for i in 12:
+		var cmap = load("res://scripts/city_map.gd").new()
+		cmap.generate(1000 + i * 3571, city_cfg)
+		if cmap.is_walkable(cmap.world_exit_tile) == false \
+				or cmap.astar.get_id_path(cmap.spawn_tile, cmap.world_exit_tile).is_empty():
+			exit_ok = false
+	_check(exit_ok, "выход на карту мира проходим и достижим пешком (12 сидов)")

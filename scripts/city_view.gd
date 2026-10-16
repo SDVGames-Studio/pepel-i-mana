@@ -51,6 +51,7 @@ func _draw() -> void:
 	_draw_zones()
 	_draw_roads()
 	_draw_anomaly()
+	_draw_world_exit()
 	_draw_buildings()
 	_draw_piles()
 	_draw_animals()
@@ -170,6 +171,33 @@ func _draw_anomaly() -> void:
 	draw_circle(center, map.ts * 0.55 * pulse, Color(c.r, c.g, c.b, 0.35))
 	draw_circle(center, map.ts * 0.32, c)
 	draw_circle(center, map.ts * 0.14, c.lightened(0.4))
+
+
+## Выход на карту мира (M8): каменная арка с зелёным свечением и стрелкой —
+## видно издалека, герой выходит на большую карту с запада города.
+func _draw_world_exit() -> void:
+	var ts: float = float(map.ts)
+	var center: Vector2 = map.tile_center_px(map.world_exit_tile)
+	var pulse := 0.7 + 0.3 * sin(Time.get_ticks_msec() / 350.0)
+	var glow := Color(0.45, 0.9, 0.5)
+	# свечение-дорога: на запад, за край
+	draw_rect(Rect2(center + Vector2(-ts * 0.5, -ts * 0.12), Vector2(ts * 0.5, ts * 0.24)),
+			Color(glow.r, glow.g, glow.b, 0.25 + 0.15 * pulse))
+	# арка: две опоры и перекладина
+	draw_rect(Rect2(center + Vector2(-ts * 0.34, -ts * 0.42), Vector2(ts * 0.16, ts * 0.84)), Color("#8a8a82"))
+	draw_rect(Rect2(center + Vector2(ts * 0.18, -ts * 0.42), Vector2(ts * 0.16, ts * 0.84)), Color("#8a8a82"))
+	draw_rect(Rect2(center + Vector2(-ts * 0.38, -ts * 0.56), Vector2(ts * 0.76, ts * 0.18)), Color("#7a7a72"))
+	# зелёное свечение в проёме
+	draw_rect(Rect2(center + Vector2(-ts * 0.18, -ts * 0.36), Vector2(ts * 0.36, ts * 0.78)),
+			Color(glow.r, glow.g, glow.b, 0.3 + 0.2 * pulse))
+	# стрелка влево — «мир там»
+	var y := center.y - ts * 0.08
+	draw_line(center + Vector2(ts * 0.05, y), center + Vector2(-ts * 0.2, y),
+			Color(glow.r, glow.g, glow.b, 0.6 + 0.3 * pulse), 2.5)
+	draw_colored_polygon(PackedVector2Array([
+		center + Vector2(-ts * 0.2, y), center + Vector2(-ts * 0.1, y - 4.5),
+		center + Vector2(-ts * 0.1, y + 4.5)]),
+		Color(glow.r, glow.g, glow.b, 0.6 + 0.3 * pulse))
 
 
 func _draw_buildings() -> void:
