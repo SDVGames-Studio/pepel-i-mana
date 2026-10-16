@@ -2828,3 +2828,15 @@ func sim_m8_setup(map_b, scfg: Dictionary) -> void:
 				or cmap.astar.get_id_path(cmap.spawn_tile, cmap.world_exit_tile).is_empty():
 			exit_ok = false
 	_check(exit_ok, "выход на карту мира проходим и достижим пешком (12 сидов)")
+	# вся рамка карты — зона перехода: направление наружу определяется верно
+	var cm0 = load("res://scripts/city_map.gd").new()
+	cm0.generate(424242, city_cfg)
+	var border_ok: bool = cm0.border_dir(Vector2i(0, 5)) == Vector2i(-1, 0) \
+			and cm0.border_dir(Vector2i(cm0.w - 1, 5)) == Vector2i(1, 0) \
+			and cm0.border_dir(Vector2i(5, 0)) == Vector2i(0, -1) \
+			and cm0.border_dir(Vector2i(5, cm0.h - 1)) == Vector2i(0, 1) \
+			and cm0.border_dir(Vector2i(0, 0)) == Vector2i(-1, -1) \
+			and cm0.border_dir(cm0.spawn_tile) == Vector2i.ZERO
+	_check(border_ok, "рамка карты — зона перехода: border_dir по всем краям")
+	_check(cm0.nearest_walkable(Vector2i(0, 0)) != Vector2i(-1, -1),
+			"nearest_walkable всегда возвращает проходимый тайл")

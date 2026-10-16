@@ -173,10 +173,17 @@ func _draw_anomaly() -> void:
 	draw_circle(center, map.ts * 0.14, c.lightened(0.4))
 
 
-## Выход на карту мира (M8): каменная арка с зелёным свечением и стрелкой —
-## видно издалека, герой выходит на большую карту с запада города.
+## Выход на карту мира (M8): вся рамка карты — зона перехода (лёгкая зелёная
+## полоса по периметру), на западе — каменная арка с яркого свечением и
+## стрелкой: главные ворота на запад, видно издалека.
 func _draw_world_exit() -> void:
 	var ts: float = float(map.ts)
+	# рамка-зона перехода по всему периметру
+	var band := Color(0.45, 0.9, 0.5, 0.10)
+	draw_rect(Rect2(0, 0, map.w * ts, ts), band)
+	draw_rect(Rect2(0, (map.h - 1) * ts, map.w * ts, ts), band)
+	draw_rect(Rect2(0, 0, ts, map.h * ts), band)
+	draw_rect(Rect2((map.w - 1) * ts, 0, ts, map.h * ts), band)
 	var center: Vector2 = map.tile_center_px(map.world_exit_tile)
 	var pulse := 0.7 + 0.3 * sin(Time.get_ticks_msec() / 350.0)
 	var glow := Color(0.45, 0.9, 0.5)

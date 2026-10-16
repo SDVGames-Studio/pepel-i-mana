@@ -269,11 +269,27 @@ func _reset_left(poi: Dictionary) -> int:
 	return maxi(1, left)
 
 
-## Войти в город: герой появляется у края, откуда вышел на карту мира.
+## Войти в город: герой появляется у того края города, с которого пришёл
+## (фидбек приёмки M8: точки старта симметричны). На 2 тайла внутрь рамки,
+## чтобы сразу не сработал обратный переход.
 func _enter_city() -> void:
 	Game.world_hero_tile = Vector2i(-1, -1)
-	if Game.city_sim != null and Game.city_sim.map != null:
-		Game.city_return_tile = Game.city_sim.map.world_exit_tile
+	var cmap = Game.city_sim.map
+	var d: Vector2i = hero_tile - map.city_tile
+	var dir := Vector2i(-1, 0)   # герой у самого города — западные ворота (арка)
+	if d != Vector2i.ZERO:
+		if absi(d.x) >= absi(d.y):
+			dir = Vector2i(1 if d.x > 0 else -1, 0)
+		else:
+			dir = Vector2i(0, 1 if d.y > 0 else -1)
+	var target := Vector2i(2, cmap.h / 2)
+	if dir.x > 0:
+		target = Vector2i(cmap.w - 3, cmap.h / 2)
+	elif dir.y < 0:
+		target = Vector2i(cmap.w / 2, 2)
+	elif dir.y > 0:
+		target = Vector2i(cmap.w / 2, cmap.h - 3)
+	Game.city_return_tile = cmap.nearest_walkable(target)
 	get_tree().change_scene_to_file(CITY_SCENE)
 
 

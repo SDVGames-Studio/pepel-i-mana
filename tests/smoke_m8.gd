@@ -78,24 +78,38 @@ func _initialize() -> void:
 	_check(String(dungeon.biome.get("loc", "")) == "biome." + String(dungeon_poi["biome"]),
 			"биом локации взят из точки интереса (M8)")
 	dungeon.queue_free()
-	world.queue_free()
 	await _frames(2)
 
-	# --- возврат в город: герой появляется у выхода на карту мира ---
-	game.city_return_tile = game.city_sim.map.world_exit_tile
-	var city: Node = load("res://scenes/city.tscn").instantiate()
-	root.add_child(city)
-	await _frames(5)
-	_check(is_instance_valid(city), "город открывается без ошибок")
-	print("  [dbg] hero=", city.hero.position, " exit=", city.map.tile_center_px(city.map.world_exit_tile),
-			" ret=", game.city_return_tile, " spawn=", city.map.tile_center_px(city.map.spawn_tile))
-	# герой вернулся к краю города: тайл героя — это выход или соседний с ним
-	var hero_back_tile: Vector2i = city.map.tile_of_px(city.hero.position)
-	var near_exit: bool = hero_back_tile == city.map.world_exit_tile \
-			or hero_back_tile.distance_to(city.map.world_exit_tile) <= 1.5
-	_check(near_exit, "герой вернулся в город у края, откуда выходил (M8)")
-	city.queue_free()
-	await _frames(2)
+	# --- возврат в город: герой входит с той стороны, с которой подошёл ---
+	# (сцена мира делается текущей — иначе change_scene не сработает в headless)
+	current_scene = world
+	var hero_before: Vector2i = world.hero_tile
+	var city_tile_w: Vector2i = world.map.city_tile
+	world._enter_city()
+	await _frames(4)
+	var city: Node = current_scene
+	_check(city != null and city != world and city.get("map") != null,
+			"город открывается без ошибок (вход через рамку мира)")
+	var back_tile: Vector2i = city.map.tile_of_px(city.hero.position)
+	var d: Vector2i = hero_before - city_tile_w
+	var side_ok := true
+	if d == Vector2i.ZERO:
+		side_ok = back_tile.x <= 3   # по умолчанию — западные ворота
+	elif absi(d.x) >= absi(d.y):
+		side_ok = (back_tile.x <= 3) if d.x < 0 else (back_tile.x >= city.map.w - 4)
+	else:
+		side_ok = (back_tile.y <= 3) if d.y < 0 else (back_tile.y >= city.map.h - 4)
+	_check(side_ok, "в город герой вошёл с той стороны, с которой подошёл (симметрия)")
+
+	# --- шаг на рамку города — автоматический переход на карту мира ---
+	var exit_tile := Vector2i(0, city.map.h / 2)   # западный край (чистая зона у арки)
+	city.hero.position = city.map.tile_center_px(exit_tile)
+	await _frames(3)
+	var world2: Node = current_scene
+	_check(world2 != null and world2 != city and world2.get("map") != null,
+			"шаг на рамку города переносит на карту мира")
+	_check(world2.hero_tile == world2.map.city_tile + Vector2i(-1, 0),
+			"на карте мира герой появился с запада — с той стороны, откуда вышел")
 
 	if _fails == 0:
 		print("SMOKE OK: карта мира работает")

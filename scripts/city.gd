@@ -29,7 +29,6 @@ var _road_warned := false       # тост «нет камня» не спами
 var _modulate: CanvasModulate
 var _static_body: StaticBody2D
 var _near_anomaly := false
-var _near_world_exit := false    # край города — выход на карту мира (M8)
 var _near_armory: Dictionary = {}   # оружейка рядом с героем (E — комплект героя)
 
 
@@ -171,10 +170,19 @@ func _process(_delta: float) -> void:
 	_update_daylight()
 	_process_events()
 	_update_hover()
+	# герой не проваливается за край: позиция зажата в границах карты,
+	# а шаг на крайнюю рамку (1 тайл) переносит на карту мира (M8, фидбек)
+	var half: float = map.ts * 0.5
+	hero.position = Vector2(
+			clampf(hero.position.x, half, map.w * map.ts - half),
+			clampf(hero.position.y, half, map.h * map.ts - half))
+	var border: Vector2i = map.border_dir(map.tile_of_px(hero.position))
+	if border != Vector2i.ZERO:
+		_exit_to_world(border)
+		return
 	_near_anomaly = hero.position.distance_to(map.tile_center_px(map.anomaly_tile)) < map.ts * 1.7
-	_near_world_exit = hero.position.distance_to(map.tile_center_px(map.world_exit_tile)) < map.ts * 1.7
 	_near_armory = _armory_near_hero()
-	if _near_world_exit:
+	if _near_map_border():
 		hud.set_hint(Loc.t("city.exit_world"))
 	elif _near_anomaly:
 		if Game.dungeon_available(sim.day_number()):
@@ -387,9 +395,6 @@ func _on_hero_down() -> void:
 
 func _unhandled_input(event: InputEvent) -> void:
 	if event.is_action_pressed("interact"):
-		if _near_world_exit:
-			_enter_world()
-			return
 		if _near_anomaly:
 			if Game.dungeon_available(sim.day_number()):
 				_enter_dungeon()
@@ -694,12 +699,25 @@ func _enter_dungeon() -> void:
 	get_tree().change_scene_to_file(DUNGEON_SCENE)
 
 
-## Выйти из города на карту мира (M8): герой выходит с края города.
-func _enter_world() -> void:
+## Шаг за край города — на карту мира (фидбек приёмки M8): вся рамка карты —
+## зона перехода. На карте мира герой появляется с той же стороны города.
+func _exit_to_world(dir: Vector2i) -> void:
 	sim.speed = 1
 	sim.paused = false
+	if Game.world_map == null:
+		Game.new_world()
+	Game.world_hero_tile = Game.world_map.nearest_walkable(Game.world_map.city_tile + dir)
 	Game.city_return_tile = Vector2i(-1, -1)
 	get_tree().change_scene_to_file(WORLD_SCENE)
+
+
+## Герой в одном тайле от рамки карты — подсказка о выходе в мир.
+func _near_map_border() -> bool:
+	var t: Vector2i = map.tile_of_px(hero.position)
+	for d in [Vector2i.ZERO, Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
+		if map.border_dir(t + d) != Vector2i.ZERO:
+			return true
+	return false
 
 
 func _default_hint() -> String:

@@ -109,6 +109,21 @@ func is_walkable(p: Vector2i) -> bool:
 	return in_bounds(p) and grid[p.y][p.x] != TILE_WATER
 
 
+## Ближайший проходимый тайл (спираль до радиуса 4); фолбэк — город.
+func nearest_walkable(tile: Vector2i) -> Vector2i:
+	if is_walkable(tile):
+		return tile
+	for radius in range(1, 5):
+		for dy in range(-radius, radius + 1):
+			for dx in range(-radius, radius + 1):
+				if maxi(absi(dx), absi(dy)) != radius:
+					continue
+				var t := tile + Vector2i(dx, dy)
+				if is_walkable(t):
+					return t
+	return city_tile
+
+
 ## Цена тайла для времени пути (биом; дорога быстрее равнины).
 func tile_cost(p: Vector2i) -> float:
 	if not is_walkable(p):

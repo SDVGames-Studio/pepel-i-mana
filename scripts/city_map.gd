@@ -127,6 +127,38 @@ func in_bounds(p: Vector2i) -> bool:
 	return p.x >= 0 and p.y >= 0 and p.x < w and p.y < h
 
 
+## Направление наружу, если тайл на краю карты (рамка в 1 тайл — зона
+## перехода на карту мира, M8). Угол даёт диагональ. центр — Vector2i.ZERO.
+func border_dir(p: Vector2i) -> Vector2i:
+	if not in_bounds(p):
+		return Vector2i.ZERO
+	var dir := Vector2i.ZERO
+	if p.x == 0:
+		dir.x = -1
+	elif p.x == w - 1:
+		dir.x = 1
+	if p.y == 0:
+		dir.y = -1
+	elif p.y == h - 1:
+		dir.y = 1
+	return dir
+
+
+## Ближайший проходимый тайл (спираль до радиуса 4); фолбэк — старт.
+func nearest_walkable(tile: Vector2i) -> Vector2i:
+	if is_walkable(tile):
+		return tile
+	for radius in range(1, 5):
+		for dy in range(-radius, radius + 1):
+			for dx in range(-radius, radius + 1):
+				if maxi(absi(dx), absi(dy)) != radius:
+					continue
+				var t := tile + Vector2i(dx, dy)
+				if is_walkable(t):
+					return t
+	return spawn_tile
+
+
 ## Проходимость ландшафта (без учёта зданий). Руда — как скала: непроходима.
 func is_nature_walkable(p: Vector2i) -> bool:
 	return in_bounds(p) and grid[p.y][p.x] != TILE_WATER and grid[p.y][p.x] != TILE_ROCK \
