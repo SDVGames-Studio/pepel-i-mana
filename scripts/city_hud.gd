@@ -36,6 +36,8 @@ var _city_spell_btns: Array = []   # [{btn, spell_id}]
 var _enchant_btns: Array = []      # [{btn, ench_id}]
 var _enchant_hint_label: Label
 var _enchant_colors: Dictionary = {}
+var _research_panel: PanelContainer
+var _research_box: VBoxContainer
 
 
 ## Вызвать до add_child.
@@ -527,6 +529,82 @@ func _build() -> void:
 		_bld_btns.append(btn)
 
 	_build_magic_panel(root)
+	_build_research_panel(root)
+
+
+## --- Панель дисциплин города (M7, клавиша U) -------------------------------
+
+func toggle_research() -> void:
+	_research_panel.visible = not _research_panel.visible
+	if _research_panel.visible:
+		_rebuild_research()
+
+
+func research_visible() -> bool:
+	return _research_panel.visible
+
+
+func _build_research_panel(root: Control) -> void:
+	_research_panel = PanelContainer.new()
+	_research_panel.add_theme_stylebox_override("panel", _panel_style())
+	_research_panel.set_anchors_preset(Control.PRESET_CENTER)
+	_research_panel.visible = false
+	root.add_child(_research_panel)
+	var scroll := ScrollContainer.new()
+	scroll.custom_minimum_size = Vector2(560, 560)
+	_research_panel.add_child(scroll)
+	_research_box = VBoxContainer.new()
+	_research_box.add_theme_constant_override("separation", 8)
+	_research_box.custom_minimum_size = Vector2(540, 0)
+	scroll.add_child(_research_box)
+
+
+## Пересобрать список дисциплин: заголовок ветки + кнопки её тиров.
+func _rebuild_research() -> void:
+	for child in _research_box.get_children():
+		child.queue_free()
+	var title := _label(26)
+	title.text = Loc.t("research.title")
+	_research_box.add_child(title)
+	for branch in sim.research_cfg.get("branches", []):
+		var head := _label(20)
+		head.text = Loc.t(String(branch["loc"]))
+		head.add_theme_color_override("font_color", Color(String(branch.get("color", "#ffffff"))))
+		_research_box.add_child(head)
+		var prev_researched := true
+		for tier in branch.get("tiers", []):
+			var tier_id := String(tier["id"])
+			var btn := Button.new()
+			btn.custom_minimum_size = Vector2(0, 44)
+			btn.add_theme_font_size_override("font_size", 16)
+			btn.focus_mode = Control.FOCUS_NONE
+			btn.tooltip_text = Loc.t(String(tier["desc"]))
+			var done: bool = sim.researched.has(tier_id)
+			var parts := PackedStringArray()
+			for res_key in tier.get("cost", {}):
+				parts.append("%d %s" % [int(tier["cost"][res_key]), Loc.t("res." + res_key)])
+			if done:
+				btn.text = "✔ %s" % Loc.t(String(tier["loc"]))
+				btn.disabled = true
+			elif not prev_researched:
+				btn.text = "🔒 %s" % Loc.t(String(tier["loc"]))
+				btn.disabled = true
+			else:
+				btn.text = "%s (%s)" % [Loc.t(String(tier["loc"])), " + ".join(parts)]
+			var captured := tier_id
+			btn.pressed.connect(func() -> void: _on_research_pressed(captured))
+			_research_box.add_child(btn)
+			prev_researched = done
+
+
+func _on_research_pressed(tier_id: String) -> void:
+	var err := String(sim.study_research(tier_id))
+	if err != "":
+		toast(Loc.t("research." + err))
+		return
+	var tier: Dictionary = sim._research_tier(tier_id)
+	toast(Loc.t("research.done_toast") % Loc.t(String(tier["loc"])))
+	_rebuild_research()
 
 
 ## Описание здания для подсказки: название, цена, эффект.

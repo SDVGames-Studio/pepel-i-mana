@@ -396,6 +396,8 @@ func _unhandled_input(event: InputEvent) -> void:
 				toggle_pause()
 			KEY_R:
 				hud.toggle_magic()
+			KEY_U:
+				hud.toggle_research()
 			KEY_C:
 				hud.toggle_chronicle()
 			KEY_1:
@@ -455,6 +457,8 @@ func _unhandled_input(event: InputEvent) -> void:
 			set_road_mode(false)
 		elif hud.magic_visible():
 			hud.toggle_magic()
+		elif hud.research_visible():
+			hud.toggle_research()
 		elif hud.residents_visible():
 			hud.toggle_residents()
 		elif hud.chronicle_visible():

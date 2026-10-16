@@ -1,0 +1,28 @@
+{
+	"branches": [
+		{
+			"id": "agriculture", "loc": "research.agriculture", "color": "#8bc34a",
+			"tiers": [
+				{ "id": "agri1", "loc": "research.agri1", "desc": "research.desc.agri1", "cost": {"food": 40, "wood": 20}, "food_prod": 1.15 },
+				{ "id": "agri2", "loc": "research.agri2", "desc": "research.desc.agri2", "cost": {"food": 80, "crystal": 2}, "food_prod": 1.15 },
+				{ "id": "agri3", "loc": "research.agri3", "desc": "research.desc.agri3", "cost": {"food": 150, "crystal": 4}, "food_prod": 1.2 }
+			]
+		},
+		{
+			"id": "defense", "loc": "research.defense", "color": "#ef5350",
+			"tiers": [
+				{ "id": "def1", "loc": "research.def1", "desc": "research.desc.def1", "cost": {"stone": 40, "wood": 20}, "tower_damage": 1 },
+				{ "id": "def2", "loc": "research.def2", "desc": "research.desc.def2", "cost": {"stone": 80, "metal": 5}, "wall_hp_mult": 1.25 },
+				{ "id": "def3", "loc": "research.def3", "desc": "research.desc.def3", "cost": {"stone": 150, "metal": 10}, "tower_range": 1 }
+			]
+		},
+		{
+			"id": "arcane", "loc": "research.arcane", "color": "#ba68c8",
+			"tiers": [
+				{ "id": "arc1", "loc": "research.arc1", "desc": "research.desc.arc1", "cost": {"crystal": 3}, "pollution_decay_mult": 1.5 },
+				{ "id": "arc2", "loc": "research.arc2", "desc": "research.desc.arc2", "cost": {"crystal": 6}, "mana_regen_mult": 0.8 },
+				{ "id": "arc3", "loc": "research.arc3", "desc": "research.desc.arc3", "cost": {"crystal": 10}, "prod_all": 1.1 }
+			]
+		}
+	]
+}

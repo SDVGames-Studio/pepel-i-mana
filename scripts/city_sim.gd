@@ -78,8 +78,11 @@ var _raid_warned := false       # предупреждение уже объяв
 var _raid_rng := RandomNumberGenerator.new()
 var _bld_id := 1                # счётчик id рейдеров/снарядов (общий с зданиями не нужен)
 var _storm_struck_at := 0.0     # время последнего удара бури по зданию
+var researched: Array = []      # изученные дисциплины (M7): id тиров research.json
+var research_cfg: Dictionary = {}  # data/research.json — 3 ветки прогрессии города
 
 const PEOPLE_CFG_PATH := "res://data/residents.json"
+const RESEARCH_CFG_PATH := "res://data/research.json"
 
 
 ## Запуск новой игры: карта, стартовые ресурсы по уровню, жители с профессиями.
@@ -125,6 +128,9 @@ func setup(city_map, city_cfg: Dictionary, residents_count: int, level: String) 
 	_trait_map = {}
 	for td in people.get("traits", []):
 		_trait_map[String(td["id"])] = td
+	var rdata: Variant = _read_json_file(RESEARCH_CFG_PATH)
+	research_cfg = rdata if rdata is Dictionary else {}
+	researched = []
 	var levels: Dictionary = cfg["start"]["levels"]
 	var start_res: Dictionary = levels.get(level, levels["normal"])
 	for key in RESOURCES:
@@ -279,7 +285,8 @@ func pollution_band() -> String:
 
 
 ## Множитель производства от загрязнения («магическое сердце» — ответ №64),
-## дикого резонанса, зачарования здания и планировки (склад рядом — M6).
+## дикого резонанса, зачарования здания, планировки (склад рядом — M6)
+## и дисциплин (M7: «Земледелие» — еде, «Тайное» — всем).
 func production_mult(bld: Dictionary) -> float:
 	var pol_cfg: Dictionary = cfg.get("pollution", {})
 	var mult := 1.0
@@ -292,6 +299,10 @@ func production_mult(bld: Dictionary) -> float:
 		mult *= resonance_mult
 	mult *= float(bld.get("ench_mult", 1.0))
 	mult *= layout_mult(bld)
+	mult *= research_mult("prod_all", 1.0)
+	if not bld.is_empty() and bld.has("type") \
+			and String(_def(bld).get("produce", {}).get("res", "")) == "food":
+		mult *= research_mult("food_prod", 1.0)
 	return mult
 
 
@@ -350,6 +361,15 @@ func cast_city_spell(def: Dictionary) -> String:
 		"forest_gift":
 			_add_resource_capped("food", float(params.get("food", 15.0)))
 			add_pollution(float(def.get("pollution", 0.0)))
+		"meteor_shard":
+			_add_resource_capped("stone", float(params.get("stone", 30.0)))
+			add_pollution(float(def.get("pollution", 0.0)))
+		"bless":
+			for r in residents:
+				r["mood"] = clampf(float(r["mood"]) + float(params.get("mood", 12.0)), 0.0, 100.0)
+		"harvest_blessing":
+			_add_resource_capped("food", float(params.get("food", 25.0)))
+			add_pollution(float(def.get("pollution", 0.0)))
 	return ""
 
 
@@ -386,12 +406,66 @@ func enchant_building(bld: Dictionary, def: Dictionary, inventory: Array) -> Str
 ## Руной «Мана» алтарь усиливает ману героя (параметры из city.json -> "hero_mana").
 func hero_mana_params() -> Dictionary:
 	var mana_cfg: Dictionary = cfg.get("hero_mana", {})
+	var regen: float = float(mana_cfg.get("regen_period", 8.0))
 	if altar_enchanted():
-		return {
-			"cap_extra": int(mana_cfg.get("altar_cap_extra", 4)),
-			"regen_period": float(mana_cfg.get("altar_regen_period", 5.0)),
-		}
-	return {"cap_extra": 0, "regen_period": float(mana_cfg.get("regen_period", 8.0))}
+		regen = float(mana_cfg.get("altar_regen_period", 5.0))
+	# дисциплина «Тайное» (M7): регенерация маны героя быстрее
+	regen *= research_mult("mana_regen_mult", 1.0)
+	return {"cap_extra": int(mana_cfg.get("altar_cap_extra", 4)) if altar_enchanted() else 0,
+			"regen_period": regen}
+
+
+## --- дисциплины прогрессии города (M7): 3 ветки исследований ----------------
+
+## Изучить дисциплину (тир). Возвращает "" или ключ ошибки локализации.
+func study_research(tier_id: String) -> String:
+	if researched.has(tier_id):
+		return "research_done"
+	var tier := _research_tier(tier_id)
+	if tier.is_empty():
+		return "research_done"
+	# тир доступен, только если предыдущий в ветке изучен
+	for branch in research_cfg.get("branches", []):
+		var prev := ""
+		for t in branch.get("tiers", []):
+			if String(t["id"]) == tier_id:
+				if prev != "" and not researched.has(prev):
+					return "research_locked"
+				break
+			prev = String(t["id"])
+	for res_key in tier.get("cost", {}):
+		if float(res.get(res_key, 0.0)) < float(tier["cost"][res_key]):
+			return "research_no_res"
+	for res_key in tier.get("cost", {}):
+		res[res_key] = float(res[res_key]) - float(tier["cost"][res_key])
+	researched.append(tier_id)
+	return ""
+
+
+func _research_tier(tier_id: String) -> Dictionary:
+	for branch in research_cfg.get("branches", []):
+		for t in branch.get("tiers", []):
+			if String(t["id"]) == tier_id:
+				return t
+	return {}
+
+
+## Сумма аддитивных эффектов дисциплин (tower_damage, tower_range).
+func research_sum(key: String) -> float:
+	var total := 0.0
+	for tier_id in researched:
+		total += float(_research_tier(String(tier_id)).get(key, 0.0))
+	return total
+
+
+## Произведение мультипликативных эффектов дисциплин (food_prod, prod_all...).
+func research_mult(key: String, fallback: float) -> float:
+	var mult := fallback
+	for tier_id in researched:
+		var v: float = float(_research_tier(String(tier_id)).get(key, 0.0))
+		if v > 0.0:
+			mult *= v
+	return mult
 
 
 func _count_item(inventory: Array, item_id: String) -> int:
@@ -596,11 +670,15 @@ func _nearest_building_type(tile: Vector2i, types: Array, radius: float) -> Dict
 
 
 ## Запас прочности здания (M5): стены/ворота крепче, остальное — базовое.
+## Дисциплина «Оборона» (M7) умножает прочность стен и ворот.
 func _bld_max_hp(type_id: String) -> int:
 	var hp_cfg: Dictionary = cfg.get("threat", {}).get("bld_hp", {})
 	for d in cfg["buildings"]:
 		if String(d["id"]) == type_id:
-			return int(hp_cfg.get(String(d.get("effect", "default")), hp_cfg.get("default", 20)))
+			var hp := int(hp_cfg.get(String(d.get("effect", "default")), hp_cfg.get("default", 20)))
+			if String(d.get("effect", "")) in ["wall", "gate"]:
+				hp = int(round(float(hp) * research_mult("wall_hp_mult", 1.0)))
+			return hp
 	return int(hp_cfg.get("default", 20))
 
 
@@ -839,7 +917,8 @@ func tick(dt_raw: float) -> void:
 		resonance_left = maxf(0.0, resonance_left - dt)
 	var pol_cfg: Dictionary = cfg.get("pollution", {})
 	if not pol_cfg.is_empty() and pollution > 0.0:
-		pollution = maxf(0.0, pollution - float(pol_cfg.get("decay_per_day", 2.0)) * dt / day_len)
+		pollution = maxf(0.0, pollution - float(pol_cfg.get("decay_per_day", 2.0))
+				* research_mult("pollution_decay_mult", 1.0) * dt / day_len)
 	for b in buildings:
 		if float(b.get("stun_left", 0.0)) > 0.0:
 			b["stun_left"] = maxf(0.0, float(b["stun_left"]) - dt)
@@ -2250,6 +2329,9 @@ func _roll_ailments() -> void:
 		if ail == "":
 			var chance: float = float(acfg.get("sick_chance", 0.02)) \
 					+ float(acfg.get("pollution_sick_extra", 0.1)) * pollution / 100.0
+			# черта «болезненный» (M7): хвори цепляются вдвое чаще
+			if _has_trait_flag(r, "frail"):
+				chance *= float(acfg.get("frail_mult", 2.0))
 			if _event_rng.randf() < chance:
 				_make_ail(r, "sick", "chron.sick")
 			continue
@@ -2377,6 +2459,26 @@ func _roll_stories() -> void:
 			_story_betrayal(scfg)
 		"mutation":
 			_story_mutation(scfg)
+		"festival":
+			_story_festival(scfg)
+		"prodigy":
+			_story_prodigy(scfg)
+		"brave_deed":
+			_story_brave_deed(scfg)
+		"meteor":
+			_story_meteor(scfg)
+		"herbs":
+			_story_herbs(scfg)
+		"night_terror":
+			_story_night_terror(scfg)
+		"wedding":
+			_story_wedding(scfg)
+		"artifact":
+			_story_artifact(scfg)
+		"good_harvest":
+			_story_good_harvest(scfg)
+		"stranger":
+			_story_stranger(scfg)
 
 
 ## Ссора (ответ №29, отключается галочкой): ворчун портит настроение ещё кому-то.
@@ -2494,6 +2596,151 @@ func _story_mutation(scfg: Dictionary) -> void:
 	else:
 		_make_ail(r, "sick", "chron.mutation_bad")
 		events.append({"type": "mutation_bad", "name": String(r["name"])})
+
+
+## --- события-истории M7 (до 15) ---------------------------------------------
+
+## Праздник в таверне: городу есть чем поживиться — все гуляют.
+func _story_festival(scfg: Dictionary) -> void:
+	if not tavern_active() or float(res["food"]) < float(scfg.get("festival_food", 15)):
+		return
+	res["food"] = maxf(0.0, float(res["food"]) - float(scfg.get("festival_food", 15)))
+	var dm: float = float(scfg.get("festival_mood", 10.0))
+	for r in residents:
+		r["mood"] = clampf(float(r["mood"]) + dm, 0.0, 100.0)
+	_chron("chron.festival")
+	events.append({"type": "festival"})
+
+
+## Одарённый ученик: умелый житель обучает товарища — навык растёт скачком.
+func _story_prodigy(scfg: Dictionary) -> void:
+	var expert_at: float = float(people.get("skill_expert_at", 3.0))
+	var teacher: Dictionary = {}
+	var student: Dictionary = {}
+	for r in _adults():
+		if float(r.get("skill", 0.0)) >= expert_at:
+			teacher = r
+			break
+	for r in _adults():
+		if not r.is_empty() and r != teacher and float(r.get("skill", 0.0)) < float(people.get("skill_max", 5.0)):
+			student = r
+			break
+	if teacher.is_empty() or student.is_empty():
+		return
+	student["skill"] = minf(float(people.get("skill_max", 5.0)),
+			float(student["skill"]) + float(scfg.get("prodigy_skill", 1.0)))
+	_chron("chron.prodigy", String(teacher["name"]), String(student["name"]))
+	events.append({"type": "prodigy", "a": String(teacher["name"]), "b": String(student["name"])})
+
+
+## Храбрый поступок: храбрец спасает жителя — город гордится.
+func _story_brave_deed(scfg: Dictionary) -> void:
+	var heroes: Array = []
+	for r in _adults():
+		if _has_trait_flag(r, "fearless"):
+			heroes.append(r)
+	if heroes.is_empty():
+		return
+	var hero_r: Dictionary = heroes[_event_rng.randi_range(0, heroes.size() - 1)]
+	var dm: float = float(scfg.get("brave_deed_mood", 8.0))
+	for r in residents:
+		r["mood"] = clampf(float(r["mood"]) + dm, 0.0, 100.0)
+	_chron("chron.brave_deed", String(hero_r["name"]))
+	events.append({"type": "brave_deed", "name": String(hero_r["name"])})
+
+
+## Метеорит: упал камень с неба — добыча даром, но воздух дурит.
+func _story_meteor(scfg: Dictionary) -> void:
+	_add_resource_capped("stone", float(scfg.get("meteor_stone", 20)))
+	add_pollution(float(scfg.get("meteor_pollution", 8.0)))
+	_chron("chron.meteor")
+	events.append({"type": "meteor"})
+
+
+## Целебные травы: лекарь находит сбор — все больные выздоравливают разом.
+func _story_herbs(scfg: Dictionary) -> void:
+	if not _healer_ready():
+		return
+	var healed := 0
+	for r in residents:
+		if String(r.get("ail", "")) != "":
+			r["ail"] = ""
+			healed += 1
+	if healed == 0:
+		return
+	_assign_jobs()
+	_chron("chron.herbs", str(healed))
+	events.append({"type": "herbs", "n": healed})
+
+
+## Кошмары: наэлектризованный воздух не даёт спать — настроение чуть проседает.
+func _story_night_terror(scfg: Dictionary) -> void:
+	if pollution < float(scfg.get("terror_pollution", 20.0)):
+		return
+	var dm: float = float(scfg.get("terror_mood", -6.0))
+	for r in residents:
+		r["mood"] = clampf(float(r["mood"]) + dm, 0.0, 100.0)
+	_chron("chron.night_terror")
+	events.append({"type": "night_terror"})
+
+
+## Свадьба: двое свободных жителей соединяются — им и городу веселей.
+func _story_wedding(scfg: Dictionary) -> void:
+	var cands: Array = []
+	for r in _adults():
+		if int(r.get("friend", -1)) < 0:
+			cands.append(r)
+	if cands.size() < 2:
+		return
+	var a: Dictionary = cands[_event_rng.randi_range(0, cands.size() - 1)]
+	var b: Dictionary = cands[_event_rng.randi_range(0, cands.size() - 1)]
+	if a == b:
+		return
+	a["friend"] = int(b["id"])
+	b["friend"] = int(a["id"])
+	var dm: float = float(scfg.get("wedding_mood", 12.0))
+	for side in [a, b]:
+		side["mood"] = clampf(float(side["mood"]) + dm, 0.0, 100.0)
+	_chron("chron.wedding", String(a["name"]), String(b["name"]))
+	events.append({"type": "wedding", "a": String(a["name"]), "b": String(b["name"])})
+
+
+## Артефакт: житель выкапывает странную вещь — кристалл в пул, мастерство в голову.
+func _story_artifact(scfg: Dictionary) -> void:
+	var adults := _adults()
+	if adults.is_empty():
+		return
+	var r: Dictionary = adults[_event_rng.randi_range(0, adults.size() - 1)]
+	_add_resource_capped("crystal", float(scfg.get("artifact_crystal", 1)))
+	r["skill"] = minf(float(people.get("skill_max", 5.0)),
+			float(r["skill"]) + float(scfg.get("artifact_skill", 0.5)))
+	_chron("chron.artifact", String(r["name"]))
+	events.append({"type": "artifact", "name": String(r["name"])})
+
+
+## Урожайный год: погода и руки сошлись — лишняя еда в амбар.
+func _story_good_harvest(scfg: Dictionary) -> void:
+	if _assigned_done_of_farm().is_empty():
+		return
+	_add_resource_capped("food", float(scfg.get("harvest_food", 18)))
+	_chron("chron.good_harvest")
+	events.append({"type": "good_harvest"})
+
+
+## Странник: изгнанник делится припасами и слухами о данже.
+func _story_stranger(scfg: Dictionary) -> void:
+	_add_resource_capped("food", float(scfg.get("stranger_food", 10)))
+	_add_resource_capped("crystal", float(scfg.get("stranger_crystal", 1)))
+	_chron("chron.stranger")
+	events.append({"type": "stranger"})
+
+
+## Готовая ферма с работающим фермером — условие «Урожайного года».
+func _assigned_done_of_farm() -> Dictionary:
+	for b in buildings:
+		if bool(b["done"]) and String(b["type"]) == "farm" and int(b["worker"]) > 0:
+			return b
+	return {}
 
 
 ## Летопись: хранит ключи локализации, текст собирает HUD.
@@ -2690,7 +2937,8 @@ func _update_raid(dt: float, _day_len: float) -> void:
 
 ## Вышка со стражем бьёт ближайшего мутанта в радиусе (страж реально воюет).
 func _shoot_towers(dt: float, tcfg: Dictionary) -> void:
-	var range_px := float(tcfg.get("tower_range", 4.5)) * float(map.ts)
+	# дисциплина «Оборона» (M7): дальность и урон вышек растут
+	var range_px := (float(tcfg.get("tower_range", 4.5)) + research_sum("tower_range")) * float(map.ts)
 	for b in buildings:
 		if not bool(b["done"]) or _def(b).get("effect", "") != "guard" or int(b["worker"]) <= 0:
 			continue
@@ -2708,7 +2956,7 @@ func _shoot_towers(dt: float, tcfg: Dictionary) -> void:
 		var worker := _resident_by_id(int(b["worker"]))
 		if not worker.is_empty() and bool(worker.get("kit", false)):
 			mult = float(tcfg.get("kit_damage_mult", 2.0))
-		_hit_raider(target, int(round(float(tcfg.get("tower_damage", 2)) * mult)))
+		_hit_raider(target, int(round((float(tcfg.get("tower_damage", 2)) + research_sum("tower_damage")) * mult)))
 
 
 func _nearest_raider(from_px: Vector2, radius_px: float) -> Dictionary:
