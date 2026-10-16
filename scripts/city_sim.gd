@@ -471,10 +471,10 @@ func place_building(type_id: String, tile: Vector2i) -> bool:
 	return true
 
 
-## Проложить дорогу (M6): трава без зданий, камень за тайл. "" — успех.
+## Проложить дорогу (M6): трава без зданий и зон, камень за тайл. "" — успех.
 func place_road(tile: Vector2i) -> String:
 	if not map.in_bounds(tile) or not map.is_nature_walkable(tile) \
-			or not building_at(tile).is_empty():
+			or not building_at(tile).is_empty() or _tile_in_zone(tile):
 		return "bad"
 	if map.has_road(tile):
 		return ""
@@ -485,6 +485,43 @@ func place_road(tile: Vector2i) -> String:
 	res["stone"] = int(res["stone"]) - cost
 	map.set_road(tile, float(rcfg.get("astar_weight", 0.4)))
 	return ""
+
+
+## Клетка занята зоной?
+func _tile_in_zone(tile: Vector2i) -> bool:
+	for z in zones:
+		if (z["cells"] as Array).has(tile):
+			return true
+	return false
+
+
+## Дневной бросок: город сам прокладывает дороги по протоптанным тропам
+## (жители ходят по кратчайшим путям — износ концентрируется на оптимальных
+## маршрутах: работа → склад, дом → работа). Не в ущерб стройке: только
+## сверх резерва камня, не больше auto_per_day за день, зоны и здания пропускает.
+func _roll_auto_roads() -> void:
+	var rcfg: Dictionary = cfg.get("roads", {})
+	if rcfg.is_empty() or not elder_present():
+		return
+	if int(res["stone"]) < int(rcfg.get("auto_reserve_stone", 15)):
+		return
+	var threshold: float = float(rcfg.get("wear_threshold", 25.0))
+	var cand: Array = []
+	for t in map.wear:
+		if float(map.wear[t]) >= threshold and not map.has_road(t):
+			cand.append(t)
+	cand.sort_custom(func(a, b) -> bool: return float(map.wear[a]) > float(map.wear[b]))
+	var laid := 0
+	var limit := int(rcfg.get("auto_per_day", 3))
+	for t: Vector2i in cand:
+		if laid >= limit:
+			break
+		if place_road(t) == "":
+			laid += 1
+		map.wear.erase(t)   # тропу обработали — снимаем износ
+	if laid > 0:
+		events.append({"type": "road_auto", "count": laid})
+		_chron("chron.road_built", str(laid))
 
 
 ## Убрать тайл из его зоны (здание заняло клетку).
@@ -826,6 +863,7 @@ func tick(dt_raw: float) -> void:
 		_roll_guards()
 		_roll_hunter()
 		_roll_porter()
+		_roll_auto_roads()
 		_roll_animals()
 		_roll_storm()
 	_update_gates()   # достроенные за тик вышки/ворота сразу меняют проходимость
@@ -1342,6 +1380,7 @@ func _move_towards(r: Dictionary, tile: Vector2i, dt: float) -> void:
 		var rcfg: Dictionary = cfg.get("roads", {})
 		step *= float(rcfg.get("porter_mult", 1.8)) if String(r["prof"]) == "porter" \
 				else float(rcfg.get("mult", 1.4))
+	var step_total := step
 	while step > 0.0 and not path.is_empty():
 		var to_next: Vector2 = path[0] - pos
 		var dist := to_next.length()
@@ -1354,6 +1393,10 @@ func _move_towards(r: Dictionary, tile: Vector2i, dt: float) -> void:
 			step = 0.0
 	r["pos"] = pos
 	r["path"] = path
+	# протоптанная тропа (M6): сколько прошёл — столько износа оставил
+	var moved := step_total - step
+	if moved > 0.0:
+		map.add_wear(map.tile_of_px(pos), moved / float(map.ts) * float(cfg.get("roads", {}).get("wear_per_tile", 1.0)))
 
 
 # --- носильщик и физический склад (M6, ответ №20) ---------------------------

@@ -33,7 +33,9 @@
 			"living": { "color": "#c9a06a", "pop": 1 }
 		}
 	},
-	"roads": { "cost_stone": 1, "mult": 1.4, "porter_mult": 1.8, "astar_weight": 0.4 },
+	"roads": { "cost_stone": 1, "mult": 1.4, "porter_mult": 1.8, "astar_weight": 0.4,
+		"wear_per_tile": 1.0, "wear_threshold": 25.0,
+		"auto_per_day": 3, "auto_reserve_stone": 15 },
 	"piles": { "chunk": 8.0, "max": 20.0, "carry": 10.0 },
 	"layout": { "warehouse_radius": 4, "warehouse_mult": 1.25 },
 	"repair": { "per_day": 15.0 },

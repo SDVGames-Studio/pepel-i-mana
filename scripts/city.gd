@@ -320,6 +320,8 @@ func _process_events() -> void:
 				hud.toast(Loc.t("city.zone_done_toast") % Loc.t("zone." + String(ev["zone"])))
 			"porter_trained":
 				hud.toast(Loc.t("city.porter_trained_toast") % String(ev["name"]))
+			"road_auto":
+				hud.toast(Loc.t("city.road_auto_toast") % int(ev["count"]))
 	sim.events.clear()
 
 

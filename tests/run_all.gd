@@ -113,6 +113,7 @@ const REQUIRED_LOCALES := [
 	# --- M6: зоны, дороги, физическая логистика ---
 	"zone.field", "zone.pasture", "zone.living",
 	"city.road", "city.road_tooltip", "city.road_hint", "city.road_no_stone",
+	"city.road_auto_toast", "chron.road_built",
 	"city.zone_hint", "city.zone_tooltip", "city.zone_added", "city.zone_bad", "city.zone_done_toast",
 	"city.state.fill", "city.state.porter", "city.state.repair", "city.hover_pile",
 	"chron.zone_done", "city.porter_trained_toast", "chron.porter_trained", "prof.porter",
@@ -2206,6 +2207,59 @@ func _test_m6() -> void:
 	sim_p.tick(1.0)
 	var d_plain: float = (walker_p["pos"] as Vector2).distance_to(sim_p.map.tile_center_px(line[0]))
 	_check(d_road > d_plain + 5.0, "по дороге житель идёт быстрее (%.0f > %.0f)" % [d_road, d_plain])
+	# ходьба протаптывает тропы: износ копится на тайлах
+	var wear_sum := 0.0
+	for t in sim_r.map.wear:
+		wear_sum += float(sim_r.map.wear[t])
+	_check(wear_sum > 0.0, "жители протаптывают тропы: износ копится (%.1f)" % wear_sum)
+
+	# --- автодороги: изношенная тропа сама становится дорогой ---
+	var sim_a := _make_sim()
+	sim_a._last_daily_day = 999
+	sim_a.res["stone"] = 50.0
+	var atile: Vector2i = _grass_tiles(sim_a, sim_a.map.spawn_tile + Vector2i(1, 1), 1)[0]
+	sim_a.map.add_wear(atile, 30.0)   # тропу натоптали выше порога
+	sim_a._roll_auto_roads()
+	_check(sim_a.map.has_road(atile), "изношенная тропа сама стала дорогой")
+	_check(float(sim_a.res["stone"]) < 50.0, "за автодорогу заплачен камень города")
+	_check(not sim_a.map.wear.has(atile), "износ снят после прокладки дороги")
+	# лимит: три тропы, за один день только auto_per_day
+	var more: Array = _grass_tiles(sim_a, sim_a.map.spawn_tile + Vector2i(4, 4), 3)
+	var limit: int = int(sim_a.cfg["roads"]["auto_per_day"])
+	for i in more.size():
+		sim_a.map.add_wear(more[i], 30.0)
+	sim_a.res["stone"] = 50.0
+	sim_a._roll_auto_roads()
+	var built_now := 0
+	for t in more:
+		if sim_a.map.has_road(t):
+			built_now += 1
+	_check(built_now == limit, "за день город тянет не больше %d автодорог (проложено %d)" % [limit, built_now])
+	# зоны автодороги обходят
+	var ztile: Vector2i = _grass_tiles(sim_a, sim_a.map.spawn_tile + Vector2i(-3, 3), 1)[0]
+	sim_a.add_zone("field", [ztile])
+	sim_a.map.add_wear(ztile, 30.0)
+	sim_a._roll_auto_roads()
+	_check(not sim_a.map.has_road(ztile), "через зону автодорога не прокладывается")
+	# резерв камня: не в ущерб стройке
+	var sim_b := _make_sim()
+	sim_b._last_daily_day = 999
+	sim_b.res["stone"] = 5.0
+	var btile: Vector2i = _grass_tiles(sim_b, sim_b.map.spawn_tile + Vector2i(1, 1), 1)[0]
+	sim_b.map.add_wear(btile, 30.0)
+	sim_b._roll_auto_roads()
+	_check(not sim_b.map.has_road(btile), "камня меньше резерва — город дороги сам не тянет")
+	# без старосты дорогами никто не занимается
+	var sim_c := _make_sim()
+	sim_c._last_daily_day = 999
+	for r in sim_c.residents:
+		if String(r["prof"]) == "elder":
+			r["prof"] = "crafter"
+	sim_c.res["stone"] = 50.0
+	var ctile: Vector2i = _grass_tiles(sim_c, sim_c.map.spawn_tile + Vector2i(1, 1), 1)[0]
+	sim_c.map.add_wear(ctile, 30.0)
+	sim_c._roll_auto_roads()
+	_check(not sim_c.map.has_road(ctile), "без старосты автодорог нет — как и самостроя")
 
 	# --- носильщик: куча растёт, носильщик сносит на склад ---
 	var sim_pg := _make_sim()

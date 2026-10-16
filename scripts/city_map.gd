@@ -13,6 +13,7 @@ var h := 0
 var ts := 32
 var grid: Array = []            # grid[y][x] -> TILE_*
 var road := {}                  # Vector2i -> true: дороги (M6) — ускорение и приоритет путей
+var wear := {}                  # Vector2i -> float: износ троп (M6) — город сам строит дороги там, где ходят
 var anomaly_tile := Vector2i.ZERO   # вход в данж (у аномалии)
 var spawn_tile := Vector2i.ZERO     # старт героя и жителей
 var astar: AStarGrid2D = null
@@ -24,6 +25,7 @@ func generate(seed_value: int, params: Dictionary) -> void:
 	h = int(params["map_h"])
 	ts = int(params["tile_size"])
 	road = {}
+	wear = {}
 	for attempt in 20:
 		_generate_once(seed_value + attempt * 1013, params)
 		if _connected():
@@ -159,6 +161,11 @@ func remove_road(p: Vector2i) -> void:
 
 func has_road(p: Vector2i) -> bool:
 	return road.has(p)
+
+
+## Износ тропы (M6): жители протаптывают тайлы, где ходят.
+func add_wear(p: Vector2i, amount: float) -> void:
+	wear[p] = float(wear.get(p, 0.0)) + amount
 
 
 ## Путь между тайлами в пиксельных центрах; пустой, если цели нет.
