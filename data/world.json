@@ -1,0 +1,66 @@
+{
+	"tile_size": 32,
+	"map_w": 72,
+	"map_h": 52,
+	"hero_speed": 200.0,
+	"day_seconds": 1.4,
+	"tiles_per_day": 22.0,
+	"reveal_radius": 5,
+	"city_reveal_radius": 9,
+	"biomes": {
+		"plains": {"color": "#5d7a3a", "cost": 1.0},
+		"water": {"color": "#2e5f7a", "cost": 0.0},
+		"forest": {"color": "#3e5a2a", "cost": 1.6},
+		"hills": {"color": "#6e6a63", "cost": 2.0},
+		"waste": {"color": "#7a6a55", "cost": 2.0},
+		"road": {"color": "#6e5f4a", "cost": 0.5}
+	},
+	"blobs": {"forest": 16, "hills": 10, "waste": 9, "water": 9},
+	"blob_radius": {"forest": [3, 6], "hills": [3, 5], "waste": [4, 7], "water": [3, 5]},
+	"pois": {
+		"ruins": 3,
+		"camps": 4,
+		"obelisks": 2,
+		"settlements": ["traders", "cult", "traders"],
+		"caravans": 1,
+		"dungeon_biomes": ["ruins", "mutant_forest", "crystal_caves", "ash_wastes"]
+	},
+	"distances": {
+		"city_dungeon": [3, 5],
+		"settlement": [10, 20],
+		"caravan": [8, 18],
+		"dungeon": [12, 30],
+		"ruins": [8, 26],
+		"camp": [8, 24],
+		"obelisk": [18, 34]
+	},
+	"sim": {
+		"camp_growth_min": 0.0,
+		"camp_growth_max": 2.0,
+		"siege_chance_per_day": 0.06,
+		"siege_range": 26,
+		"siege_days": 3,
+		"settlement_defense": 12.0,
+		"resettle_min_days": 5,
+		"resettle_chance": 0.35,
+		"dungeon_reset_days": 10,
+		"caravan_move_days": 4,
+		"start_strength": {"camp": 4, "dungeon": 6, "ruins": 5, "settlement": 8}
+	},
+	"trade": {
+		"start_coins": 15,
+		"buy": {"food": 2, "wood": 2, "stone": 3, "crystal": 9, "tools": 6, "metal": 5, "iron": 4},
+		"sell_mult": 0.5,
+		"camp_discount": 0.7,
+		"barter": [
+			{"give": "food", "get": "wood", "give_n": 3, "get_n": 2},
+			{"give": "stone", "get": "food", "give_n": 2, "get_n": 2},
+			{"give": "wood", "get": "stone", "give_n": 3, "get_n": 2}
+		],
+		"rune_price": 25,
+		"camp_coins_min": 8,
+		"camp_coins_max": 16,
+		"ruins_coins_min": 3,
+		"ruins_coins_max": 8
+	}
+}
