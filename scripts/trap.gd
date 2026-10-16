@@ -12,6 +12,7 @@ var hero = null               # hero.gd — динамическая ссылк�
 var _phase := 0.0             # фаза цикла шипов
 var _dart_cd := 0.0
 var _armed := false           # мина встала на боевой взвод
+var _arm_left := -1.0         # отсчёт до взвода (в setup дерево ещё недоступно)
 var _boom := false            # мина сработала
 var _flash := 0.0
 
@@ -28,12 +29,16 @@ func setup(trap_kind: String, type_cfg: Dictionary, gen_ref, hero_ref) -> void:
 	if kind == "rune_mine":
 		# мина взводится через мгновение после появления, чтобы не рвануть на спавне
 		_armed = false
-		get_tree().create_timer(0.6).timeout.connect(func() -> void: _armed = true)
+		_arm_left = 0.6
 
 
 func _process(delta: float) -> void:
 	if hero == null or hero.dead:
 		return
+	if _arm_left >= 0.0:
+		_arm_left -= delta
+		if _arm_left < 0.0:
+			_armed = true
 	_flash = maxf(0.0, _flash - delta)
 	match kind:
 		"spikes":
