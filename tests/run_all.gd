@@ -118,6 +118,39 @@ const REQUIRED_LOCALES := [
 	"city.state.fill", "city.state.porter", "city.state.repair", "city.hover_pile",
 	"chron.zone_done", "city.porter_trained_toast", "chron.porter_trained", "prof.porter",
 	"bld.garden", "bld.desc.garden", "bld.statue", "bld.desc.statue",
+	# --- M7: контент и биомы ---
+	"biome.crystal_caves", "biome.ash_wastes",
+	"enemy.crawler", "enemy.wisp", "enemy.shardling",
+	"enemy.ash_hound", "enemy.dust_stalker", "enemy.cinder",
+	"enemy.bone_knight", "enemy.broodmother", "enemy.crystal_colossus", "enemy.ash_tyrant",
+	"trap.spikes", "trap.darts", "trap.rune_mine",
+	"dungeon.boss_down", "dungeon.mana_back",
+	"hud.level", "hud.level_up", "hud.skill_choice",
+	"tree.warrior", "tree.mage", "tree.survivor",
+	"tree.w1", "tree.w2", "tree.w3", "tree.m1", "tree.m2", "tree.m3", "tree.s1", "tree.s2", "tree.s3",
+	"tree.desc.w1", "tree.desc.w2", "tree.desc.w3",
+	"tree.desc.m1", "tree.desc.m2", "tree.desc.m3",
+	"tree.desc.s1", "tree.desc.s2", "tree.desc.s3",
+	"research.title", "research.agriculture", "research.defense", "research.arcane",
+	"research.agri1", "research.agri2", "research.agri3",
+	"research.def1", "research.def2", "research.def3",
+	"research.arc1", "research.arc2", "research.arc3",
+	"research.desc.agri1", "research.desc.agri2", "research.desc.agri3",
+	"research.desc.def1", "research.desc.def2", "research.desc.def3",
+	"research.desc.arc1", "research.desc.arc2", "research.desc.arc3",
+	"research.done_toast", "research.research_done", "research.research_locked", "research.research_no_res",
+	"trait.kind", "trait.strong", "trait.sickly", "trait.dreamer", "trait.stoic",
+	"chron.festival", "chron.prodigy", "chron.brave_deed", "chron.meteor", "chron.herbs",
+	"chron.night_terror", "chron.wedding", "chron.artifact", "chron.good_harvest", "chron.stranger",
+	"story.festival_toast", "story.prodigy_toast", "story.brave_deed_toast", "story.meteor_toast",
+	"story.herbs_toast", "story.night_terror_toast", "story.wedding_toast", "story.artifact_toast",
+	"story.good_harvest_toast", "story.stranger_toast",
+	"spell.overcharge", "spell.meteor_shard", "spell.light_beacon", "spell.bless",
+	"spell.stone_skin", "spell.harvest_blessing", "spell.soul_burn", "spell.void_rift",
+	"spell.desc.overcharge", "spell.desc.meteor_shard", "spell.desc.light_beacon", "spell.desc.bless",
+	"spell.desc.stone_skin", "spell.desc.harvest_blessing", "spell.desc.soul_burn", "spell.desc.void_rift",
+	"item.rune_ash", "item.rune_blood", "item.rune_echo", "item.rune_thorn",
+	"item.rune_sun", "item.rune_void", "item.rune_core", "item.boss_trophy",
 ]
 
 const ALL_SCRIPTS := [
@@ -129,6 +162,7 @@ const ALL_SCRIPTS := [
 	"res://scripts/chest.gd", "res://scripts/pickup.gd", "res://scripts/exit_marker.gd",
 	"res://scripts/minimap.gd", "res://scripts/hud.gd",
 	"res://scripts/magic.gd", "res://scripts/spell_fx.gd",
+	"res://scripts/skills.gd", "res://scripts/trap.gd",
 ]
 
 var _fails := 0
@@ -153,6 +187,7 @@ func _initialize() -> void:
 	_test_defense()
 	_test_gathering()
 	_test_m6()
+	_test_m7()
 	if _fails == 0:
 		print("OK: все тесты пройдены")
 		quit(0)
@@ -199,20 +234,30 @@ func _test_data() -> void:
 		_check(hero is Dictionary and hero.has("speed") and hero.has("dash_cooldown"),
 				"dungeon.json: параметры героя полны")
 	var enemies: Variant = _read_json("res://data/enemies.json")
-	_check(enemies is Array and enemies.size() == 7, "enemies.json — 7 типов врагов (M3: +антимаг, M5: +мутанты)")
+	_check(enemies is Array and enemies.size() == 17,
+			"enemies.json — 17 врагов (M7: 13 обычных + 4 босса)")
 	if enemies is Array:
 		var fields_ok := true
 		for enemy in enemies:
-			for key in ["id", "hp", "damage", "speed", "aggro", "drop_chance"]:
+			for key in ["id", "hp", "damage", "speed", "aggro", "drop_chance", "xp"]:
 				if not (enemy is Dictionary and enemy.has(key)):
 					fields_ok = false
-		_check(fields_ok, "enemies.json: у всех врагов есть поля боя и дропа")
+		_check(fields_ok, "enemies.json: у всех врагов есть поля боя, дропа и опыта")
+		var bosses := 0
+		var boss_hp_ok := true
+		for enemy in enemies:
+			if enemy is Dictionary and bool(enemy.get("boss", false)):
+				bosses += 1
+				if int(enemy.get("hp", 0)) < 20:
+					boss_hp_ok = false
+		_check(bosses == 4, "enemies.json — 4 босса (по одному на биом)")
+		_check(boss_hp_ok, "у всех боссов HP >= 20")
 	var magic: Variant = _read_json("res://data/magic.json")
 	_check(magic is Dictionary, "magic.json — валидный JSON-словарь")
 	if magic is Dictionary:
 		_check((magic.get("schools", []) as Array).size() == 4, "magic.json — 4 школы (M5: +запретная)")
-		_check((magic.get("spells", []) as Array).size() == 12, "magic.json — 12 заклинаний (M5: 3 запретных)")
-		_check((magic.get("recipes", []) as Array).size() == 12, "magic.json — 12 рецептов из рун")
+		_check((magic.get("spells", []) as Array).size() == 20, "magic.json — 20 заклинаний (M7: +8)")
+		_check((magic.get("recipes", []) as Array).size() == 20, "magic.json — 20 рецептов из рун")
 		_check((magic.get("enchantments", []) as Array).size() == 3, "magic.json — 3 зачарования")
 	var loot: Variant = _read_json("res://data/loot.json")
 	_check(loot is Dictionary and (loot.get("rarities", []) as Array).size() == 4,
@@ -265,7 +310,7 @@ func _test_data() -> void:
 	var residents_data: Variant = _read_json("res://data/residents.json")
 	_check(residents_data is Dictionary, "residents.json — валидный JSON-словарь")
 	if residents_data is Dictionary:
-		_check((residents_data.get("traits", []) as Array).size() >= 8, "residents.json — минимум 8 черт")
+		_check((residents_data.get("traits", []) as Array).size() == 15, "residents.json — 15 черт (M7: +5)")
 		_check(residents_data.has("refugees") and residents_data.has("births"),
 				"residents.json: настроены беженцы и рождения (ответ №27)")
 		_check(residents_data.has("ailments") and residents_data.has("stories"),
@@ -1151,7 +1196,7 @@ func _test_magic() -> void:
 		else:
 			dungeon_count += 1
 	_check(refs_ok, "у всех заклинаний известная школа")
-	_check(city_count == 3 and dungeon_count == 9, "3 городских + 9 боевых заклинаний (M5: +3 запретных)")
+	_check(city_count == 6 and dungeon_count == 14, "6 городских + 14 боевых заклинаний (M7: +8)")
 	# спеллбук в Game: изучение, дубли, удаление предметов
 	var game: Node = load("res://scripts/game.gd").new()
 	_check(game.magic != null, "Game._init загрузил data/magic.json")
@@ -2378,3 +2423,191 @@ func _test_m6() -> void:
 	sim_wr.place_building("wall", rtile)
 	_check(not sim_wr.map.has_road(rtile), "здание на тайле убирает дорогу")
 
+
+
+# --- M7: контент и биомы ------------------------------------------------------
+
+func _test_m7() -> void:
+	print("[M7: биомы, боссы, ловушки, навыки, дисциплины, баланс]")
+	var dungeon_cfg: Dictionary = _read_json("res://data/dungeon.json")
+	var enemies: Array = _read_json("res://data/enemies.json")
+
+	# --- 4 биома: цвета, веса врагов, босс существует ---
+	var biomes: Dictionary = dungeon_cfg.get("biomes", {})
+	var weights: Dictionary = dungeon_cfg.get("biome_weights", {})
+	_check(biomes.size() == 4 and weights.size() == 4, "4 биома данжа (M7: пещеры и пустоши)")
+	var enemy_ids := {}
+	var bosses_by_id := {}
+	for e in enemies:
+		enemy_ids[String(e["id"])] = true
+		if bool(e.get("boss", false)):
+			bosses_by_id[String(e["id"])] = true
+	var biome_ok := true
+	for biome_id in biomes:
+		var b: Dictionary = biomes[biome_id]
+		for key in ["loc", "floor_color", "wall_color", "ambient", "boss"]:
+			if not b.has(key):
+				biome_ok = false
+		if not bosses_by_id.has(String(b.get("boss", ""))):
+			biome_ok = false
+		for enemy_id in b.get("enemy_weights", {}):
+			if not enemy_ids.has(String(enemy_id)):
+				biome_ok = false
+	_check(biome_ok, "у каждого биома есть босс и свои враги из enemies.json")
+
+	# --- ловушки: 3 типа с параметрами, спавнятся на полу ---
+	var traps: Dictionary = dungeon_cfg.get("traps", {})
+	var kinds: Array = traps.get("types", [])
+	_check(kinds.size() == 3, "3 типа ловушек (M7)")
+	var trap_cfg_ok := kinds.size() == 3
+	for k in kinds:
+		if not (traps.get(String(k), {}) as Dictionary).has("damage"):
+			trap_cfg_ok = false
+	_check(trap_cfg_ok, "у каждой ловушки есть урон в конфиге")
+	var gen = load("res://scripts/dungeon_gen.gd").new()
+	gen.generate(777, dungeon_cfg)
+	var trap_spawns_ok: bool = gen.trap_spawns.size() == int(traps.get("count", 0))
+	for t in gen.trap_spawns:
+		if not gen.is_floor(t["tile"]) or not (kinds.has(t["kind"])):
+			trap_spawns_ok = false
+	_check(trap_spawns_ok, "ловушки размещены по числу конфига, на полу, типов из списка")
+
+	# --- дерево навыков: XP, уровни, выбор узла, бонусы ---
+	var skills = load("res://scripts/skills.gd").new()
+	skills.setup(_read_json("res://data/skills.json"))
+	var branches: Array = skills.cfg.get("branches", [])
+	_check(branches.size() == 3, "дерево навыков — 3 ветки")
+	var nodes_ok := branches.size() == 3
+	for branch in branches:
+		if (branch.get("nodes", []) as Array).size() != 3:
+			nodes_ok = false
+	_check(nodes_ok, "в каждой ветке 3 узла (9 узлов всего)")
+	_check(int(skills.add_xp(11)) == 0 and int(skills.level) == 1, "11 XP — ещё 1 уровень")
+	_check(int(skills.add_xp(1)) == 1 and int(skills.level) == 2, "12 XP — уровень 2, выбор навыка")
+	_check(int(skills.pending) == 1, "очередь выбора навыка: 1")
+	var w1: Dictionary = skills.next_node("warrior")
+	_check(String(w1.get("id", "")) == "w1", "первый узел воина — «Клинок ярости»")
+	_check(skills.choose("w2").is_empty(), "узел не по порядку взять нельзя")
+	var picked: Dictionary = skills.choose("w1")
+	_check(not picked.is_empty() and int(skills.pending) == 0, "узел взят, выбор закрыт")
+	_check(skills.choose("w1").is_empty(), "повторно тот же узел взять нельзя")
+	var bonus: Dictionary = skills.bonuses()
+	_check(absf(float(bonus.get("damage", 0.0)) - 1.0) < 0.001, "взятый узел даёт +1 урона")
+	# герой применяет бонусы
+	var hero = load("res://scripts/hero.gd").new()
+	hero.setup({"hp": 20, "damage": 2, "mana": 10, "radius": 10, "speed": 140,
+			"attack_range": 30, "attack_arc": 90, "attack_cooldown": 0.4,
+			"dash_distance": 38, "dash_time": 0.12, "dash_cooldown": 1.5}, 10)
+	hero.apply_skill_bonuses({"damage": 1.0, "hp": 5.0, "armor": 1.0, "mana": 4.0})
+	_check(int(hero.eff_damage()) == 3, "герой: урон 2 + навык 1 = 3")
+	_check(int(hero.hp_max()) == 25, "герой: 20 HP + 5 навыка")
+	_check(int(hero.mana_max) == 14, "герой: 10 маны + 4 навыка")
+	hero.take_damage(2)
+	_check(int(hero.hp) == 24, "25 HP, броня 1 поглотила 1 из 2 урона -> 24")
+	hero.temp_damage_bonus(8.0, 2)
+	_check(int(hero.eff_damage()) == 5, "«Перегрузка»: +2 к урону на время")
+
+	# --- дисциплины города: изучение, запреты, эффекты ---
+	var sim := _make_sim()
+	sim.res["food"] = 100.0
+	sim.res["wood"] = 100.0
+	sim.res["stone"] = 100.0
+	sim.res["metal"] = 20.0
+	sim.res["crystal"] = 20.0
+	var rcfg: Dictionary = _read_json("res://data/research.json")
+	_check((rcfg.get("branches", []) as Array).size() == 3, "3 ветки дисциплин города")
+	_check(String(sim.study_research("agri2")) == "research_locked",
+			"второй тир закрыт без первого")
+	_check(String(sim.study_research("agri1")) == "", "первый тир земледелия изучен")
+	_check(String(sim.study_research("agri1")) == "research_done", "повторно не изучается")
+	sim.res["food"] = 10.0
+	_check(String(sim.study_research("agri2")) == "research_no_res",
+			"без ресурсов дисциплина не изучается")
+	sim.res["food"] = 200.0
+	sim.res["crystal"] = 20.0
+	_check(String(sim.study_research("agri2")) == "", "второй тир изучен после первого")
+	_check(absf(float(sim.research_mult("food_prod", 1.0)) - 1.15 * 1.15) < 0.001,
+			"«Земледелие»: еда ×1.15 ×1.15")
+	_check(String(sim.study_research("def1")) == "", "первый тир обороны изучен")
+	_check(absf(float(sim.research_sum("tower_damage")) - 1.0) < 0.001,
+			"«Оборона»: +1 к урону вышек")
+	_check(String(sim.study_research("arc2")) == "research_locked",
+			"«Тайное» тоже требует порядок тиров")
+	_check(String(sim.study_research("arc1")) == "", "первый тир тайного изучен")
+	_check(absf(float(sim.research_mult("pollution_decay_mult", 1.0)) - 1.5) < 0.001,
+			"«Тайное»: порча уходит в 1.5 раза быстрее")
+
+	# --- новые городские заклинания: камень, настроение ---
+	var sim3 := _make_sim()
+	sim3.res["crystal"] = 10.0
+	var magic := _make_magic()
+	_build_now(sim3, "altar")
+	var acolyte3: Dictionary = _resident_by_prof(sim3, "acolyte")
+	_teleport(sim3, acolyte3, sim3.buildings[-1]["tile"])
+	sim3.tick(0.3)
+	var stone_before: float = float(sim3.res["stone"])
+	var err3: String = sim3.cast_city_spell(magic.spell("meteor_shard"))
+	_check(err3 == "", "«Оскол метеора» соткан у алтаря")
+	_check(absf(float(sim3.res["stone"]) - (stone_before + 30.0)) < 0.001,
+			"«Оскол метеора»: +30 камня")
+	_check(absf(float(sim3.pollution) - 6.0) < 0.001, "«Оскол метеора»: +6 загрязнения")
+	var resident0: Dictionary = sim3.residents[0]
+	var mood_before: float = float(resident0["mood"])
+	sim3.res["crystal"] = 10.0
+	err3 = sim3.cast_city_spell(magic.spell("bless"))
+	_check(err3 == "" and absf(float(resident0["mood"]) - (mood_before + 12.0)) < 0.001,
+			"«Благословение»: +12 настроения жителю")
+	err3 = sim3.cast_city_spell(magic.spell("harvest_blessing"))
+	_check(err3 == "" and float(sim3.res["food"]) >= 25.0, "«Благословение урожая»: еда в пул")
+
+	# --- 15 историй, 15 рун, валидные рецепты, гарантированный лут босса ---
+	var people: Dictionary = _read_json("res://data/residents.json")
+	var story_weights: Dictionary = people.get("stories", {}).get("weights", {})
+	_check(story_weights.size() == 15, "15 событий-историй (M7: +10)")
+	var runes := 0
+	var loot: Dictionary = _read_json("res://data/loot.json")
+	for item in loot.get("items", []):
+		if String(item["id"]).begins_with("rune_"):
+			runes += 1
+	_check(runes == 15, "15 рун в луте (M7: +7)")
+	var item_ids := {}
+	for item in loot.get("items", []):
+		item_ids[String(item["id"])] = true
+	var recipes_ok := true
+	for recipe in _read_json("res://data/magic.json").get("recipes", []):
+		if not item_ids.has(String(recipe["a"])) or not item_ids.has(String(recipe["b"])):
+			recipes_ok = false
+		if not _make_magic().spell(String(recipe["spell"])).has("id"):
+			recipes_ok = false
+	_check(recipes_ok, "все 20 рецептов ссылаются на существующие руны и заклинания")
+	var boss_guaranteed: Array = loot.get("boss_guaranteed", [])
+	_check(boss_guaranteed.size() == 2, "босс выкидывает 2 гарантированных предмета")
+	var guaranteed_ok := boss_guaranteed.size() == 2
+	for item_id in boss_guaranteed:
+		if not item_ids.has(String(item_id)):
+			guaranteed_ok = false
+	_check(guaranteed_ok, "гарантированный лут босса существует в loot.json")
+
+	# --- таблица баланса согласована с рабочими конфигами ---
+	var balance: Dictionary = _read_json("res://data/balance.json")
+	var city_cfg: Dictionary = _read_json("res://data/city.json")
+	var pol_cfg: Dictionary = city_cfg.get("pollution", {})
+	var threat_cfg: Dictionary = city_cfg.get("threat", {})
+	var skills_cfg: Dictionary = _read_json("res://data/skills.json")
+	var food_b: Dictionary = balance.get("food", {})
+	var pol_b: Dictionary = balance.get("pollution", {})
+	var threat_b: Dictionary = balance.get("threat", {})
+	var loot_b: Dictionary = balance.get("loot", {})
+	var hero_b: Dictionary = balance.get("hero", {})
+	var balance_ok: bool = \
+			absf(float(food_b.get("per_resident_day", 0)) - float(city_cfg["food_per_resident_day"])) < 0.001 \
+			and int(food_b.get("farm_per_day", 0)) == 16 \
+			and absf(float(pol_b.get("decay_per_day", 0)) - float(pol_cfg.get("decay_per_day", 0))) < 0.001 \
+			and int(pol_b.get("max", 0)) == 100 \
+			and absf(float(threat_b.get("start_day", 0)) - float(threat_cfg.get("start_day", 0))) < 0.001 \
+			and int(threat_b.get("wave_size_max", 0)) == int(threat_cfg.get("raid_size_max", 0)) \
+			and absf(float(loot_b.get("enemy_drop_chance", 0)) - float(loot.get("enemy_drop_chance", 0))) < 0.001 \
+			and int(hero_b.get("xp_per_level_base", 0)) == int(skills_cfg.get("xp_base", 0)) \
+			and int(hero_b.get("skill_tree_total_nodes", 0)) == 9 \
+			and String(balance.get("_note", "")).length() > 0
+	_check(balance_ok, "data/balance.json согласован с city/loot/skills конфигами")

@@ -1,0 +1,50 @@
+{
+	"_note": "Сводная таблица баланса M7. Значения сверяются автотестом с рабочими конфигами — при правке баланса менять здесь и в конфиге вместе.",
+	"food": {
+		"per_resident_day": 2.0,
+		"farm_per_day": 16,
+		"field_zone_per_day": 1.5,
+		"pasture_zone_per_day": 1.0,
+		"pier_per_day": 10,
+		"start_normal": 60,
+		"days_of_start_food_at_10_pop": 3.0
+	},
+	"pollution": {
+		"max": 100.0,
+		"decay_per_day": 2.0,
+		"band_mild": 30.0,
+		"band_heart": 60.0,
+		"band_wild": 85.0,
+		"dungeon_spell_typical": 2.0,
+		"forbidden_spell_typical": 7.0,
+		"biome_visit_forest": 2.0,
+		"biome_visit_caves": 1.0,
+		"biome_visit_ash": 3.0,
+		"storm_per_day": 10.0
+	},
+	"threat": {
+		"start_day": 10.0,
+		"gap_start_days": 1.2,
+		"gap_min_days": 0.6,
+		"wave_size_base": 2,
+		"wave_size_max": 10,
+		"siege_from_threat": 8.0,
+		"siege_chance": 0.35
+	},
+	"loot": {
+		"rarities": {"common": 60, "uncommon": 25, "rare": 12, "legendary": 3},
+		"chest_items": [1, 3],
+		"enemy_drop_chance": 0.35,
+		"biome_loot_bonus": {"ruins": 0, "mutant_forest": 1, "crystal_caves": 1, "ash_wastes": 2},
+		"boss_drops_guaranteed": 2
+	},
+	"hero": {
+		"hp_base": 20,
+		"mana_base": 10,
+		"damage_base": 2,
+		"mana_hunger_period_days_sec": 25.0,
+		"xp_per_level_base": 12,
+		"xp_growth": 6,
+		"skill_tree_total_nodes": 9
+	}
+}
