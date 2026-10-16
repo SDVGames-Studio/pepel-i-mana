@@ -12,6 +12,7 @@ var w := 0
 var h := 0
 var ts := 32
 var grid: Array = []            # grid[y][x] -> TILE_*
+var road := {}                  # Vector2i -> true: дороги (M6) — ускорение и приоритет путей
 var anomaly_tile := Vector2i.ZERO   # вход в данж (у аномалии)
 var spawn_tile := Vector2i.ZERO     # старт героя и жителей
 var astar: AStarGrid2D = null
@@ -22,6 +23,7 @@ func generate(seed_value: int, params: Dictionary) -> void:
 	w = int(params["map_w"])
 	h = int(params["map_h"])
 	ts = int(params["tile_size"])
+	road = {}
 	for attempt in 20:
 		_generate_once(seed_value + attempt * 1013, params)
 		if _connected():
@@ -139,6 +141,24 @@ func is_walkable(p: Vector2i) -> bool:
 ## Пометить тайл непроходимым (поставлен частокол) — для путей жителей.
 func set_solid(p: Vector2i, solid: bool) -> void:
 	astar.set_point_solid(p, solid)
+
+
+## Проложить дорогу (M6): тайл в слое дорог и «дешевле» для поиска пути.
+func set_road(p: Vector2i, weight := 0.4) -> void:
+	road[p] = true
+	if astar != null:
+		astar.set_point_weight_scale(p, weight)
+
+
+## Убрать дорогу (под зданием) — вес тайла возвращается к обычному.
+func remove_road(p: Vector2i) -> void:
+	road.erase(p)
+	if astar != null:
+		astar.set_point_weight_scale(p, 1.0)
+
+
+func has_road(p: Vector2i) -> bool:
+	return road.has(p)
 
 
 ## Путь между тайлами в пиксельных центрах; пустой, если цели нет.

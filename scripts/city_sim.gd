@@ -16,9 +16,18 @@ extends RefCounted
 ## реально воюют, магическая буря портит здания, участие героя (hero_slash),
 ## провал осады — потеря зданий, но не игры.
 ##
+## M6 (свободные зоны и физическая логистика): зоны мышью (поле/пастбище/жилая),
+## жители сами обустраивают клетки зон; дороги ускоряют жителей и носильщиков;
+## производство растёт кучей у здания, носильщик носит кучи на склад — общий
+## пул стал физическим хранилищем; склад рядом со зданием = быстрее производство;
+## декор (сад, статуя) повышает мораль; мастерская чинит повреждённые здания,
+## а без повреждений перерабатывает дерево и камень в инструменты.
+##
 ## Житель: {id, name, prof, bld, site, home, state, pos, target, path, fatigue,
 ##          traits, mood, skill, rank, age_days, ail, ail_days, friend, work_bonus}
-## Здание: {id, type, tile, done, progress, worker, enchant, ench_mult, stun_left, hp}
+## Здание: {id, type, tile, done, progress, worker, enchant, ench_mult, stun_left, hp,
+##          pile: {ресурс: количество} — куча у здания (M6)}
+## Зона: {id, type: "field"|"pasture"|"living", cells: [Vector2i], progress: [float]}
 ## Рейдер: {id, type, p(строка enemies.json), hp, max_hp, pos, target, path,
 ##          atk_cd, goal(тайл), mode(advance|break|fight|flee)}
 
@@ -53,6 +62,8 @@ var storm_left := 0.0           # сек до конца бури / до нач�
 var hero_pos := Vector2.ZERO    # где герой в городе (сцена обновляет каждый кадр)
 var hero_alive := false         # герой в городе и на ногах
 var animals: Array = []         # дикие животные для охоты: {id, pos, target, path, idle}
+var zones: Array = []           # зоны (M6): {id, type, cells, progress}
+var _zone_id := 1
 
 var _next_id := 1
 var _trait_map := {}            # id черты -> описание (из people["traits"])
@@ -98,6 +109,8 @@ func setup(city_map, city_cfg: Dictionary, residents_count: int, level: String) 
 	storm_left = 0.0
 	hero_alive = false
 	animals = []
+	zones = []
+	_zone_id = 1
 	for i in int(cfg.get("hunting", {}).get("animals", 8)):
 		animals.append(_new_animal())
 	_next_raid_at = 0.0
@@ -211,7 +224,16 @@ func pop_cap() -> int:
 	for b in buildings:
 		if b["done"] and _def(b).get("effect", "") == "pop":
 			houses += 1
-	return base_pop + houses * int(cfg["pop_per_house"])
+	# обустроенные клетки жилой зоны — шалаши, каждый даёт место (M6)
+	var tents := 0
+	var per := int(cfg.get("zones", {}).get("types", {}).get("living", {}).get("pop", 1))
+	for z in zones:
+		if String(z["type"]) != "living":
+			continue
+		for i in (z["cells"] as Array).size():
+			if _cell_filled(z, i) and building_at(z["cells"][i]).is_empty():
+				tents += 1
+	return base_pop + houses * int(cfg["pop_per_house"]) + tents * per
 
 
 func is_night() -> bool:
@@ -257,7 +279,7 @@ func pollution_band() -> String:
 
 
 ## Множитель производства от загрязнения («магическое сердце» — ответ №64),
-## дикого резонанса и зачарования здания.
+## дикого резонанса, зачарования здания и планировки (склад рядом — M6).
 func production_mult(bld: Dictionary) -> float:
 	var pol_cfg: Dictionary = cfg.get("pollution", {})
 	var mult := 1.0
@@ -269,7 +291,33 @@ func production_mult(bld: Dictionary) -> float:
 	if resonance_left > 0.0:
 		mult *= resonance_mult
 	mult *= float(bld.get("ench_mult", 1.0))
+	mult *= layout_mult(bld)
 	return mult
+
+
+## Бонус планировки (M6): склад рядом со зданием ускоряет производство
+## («склад рядом с фермами = +скорость», пункт плана M6).
+func layout_mult(bld: Dictionary) -> float:
+	if bld.is_empty() or not bld.has("type") or not _def(bld).has("produce"):
+		return 1.0
+	var lcfg: Dictionary = cfg.get("layout", {})
+	if lcfg.is_empty():
+		return 1.0
+	var radius := float(lcfg.get("warehouse_radius", 4))
+	for b in buildings:
+		if bool(b["done"]) and _def(b).get("effect", "") == "storage" \
+				and Vector2(b["tile"]).distance_to(Vector2(bld["tile"])) <= radius:
+			return float(lcfg.get("warehouse_mult", 1.25))
+	return 1.0
+
+
+## Комфорт от готового декора (сад, статуя — ответ №18) с потолком.
+func decor_mood() -> float:
+	var total := 0.0
+	for b in buildings:
+		if bool(b["done"]) and _def(b).get("effect", "") == "decor":
+			total += float(_def(b).get("mood", 0.0))
+	return minf(total, float(cfg.get("decor_mood_max", 20.0)))
 
 
 ## Прибавить загрязнение (дикая магия в данже тоже — город в том же регионе).
@@ -412,11 +460,41 @@ func place_building(type_id: String, tile: Vector2i) -> bool:
 		"done": false, "progress": 0.0, "worker": -1,
 		"enchant": "", "ench_mult": 1.0, "stun_left": 0.0,
 		"hp": float(_bld_max_hp(type_id)),
+		"pile": {},
 	})
 	_next_id += 1
+	# здание занимает тайл: дорога и клетка зоны под ним уступают место (M6)
+	map.remove_road(tile)
+	_drop_zone_cell(tile)
 	events.append({"type": "site", "bld": type_id})
 	_assign_jobs()
 	return true
+
+
+## Проложить дорогу (M6): трава без зданий, камень за тайл. "" — успех.
+func place_road(tile: Vector2i) -> String:
+	if not map.in_bounds(tile) or not map.is_nature_walkable(tile) \
+			or not building_at(tile).is_empty():
+		return "bad"
+	if map.has_road(tile):
+		return ""
+	var rcfg: Dictionary = cfg.get("roads", {})
+	var cost := int(rcfg.get("cost_stone", 1))
+	if int(res["stone"]) < cost:
+		return "no_stone"
+	res["stone"] = int(res["stone"]) - cost
+	map.set_road(tile, float(rcfg.get("astar_weight", 0.4)))
+	return ""
+
+
+## Убрать тайл из его зоны (здание заняло клетку).
+func _drop_zone_cell(tile: Vector2i) -> void:
+	for z in zones:
+		var idx: int = (z["cells"] as Array).find(tile)
+		if idx >= 0:
+			z["cells"].remove_at(idx)
+			z["progress"].remove_at(idx)
+			return
 
 
 ## Почему здание нельзя поставить здесь: ключ локализации или "" (для тоста сцены).
@@ -733,6 +811,7 @@ func tick(dt_raw: float) -> void:
 	_update_storm(dt, day_len)
 	_update_threat(dt, day_len)
 	_update_animals(dt)
+	_update_zones(dt, day_len)
 	for r in residents:
 		_update_resident(r, dt)
 	# люди (M4): раз в игровой день — преемник старосты, болезни, беженцы, рождения, стройка, истории
@@ -746,6 +825,7 @@ func tick(dt_raw: float) -> void:
 		_roll_stories()
 		_roll_guards()
 		_roll_hunter()
+		_roll_porter()
 		_roll_animals()
 		_roll_storm()
 	_update_gates()   # достроенные за тик вышки/ворота сразу меняют проходимость
@@ -877,7 +957,9 @@ func _update_resident(r: Dictionary, dt: float) -> void:
 		var bld_type := String(r["bld"]["type"])
 		if _def(r["bld"]).has("produce"):
 			# добытчики работают у источника: лесоруб — у дерева, каменотёс — у скалы (заказчик)
-			if bld_type == "sawmill" or bld_type == "quarry":
+			if bld_type == "workshop":
+				_workshop_work(r, r["bld"], dt)   # сперва ремонт повреждённых, потом переработка (M6)
+			elif bld_type == "sawmill" or bld_type == "quarry":
 				_gather_work(r, r["bld"], dt)
 			else:
 				_do_work(r, r["bld"], dt)
@@ -891,12 +973,17 @@ func _update_resident(r: Dictionary, dt: float) -> void:
 	if String(r["prof"]) == "hunter":
 		_hunt(r, dt)
 		return
+	if String(r["prof"]) == "porter":
+		_porter_work(r, dt)   # носит кучи со зданий на склад (M6)
+		return
 	if String(r["prof"]) == "elder":
 		_manage_walk(r, dt)
 		return
 	if guard_on_duty:
 		_guard_post(r, dt)
 		return
+	if _zone_fill_work(r, dt):
+		return   # свободный житель обустраивает зоны (M6: город заполняет их сам)
 	if _help_build(r, dt):
 		return   # свободный житель в мирное время тоже помогает строить (заказчик)
 	r["state"] = "idle"
@@ -1122,9 +1209,48 @@ func _gather_target(r: Dictionary, bld: Dictionary) -> Vector2i:
 	return best
 
 
+## Мастерская (M6, перепрофилирование): сперва чинит повреждённые здания,
+## когда чинить нечего — перерабатывает дерево и камень в инструменты.
+func _workshop_work(r: Dictionary, bld: Dictionary, dt: float) -> void:
+	if float(bld.get("stun_left", 0.0)) > 0.0:
+		r["state"] = "idle"
+		return
+	var broken := _damaged_building(bld)
+	if broken.is_empty():
+		_produce_tick(r, bld, dt)   # переработка излишков в инструменты
+		return
+	if _arrived(r, broken["tile"]):
+		r["state"] = "repair"
+		var rate: float = float(cfg.get("repair", {}).get("per_day", 15.0)) * work_mult(r)
+		var max_hp := float(_bld_max_hp(String(broken["type"])))
+		broken["hp"] = minf(float(broken.get("hp", max_hp)) + rate * dt / float(cfg["day_length"]), max_hp)
+		r["fatigue"] += dt / float(cfg["day_length"])
+		_grow_skill(r, dt)
+	else:
+		_move_towards(r, broken["tile"], dt)
 
-## Само производство: расход материалов, множители, добавка в пул. Общее для
-## работников у здания и добытчиков у источника.
+
+## Повреждённое готовое здание ближе прочих (для мастерской).
+func _damaged_building(near: Dictionary) -> Dictionary:
+	var best: Dictionary = {}
+	var best_d := INF
+	for b in buildings:
+		if not bool(b["done"]):
+			continue
+		var max_hp := float(_bld_max_hp(String(b["type"])))
+		if float(b.get("hp", max_hp)) >= max_hp:
+			continue
+		var d: float = map.tile_center_px(b["tile"]).distance_to(map.tile_center_px(near["tile"]))
+		if d < best_d:
+			best_d = d
+			best = b
+	return best
+
+
+
+## Само производство: расход материалов, множители, добавка в КУЧУ у здания.
+## Общее для работников у здания и добытчиков у источника. В общий пул ресурс
+## попадает только с носильщиком (M6: физическая логистика, ответ №20).
 func _produce_tick(r: Dictionary, bld: Dictionary, dt: float) -> void:
 	r["state"] = "work"
 	r["fatigue"] += dt / float(cfg["day_length"])
@@ -1141,13 +1267,43 @@ func _produce_tick(r: Dictionary, bld: Dictionary, dt: float) -> void:
 		res[String(key)] = maxf(0.0, float(res[key]) - float(inputs[key]) * portion)
 	var boost: float = float(cfg["altar_boost"]) if has_blessing() else 1.0
 	var amount: float = float(prod["per_day"]) * portion * boost * production_mult(bld) * work_mult(r)
-	var key2 := String(prod["res"])
-	res[key2] = minf(float(storage_cap()), float(res[key2]) + amount)
+	_add_pile(bld, String(prod["res"]), amount)
 	# шахта даёт и камень вместе с рудой (заказчик)
 	if prod.has("res2"):
 		var amount2: float = float(prod["per_day2"]) * portion * boost * production_mult(bld) * work_mult(r)
-		var key3 := String(prod["res2"])
-		res[key3] = minf(float(storage_cap()), float(res[key3]) + amount2)
+		_add_pile(bld, String(prod["res2"]), amount2)
+
+
+## Куча у здания (M6): производство копится здесь, пока её не унесёт носильщик.
+func _add_pile(bld: Dictionary, key: String, amount: float) -> void:
+	if amount <= 0.0:
+		return
+	var pile: Dictionary = bld.get("pile", {})
+	var total := 0.0
+	for k in pile:
+		total += float(pile[k])
+	var left: float = maxf(0.0, float(cfg.get("piles", {}).get("max", 20.0)) - total)
+	if left <= 0.0:
+		return
+	pile[key] = float(pile.get(key, 0.0)) + minf(amount, left)
+	bld["pile"] = pile
+
+
+## Всего ресурса key в кучах по всем зданиям (для запаса еды город учитывает и кучи).
+func _piled_total_of(key: String) -> float:
+	var total := 0.0
+	for b in buildings:
+		if not bool(b["done"]) or not (b as Dictionary).has("pile"):
+			continue
+		total += float((b["pile"] as Dictionary).get(key, 0.0))
+	return total
+
+
+func _pile_total(b: Dictionary) -> float:
+	var total := 0.0
+	for k in b.get("pile", {}):
+		total += float(b["pile"][k])
+	return total
 
 
 ## Закреплённое готовое здание с работником r (для вышки стража).
@@ -1179,8 +1335,13 @@ func _move_towards(r: Dictionary, tile: Vector2i, dt: float) -> void:
 				return
 		r["state"] = "idle"
 		return
-	var step: float = float(cfg["resident_speed"]) * dt
 	var pos: Vector2 = r["pos"]
+	var step: float = float(cfg["resident_speed"]) * dt
+	# дорога под ногами ускоряет; носильщику — сильнее всех (M6)
+	if map.has_road(map.tile_of_px(pos)):
+		var rcfg: Dictionary = cfg.get("roads", {})
+		step *= float(rcfg.get("porter_mult", 1.8)) if String(r["prof"]) == "porter" \
+				else float(rcfg.get("mult", 1.4))
 	while step > 0.0 and not path.is_empty():
 		var to_next: Vector2 = path[0] - pos
 		var dist := to_next.length()
@@ -1193,6 +1354,230 @@ func _move_towards(r: Dictionary, tile: Vector2i, dt: float) -> void:
 			step = 0.0
 	r["pos"] = pos
 	r["path"] = path
+
+
+# --- носильщик и физический склад (M6, ответ №20) ---------------------------
+
+## Носильщик: берёт готовую кучу у здания (>= chunk), несёт на склад —
+## общий пул теперь физическое хранилище.
+func _porter_work(r: Dictionary, dt: float) -> void:
+	if float(r.get("carry", 0.0)) > 0.0:
+		# склад — физическое хранилище; пока склада нет, носит к городскому амбару
+		var barn := _nearest_done_of_type(r["pos"], "warehouse")
+		var goal_tile: Vector2i = barn["tile"] if not barn.is_empty() else map.spawn_tile
+		if _arrived(r, goal_tile):
+			var key := String(r["carry_res"])
+			var free: float = float(storage_cap()) - float(res.get(key, 0.0))
+			var drop: float = minf(float(r["carry"]), maxf(0.0, free))
+			if drop > 0.0:
+				res[key] = float(res.get(key, 0.0)) + drop
+				r["carry"] = float(r["carry"]) - drop
+				r["state"] = "porter"
+			if float(r["carry"]) <= 0.001:
+				r["carry"] = 0.0
+				r["carry_res"] = ""
+			else:
+				r["state"] = "idle"   # хранилище полно — ждёт с грузом
+		else:
+			_move_towards(r, goal_tile, dt)
+		return
+	var target := _biggest_ready_pile(r)
+	if target.is_empty():
+		r["state"] = "idle"
+		return
+	if _arrived(r, target["tile"]):
+		var pile: Dictionary = target.get("pile", {})
+		var key := ""
+		var best := 0.0
+		for k in pile:
+			if float(pile[k]) > best:
+				best = float(pile[k])
+				key = String(k)
+		if key == "":
+			r["state"] = "idle"
+			return
+		var take: float = minf(float(cfg.get("piles", {}).get("carry", 10.0)), float(pile[key]))
+		pile[key] = float(pile[key]) - take
+		if float(pile[key]) <= 0.0001:
+			pile.erase(key)
+		target["pile"] = pile
+		r["carry"] = take
+		r["carry_res"] = key
+		r["state"] = "porter"
+	else:
+		_move_towards(r, target["tile"], dt)
+
+
+## Готовое здание с самой большой кучей (>= chunk); при равенстве — ближайшее.
+func _biggest_ready_pile(from: Dictionary) -> Dictionary:
+	var chunk: float = float(cfg.get("piles", {}).get("chunk", 8.0))
+	var best: Dictionary = {}
+	var best_amt := -1.0
+	var best_d := INF
+	for b in buildings:
+		if not bool(b["done"]):
+			continue
+		var amt := _pile_total(b)
+		if amt < chunk:
+			continue
+		var d: float = map.tile_center_px(b["tile"]).distance_to(from["pos"])
+		if amt > best_amt + 0.0001 or (absf(amt - best_amt) <= 0.0001 and d < best_d):
+			best_amt = amt
+			best_d = d
+			best = b
+	return best
+
+
+## Ближайшее готовое здание заданного типа (для носильщика — склад).
+func _nearest_done_of_type(from_px: Vector2, type_id: String) -> Dictionary:
+	var best: Dictionary = {}
+	var best_d := INF
+	for b in buildings:
+		if not bool(b["done"]) or String(b["type"]) != type_id:
+			continue
+		var d: float = map.tile_center_px(b["tile"]).distance_to(from_px)
+		if d < best_d:
+			best_d = d
+			best = b
+	return best
+
+
+## Дневной бросок: есть готовые кучи и некому носить — город обучает носильщика.
+func _roll_porter() -> void:
+	var chunk: float = float(cfg.get("piles", {}).get("chunk", 8.0))
+	var need := false
+	for b in buildings:
+		if bool(b["done"]) and _pile_total(b) >= chunk:
+			need = true
+			break
+	if not need:
+		return
+	for r in residents:
+		if String(r["prof"]) == "porter" and String(r.get("ail", "")) == "":
+			return
+	for r in residents:
+		if String(r["prof"]) in ["", "elder", "guard", "hunter", "porter"] or String(r.get("ail", "")) != "":
+			continue
+		if r["bld"] != null or r["site"] != null:
+			continue
+		r["prof"] = "porter"
+		r["bld"] = null
+		r["site"] = null
+		r["sub_prof"] = ""
+		_chron("chron.porter_trained", String(r["name"]))
+		events.append({"type": "porter_trained", "name": String(r["name"])})
+		_assign_jobs()
+		return
+
+
+# --- зоны (M6): поле, пастбище, жилая ----------------------------------------
+
+## Разбить зону из клеток (сцена выделяет мышью). Возвращает число годных клеток.
+func add_zone(type_id: String, cells: Array) -> int:
+	var types: Dictionary = cfg.get("zones", {}).get("types", {})
+	if not types.has(type_id):
+		return 0
+	var zone := {"id": _zone_id, "type": type_id, "cells": [], "progress": []}
+	var added := 0
+	for c in cells:
+		if _zone_cell_ok(c):
+			zone["cells"].append(c)
+			zone["progress"].append(0.0)
+			added += 1
+	if added == 0:
+		return 0
+	_zone_id += 1
+	zones.append(zone)
+	return added
+
+
+## Клетка годна под зону: трава без зданий и без чужих зон.
+func _zone_cell_ok(t: Vector2i) -> bool:
+	if not map.in_bounds(t) or t == map.anomaly_tile:
+		return false
+	if map.grid[t.y][t.x] != map.TILE_GRASS:
+		return false
+	if not building_at(t).is_empty():
+		return false
+	for z in zones:
+		if (z["cells"] as Array).has(t):
+			return false
+	return true
+
+
+func _cell_filled(z: Dictionary, i: int) -> bool:
+	return float(z["progress"][i]) >= float(cfg.get("zones", {}).get("fill_work", 4.0))
+
+
+## Свободный житель обустраивает ближайшую незаполненную клетку зоны. False — зон нет.
+func _zone_fill_work(r: Dictionary, dt: float) -> bool:
+	if zones.is_empty():
+		return false
+	var target := _nearest_zone_cell(r)
+	if target.is_empty():
+		return false
+	var tile: Vector2i = target["tile"]
+	if _arrived(r, tile):
+		r["state"] = "fill"
+		var z: Dictionary = target["zone"]
+		var i: int = int(target["idx"])
+		z["progress"][i] = float(z["progress"][i]) + dt * work_mult(r)
+		r["fatigue"] += dt / float(cfg["day_length"])
+		_grow_skill(r, dt)
+		if _cell_filled(z, i):
+			events.append({"type": "zone_cell", "zone": String(z["type"])})
+			_zone_check_done(z, r)
+	else:
+		_move_towards(r, tile, dt)
+	return true
+
+
+## Ближайшая незаполненная клетка зоны: {zone, idx, tile} или {}.
+func _nearest_zone_cell(r: Dictionary) -> Dictionary:
+	var best: Dictionary = {}
+	var best_d := INF
+	for z in zones:
+		for i in (z["cells"] as Array).size():
+			if _cell_filled(z, i) or not building_at(z["cells"][i]).is_empty():
+				continue
+			var d: float = map.tile_center_px(z["cells"][i]).distance_to(r["pos"])
+			if d < best_d:
+				best_d = d
+				best = {"zone": z, "idx": i, "tile": z["cells"][i]}
+	return best
+
+
+## Зона заполнена целиком — событие и летопись (один раз).
+func _zone_check_done(z: Dictionary, who: Dictionary) -> void:
+	if bool(z.get("done_announced", false)):
+		return
+	for i in (z["progress"] as Array).size():
+		if not _cell_filled(z, i):
+			return
+	z["done_announced"] = true
+	events.append({"type": "zone_done", "zone": String(z["type"])})
+	_chron("chron.zone_done", String(who["name"]), String(z["type"]))
+
+
+## Обустроенные клетки поля и пастбища понемногу дают еду в пул
+## (поле 1.5, пастбище 1.0 в день за клетку — city.json -> zones.types).
+func _update_zones(dt: float, day_len: float) -> void:
+	var zcfg: Dictionary = cfg.get("zones", {})
+	if zcfg.is_empty():
+		return
+	for z in zones:
+		var t := String(z["type"])
+		if t != "field" and t != "pasture":
+			continue
+		var rate: float = float(zcfg.get("types", {}).get(t, {}).get("food", 0.0))
+		if rate <= 0.0:
+			continue
+		var filled := 0
+		for i in (z["cells"] as Array).size():
+			if _cell_filled(z, i) and building_at(z["cells"][i]).is_empty():
+				filled += 1
+		if filled > 0:
+			_add_resource_capped("food", rate * float(filled) * dt / day_len)
 
 
 # --- ворота в стене ---------------------------------------------------------
@@ -1335,6 +1720,8 @@ func _mood_target(r: Dictionary) -> float:
 		target += 8.0
 	else:
 		target -= 8.0
+	# декор и комфорт (сад, статуя — ответ №18): уют поднимает мораль всему городу
+	target += decor_mood()
 	if _friend_alive(r):
 		target += float(people.get("friend_mood", 6.0))
 	if tavern_active():
@@ -1436,8 +1823,10 @@ func _manned_towers() -> int:
 
 
 ## Запас еды хотя бы на день впереди — иначе город не тянется и приток стоит.
+## Кучи еды у ферм тоже считаются (M6: они скоро попадут на склад).
 func _food_reserve_ok() -> bool:
-	return float(res["food"]) >= float(residents.size()) * float(cfg["food_per_resident_day"])
+	var have: float = float(res["food"]) + _piled_total_of("food")
+	return have >= float(residents.size()) * float(cfg["food_per_resident_day"])
 
 
 ## Почему не растёт город (беженцы и рождения): "" — всё ок, иначе ключ локализации.
@@ -1519,9 +1908,10 @@ func _manage_target(r: Dictionary) -> Vector2i:
 func _roll_autobuild() -> void:
 	if not elder_present():
 		return
-	# кризис: еды меньше чем на день — ферма вне очереди
+	# кризис: еды меньше чем на день — ферма вне очереди (кучи у ферм тоже еда — M6)
 	var critical_food: float = float(residents.size()) * float(cfg["food_per_resident_day"])
-	if float(res["food"]) < critical_food and not _autobuild_site_exists("farm") and not _idle_farm_exists():
+	if float(res["food"]) + _piled_total_of("food") < critical_food \
+			and not _autobuild_site_exists("farm") and not _idle_farm_exists():
 		var tile := _find_autobuild_tile("farm")
 		if not tile == Vector2i(-1, -1) and place_building("farm", tile):
 			_announce_autobuild("farm", true)
@@ -2598,7 +2988,7 @@ func _roll_guards() -> void:
 	for r in residents:
 		if have >= desired:
 			break
-		if String(r["prof"]) in ["", "elder", "guard"] or String(r.get("ail", "")) != "":
+		if String(r["prof"]) in ["", "elder", "guard", "hunter", "porter"] or String(r.get("ail", "")) != "":
 			continue
 		if r["bld"] != null or r["site"] != null:
 			continue
@@ -2631,7 +3021,7 @@ func _roll_hunter() -> void:
 		if String(r["prof"]) == "hunter" and String(r.get("ail", "")) == "":
 			return   # охотник уже есть и на ногах
 	for r in residents:
-		if String(r["prof"]) in ["", "elder", "guard", "hunter"] or String(r.get("ail", "")) != "":
+		if String(r["prof"]) in ["", "elder", "guard", "hunter", "porter"] or String(r.get("ail", "")) != "":
 			continue
 		if r["bld"] != null or r["site"] != null:
 			continue

@@ -25,6 +25,19 @@
 	"storage_base": 150,
 	"storage_per_warehouse": 200,
 	"altar_boost": 1.1,
+	"zones": {
+		"fill_work": 4.0,
+		"types": {
+			"field": { "color": "#a8b432", "food": 1.5 },
+			"pasture": { "color": "#7da05a", "food": 1.0 },
+			"living": { "color": "#c9a06a", "pop": 1 }
+		}
+	},
+	"roads": { "cost_stone": 1, "mult": 1.4, "porter_mult": 1.8, "astar_weight": 0.4 },
+	"piles": { "chunk": 8.0, "max": 20.0, "carry": 10.0 },
+	"layout": { "warehouse_radius": 4, "warehouse_mult": 1.25 },
+	"repair": { "per_day": 15.0 },
+	"decor_mood_max": 20.0,
 	"pollution": {
 		"max": 100.0,
 		"decay_per_day": 2.0,
@@ -108,13 +121,14 @@
 		"tree": "#3e5a2a",
 		"anomaly": "#b46ee0",
 		"site": "#c8b07a",
-		"done_border": "#3a3128"
+		"done_border": "#3a3128",
+		"road": "#6e5f4a"
 	},
 	"start": {
 		"residents_default": 10,
 		"residents_min": 1,
 		"residents_max": 12,
-		"professions": ["farmer", "lumberjack", "builder", "guard", "acolyte", "crafter", "healer", "bartender", "miner", "smelter", "smith", "armorer", "hunter", "fisher"],
+		"professions": ["farmer", "lumberjack", "builder", "guard", "acolyte", "crafter", "healer", "porter", "bartender", "miner", "smelter", "smith", "armorer", "hunter", "fisher"],
 		"levels": {
 			"low": {"wood": 30, "stone": 15, "food": 30, "crystal": 0},
 			"normal": {"wood": 60, "stone": 30, "food": 60, "crystal": 0},
@@ -136,6 +150,7 @@
 		{"id": "smith", "loc": "prof.smith", "color": "#f48fb1"},
 		{"id": "armorer", "loc": "prof.armorer", "color": "#ce93d8"},
 		{"id": "hunter", "loc": "prof.hunter", "color": "#a1887f"},
+		{"id": "porter", "loc": "prof.porter", "color": "#ffe0b2"},
 		{"id": "fisher", "loc": "prof.fisher", "color": "#4dd0e1"}
 	],
 	"buildings": [
@@ -156,7 +171,9 @@
 		{"id": "smelter", "loc": "bld.smelter", "desc": "bld.desc.smelter", "color": "#ff7043", "cost": {"stone": 15, "wood": 5}, "build_work": 35, "worker": "smelter", "produce": {"res": "metal", "per_day": 3, "inputs": {"iron": 2}}, "district": "work"},
 		{"id": "forge", "loc": "bld.forge", "desc": "bld.desc.forge", "color": "#e57373", "cost": {"stone": 15, "wood": 10}, "build_work": 35, "worker": "smith", "produce": {"res": "tools", "per_day": 4, "inputs": {"metal": 1}}, "district": "work"},
 		{"id": "armory", "loc": "bld.armory", "desc": "bld.desc.armory", "color": "#bcaaa4", "cost": {"stone": 15, "wood": 10, "metal": 2}, "build_work": 40, "worker": "armorer", "produce": {"res": "kits", "per_day": 1, "inputs": {"metal": 2}}, "place": "near_forge", "district": "work"},
-		{"id": "pier", "loc": "bld.pier", "desc": "bld.desc.pier", "color": "#4dd0e1", "cost": {"wood": 12}, "build_work": 25, "worker": "fisher", "produce": {"res": "food", "per_day": 10}, "place": "water", "district": "work"}
+		{"id": "pier", "loc": "bld.pier", "desc": "bld.desc.pier", "color": "#4dd0e1", "cost": {"wood": 12}, "build_work": 25, "worker": "fisher", "produce": {"res": "food", "per_day": 10}, "place": "water", "district": "work"},
+		{"id": "garden", "loc": "bld.garden", "desc": "bld.desc.garden", "color": "#66bb6a", "cost": {"wood": 8}, "build_work": 15, "effect": "decor", "mood": 5, "district": "living"},
+		{"id": "statue", "loc": "bld.statue", "desc": "bld.desc.statue", "color": "#b0b0b0", "cost": {"stone": 12}, "build_work": 20, "effect": "decor", "mood": 8, "district": "living"}
 	],
 	"loot_to_pool": {
 		"stone_chip": "stone",

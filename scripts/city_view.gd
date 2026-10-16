@@ -1,6 +1,8 @@
 extends Node2D
 ## Отрисовка города (M2): тайлы ландшафта, аномалия, здания/стройплощадки,
 ## жители, призрак стройки. Цветные примитивы — пиксель-арт в M8.
+## M6: дороги, зоны с прогрессом обустройства, кучи ресурсов у зданий,
+## груз носильщика, предпросмотр выделения зоны.
 
 var map = null
 var sim = null
@@ -8,10 +10,23 @@ var colors: Dictionary = {}
 var build_mode := ""            # выбранный тип здания (призрак под мышью)
 var enchant_mode := ""          # выбранное зачарование (подсветка здания)
 var enchant_colors: Dictionary = {}
+var zone_mode := ""             # инструмент зоны (M6): выделение областью
+var road_mode := false          # инструмент дороги (M6): рисование мышью
+var dragging := false           # ЛКМ зажата — идёт выделение/рисование
+var drag_from := Vector2i(-1, -1)
+var drag_to := Vector2i(-1, -1)
 
 var _prof_colors: Dictionary = {}
 var _bld_colors: Dictionary = {}
+var _zone_colors: Dictionary = {}
 var city = null                 # сцена города — для проверки цели зачарования (неглубокая ссылка)
+
+# цвета куч по ресурсу (M6)
+var _pile_colors := {
+	"wood": Color("#8d6e63"), "stone": Color("#9e9e9e"), "food": Color("#8bc34a"),
+	"iron": Color("#b0684a"), "metal": Color("#cfd8dc"), "tools": Color("#78909c"),
+	"kits": Color("#ffb74d"), "crystal": Color("#b46ee0"),
+}
 
 
 func setup(city_map, city_sim, city_cfg: Dictionary) -> void:
@@ -24,6 +39,8 @@ func setup(city_map, city_sim, city_cfg: Dictionary) -> void:
 		_prof_colors[String(prof["id"])] = Color(String(prof["color"]))
 	for b in city_cfg["buildings"]:
 		_bld_colors[String(b["id"])] = Color(String(b["color"]))
+	for t in city_cfg.get("zones", {}).get("types", {}):
+		_zone_colors[String(t)] = Color(String(city_cfg["zones"]["types"][t]["color"]))
 	queue_redraw()
 
 
@@ -31,8 +48,11 @@ func _draw() -> void:
 	if map == null:
 		return
 	_draw_terrain()
+	_draw_zones()
+	_draw_roads()
 	_draw_anomaly()
 	_draw_buildings()
+	_draw_piles()
 	_draw_animals()
 	_draw_raiders()
 	_draw_residents()
@@ -46,6 +66,74 @@ func _draw_animals() -> void:
 		draw_circle(pos + Vector2(1, 2), 5.0, Color(0, 0, 0, 0.3))
 		draw_circle(pos, 5.0, Color("#8d6e63"))
 		draw_circle(pos + Vector2(-1.5, -1.5), 1.8, Color(1, 1, 1, 0.5))
+
+
+## Зоны (M6): заливка по типу, прогресс обустройства в незаполненных клетках.
+func _draw_zones() -> void:
+	var fill_work: float = float(sim.cfg.get("zones", {}).get("fill_work", 4.0))
+	for z in sim.zones:
+		var col: Color = _zone_colors.get(String(z["type"]), Color(0.7, 0.7, 0.4))
+		for i in (z["cells"] as Array).size():
+			var tile: Vector2i = z["cells"][i]
+			var rect := Rect2(Vector2(tile) * map.ts, Vector2(map.ts, map.ts))
+			var filled: bool = float(z["progress"][i]) >= fill_work
+			draw_rect(rect, Color(col.r, col.g, col.b, 0.42 if filled else 0.18))
+			if filled:
+				draw_rect(rect.grow(-2), col.darkened(0.15), false, 1.5)
+				match String(z["type"]):
+					"field":
+						# борозды поля
+						for k: int in 3:
+							var y: float = rect.position.y + map.ts * (0.25 + 0.25 * k)
+							draw_line(Vector2(rect.position.x + 4, y),
+									Vector2(rect.position.x + map.ts - 4, y), col.darkened(0.3), 1.5)
+					"pasture":
+						draw_circle(rect.position + Vector2(10, 20), 3.0, col.darkened(0.35))
+						draw_circle(rect.position + Vector2(22, 12), 3.0, col.darkened(0.35))
+					"living":
+						# шалаш: треугольник
+						var p := rect.position
+						draw_colored_polygon(PackedVector2Array([
+							Vector2(p.x + 6, p.y + 26), Vector2(p.x + 16, p.y + 8),
+							Vector2(p.x + 26, p.y + 26)]), col.darkened(0.3))
+			else:
+				var frac := clampf(float(z["progress"][i]) / maxf(0.1, fill_work), 0.0, 1.0)
+				draw_rect(Rect2(rect.position + Vector2(4, map.ts - 8), Vector2((map.ts - 8) * frac, 4)),
+						Color("#ffe082"))
+
+
+## Дороги (M6): тёплые плитки с камешками.
+func _draw_roads() -> void:
+	var col: Color = colors.get("road", Color("#6e5f4a"))
+	for tile: Vector2i in map.road:
+		var rect := Rect2(Vector2(tile) * map.ts, Vector2(map.ts, map.ts))
+		draw_rect(rect, col)
+		draw_circle(rect.position + Vector2(map.ts * 0.3, map.ts * 0.4), 2.0, col.lightened(0.2))
+		draw_circle(rect.position + Vector2(map.ts * 0.65, map.ts * 0.65), 1.6, col.lightened(0.15))
+
+
+## Кучи ресурсов у зданий (M6): добычу видно глазами.
+func _draw_piles() -> void:
+	for b in sim.buildings:
+		if not bool(b["done"]) or not (b as Dictionary).has("pile"):
+			continue
+		var pile: Dictionary = b["pile"]
+		var total := 0.0
+		var key := ""
+		var best := 0.0
+		for k in pile:
+			total += float(pile[k])
+			if float(pile[k]) > best:
+				best = float(pile[k])
+				key = String(k)
+		if total < 0.5:
+			continue
+		var corner: Vector2 = Vector2(b["tile"]) * map.ts + Vector2(map.ts * 0.72, map.ts * 0.78)
+		var rad := 2.5 + minf(6.0, total / 3.0)
+		var col: Color = _pile_colors.get(key, Color(0.8, 0.8, 0.8))
+		draw_circle(corner + Vector2(1, 2), rad, Color(0, 0, 0, 0.3))
+		draw_circle(corner, rad, col)
+		draw_circle(corner + Vector2(-rad * 0.3, -rad * 0.35), rad * 0.4, col.lightened(0.2))
 
 
 func _draw_terrain() -> void:
@@ -163,9 +251,24 @@ func _draw_residents() -> void:
 		draw_circle(pos + Vector2(1, 2), radius, Color(0, 0, 0, 0.3))
 		draw_circle(pos, radius, col.darkened(0.35) if sleeping else col)
 		draw_circle(pos + Vector2(-1.5, -1.5), radius * 0.33, Color(1, 1, 1, 0.5))
+		# груз носильщика (M6): узел за плечами цвета ресурса
+		if float(r.get("carry", 0.0)) > 0.0:
+			var bag: Color = _pile_colors.get(String(r.get("carry_res", "")), Color(0.8, 0.7, 0.5))
+			draw_circle(pos + Vector2(radius + 2.0, -1.0), 3.0, bag)
 
 
 func _draw_ghost() -> void:
+	if dragging and zone_mode != "":
+		_draw_zone_preview()
+		return
+	if road_mode:
+		# режим дороги: подсветка тайла под мышью и уже проложенных дорог
+		var tile: Vector2i = map.tile_of_px(get_global_mouse_position())
+		if map.in_bounds(tile):
+			var ok: bool = sim._zone_cell_ok(tile) and int(sim.res.get("stone", 0)) >= int(sim.cfg.get("roads", {}).get("cost_stone", 1))
+			draw_rect(Rect2(Vector2(tile) * map.ts, Vector2(map.ts, map.ts)),
+					Color(0.5, 1.0, 0.5, 0.35) if ok else Color(1.0, 0.3, 0.3, 0.35))
+		return
 	if enchant_mode != "":
 		# режим зачарования: подсветка тайла под мышью
 		var tile: Vector2i = map.tile_of_px(get_global_mouse_position())
@@ -184,6 +287,26 @@ func _draw_ghost() -> void:
 	var ok: bool = sim.is_buildable_tile(tile, build_mode) and sim.can_afford(_cost_of(build_mode))
 	var col := Color(0.5, 1.0, 0.5, 0.4) if ok else Color(1.0, 0.3, 0.3, 0.4)
 	draw_rect(Rect2(Vector2(tile) * map.ts, Vector2(map.ts, map.ts)), col)
+
+
+## Выделение зоны (M6): прямоугольник от первой точки до курсора,
+## негодные клетки — красным.
+func _draw_zone_preview() -> void:
+	var col: Color = _zone_colors.get(zone_mode, Color(0.7, 0.7, 0.4))
+	var x0 := mini(drag_from.x, drag_to.x)
+	var x1 := maxi(drag_from.x, drag_to.x)
+	var y0 := mini(drag_from.y, drag_to.y)
+	var y1 := maxi(drag_from.y, drag_to.y)
+	for y in range(y0, y1 + 1):
+		for x in range(x0, x1 + 1):
+			var tile := Vector2i(x, y)
+			if not map.in_bounds(tile):
+				continue
+			var rect := Rect2(Vector2(tile) * map.ts, Vector2(map.ts, map.ts))
+			if sim._zone_cell_ok(tile):
+				draw_rect(rect, Color(col.r, col.g, col.b, 0.35))
+			else:
+				draw_rect(rect, Color(1.0, 0.3, 0.3, 0.3))
 
 
 func _center(x: int, y: int) -> Vector2:

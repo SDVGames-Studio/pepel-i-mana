@@ -481,9 +481,39 @@ func _build() -> void:
 	var panel := PanelContainer.new()
 	panel.add_theme_stylebox_override("panel", _panel_style())
 	bottom.add_child(panel)
-	var bld_box := HBoxContainer.new()
+	var scroll := ScrollContainer.new()
+	scroll.custom_minimum_size = Vector2(1180, 244)
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
+	scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
+	panel.add_child(scroll)
+	var bld_box := HFlowContainer.new()
 	bld_box.add_theme_constant_override("separation", 6)
-	panel.add_child(bld_box)
+	bld_box.custom_minimum_size = Vector2(1160, 0)
+	scroll.add_child(bld_box)
+
+	# --- инструменты зон и дорог (M6) ---
+	var tools := [["field", func() -> void: city.set_zone_mode("field")],
+			["pasture", func() -> void: city.set_zone_mode("pasture")],
+			["living", func() -> void: city.set_zone_mode("living")]]
+	for t in tools:
+		var zone_type: String = t[0]
+		var zbtn := Button.new()
+		zbtn.text = Loc.t("zone." + zone_type)
+		zbtn.tooltip_text = Loc.t("city.zone_tooltip") % Loc.t("zone." + zone_type)
+		zbtn.custom_minimum_size = Vector2(110, 52)
+		zbtn.add_theme_font_size_override("font_size", 18)
+		zbtn.focus_mode = Control.FOCUS_NONE
+		zbtn.pressed.connect(t[1])
+		bld_box.add_child(zbtn)
+	var road_btn := Button.new()
+	road_btn.text = Loc.t("city.road")
+	road_btn.tooltip_text = Loc.t("city.road_tooltip")
+	road_btn.custom_minimum_size = Vector2(110, 52)
+	road_btn.add_theme_font_size_override("font_size", 18)
+	road_btn.focus_mode = Control.FOCUS_NONE
+	road_btn.pressed.connect(func() -> void: city.set_road_mode(not city.road_mode))
+	bld_box.add_child(road_btn)
+
 	for b in cfg["buildings"]:
 		var type_id := String(b["id"])
 		var btn := Button.new()
@@ -512,6 +542,8 @@ func _bld_tooltip(b: Dictionary) -> String:
 	elif String(b.get("effect", "")) == "tavern":
 		var tcfg: Dictionary = cfg.get("tavern", {})
 		desc = desc % int(float(tcfg.get("food_per_day", 8.0)))
+	elif String(b.get("effect", "")) == "decor":
+		desc = desc % int(b.get("mood", 0))
 	return "%s\n%s\n%s" % [Loc.t(String(b["loc"])), " / ".join(parts), desc]
 
 

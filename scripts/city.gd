@@ -19,6 +19,12 @@ var hud: CanvasLayer = null
 
 var build_mode := ""            # выбранный тип здания для стройки
 var enchant_mode := ""          # выбранное зачарование (M3): клик по зданию применит
+var zone_mode := ""             # инструмент зоны (M6): "field" | "pasture" | "living"
+var road_mode := false          # инструмент дороги (M6)
+var _dragging := false          # ЛКМ зажата — выделение зоны или рисование дороги
+var _drag_from := Vector2i(-1, -1)
+var _drag_to := Vector2i(-1, -1)
+var _road_warned := false       # тост «нет камня» не спамит при рисовании
 var _modulate: CanvasModulate
 var _static_body: StaticBody2D
 var _near_anomaly := false
@@ -183,7 +189,7 @@ func _armory_near_hero() -> Dictionary:
 
 ## Название здания под курсором — тултип у мыши (просьба заказчика).
 func _update_hover() -> void:
-	if build_mode != "" or enchant_mode != "":
+	if build_mode != "" or enchant_mode != "" or zone_mode != "" or road_mode:
 		hud.set_hover_info("", Vector2.ZERO)
 		return
 	var b: Dictionary = sim.building_at(map.tile_of_px(get_global_mouse_position()))
@@ -194,6 +200,24 @@ func _update_hover() -> void:
 
 
 func _hover_text(b: Dictionary) -> String:
+	var text := _hover_base(b)
+	# куча ресурса у здания (M6): «куча: 12 еда»
+	if bool(b["done"]) and (b as Dictionary).has("pile"):
+		var pile: Dictionary = b["pile"]
+		var total := 0.0
+		var key := ""
+		var best := 0.0
+		for k in pile:
+			total += float(pile[k])
+			if float(pile[k]) > best:
+				best = float(pile[k])
+				key = String(k)
+		if total >= 0.5:
+			text += " • " + Loc.t("city.hover_pile") % [int(total), Loc.t("res." + key)]
+	return text
+
+
+func _hover_base(b: Dictionary) -> String:
 	var bld_name := _bld_name(String(b["type"]))
 	if not bool(b["done"]):
 		var work := 1.0
@@ -291,6 +315,11 @@ func _process_events() -> void:
 				hud.toast(Loc.t("city.guard_trained_toast") % String(ev["name"]))
 			"hunter_trained":
 				hud.toast(Loc.t("city.hunter_trained_toast") % String(ev["name"]))
+			# --- зоны и логистика (M6) ---
+			"zone_done":
+				hud.toast(Loc.t("city.zone_done_toast") % Loc.t("zone." + String(ev["zone"])))
+			"porter_trained":
+				hud.toast(Loc.t("city.porter_trained_toast") % String(ev["name"]))
 	sim.events.clear()
 
 
@@ -382,17 +411,46 @@ func _unhandled_input(event: InputEvent) -> void:
 		if event.button_index == MOUSE_BUTTON_RIGHT and enchant_mode != "":
 			set_enchant_mode("")
 			return
+		if event.button_index == MOUSE_BUTTON_LEFT and zone_mode != "":
+			_dragging = true
+			_drag_from = map.tile_of_px(get_global_mouse_position())
+			_drag_to = _drag_from
+			_sync_view_tools()
+			return
+		if event.button_index == MOUSE_BUTTON_RIGHT and (zone_mode != "" or road_mode):
+			set_zone_mode("")
+			set_road_mode(false)
+			return
+		if event.button_index == MOUSE_BUTTON_LEFT and road_mode:
+			_dragging = true
+			_paint_road(map.tile_of_px(get_global_mouse_position()))
+			return
 		if event.button_index == MOUSE_BUTTON_LEFT and build_mode != "":
 			_try_place()
 		elif event.button_index == MOUSE_BUTTON_RIGHT and build_mode != "":
 			set_build_mode("")
-		elif event.button_index == MOUSE_BUTTON_LEFT:
+		elif event.button_index == MOUSE_BUTTON_LEFT and zone_mode == "" and not road_mode:
 			hero.city_attack(sim)   # ЛКМ без режима — удар героя в городе (M5)
+	elif event is InputEventMouseButton and not event.pressed:
+		if event.button_index == MOUSE_BUTTON_LEFT and _dragging:
+			_dragging = false
+			_sync_view_tools()
+			if zone_mode != "":
+				_apply_zone()
+	elif event is InputEventMouseMotion and _dragging:
+		_drag_to = map.tile_of_px(get_global_mouse_position())
+		if road_mode:
+			_paint_road(_drag_to)
+		_sync_view_tools()
 	elif event.is_action_pressed("ui_cancel"):
 		if build_mode != "":
 			set_build_mode("")
 		elif enchant_mode != "":
 			set_enchant_mode("")
+		elif zone_mode != "":
+			set_zone_mode("")
+		elif road_mode:
+			set_road_mode(false)
 		elif hud.magic_visible():
 			hud.toggle_magic()
 		elif hud.residents_visible():
@@ -402,6 +460,70 @@ func _unhandled_input(event: InputEvent) -> void:
 		else:
 			sim.paused = true
 			get_tree().change_scene_to_file(MENU_SCENE)
+
+
+## Зеркалим состояние инструментов зоны/дороги в отрисовку.
+func _sync_view_tools() -> void:
+	view.zone_mode = zone_mode
+	view.road_mode = road_mode
+	view.dragging = _dragging
+	view.drag_from = _drag_from
+	view.drag_to = _drag_to
+
+
+## Выделение зоны применено: все клетки прямоугольника уходят в симуляцию.
+func _apply_zone() -> void:
+	var cells: Array = []
+	var x0 := mini(_drag_from.x, _drag_to.x)
+	var x1 := maxi(_drag_from.x, _drag_to.x)
+	var y0 := mini(_drag_from.y, _drag_to.y)
+	var y1 := maxi(_drag_from.y, _drag_to.y)
+	for y in range(y0, y1 + 1):
+		for x in range(x0, x1 + 1):
+			cells.append(Vector2i(x, y))
+	var added: int = sim.add_zone(zone_mode, cells)
+	if added > 0:
+		hud.toast(Loc.t("city.zone_added") % [Loc.t("zone." + zone_mode), added])
+	else:
+		hud.toast(Loc.t("city.zone_bad"))
+
+
+## Дорога: тайл под курсором (или под пером при зажатой ЛКМ).
+func _paint_road(tile: Vector2i) -> void:
+	var err: String = sim.place_road(tile)
+	match err:
+		"":
+			_road_warned = false
+		"no_stone":
+			if not _road_warned:
+				_road_warned = true
+				hud.toast(Loc.t("city.road_no_stone"))
+
+
+## Инструмент зоны: повторное нажатие / ПКМ / Esc отменяет.
+func set_zone_mode(type_id: String) -> void:
+	zone_mode = "" if zone_mode == type_id else type_id
+	if zone_mode != "":
+		road_mode = false
+		if build_mode != "":
+			set_build_mode("")
+		hud.set_hint(Loc.t("city.zone_hint") % Loc.t("zone." + zone_mode))
+	elif build_mode == "" and not road_mode:
+		hud.set_hint(_default_hint())
+	_sync_view_tools()
+
+
+## Инструмент дороги.
+func set_road_mode(on: bool) -> void:
+	road_mode = on
+	if road_mode:
+		zone_mode = ""
+		if build_mode != "":
+			set_build_mode("")
+		hud.set_hint(Loc.t("city.road_hint") % int(cfg.get("roads", {}).get("cost_stone", 1)))
+	elif build_mode == "" and zone_mode == "":
+		hud.set_hint(_default_hint())
+	_sync_view_tools()
 
 
 func _try_place() -> void:
@@ -426,6 +548,11 @@ func _try_place() -> void:
 func set_build_mode(type_id: String) -> void:
 	build_mode = type_id
 	view.build_mode = type_id
+	if type_id != "" and (zone_mode != "" or road_mode):
+		# выбор здания снимает инструменты зоны и дороги
+		zone_mode = ""
+		road_mode = false
+		_sync_view_tools()
 	if type_id == "":
 		hud.set_hint(_default_hint())
 		return
@@ -447,6 +574,8 @@ func _bld_hint(b: Dictionary) -> String:
 	elif String(b.get("effect", "")) == "tavern":
 		var tcfg: Dictionary = cfg.get("tavern", {})
 		desc = desc % int(float(tcfg.get("food_per_day", 8.0)))
+	elif String(b.get("effect", "")) == "decor":
+		desc = desc % int(b.get("mood", 0))
 	return "%s (%s; %s)" % [Loc.t(String(b["loc"])), ", ".join(parts), desc]
 
 
