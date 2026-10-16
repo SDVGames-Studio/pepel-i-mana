@@ -251,6 +251,22 @@ func day_number() -> int:
 	return day
 
 
+## Быстрая перемотка на n дней (M8): герой в пути — город живёт (ежедневные
+## броски, еда, угрозы, стройка). Шаг по четверти дня — устойчиво для боёв.
+func advance_days(n: int) -> void:
+	var was_paused := paused
+	paused = false
+	var step := float(cfg["day_length"]) / 4.0
+	for i in n * 4:
+		tick(step)
+	paused = was_paused
+
+
+## Событие в летопись из внешней симуляции (карта мира пишет свои истории, M8).
+func chronicle_add(key: String, a: String = "", b: String = "") -> void:
+	_chron(key, a, b)
+
+
 ## Благословение алтаря: есть готовый алтарь с работающим магом-учеником.
 func has_blessing() -> bool:
 	return altar_ready()

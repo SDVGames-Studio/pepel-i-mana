@@ -16,6 +16,7 @@ var road := {}                  # Vector2i -> true: дороги (M6) — уск
 var wear := {}                  # Vector2i -> float: износ троп (M6) — город сам строит дороги там, где ходят
 var anomaly_tile := Vector2i.ZERO   # вход в данж (у аномалии)
 var spawn_tile := Vector2i.ZERO     # старт героя и жителей
+var world_exit_tile := Vector2i.ZERO  # край города — выход на карту мира (M8)
 var astar: AStarGrid2D = null
 
 
@@ -59,11 +60,14 @@ func _generate_once(seed_value: int, params: Dictionary) -> void:
 		if grid[p.y][p.x] == TILE_GRASS:
 			grid[p.y][p.x] = TILE_TREE
 			placed += 1
-	# старт в центре, аномалия — у правого края; вокруг них чистая трава
+	# старт в центре, аномалия — у правого края, выход на карту мира — у левого;
+	# вокруг них чистая трава
 	spawn_tile = Vector2i(w / 2, h / 2)
 	anomaly_tile = Vector2i(w - 3, h / 2)
+	world_exit_tile = Vector2i(1, h / 2)
 	_clear_around(spawn_tile, 3)
 	_clear_around(anomaly_tile, 2)
+	_clear_around(world_exit_tile, 2)
 
 
 func _random_inner_tile(rng: RandomNumberGenerator) -> Vector2i:

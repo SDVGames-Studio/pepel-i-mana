@@ -4,6 +4,7 @@ extends Node2D
 ## Симуляция живёт в Game и тикается сама — сцена только показывает и слушает ввод.
 
 const DUNGEON_SCENE := "res://scenes/dungeon.tscn"
+const WORLD_SCENE := "res://scenes/world.tscn"
 const MENU_SCENE := "res://scenes/main_menu.tscn"
 const CITY_CFG_PATH := "res://data/city.json"
 const HERO_SCRIPT := "res://scripts/hero.gd"
@@ -28,6 +29,7 @@ var _road_warned := false       # тост «нет камня» не спами
 var _modulate: CanvasModulate
 var _static_body: StaticBody2D
 var _near_anomaly := false
+var _near_world_exit := false    # край города — выход на карту мира (M8)
 var _near_armory: Dictionary = {}   # оружейка рядом с героем (E — комплект героя)
 
 
@@ -83,6 +85,9 @@ func _spawn_hero() -> void:
 	hero.bonus_damage = int(kit["damage"])
 	hero.bonus_armor = int(kit["armor"])
 	hero.position = map.tile_center_px(map.spawn_tile)
+	# вернулись из мира (M8): герой появляется у края, откуда выходил
+	if Game.city_return_tile.x >= 0 and map.in_bounds(Game.city_return_tile):
+		hero.position = map.tile_center_px(Game.city_return_tile)
 	add_child(hero)
 	hero.set_camera_limits(Rect2(0, 0, map.w * map.ts, map.h * map.ts))
 
@@ -166,8 +171,11 @@ func _process(_delta: float) -> void:
 	_process_events()
 	_update_hover()
 	_near_anomaly = hero.position.distance_to(map.tile_center_px(map.anomaly_tile)) < map.ts * 1.7
+	_near_world_exit = hero.position.distance_to(map.tile_center_px(map.world_exit_tile)) < map.ts * 1.7
 	_near_armory = _armory_near_hero()
-	if _near_anomaly:
+	if _near_world_exit:
+		hud.set_hint(Loc.t("city.exit_world"))
+	elif _near_anomaly:
 		if Game.dungeon_available(sim.day_number()):
 			hud.set_hint(Loc.t("city.enter_anomaly"))
 		else:
@@ -378,6 +386,9 @@ func _on_hero_down() -> void:
 
 func _unhandled_input(event: InputEvent) -> void:
 	if event.is_action_pressed("interact"):
+		if _near_world_exit:
+			_enter_world()
+			return
 		if _near_anomaly:
 			if Game.dungeon_available(sim.day_number()):
 				_enter_dungeon()
@@ -680,6 +691,14 @@ func _enter_dungeon() -> void:
 	sim.speed = 1
 	sim.paused = false
 	get_tree().change_scene_to_file(DUNGEON_SCENE)
+
+
+## Выйти из города на карту мира (M8): герой выходит с края города.
+func _enter_world() -> void:
+	sim.speed = 1
+	sim.paused = false
+	Game.city_return_tile = Vector2i(-1, -1)
+	get_tree().change_scene_to_file(WORLD_SCENE)
 
 
 func _default_hint() -> String:

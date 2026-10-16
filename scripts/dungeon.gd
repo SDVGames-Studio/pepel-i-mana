@@ -42,6 +42,12 @@ func _ready() -> void:
 	_seed_value = int(Time.get_unix_time_from_system())
 	_rng.seed = _seed_value
 	_loot_rng.seed = _seed_value + 1
+	# локация карты мира (M8): руины и лагеря меньше полноценного данжа
+	if Game.dungeon_scale < 1.0:
+		params = params.duplicate(true)
+		for key in ["max_rooms", "enemy_count", "chest_count", "crystal_count"]:
+			params[key] = maxi(1, int(round(float(params[key]) * Game.dungeon_scale)))
+		params["traps"]["count"] = maxi(1, int(round(float(params["traps"]["count"]) * Game.dungeon_scale)))
 	biome = _pick_biome()
 
 	gen = DungeonGenScript.new()
@@ -69,8 +75,11 @@ func _ready() -> void:
 
 
 ## Биом данжа по весам (M5): руины спокойнее, лес-мутант опаснее и жирнее.
+## Точка интереса карты мира задаёт биом сама (M8); городская аномалия — как раньше.
 func _pick_biome() -> Dictionary:
 	var biomes: Dictionary = params.get("biomes", {})
+	if Game.forced_biome != "" and biomes.has(Game.forced_biome):
+		return biomes[Game.forced_biome]
 	var weights: Dictionary = params.get("biome_weights", {})
 	var total := 0
 	for w: int in weights.values():
@@ -698,18 +707,42 @@ func _check_dungeon_cleared() -> void:
 		day = int(Game.city_sim.day)
 	Game.register_dungeon_clear(day, int(growth.get("lock_days", 10)))
 	hud.toast(Loc.t("dungeon.cleared_toast") % int(growth.get("lock_days", 10)))
+	# карта мира (M8): монеты за лагерь/руины и отметка точки интереса
+	if Game.poi_coins > 0:
+		Game.coins += Game.poi_coins
+		hud.toast(Loc.t("world.coins_got") % Game.poi_coins)
+		Game.poi_coins = 0
+	if Game.world_sim != null and Game.poi_id > 0:
+		for ev: Dictionary in Game.world_sim.mark_cleared(Game.poi_id):
+			hud.toast(Loc.t("world." + String(ev["type"])))
+		Game.poi_id = 0
 
 
-## Смерть героя: потеря половины лута и выброс в город, игра продолжается.
+## Смерть героя: потеря половины лута и выброс, игра продолжается.
+## Из локации карты мира возвращаемся на карту мира (M8).
 func _on_hero_died() -> void:
 	Game.last_run_death = true
 	Game.lose_half_loot()
-	get_tree().change_scene_to_file("res://scenes/city.tscn")
+	_clear_location_context()
+	get_tree().change_scene_to_file(_return_scene())
 
 
 func _leave_dungeon() -> void:
 	Game.last_run_death = false
-	get_tree().change_scene_to_file("res://scenes/city.tscn")
+	_clear_location_context()
+	get_tree().change_scene_to_file(_return_scene())
+
+
+## Куда возвращать героя: из локации карты мира — на карту мира, иначе в город.
+func _return_scene() -> String:
+	return Game.return_scene if Game.return_scene != "" else "res://scenes/city.tscn"
+
+
+## Контекст локации карты мира одноразовый — гасим при любом выходе.
+func _clear_location_context() -> void:
+	Game.return_scene = ""
+	Game.forced_biome = ""
+	Game.dungeon_scale = 1.0
 
 
 func _item_by_id(item_id: String) -> Dictionary:

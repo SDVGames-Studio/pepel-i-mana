@@ -10,13 +10,19 @@ const MAGIC_SCRIPT := "res://scripts/magic.gd"
 const MAGIC_CFG_PATH := "res://data/magic.json"
 const SKILLS_SCRIPT := "res://scripts/skills.gd"
 const SKILLS_CFG_PATH := "res://data/skills.json"
+const WORLD_CFG_PATH := "res://data/world.json"
+const WORLD_MAP_SCRIPT := "res://scripts/world_map.gd"
+const WORLD_SIM_SCRIPT := "res://scripts/world_sim.gd"
 
 var inventory: Array = []        # [{id: String, count: int}]
 var last_run_death := false      # true, если последний забег закончился гибелью
 var city_sim = null              # city_sim.gd, нетипизированно (грабли GDScript 4)
 var magic = null                 # magic.gd — школы/рецепты/заклинания (M3)
 var skills = null                # skills.gd — XP, уровни, дерево навыков героя (M7)
+var world_map = null             # world_map.gd — карта мира (M8)
+var world_sim = null             # world_sim.gd — мир живёт программно (M8)
 var spellbook: Array = []        # изученные заклинания: [id: String]
+var coins := 0                   # монеты героя — валюта торговли (M8, ответ №40)
 var start_residents := 10        # настройки старта из меню (вопрос 11, M5.1: 10 на старте)
 var start_level := "normal"      # "low" | "normal" | "high"
 var test_mode := false           # тест-режим: много ресурсов, рун и добычи
@@ -24,6 +30,14 @@ var conflicts_enabled := true    # ссоры и воровство жителе
 var dungeon_clears := 0          # полных зачисток данжа (M5.1: с каждой сильнее)
 var dungeon_lock_day := 0        # данж восстановится к этому дню города (M5.1)
 var hero_kits := 0               # боевые комплекты героя из оружейки (M5.1)
+# --- контекст локации карты мира (M8) ---
+var return_scene := ""           # куда возвращать героя из данжа ("" — в город)
+var forced_biome := ""           # биом данжа из точки интереса ("" — случайный)
+var dungeon_scale := 1.0         # масштаб локации (руины/лагерь — меньше данжа)
+var poi_id := 0                  # id точки интереса, из которой вошли (0 — город)
+var poi_coins := 0               # монеты за зачистку лагеря/руин (M8)
+var world_hero_tile := Vector2i(-1, -1)   # тайл героя на карте мира
+var city_return_tile := Vector2i(-1, -1)  # тайл героя при возврате в город
 
 
 func _init() -> void:
@@ -48,6 +62,7 @@ func _process(delta: float) -> void:
 
 
 ## Создать город с настройками старта (новая игра). Рюкзак и спеллбук очищаются.
+## Новая игра — новый мир (M8): карта мира генерируется заново.
 func new_city() -> void:
 	inventory = []
 	spellbook = []
@@ -55,8 +70,16 @@ func new_city() -> void:
 	dungeon_clears = 0
 	dungeon_lock_day = 0
 	hero_kits = 0
+	return_scene = ""
+	forced_biome = ""
+	dungeon_scale = 1.0
+	poi_id = 0
+	poi_coins = 0
+	world_hero_tile = Vector2i(-1, -1)
+	city_return_tile = Vector2i(-1, -1)
 	if skills != null:
 		skills.reset()
+	new_world()
 	var cfg: Variant = _read_json(CITY_CFG_PATH)
 	if not (cfg is Dictionary):
 		push_error("Не читается data/city.json")
@@ -70,6 +93,21 @@ func new_city() -> void:
 	city_sim.conflicts = conflicts_enabled
 	if test_mode:
 		_apply_test_mode(cfg)
+
+
+## Создать мир: карта мира по сиду + программная жизнь (M8).
+func new_world() -> void:
+	var cfg: Variant = _read_json(WORLD_CFG_PATH)
+	if not (cfg is Dictionary):
+		push_error("Не читается data/world.json")
+		return
+	var map_script: Script = load(WORLD_MAP_SCRIPT)
+	world_map = map_script.new()
+	world_map.generate(randi(), cfg)
+	var sim_script: Script = load(WORLD_SIM_SCRIPT)
+	world_sim = sim_script.new()
+	world_sim.setup(world_map, cfg)
+	coins = int(cfg.get("trade", {}).get("start_coins", 15))
 
 
 ## Тест-режим: стартовые ресурсы и руны из city.json -> "test_mode".
