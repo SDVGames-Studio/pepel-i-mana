@@ -1,0 +1,30 @@
+{
+	"xp_base": 12,
+	"xp_growth": 6,
+	"branches": [
+		{
+			"id": "warrior", "loc": "tree.warrior", "color": "#e57373",
+			"nodes": [
+				{ "id": "w1", "loc": "tree.w1", "desc": "tree.desc.w1", "damage": 1 },
+				{ "id": "w2", "loc": "tree.w2", "desc": "tree.desc.w2", "attack_cd_mult": 0.75 },
+				{ "id": "w3", "loc": "tree.w3", "desc": "tree.desc.w3", "range_mult": 1.3 }
+			]
+		},
+		{
+			"id": "mage", "loc": "tree.mage", "color": "#ba68c8",
+			"nodes": [
+				{ "id": "m1", "loc": "tree.m1", "desc": "tree.desc.m1", "mana": 4 },
+				{ "id": "m2", "loc": "tree.m2", "desc": "tree.desc.m2", "spell_cd_mult": 0.8 },
+				{ "id": "m3", "loc": "tree.m3", "desc": "tree.desc.m3", "radius_mult": 1.25 }
+			]
+		},
+		{
+			"id": "survivor", "loc": "tree.survivor", "color": "#4db6ac",
+			"nodes": [
+				{ "id": "s1", "loc": "tree.s1", "desc": "tree.desc.s1", "hp": 5 },
+				{ "id": "s2", "loc": "tree.s2", "desc": "tree.desc.s2", "armor": 1 },
+				{ "id": "s3", "loc": "tree.s3", "desc": "tree.desc.s3", "speed": 20, "dash_cd_mult": 0.8 }
+			]
+		}
+	]
+}

@@ -13,14 +13,18 @@ var minimap = null
 var _hp_fill: ColorRect
 var _mana_fill: ColorRect
 var _dash_fill: ColorRect
+var _xp_fill: ColorRect
 var _hp_label: Label
 var _mana_label: Label
+var _xp_label: Label
 var _loot_label: Label
 var _hint_label: Label
 var _toast_label: Label
 var _warning_label: Label
 var _inv_panel: PanelContainer
 var _inv_text: RichTextLabel
+var _skill_panel: PanelContainer
+var _skill_box: VBoxContainer
 var _spell_slots: Array = []      # [{panel, label}] — панель заклинаний 1–6
 var _toast_time := 0.0
 
@@ -47,13 +51,17 @@ func _process(delta: float) -> void:
 func refresh() -> void:
 	if hero == null:
 		return
-	var hp_max := int(hero.p["hp"])
+	var hp_max: int = hero.hp_max()
 	_hp_fill.size = Vector2(BAR_W * clampf(float(hero.hp) / hp_max, 0.0, 1.0), BAR_H)
 	_hp_label.text = "%s %d/%d" % [Loc.t("hud.hp"), hero.hp, hp_max]
 	var mana_max := int(hero.mana_max)
 	_mana_fill.size = Vector2(BAR_W * clampf(float(hero.mana) / mana_max, 0.0, 1.0), BAR_H)
 	_mana_label.text = "%s %d/%d" % [Loc.t("hud.mana"), hero.mana, mana_max]
 	_dash_fill.size = Vector2(BAR_W * hero.dash_ready_fraction(), BAR_H)
+	# XP героя (M7): полоса до следующего уровня
+	if Game.skills != null:
+		_xp_fill.size = Vector2(BAR_W * clampf(float(Game.skills.xp) / float(Game.skills.xp_next()), 0.0, 1.0), BAR_H)
+		_xp_label.text = "%s %d" % [Loc.t("hud.level"), Game.skills.level]
 	_loot_label.text = Loc.t("hud.loot_total") % Game.loot_total()
 	_warning_label.visible = hero.mana <= 0 and not hero.dead
 	_refresh_spell_slots()
@@ -101,6 +109,11 @@ func _build() -> void:
 	_dash_row_label(dash_row["label"])
 	bars.add_child(dash_row["panel"])
 
+	var xp_row := _make_bar(Color("#2a2438"), Color("#9c6ade"))
+	_xp_fill = xp_row["fill"]
+	_xp_label = xp_row["label"]
+	bars.add_child(xp_row["panel"])
+
 	_loot_label = Label.new()
 	_loot_label.add_theme_font_size_override("font_size", 18)
 	bars.add_child(_loot_label)
@@ -126,6 +139,73 @@ func _build() -> void:
 
 	_build_spell_bar(root)
 	_build_inventory_panel(root)
+	_build_skill_panel(root)
+
+
+## Панель выбора навыка при левелапе (M7): по следующему узлу каждой ветки.
+func _build_skill_panel(root: Control) -> void:
+	_skill_panel = PanelContainer.new()
+	_skill_panel.set_anchors_preset(Control.PRESET_CENTER)
+	_skill_panel.visible = false
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color(0.09, 0.07, 0.12, 0.92)
+	style.set_corner_radius_all(6)
+	style.set_content_margin_all(14)
+	_skill_panel.add_theme_stylebox_override("panel", style)
+	root.add_child(_skill_panel)
+	_skill_box = VBoxContainer.new()
+	_skill_box.add_theme_constant_override("separation", 8)
+	_skill_panel.add_child(_skill_box)
+
+
+## Открыть/обновить выбор навыка; вызывается сценой при левелапе.
+func open_skill_choice() -> void:
+	if Game.skills == null or Game.skills.pending <= 0:
+		_skill_panel.visible = false
+		return
+	for child in _skill_box.get_children():
+		child.queue_free()
+	var title := Label.new()
+	title.text = Loc.t("hud.skill_choice") % Game.skills.level
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	title.add_theme_font_size_override("font_size", 22)
+	_skill_box.add_child(title)
+	for branch in Game.skills.cfg.get("branches", []):
+		var node: Dictionary = Game.skills.next_node(String(branch["id"]))
+		if node.is_empty():
+			continue
+		var btn := Button.new()
+		btn.custom_minimum_size = Vector2(360, 52)
+		btn.focus_mode = Control.FOCUS_NONE
+		btn.add_theme_font_size_override("font_size", 16)
+		btn.text = "%s — %s\n%s" % [Loc.t(String(branch["loc"])), Loc.t(String(node["loc"])), Loc.t(String(node["desc"]))]
+		var node_id := String(node["id"])
+		btn.pressed.connect(func() -> void: _pick_skill(node_id))
+		_skill_box.add_child(btn)
+	_skill_panel.visible = true
+
+
+## Выбран узел: применить бонусы герою; если уровни остались — показать выбор снова.
+func _pick_skill(node_id: String) -> void:
+	if Game.skills == null or hero == null:
+		return
+	var node: Dictionary = Game.skills.choose(node_id)
+	if node.is_empty():
+		return
+	hero.apply_skill_bonuses(Game.skills.node_bonuses(node))
+	_apply_mana_regen()
+	if Game.skills.pending > 0:
+		open_skill_choice()
+	else:
+		_skill_panel.visible = false
+
+
+## Мана-кап зависит от навыка «Резерв» — сцена данжа знает формулу.
+func _apply_mana_regen() -> void:
+	var scene: Node = hero.get_parent()
+	if scene != null and scene.has_method("_apply_mana_params"):
+		scene._apply_mana_params()
+		hero.mana = mini(hero.mana, hero.mana_max)
 
 
 ## Панель заклинаний (M3): до 9 слотов спеллбука, клавиши 1–9 (M5).

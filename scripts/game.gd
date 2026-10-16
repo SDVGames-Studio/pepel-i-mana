@@ -8,11 +8,14 @@ const CITY_SIM_SCRIPT := "res://scripts/city_sim.gd"
 const CITY_MAP_SCRIPT := "res://scripts/city_map.gd"
 const MAGIC_SCRIPT := "res://scripts/magic.gd"
 const MAGIC_CFG_PATH := "res://data/magic.json"
+const SKILLS_SCRIPT := "res://scripts/skills.gd"
+const SKILLS_CFG_PATH := "res://data/skills.json"
 
 var inventory: Array = []        # [{id: String, count: int}]
 var last_run_death := false      # true, если последний забег закончился гибелью
 var city_sim = null              # city_sim.gd, нетипизированно (грабли GDScript 4)
 var magic = null                 # magic.gd — школы/рецепты/заклинания (M3)
+var skills = null                # skills.gd — XP, уровни, дерево навыков героя (M7)
 var spellbook: Array = []        # изученные заклинания: [id: String]
 var start_residents := 10        # настройки старта из меню (вопрос 11, M5.1: 10 на старте)
 var start_level := "normal"      # "low" | "normal" | "high"
@@ -31,6 +34,12 @@ func _init() -> void:
 		magic.setup(data)
 	else:
 		push_error("Не читается data/magic.json")
+	var sk: Variant = _read_json(SKILLS_CFG_PATH)
+	if sk is Dictionary:
+		skills = load(SKILLS_SCRIPT).new()
+		skills.setup(sk)
+	else:
+		push_error("Не читается data/skills.json")
 
 
 func _process(delta: float) -> void:
@@ -46,6 +55,8 @@ func new_city() -> void:
 	dungeon_clears = 0
 	dungeon_lock_day = 0
 	hero_kits = 0
+	if skills != null:
+		skills.reset()
 	var cfg: Variant = _read_json(CITY_CFG_PATH)
 	if not (cfg is Dictionary):
 		push_error("Не читается data/city.json")

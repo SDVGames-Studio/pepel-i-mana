@@ -24,6 +24,11 @@ var _mana_regen_acc := 0.0
 var _spell_cd := {}               # id заклинания -> остаток кулдауна, сек
 var _lantern: PointLight2D = null
 var _flicker_time := 0.0
+var _sk: Dictionary = {}          # постоянные бонусы дерева навыков (M7)
+var _temp_dmg_left := 0.0         # временное усиление (заклинание «Перегрузка», M7)
+var _temp_dmg := 0
+var _temp_armor_left := 0.0       # каменная кожа (M7)
+var _temp_armor := 0
 
 const LANTERN_ENERGY := 1.15
 
@@ -34,6 +39,50 @@ func setup(hero_params: Dictionary, start_mana: int) -> void:
 	hp = int(p["hp"])
 	mana_max = int(p["mana"])
 	mana = mini(start_mana, mana_max)
+
+
+## Постоянные бонусы узла дерева навыков (M7): damage/hp/mana/armor/speed/множители.
+func apply_skill_bonuses(bonus: Dictionary) -> void:
+	for key in bonus:
+		_sk[key] = float(_sk.get(key, 0.0)) + float(bonus[key])
+	hp = mini(hp_max(), hp + int(bonus.get("hp", 0)))
+	mana_max += int(bonus.get("mana", 0))
+	mana = mini(mana_max, mana + int(bonus.get("mana", 0)))
+	queue_redraw()
+
+
+func skill_bonus(key: String) -> int:
+	return int(_sk.get(key, 0.0))
+
+
+func skill_mult(key: String, fallback: float) -> float:
+	return fallback if not _sk.has(key) else float(_sk[key])
+
+
+func hp_max() -> int:
+	return int(p["hp"]) + skill_bonus("hp")
+
+
+## Эффективный урон: база + комплекты + навыки + «Перегрузка».
+func eff_damage() -> int:
+	return int(p["damage"]) + bonus_damage + skill_bonus("damage") + _temp_dmg
+
+
+## Эффективная броня: комплекты + навыки + «Каменная кожа».
+func eff_armor() -> int:
+	return bonus_armor + skill_bonus("armor") + _temp_armor
+
+
+## Временное усиление урона (заклинание, M7).
+func temp_damage_bonus(duration: float, amount: int) -> void:
+	_temp_dmg_left = duration
+	_temp_dmg = amount
+
+
+## Временная прибавка брони (заклинание, M7).
+func temp_armor_bonus(duration: float, amount: int) -> void:
+	_temp_armor_left = duration
+	_temp_armor = amount
 
 
 func _ready() -> void:
@@ -108,6 +157,14 @@ func _physics_process(delta: float) -> void:
 	_attack_cd = maxf(0.0, _attack_cd - delta)
 	_invuln = maxf(0.0, _invuln - delta)
 	_shield_left = maxf(0.0, _shield_left - delta)
+	if _temp_dmg_left > 0.0:
+		_temp_dmg_left = maxf(0.0, _temp_dmg_left - delta)
+		if _temp_dmg_left <= 0.0:
+			_temp_dmg = 0
+	if _temp_armor_left > 0.0:
+		_temp_armor_left = maxf(0.0, _temp_armor_left - delta)
+		if _temp_armor_left <= 0.0:
+			_temp_armor = 0
 	_tick_spell_cooldowns(delta)
 	if not city_mode:
 		_regen_mana(delta)
@@ -120,14 +177,14 @@ func _physics_process(delta: float) -> void:
 		facing = dir.normalized()
 	if Input.is_action_just_pressed("dash") and _dash_cd <= 0.0 and dir != Vector2.ZERO:
 		_dash_left = float(p["dash_time"])
-		_dash_cd = float(p["dash_cooldown"])
+		_dash_cd = float(p["dash_cooldown"]) * skill_mult("dash_cd_mult", 1.0)
 	if _dash_left > 0.0:
 		_dash_left -= delta
 		# отпрыг на фиксированную дистанцию от точки старта (об стену останавливается)
 		var dash_speed := float(p["dash_distance"]) / float(p["dash_time"])
 		velocity = facing * dash_speed
 	else:
-		velocity = dir * float(p["speed"])
+		velocity = dir * (float(p["speed"]) + float(_sk.get("speed", 0.0)))
 	move_and_slide()
 
 
@@ -143,17 +200,18 @@ func _unhandled_input(event: InputEvent) -> void:
 func try_attack() -> void:
 	if _attack_cd > 0.0 or dead:
 		return
-	_attack_cd = float(p["attack_cooldown"])
+	_attack_cd = float(p["attack_cooldown"]) * skill_mult("attack_cd_mult", 1.0)
 	var to_mouse := get_global_mouse_position() - global_position
 	if to_mouse.length() > 4.0:
 		facing = to_mouse.normalized()
+	var reach := float(p["attack_range"]) * skill_mult("range_mult", 1.0)
 	for enemy in get_tree().get_nodes_in_group("enemies"):
 		var to_enemy: Vector2 = enemy.global_position - global_position
-		if to_enemy.length() > float(p["attack_range"]) + float(enemy.p["radius"]):
+		if to_enemy.length() > reach + float(enemy.p["radius"]):
 			continue
 		if absf(facing.angle_to(to_enemy)) > deg_to_rad(float(p["attack_arc"])) / 2.0:
 			continue
-		enemy.take_damage(int(p["damage"]) + bonus_damage)
+		enemy.take_damage(eff_damage())
 	queue_redraw()
 	get_tree().create_timer(0.15).timeout.connect(queue_redraw)
 
@@ -168,7 +226,7 @@ func city_attack(sim) -> int:
 	if to_mouse.length() > 4.0:
 		facing = to_mouse.normalized()
 	var hits: int = sim.hero_slash(global_position, facing,
-			float(p["attack_range"]), float(p["attack_arc"]), int(p["damage"]) + bonus_damage)
+			float(p["attack_range"]), float(p["attack_arc"]), eff_damage())
 	queue_redraw()
 	get_tree().create_timer(0.15).timeout.connect(queue_redraw)
 	return hits
@@ -177,7 +235,7 @@ func city_attack(sim) -> int:
 func take_damage(dmg: int) -> void:
 	if _invuln > 0.0 or dead or _shield_left > 0.0:
 		return
-	hp = maxi(0, hp - maxi(0, dmg - bonus_armor))
+	hp = maxi(0, hp - maxi(0, dmg - eff_armor()))
 	_invuln = 0.5
 	queue_redraw()
 	if hp <= 0:
@@ -187,7 +245,7 @@ func take_damage(dmg: int) -> void:
 
 ## Лечение (заклинание «Свет исцеления»).
 func heal(amount: int) -> void:
-	hp = mini(int(p["hp"]), hp + amount)
+	hp = mini(hp_max(), hp + amount)
 	queue_redraw()
 
 
@@ -246,7 +304,7 @@ func add_mana(v: int) -> void:
 func dash_ready_fraction() -> float:
 	if _dash_cd <= 0.0:
 		return 1.0
-	return 1.0 - _dash_cd / float(p["dash_cooldown"])
+	return 1.0 - _dash_cd / (float(p["dash_cooldown"]) * skill_mult("dash_cd_mult", 1.0))
 
 
 func _draw() -> void:
