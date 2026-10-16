@@ -12,6 +12,7 @@ var rooms: Array = []           # [{x, y, w, h}]
 var enemy_spawns: Array = []    # Vector2i (тайлы)
 var chest_spawns: Array = []
 var crystal_spawns: Array = []
+var trap_spawns: Array = []     # {tile, kind} — ловушки M7
 var start_tile := Vector2i.ZERO
 var exit_tile := Vector2i.ZERO
 
@@ -33,6 +34,7 @@ func generate(seed_value: int, params: Dictionary) -> Object:
 	enemy_spawns = []
 	chest_spawns = []
 	crystal_spawns = []
+	trap_spawns = []
 
 	_place_rooms(params)
 	_carve_corridors()
@@ -126,7 +128,7 @@ func _pick_start_and_exit() -> void:
 			exit_tile = c
 
 
-## Враги, сундуки и кристаллы — на свободные тайлы пола вне стартовой комнаты.
+## Враги, сундуки, кристаллы и ловушки (M7) — на свободные тайлы пола вне стартовой комнаты.
 func _place_spawns(params: Dictionary) -> void:
 	var start_room: Dictionary = rooms[0]
 	var used := {start_tile: true}
@@ -154,3 +156,21 @@ func _place_spawns(params: Dictionary) -> void:
 			used[p] = true
 			lists[kind].append(p)
 			placed += 1
+	# ловушки: в коридоры и комнаты, тип — случайный из разрешённых (M7)
+	var trap_cfg: Dictionary = params.get("traps", {})
+	var kinds: Array = trap_cfg.get("types", [])
+	if kinds.is_empty():
+		return
+	var placed_traps := 0
+	var guard := 0
+	while placed_traps < int(trap_cfg.get("count", 0)) and guard < int(trap_cfg.get("count", 0)) * 200:
+		guard += 1
+		var room: Dictionary = rooms[_rng.randi_range(1, rooms.size() - 1)]
+		var p := Vector2i(
+			_rng.randi_range(int(room["x"]), int(room["x"]) + int(room["w"]) - 1),
+			_rng.randi_range(int(room["y"]), int(room["y"]) + int(room["h"]) - 1))
+		if p == exit_tile or used.has(p) or not is_floor(p):
+			continue
+		used[p] = true
+		trap_spawns.append({"tile": p, "kind": String(kinds[_rng.randi_range(0, kinds.size() - 1)])})
+		placed_traps += 1

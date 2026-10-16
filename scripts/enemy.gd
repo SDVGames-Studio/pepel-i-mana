@@ -13,6 +13,8 @@ var stun_left := 0.0
 
 var _attack_timer := 0.0
 var _hit_flash := 0.0
+var _slow_left := 0.0      # маяк света (M7): враг ползёт медленнее
+var _slow_mult := 1.0
 
 
 ## Вызвать до add_child: строка из data/enemies.json.
@@ -33,6 +35,12 @@ static func calc_spell_damage(data: Dictionary, base: int, school: String) -> in
 func stun_for(seconds: float) -> void:
 	stun_left = seconds
 	queue_redraw()
+
+
+## Замедление (маяк света, M7): mult < 1 — во столько раз медленнее.
+func slow_for(seconds: float, mult: float) -> void:
+	_slow_left = seconds
+	_slow_mult = mult
 
 
 func _ready() -> void:
@@ -63,6 +71,7 @@ func _physics_process(delta: float) -> void:
 		velocity = Vector2.ZERO
 		return
 	_attack_timer = maxf(0.0, _attack_timer - delta)
+	_slow_left = maxf(0.0, _slow_left - delta)
 	var to_hero: Vector2 = hero.global_position - global_position
 	var dist: float = to_hero.length()
 	if dist <= float(p["attack_range"]) + float(hero.p["radius"]):
@@ -74,6 +83,8 @@ func _physics_process(delta: float) -> void:
 		velocity = to_hero.normalized() * float(p["speed"])
 	else:
 		velocity = Vector2.ZERO
+	if _slow_left > 0.0:
+		velocity *= _slow_mult
 	move_and_slide()
 
 
@@ -106,3 +117,5 @@ func _draw() -> void:
 		draw_rect(Rect2(-12, bar_y, 24.0 * frac, 4), Color(0.9, 0.25, 0.25))
 	if stun_left > 0.0:
 		draw_arc(Vector2.ZERO, float(p["radius"]) + 4.0, 0.0, TAU, 20, Color(0.4, 0.85, 0.4, 0.8), 2.0)
+	elif _slow_left > 0.0:
+		draw_arc(Vector2.ZERO, float(p["radius"]) + 4.0, 0.0, TAU, 20, Color(1.0, 0.9, 0.4, 0.7), 2.0)

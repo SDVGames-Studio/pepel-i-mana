@@ -5,6 +5,7 @@ extends Node2D
 const DungeonGenScript := preload("res://scripts/dungeon_gen.gd")
 const HeroScript := preload("res://scripts/hero.gd")
 const EnemyScript := preload("res://scripts/enemy.gd")
+const TrapScript := preload("res://scripts/trap.gd")
 const ChestScript := preload("res://scripts/chest.gd")
 const PickupScript := preload("res://scripts/pickup.gd")
 const ExitMarkerScript := preload("res://scripts/exit_marker.gd")
@@ -12,6 +13,7 @@ const DungeonViewScript := preload("res://scripts/dungeon_view.gd")
 const HudScript := preload("res://scripts/hud.gd")
 const SpellFxScript := preload("res://scripts/spell_fx.gd")
 const CITY_CFG_PATH := "res://data/city.json"
+const LOOT_CFG_PATH := "res://data/loot.json"
 
 var params: Dictionary = {}
 var biome: Dictionary = {}        # активный биом (M5: руины или лес-мутант)
@@ -35,7 +37,7 @@ var _zone_time := 0.0
 func _ready() -> void:
 	params = _read_json("res://data/dungeon.json")
 	enemies_data = _read_json("res://data/enemies.json")
-	loot_data = _read_json("res://data/loot.json")
+	loot_data = _read_json(LOOT_CFG_PATH)
 	ts = int(params["tile_size"])
 	_seed_value = int(Time.get_unix_time_from_system())
 	_rng.seed = _seed_value
@@ -53,6 +55,8 @@ func _ready() -> void:
 	_build_crystals()
 	_build_hero()
 	_build_enemies()
+	_build_traps()
+	_build_boss()
 
 	hud = HudScript.new()
 	hud.init(hero, gen, loot_data)
@@ -197,6 +201,9 @@ func _build_hero() -> void:
 	hero = HeroScript.new()
 	var hero_params: Dictionary = params["hero"]
 	hero.setup(hero_params, int(hero_params["mana"]))
+	# постоянные бонусы дерева навыков (M7) — до маны, она учитывает навык
+	if Game.skills != null:
+		hero.apply_skill_bonuses(Game.skills.bonuses())
 	_apply_mana_params()
 	# боевые комплекты героя из оружейки: +урон, +броня (M5.1)
 	var kit: Dictionary = Game.hero_kit_bonus(_read_json(CITY_CFG_PATH))
@@ -211,17 +218,14 @@ func _build_hero() -> void:
 
 
 ## Мана героя (ответы №56 и №65): запас и регенерация; зачарованный алтарь
-## в городе увеличивает запас и ускоряет регенерацию.
+## в городе увеличивает запас, дисциплина «Тайное» ускоряет регенерацию (M7).
 func _apply_mana_params() -> void:
-	var mana_cfg: Dictionary = _read_json(CITY_CFG_PATH).get("hero_mana", {})
-	var regen := float(mana_cfg.get("regen_period", 8.0))
-	var cap_extra := 0
-	if Game.city_sim != null and Game.city_sim.altar_enchanted():
-		cap_extra = int(mana_cfg.get("altar_cap_extra", 4))
-		regen = float(mana_cfg.get("altar_regen_period", 5.0))
-	hero.mana_max = int(params["hero"]["mana"]) + cap_extra
-	hero.mana = hero.mana_max
-	hero.mana_regen_period = regen
+	var mp: Dictionary = {"cap_extra": 0, "regen_period": 8.0}
+	if Game.city_sim != null:
+		mp = Game.city_sim.hero_mana_params()
+	hero.mana_max = int(params["hero"]["mana"]) + int(mp.get("cap_extra", 0)) + hero.skill_bonus("mana")
+	hero.mana = mini(hero.mana, hero.mana_max)
+	hero.mana_regen_period = float(mp.get("regen_period", 8.0))
 
 
 ## Враги данжа: с каждой полной зачисткой сильнее (M5.1).
@@ -242,6 +246,43 @@ func _build_enemies() -> void:
 		enemy.hero = hero
 		enemy.died.connect(_on_enemy_died)
 		add_child(enemy)
+
+
+## Ловушки биома (M7): типы и числа — dungeon.json -> "traps".
+func _build_traps() -> void:
+	var trap_cfg: Dictionary = params.get("traps", {})
+	for spawn: Dictionary in gen.trap_spawns:
+		var kind := String(spawn["kind"])
+		if not trap_cfg.has(kind):
+			continue
+		var trap = TrapScript.new()
+		trap.setup(kind, trap_cfg[kind], gen, hero)
+		trap.position = _tile_to_pos(spawn["tile"])
+		add_child(trap)
+
+
+## Босс биома (M7): один, в дальней комнате у выхода, гарантированный лут.
+func _build_boss() -> void:
+	var boss_id := String(biome.get("boss", ""))
+	if boss_id == "":
+		return
+	var boss_data := _enemy_by_id(boss_id)
+	if boss_data.is_empty():
+		return
+	var boss = EnemyScript.new()
+	boss.setup(_scaled_enemy(boss_data))
+	boss.position = _tile_to_pos(gen.exit_tile) + Vector2(float(ts), 0)
+	boss.hero = hero
+	boss.died.connect(_on_enemy_died)
+	boss.died.connect(_on_boss_died)
+	add_child(boss)
+
+
+func _enemy_by_id(enemy_id: String) -> Dictionary:
+	for enemy in enemies_data:
+		if String(enemy["id"]) == enemy_id:
+			return enemy
+	return {}
 
 
 ## Взвешенный случайный тип врага: свой набор у каждого биома (M5),
@@ -283,7 +324,8 @@ func _cast_spell(spell_id: String) -> void:
 		hud.toast(Loc.t("magic.no_mana"))
 		return
 	hero.mana -= cost
-	hero.set_spell_cd(spell_id, float(def.get("cooldown", 3.0)))
+	# ветка мага (M7): кулдауны заклинаний короче
+	hero.set_spell_cd(spell_id, float(def.get("cooldown", 3.0)) * hero.skill_mult("spell_cd_mult", 1.0))
 	var params2: Dictionary = def.get("params", {})
 	var school := String(def["school"])
 	var col: Color = Game.magic.school_color(school)
@@ -306,6 +348,16 @@ func _cast_spell(spell_id: String) -> void:
 			_spell_thorns(params2, col)
 		"drain_life":
 			_spell_drain(params2, col)
+		"overcharge":
+			_spell_overcharge(params2, col)
+		"light_beacon":
+			_spell_beacon(params2, col)
+		"stone_skin":
+			_spell_stone_skin(params2, col)
+		"soul_burn":
+			_spell_soul_burn(params2, col)
+		"void_rift":
+			_spell_flash(params2, col)
 	# дикая магия загрязняет регион (даже из данжа — город рядом)
 	if float(def.get("pollution", 0.0)) > 0.0 and Game.city_sim != null:
 		Game.city_sim.add_pollution(float(def["pollution"]))
@@ -321,9 +373,10 @@ func _cast_point(range_px: float) -> Vector2:
 
 func _spell_flash(p2: Dictionary, col: Color) -> void:
 	var pos := _cast_point(float(p2.get("range", 200.0)))
-	_add_fx("burst", col, float(p2.get("radius", 46.0)), 0.4, pos)
+	var radius: float = float(p2.get("radius", 46.0)) * hero.skill_mult("radius_mult", 1.0)
+	_add_fx("burst", col, radius, 0.4, pos)
 	for enemy in get_tree().get_nodes_in_group("enemies"):
-		if enemy.global_position.distance_to(pos) <= float(p2.get("radius", 46.0)) + float(enemy.p["radius"]):
+		if enemy.global_position.distance_to(pos) <= radius + float(enemy.p["radius"]):
 			enemy.take_damage(int(p2.get("damage", 4)), "wild")
 
 
@@ -359,15 +412,16 @@ func _spell_shield(p2: Dictionary, col: Color) -> void:
 
 func _spell_roots(p2: Dictionary, col: Color) -> void:
 	var pos := _cast_point(float(p2.get("range", 200.0)))
-	_add_fx("burst", col, float(p2.get("radius", 58.0)), 0.6, pos)
+	var radius: float = float(p2.get("radius", 58.0)) * hero.skill_mult("radius_mult", 1.0)
+	_add_fx("burst", col, radius, 0.6, pos)
 	for enemy in get_tree().get_nodes_in_group("enemies"):
-		if enemy.global_position.distance_to(pos) <= float(p2.get("radius", 58.0)) + float(enemy.p["radius"]):
+		if enemy.global_position.distance_to(pos) <= radius + float(enemy.p["radius"]):
 			enemy.stun_for(float(p2.get("stun", 3.0)))
 
 
 func _spell_thorns(p2: Dictionary, col: Color) -> void:
 	var pos := _cast_point(float(p2.get("range", 200.0)))
-	var radius := float(p2.get("radius", 58.0))
+	var radius: float = float(p2.get("radius", 58.0)) * hero.skill_mult("radius_mult", 1.0)
 	var duration := float(p2.get("duration", 4.0))
 	_zones.append({
 		"pos": pos, "radius": radius, "until": _zone_time + duration,
@@ -396,6 +450,42 @@ func _spell_drain(p2: Dictionary, col: Color) -> void:
 	if hits > 0:
 		hero.heal(int(p2.get("heal_per_target", 2)) * hits)
 		_add_fx("bolt", col, 0.0, 0.35, hero.global_position, points)
+
+
+## Перегрузка (дикая школа, M7): герой временно бьёт сильнее.
+func _spell_overcharge(p2: Dictionary, col: Color) -> void:
+	hero.temp_damage_bonus(float(p2.get("duration", 8.0)), int(p2.get("damage_bonus", 2)))
+	_add_fx("ring", col, 34.0, 0.7, hero.global_position)
+
+
+## Маяк света (M7): замедляет всех врагов вокруг героя.
+func _spell_beacon(p2: Dictionary, col: Color) -> void:
+	var radius: float = float(p2.get("radius", 140.0)) * hero.skill_mult("radius_mult", 1.0)
+	_add_fx("ring", col, radius, 0.8, hero.global_position)
+	for enemy in get_tree().get_nodes_in_group("enemies"):
+		if enemy.global_position.distance_to(hero.global_position) <= radius:
+			enemy.slow_for(float(p2.get("duration", 5.0)), float(p2.get("slow_mult", 0.5)))
+
+
+## Каменная кожа (M7): герой временно получает броню.
+func _spell_stone_skin(p2: Dictionary, col: Color) -> void:
+	hero.temp_armor_bonus(float(p2.get("duration", 10.0)), int(p2.get("armor", 1)))
+	_add_fx("ring", col, 30.0, 0.7, hero.global_position)
+
+
+## Выжигание души (запретная школа, M7): взрыв по кругу, за каждую цель — мана.
+func _spell_soul_burn(p2: Dictionary, col: Color) -> void:
+	var pos := _cast_point(float(p2.get("range", 200.0)))
+	var radius: float = float(p2.get("radius", 60.0)) * hero.skill_mult("radius_mult", 1.0)
+	_add_fx("burst", col, radius, 0.5, pos)
+	var hits := 0
+	for enemy in get_tree().get_nodes_in_group("enemies"):
+		if enemy.global_position.distance_to(pos) <= radius + float(enemy.p["radius"]):
+			enemy.take_damage(int(p2.get("damage", 5)), "forbidden")
+			hits += 1
+	if hits > 0:
+		hero.add_mana(int(p2.get("mana_per_target", 1)) * hits)
+		hud.toast(Loc.t("dungeon.mana_back") % (int(p2.get("mana_per_target", 1)) * hits))
 
 
 ## Тик зон шипов: урон по времени всем врагам внутри.
@@ -580,7 +670,21 @@ func _on_enemy_died(enemy) -> void:
 		_spawn_pickup("item", String(_roll_item()["id"]), enemy.position)
 	if _loot_rng.randf() < float(enemy.p["mana_chance"]):
 		_spawn_pickup("mana", "", enemy.position + Vector2(12, 6))
+	# XP за врага -> уровни героя -> выбор навыка (M7)
+	if Game.skills != null and int(enemy.p.get("xp", 0)) > 0:
+		var ups: int = Game.skills.add_xp(int(enemy.p["xp"]))
+		if ups > 0:
+			hud.toast(Loc.t("hud.level_up") % Game.skills.level)
+			hud.open_skill_choice()
 	_check_dungeon_cleared()
+
+
+## Босс повержен (M7): гарантированный жирный лут — трофей, кристалл эха, руна.
+func _on_boss_died(enemy) -> void:
+	for item_id: String in loot_data.get("boss_guaranteed", []):
+		_spawn_pickup("item", item_id, enemy.position + Vector2(_loot_rng.randf_range(-14, 14), _loot_rng.randf_range(-10, 10)))
+	_spawn_pickup("item", _random_rune_id(), enemy.position + Vector2(0, 16))
+	hud.toast(Loc.t("dungeon.boss_down"))
 
 
 ## Все враги мертвы — данж зачищен: 10 дней не работает, следующая версия сильнее (M5.1).

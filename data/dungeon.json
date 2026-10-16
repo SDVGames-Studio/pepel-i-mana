@@ -28,13 +28,20 @@
 	"mana_drain_period": 25.0,
 	"crystal_mana": 3,
 	"clear_growth": { "lock_days": 10, "hp_per_clear": 0.3, "damage_per_clear": 1 },
+	"traps": {
+		"count": 6,
+		"types": ["spikes", "darts", "rune_mine"],
+		"spikes": { "damage": 1, "period": 1.2, "active_fraction": 0.45 },
+		"darts": { "damage": 1, "range": 160.0, "cooldown": 2.0 },
+		"rune_mine": { "damage": 3, "radius": 56.0, "trigger_dist": 26.0 }
+	},
 	"test_mode": {
 		"chest_items_min": 3,
 		"chest_items_max": 5,
 		"enemy_drop_chance": 1.0,
 		"rune_per_chest": 1
 	},
-	"biome_weights": { "ruins": 65, "mutant_forest": 35 },
+	"biome_weights": { "ruins": 40, "mutant_forest": 25, "crystal_caves": 20, "ash_wastes": 15 },
 	"biomes": {
 		"ruins": {
 			"loc": "biome.ruins",
@@ -44,7 +51,8 @@
 			"exit_color": "#d8c27a",
 			"ambient": "#090910",
 			"loot_bonus": 0,
-			"pollution_on_visit": 0.0
+			"pollution_on_visit": 0.0,
+			"boss": "bone_knight"
 		},
 		"mutant_forest": {
 			"loc": "biome.mutant_forest",
@@ -55,7 +63,32 @@
 			"ambient": "#070d07",
 			"enemy_weights": { "mutant": 40, "brute": 25, "spitter": 20, "rat": 15 },
 			"loot_bonus": 1,
-			"pollution_on_visit": 2.0
+			"pollution_on_visit": 2.0,
+			"boss": "broodmother"
+		},
+		"crystal_caves": {
+			"loc": "biome.crystal_caves",
+			"floor_color": "#2f4450",
+			"wall_color": "#1a2b33",
+			"bg_color": "#0b1418",
+			"exit_color": "#4dd0e1",
+			"ambient": "#081014",
+			"enemy_weights": { "crawler": 40, "wisp": 25, "shardling": 25 },
+			"loot_bonus": 1,
+			"pollution_on_visit": 1.0,
+			"boss": "crystal_colossus"
+		},
+		"ash_wastes": {
+			"loc": "biome.ash_wastes",
+			"floor_color": "#4d4340",
+			"wall_color": "#2b2220",
+			"bg_color": "#120d0c",
+			"exit_color": "#ff8a65",
+			"ambient": "#0d0806",
+			"enemy_weights": { "ash_hound": 35, "dust_stalker": 30, "cinder": 30 },
+			"loot_bonus": 2,
+			"pollution_on_visit": 3.0,
+			"boss": "ash_tyrant"
 		}
 	}
 }

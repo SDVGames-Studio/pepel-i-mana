@@ -77,6 +77,54 @@
 			"school": "forbidden", "where": "dungeon",
 			"mana_cost": 4, "crystals_cost": 0, "cooldown": 8.0, "pollution": 5.0,
 			"params": { "damage": 3, "targets": 2, "radius": 180.0, "heal_per_target": 2 }
+		},
+		{
+			"id": "overcharge", "loc": "spell.overcharge", "desc": "spell.desc.overcharge",
+			"school": "wild", "where": "dungeon",
+			"mana_cost": 3, "crystals_cost": 0, "cooldown": 12.0, "pollution": 1.0,
+			"params": { "duration": 8.0, "damage_bonus": 2 }
+		},
+		{
+			"id": "meteor_shard", "loc": "spell.meteor_shard", "desc": "spell.desc.meteor_shard",
+			"school": "wild", "where": "city",
+			"mana_cost": 0, "crystals_cost": 1, "cooldown": 60.0, "pollution": 6.0,
+			"params": { "stone": 30.0 }
+		},
+		{
+			"id": "light_beacon", "loc": "spell.light_beacon", "desc": "spell.desc.light_beacon",
+			"school": "light", "where": "dungeon",
+			"mana_cost": 4, "crystals_cost": 0, "cooldown": 14.0, "pollution": 0.0,
+			"params": { "radius": 140.0, "duration": 5.0, "slow_mult": 0.5 }
+		},
+		{
+			"id": "bless", "loc": "spell.bless", "desc": "spell.desc.bless",
+			"school": "light", "where": "city",
+			"mana_cost": 0, "crystals_cost": 2, "cooldown": 90.0, "pollution": 0.0,
+			"params": { "mood": 12.0 }
+		},
+		{
+			"id": "stone_skin", "loc": "spell.stone_skin", "desc": "spell.desc.stone_skin",
+			"school": "nature", "where": "dungeon",
+			"mana_cost": 3, "crystals_cost": 0, "cooldown": 15.0, "pollution": 0.0,
+			"params": { "duration": 10.0, "armor": 1 }
+		},
+		{
+			"id": "harvest_blessing", "loc": "spell.harvest_blessing", "desc": "spell.desc.harvest_blessing",
+			"school": "nature", "where": "city",
+			"mana_cost": 0, "crystals_cost": 2, "cooldown": 90.0, "pollution": 1.0,
+			"params": { "food": 25.0 }
+		},
+		{
+			"id": "soul_burn", "loc": "spell.soul_burn", "desc": "spell.desc.soul_burn",
+			"school": "forbidden", "where": "dungeon",
+			"mana_cost": 4, "crystals_cost": 0, "cooldown": 9.0, "pollution": 7.0,
+			"params": { "damage": 5, "radius": 60.0, "range": 200.0, "mana_per_target": 1 }
+		},
+		{
+			"id": "void_rift", "loc": "spell.void_rift", "desc": "spell.desc.void_rift",
+			"school": "forbidden", "where": "dungeon",
+			"mana_cost": 7, "crystals_cost": 0, "cooldown": 14.0, "pollution": 12.0,
+			"params": { "damage": 12, "radius": 80.0, "range": 200.0 }
 		}
 	],
 	"recipes": [
@@ -91,7 +139,15 @@
 		{ "a": "rune_growth", "b": "rune_shadow", "spell": "thorns" },
 		{ "a": "rune_shadow", "b": "rune_chaos", "spell": "corrupt_blast" },
 		{ "a": "rune_shadow", "b": "rune_shadow", "spell": "plague" },
-		{ "a": "rune_chaos", "b": "rune_frost", "spell": "drain_life" }
+		{ "a": "rune_chaos", "b": "rune_frost", "spell": "drain_life" },
+		{ "a": "rune_sparks", "b": "rune_sparks", "spell": "overcharge" },
+		{ "a": "rune_chaos", "b": "rune_stone", "spell": "meteor_shard" },
+		{ "a": "rune_light", "b": "rune_storm", "spell": "light_beacon" },
+		{ "a": "rune_sun", "b": "rune_light", "spell": "bless" },
+		{ "a": "rune_thorn", "b": "rune_stone", "spell": "stone_skin" },
+		{ "a": "rune_growth", "b": "rune_echo", "spell": "harvest_blessing" },
+		{ "a": "rune_blood", "b": "rune_ash", "spell": "soul_burn" },
+		{ "a": "rune_void", "b": "rune_core", "spell": "void_rift" }
 	],
 	"enchantments": [
 		{

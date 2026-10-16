@@ -20,9 +20,18 @@
 		{ "id": "rune_light", "loc": "item.rune_light", "rarity": "rare", "value": 12 },
 		{ "id": "rune_shadow", "loc": "item.rune_shadow", "rarity": "rare", "value": 12 },
 		{ "id": "rune_chaos", "loc": "item.rune_chaos", "rarity": "rare", "value": 12 },
+		{ "id": "rune_ash", "loc": "item.rune_ash", "rarity": "uncommon", "value": 6 },
+		{ "id": "rune_blood", "loc": "item.rune_blood", "rarity": "rare", "value": 12 },
+		{ "id": "rune_echo", "loc": "item.rune_echo", "rarity": "uncommon", "value": 6 },
+		{ "id": "rune_thorn", "loc": "item.rune_thorn", "rarity": "uncommon", "value": 6 },
+		{ "id": "rune_sun", "loc": "item.rune_sun", "rarity": "rare", "value": 12 },
+		{ "id": "rune_void", "loc": "item.rune_void", "rarity": "rare", "value": 14 },
+		{ "id": "rune_core", "loc": "item.rune_core", "rarity": "rare", "value": 14 },
 		{ "id": "echo_crystal", "loc": "item.echo_crystal", "rarity": "rare", "value": 15 },
-		{ "id": "heart_of_ruins", "loc": "item.heart_of_ruins", "rarity": "legendary", "value": 40 }
+		{ "id": "heart_of_ruins", "loc": "item.heart_of_ruins", "rarity": "legendary", "value": 40 },
+		{ "id": "boss_trophy", "loc": "item.boss_trophy", "rarity": "legendary", "value": 60 }
 	],
+	"boss_guaranteed": ["boss_trophy", "echo_crystal"],
 	"chest_items_min": 1,
 	"chest_items_max": 3,
 	"enemy_drop_chance": 0.35

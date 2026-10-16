@@ -12,7 +12,8 @@
 		"color": "#8d6e63",
 		"weak_school": "wild",
 		"drop_chance": 0.25,
-		"mana_chance": 0.3
+		"mana_chance": 0.3,
+		"xp": 2
 	},
 	{
 		"id": "skeleton",
@@ -27,7 +28,8 @@
 		"color": "#bdbdbd",
 		"weak_school": "light",
 		"drop_chance": 0.4,
-		"mana_chance": 0.35
+		"mana_chance": 0.35,
+		"xp": 3
 	},
 	{
 		"id": "golem",
@@ -42,7 +44,8 @@
 		"color": "#5d4037",
 		"weak_school": "nature",
 		"drop_chance": 0.7,
-		"mana_chance": 0.5
+		"mana_chance": 0.5,
+		"xp": 6
 	},
 	{
 		"id": "antimage",
@@ -57,7 +60,8 @@
 		"color": "#7e57c2",
 		"magic_immune": true,
 		"drop_chance": 0.5,
-		"mana_chance": 0.2
+		"mana_chance": 0.2,
+		"xp": 5
 	},
 	{
 		"id": "mutant",
@@ -72,7 +76,8 @@
 		"color": "#7cb342",
 		"weak_school": "forbidden",
 		"drop_chance": 0.35,
-		"mana_chance": 0.3
+		"mana_chance": 0.3,
+		"xp": 3
 	},
 	{
 		"id": "brute",
@@ -87,7 +92,8 @@
 		"color": "#33691e",
 		"weak_school": "forbidden",
 		"drop_chance": 0.7,
-		"mana_chance": 0.5
+		"mana_chance": 0.5,
+		"xp": 7
 	},
 	{
 		"id": "spitter",
@@ -102,6 +108,171 @@
 		"color": "#9e9d24",
 		"weak_school": "forbidden",
 		"drop_chance": 0.4,
-		"mana_chance": 0.4
+		"mana_chance": 0.4,
+		"xp": 4
+	},
+	{
+		"id": "crawler",
+		"loc": "enemy.crawler",
+		"hp": 5,
+		"damage": 2,
+		"speed": 100,
+		"aggro": 160,
+		"attack_range": 18,
+		"attack_cooldown": 0.8,
+		"radius": 8,
+		"color": "#4dd0e1",
+		"weak_school": "light",
+		"drop_chance": 0.35,
+		"mana_chance": 0.45,
+		"xp": 3
+	},
+	{
+		"id": "wisp",
+		"loc": "enemy.wisp",
+		"hp": 4,
+		"damage": 3,
+		"speed": 55,
+		"aggro": 170,
+		"attack_range": 80,
+		"attack_cooldown": 1.5,
+		"radius": 7,
+		"color": "#b39ddb",
+		"weak_school": "nature",
+		"drop_chance": 0.45,
+		"mana_chance": 0.6,
+		"xp": 4
+	},
+	{
+		"id": "shardling",
+		"loc": "enemy.shardling",
+		"hp": 9,
+		"damage": 3,
+		"speed": 45,
+		"aggro": 120,
+		"attack_range": 22,
+		"attack_cooldown": 1.4,
+		"radius": 10,
+		"color": "#26c6da",
+		"weak_school": "wild",
+		"drop_chance": 0.5,
+		"mana_chance": 0.5,
+		"xp": 5
+	},
+	{
+		"id": "ash_hound",
+		"loc": "enemy.ash_hound",
+		"hp": 6,
+		"damage": 3,
+		"speed": 110,
+		"aggro": 190,
+		"attack_range": 20,
+		"attack_cooldown": 0.9,
+		"radius": 9,
+		"color": "#a1887f",
+		"weak_school": "nature",
+		"drop_chance": 0.4,
+		"mana_chance": 0.3,
+		"xp": 4
+	},
+	{
+		"id": "dust_stalker",
+		"loc": "enemy.dust_stalker",
+		"hp": 7,
+		"damage": 4,
+		"speed": 85,
+		"aggro": 200,
+		"attack_range": 20,
+		"attack_cooldown": 1.0,
+		"radius": 9,
+		"color": "#8d8d8d",
+		"weak_school": "light",
+		"drop_chance": 0.45,
+		"mana_chance": 0.35,
+		"xp": 5
+	},
+	{
+		"id": "cinder",
+		"loc": "enemy.cinder",
+		"hp": 8,
+		"damage": 3,
+		"speed": 50,
+		"aggro": 150,
+		"attack_range": 70,
+		"attack_cooldown": 1.7,
+		"radius": 9,
+		"color": "#ff7043",
+		"weak_school": "forbidden",
+		"drop_chance": 0.5,
+		"mana_chance": 0.4,
+		"xp": 6
+	},
+	{
+		"id": "bone_knight",
+		"loc": "enemy.bone_knight",
+		"boss": true,
+		"hp": 45,
+		"damage": 5,
+		"speed": 45,
+		"aggro": 220,
+		"attack_range": 28,
+		"attack_cooldown": 1.6,
+		"radius": 16,
+		"color": "#eceff1",
+		"weak_school": "wild",
+		"drop_chance": 1.0,
+		"mana_chance": 1.0,
+		"xp": 30
+	},
+	{
+		"id": "broodmother",
+		"loc": "enemy.broodmother",
+		"boss": true,
+		"hp": 55,
+		"damage": 6,
+		"speed": 35,
+		"aggro": 240,
+		"attack_range": 34,
+		"attack_cooldown": 1.8,
+		"radius": 18,
+		"color": "#558b2f",
+		"weak_school": "forbidden",
+		"drop_chance": 1.0,
+		"mana_chance": 1.0,
+		"xp": 35
+	},
+	{
+		"id": "crystal_colossus",
+		"loc": "enemy.crystal_colossus",
+		"boss": true,
+		"hp": 65,
+		"damage": 7,
+		"speed": 30,
+		"aggro": 240,
+		"attack_range": 36,
+		"attack_cooldown": 2.0,
+		"radius": 20,
+		"color": "#00acc1",
+		"weak_school": "nature",
+		"drop_chance": 1.0,
+		"mana_chance": 1.0,
+		"xp": 40
+	},
+	{
+		"id": "ash_tyrant",
+		"loc": "enemy.ash_tyrant",
+		"boss": true,
+		"hp": 60,
+		"damage": 8,
+		"speed": 40,
+		"aggro": 260,
+		"attack_range": 90,
+		"attack_cooldown": 1.8,
+		"radius": 17,
+		"color": "#bf360c",
+		"weak_school": "light",
+		"drop_chance": 1.0,
+		"mana_chance": 1.0,
+		"xp": 40
 	}
 ]

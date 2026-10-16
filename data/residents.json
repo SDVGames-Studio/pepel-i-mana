@@ -27,13 +27,19 @@
 		{"id": "magephobe", "weight": 8, "pollution_mood": -0.15},
 		{"id": "magiclover", "weight": 8, "pollution_mood": 0.15},
 		{"id": "glutton", "weight": 6, "food_mult": 2.0},
-		{"id": "greedy", "weight": 6, "can_steal": true}
+		{"id": "greedy", "weight": 6, "can_steal": true},
+		{"id": "kind", "weight": 8, "mood": 8.0},
+		{"id": "strong", "weight": 6, "work_mult": 1.1},
+		{"id": "sickly", "weight": 5, "frail": true},
+		{"id": "dreamer", "weight": 6, "mood": 5.0, "work_mult": 0.95},
+		{"id": "stoic", "weight": 6, "grief_mult": 0.7, "pollution_mood": -0.05}
 	],
 	"refugees": {"chance_per_day": 0.35, "wave_max": 2, "mood_gate": 45.0, "tower_bonus": 0.1, "tower_bonus_max": 0.4},
 	"births": {"chance_per_day": 0.25, "mood_gate": 60.0, "child_days": 8.0},
 	"ailments": {
 		"sick_chance": 0.02,
 		"pollution_sick_extra": 0.10,
+		"frail_mult": 2.0,
 		"recover_chance": 0.25,
 		"healer_recover_chance": 0.7,
 		"death_chance": 0.04,
@@ -43,7 +49,11 @@
 	},
 	"stories": {
 		"chance_per_day": 0.5,
-		"weights": {"quarrel": 5, "friendship": 5, "discovery": 5, "betrayal": 4, "mutation": 4},
+		"weights": {
+			"quarrel": 5, "friendship": 5, "discovery": 5, "betrayal": 4, "mutation": 4,
+			"festival": 3, "prodigy": 2, "brave_deed": 3, "meteor": 2, "herbs": 3,
+			"night_terror": 3, "wedding": 3, "artifact": 2, "good_harvest": 3, "stranger": 2
+		},
 		"quarrel_mood": -15.0,
 		"friendship_mood": 10.0,
 		"discovery_food": 12,
@@ -52,6 +62,20 @@
 		"betrayal_food": 10,
 		"betrayal_mood": -5.0,
 		"mutation_pollution": 30.0,
-		"mutation_work_bonus": 0.1
+		"mutation_work_bonus": 0.1,
+		"festival_food": 15,
+		"festival_mood": 10.0,
+		"prodigy_skill": 1.0,
+		"brave_deed_mood": 8.0,
+		"meteor_stone": 20,
+		"meteor_pollution": 8.0,
+		"terror_pollution": 20.0,
+		"terror_mood": -6.0,
+		"wedding_mood": 12.0,
+		"artifact_crystal": 1,
+		"artifact_skill": 0.5,
+		"harvest_food": 18,
+		"stranger_food": 10,
+		"stranger_crystal": 1
 	}
 }
