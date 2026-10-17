@@ -41,6 +41,10 @@ func _ready() -> void:
 	map = sim.map
 	cfg = _read_json(CITY_CFG_PATH)
 	view = load(VIEW_SCRIPT).new()
+	# статический ландшафт — отдельным слоем под динамикой (M9, 60 FPS)
+	var terrain: Node2D = load("res://scripts/city_terrain.gd").new()
+	terrain.setup(map, cfg)
+	add_child(terrain)
 	view.setup(map, sim, cfg)
 	view.city = self
 	view.enchant_colors = _enchant_colors()

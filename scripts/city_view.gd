@@ -1,4 +1,5 @@
 extends Node2D
+const Assets := preload("res://scripts/assets.gd")
 ## Отрисовка города (M2): тайлы ландшафта, аномалия, здания/стройплощадки,
 ## жители, призрак стройки. Цветные примитивы — пиксель-арт в M8.
 ## M6: дороги, зоны с прогрессом обустройства, кучи ресурсов у зданий,
@@ -17,7 +18,9 @@ var drag_from := Vector2i(-1, -1)
 var drag_to := Vector2i(-1, -1)
 
 var _prof_colors: Dictionary = {}
+var _prof_sprites: Dictionary = {}
 var _bld_colors: Dictionary = {}
+var _bld_sprites: Dictionary = {}
 var _zone_colors: Dictionary = {}
 var city = null                 # сцена города — для проверки цели зачарования (неглубокая ссылка)
 
@@ -26,6 +29,11 @@ var _pile_colors := {
 	"wood": Color("#8d6e63"), "stone": Color("#9e9e9e"), "food": Color("#8bc34a"),
 	"iron": Color("#b0684a"), "metal": Color("#cfd8dc"), "tools": Color("#78909c"),
 	"kits": Color("#ffb74d"), "crystal": Color("#b46ee0"),
+}
+# спрайты куч (M9): мешок/брёвна/камень — по главному ресурсу
+const PILE_SPRITES := {
+	"wood": "k:75", "stone": "k:102", "food": "k:126", "iron": "k:102",
+	"metal": "k:102", "tools": "k:104", "kits": "k:103", "crystal": "k:116",
 }
 
 
@@ -37,8 +45,10 @@ func setup(city_map, city_sim, city_cfg: Dictionary) -> void:
 		colors[key] = Color(String(c[key]))
 	for prof in city_cfg["professions"]:
 		_prof_colors[String(prof["id"])] = Color(String(prof["color"]))
+		_prof_sprites[String(prof["id"])] = String(prof.get("sprite", ""))
 	for b in city_cfg["buildings"]:
 		_bld_colors[String(b["id"])] = Color(String(b["color"]))
+		_bld_sprites[String(b["id"])] = String(b.get("sprite", ""))
 	for t in city_cfg.get("zones", {}).get("types", {}):
 		_zone_colors[String(t)] = Color(String(city_cfg["zones"]["types"][t]["color"]))
 	queue_redraw()
@@ -47,7 +57,7 @@ func setup(city_map, city_sim, city_cfg: Dictionary) -> void:
 func _draw() -> void:
 	if map == null:
 		return
-	_draw_terrain()
+	# ландшафт рисует отдельный статический слой city_terrain.gd (M9)
 	_draw_zones()
 	_draw_roads()
 	_draw_anomaly()
@@ -60,13 +70,12 @@ func _draw() -> void:
 	_draw_ghost()
 
 
-## Дикие животные (M5.1): цель охотника.
+## Дикие животные (M5.1): цель охотника — спрайт грызуна (M9).
 func _draw_animals() -> void:
 	for a in sim.animals:
 		var pos: Vector2 = a["pos"]
-		draw_circle(pos + Vector2(1, 2), 5.0, Color(0, 0, 0, 0.3))
-		draw_circle(pos, 5.0, Color("#8d6e63"))
-		draw_circle(pos + Vector2(-1.5, -1.5), 1.8, Color(1, 1, 1, 0.5))
+		var phase := float(pos.x * 1.1 + pos.y * 0.7) + Time.get_ticks_msec() / 110.0
+		Assets.draw_ref(self, "k:123", pos + Vector2(0, -absf(sin(phase)) * 1.5), 18.0)
 
 
 ## Зоны (M6): заливка по типу, прогресс обустройства в незаполненных клетках.
@@ -113,7 +122,7 @@ func _draw_roads() -> void:
 		draw_circle(rect.position + Vector2(map.ts * 0.65, map.ts * 0.65), 1.6, col.lightened(0.15))
 
 
-## Кучи ресурсов у зданий (M6): добычу видно глазами.
+## Кучи ресурсов у зданий (M6): добычу видно глазами — спрайт главного ресурса.
 func _draw_piles() -> void:
 	for b in sim.buildings:
 		if not bool(b["done"]) or not (b as Dictionary).has("pile"):
@@ -129,39 +138,10 @@ func _draw_piles() -> void:
 				key = String(k)
 		if total < 0.5:
 			continue
-		var corner: Vector2 = Vector2(b["tile"]) * map.ts + Vector2(map.ts * 0.72, map.ts * 0.78)
-		var rad := 2.5 + minf(6.0, total / 3.0)
-		var col: Color = _pile_colors.get(key, Color(0.8, 0.8, 0.8))
-		draw_circle(corner + Vector2(1, 2), rad, Color(0, 0, 0, 0.3))
-		draw_circle(corner, rad, col)
-		draw_circle(corner + Vector2(-rad * 0.3, -rad * 0.35), rad * 0.4, col.lightened(0.2))
-
-
-func _draw_terrain() -> void:
-	var grass: Color = colors["grass"]
-	var grass_alt: Color = colors["grass_alt"]
-	for y in map.h:
-		for x in map.w:
-			var tile: int = map.grid[y][x]
-			var rect := Rect2(x * map.ts, y * map.ts, map.ts, map.ts)
-			match tile:
-				map.TILE_GRASS:
-					draw_rect(rect, grass if (x + y) % 2 == 0 else grass_alt)
-				map.TILE_WATER:
-					draw_rect(rect, colors["water"])
-				map.TILE_ROCK:
-					draw_rect(rect, colors["rock"])
-					draw_circle(_center(x, y), map.ts * 0.3, colors["rock"].lightened(0.15))
-				map.TILE_ORE:
-					# рудная жила: скала с ржавыми вкраплениями железа (M5.1)
-					draw_rect(rect, colors["rock"].darkened(0.1))
-					draw_circle(_center(x, y), map.ts * 0.3, Color("#8d6e63").darkened(0.2))
-					draw_circle(_center(x, y) + Vector2(-4, -3), map.ts * 0.12, Color("#e07a3f"))
-					draw_circle(_center(x, y) + Vector2(5, 4), map.ts * 0.09, Color("#e07a3f"))
-				map.TILE_TREE:
-					draw_rect(rect, grass if (x + y) % 2 == 0 else grass_alt)
-					draw_circle(_center(x, y) + Vector2(0, 3), map.ts * 0.38, colors["tree"])
-					draw_circle(_center(x, y) + Vector2(-3, -1), map.ts * 0.18, colors["tree"].lightened(0.12))
+		var corner: Vector2 = Vector2(b["tile"]) * map.ts + Vector2(map.ts * 0.78, map.ts * 0.88)
+		var size := 8.0 + minf(10.0, total / 3.0)
+		var tint: Color = _pile_colors.get(key, Color(0.8, 0.8, 0.8)).lightened(0.25)
+		Assets.draw_ref(self, PILE_SPRITES.get(key, "k:73"), corner, size, false, tint)
 
 
 func _draw_anomaly() -> void:
@@ -218,15 +198,17 @@ func _draw_buildings() -> void:
 			var work: float = _build_work(String(b["type"]))
 			var frac := clampf(float(b["progress"]) / work, 0.0, 1.0) if work > 0.0 else 0.0
 			draw_rect(Rect2(rect.position + Vector2(4, map.ts - 9), Vector2((map.ts - 8) * frac, 5)), Color("#ffe082"))
-		elif String(b["type"]) == "wall":
-			draw_rect(rect, col.darkened(0.25))
-			draw_rect(rect.grow(-2), col, false, 2.0)
 		else:
-			draw_rect(rect, col)
-			draw_rect(rect.grow(-4), col.darkened(0.25))
+			# спрайт здания (M9): ссылка b:<id> из city.json -> buildings
+			var ref: String = _bld_sprites.get(String(b["type"]), "")
+			if ref != "":
+				Assets.draw_ref(self, ref, rect.get_center(), float(map.ts))
+			else:
+				draw_rect(rect, col)
+				draw_rect(rect.grow(-4), col.darkened(0.25))
 			# точка-работник: занятое здание подсвечено
 			if int(b["worker"]) > 0:
-				draw_circle(rect.get_center(), 3.0, Color(1, 1, 1, 0.85))
+				draw_circle(rect.get_center() + Vector2(0, -map.ts * 0.38), 2.5, Color(1, 1, 1, 0.9))
 		# зачарование: рамка цветом эффекта (M3)
 		if String(b.get("enchant", "")) != "":
 			var ecol: Color = enchant_colors.get(String(b["enchant"]), Color(0.8, 0.8, 1.0))
@@ -245,15 +227,20 @@ func _draw_buildings() -> void:
 			draw_rect(Rect2(rect.position + Vector2(4, -7), Vector2((map.ts - 8) * frac2, 4)), Color("#8bc34a"))
 
 
-## Мутанты-рейдеры (M5): круг с полоской здоровья, как враги данжа.
+## Мутанты-рейдеры (M5): спрайты данжевых мутантов (M9), полоска здоровья.
 func _draw_raiders() -> void:
+	var refs := {"mutant": "k:108", "brute": "k:109", "spitter": "k:110"}
 	for r in sim.raiders:
 		var pos: Vector2 = r["pos"]
 		var rad := float(r["p"]["radius"])
-		var col := Color(String(r["p"]["color"]))
-		draw_circle(pos + Vector2(1, 2), rad, Color(0, 0, 0, 0.3))
-		draw_circle(pos, rad, col)
-		draw_circle(pos + Vector2(-1.5, -1.5), rad * 0.33, Color(1, 1, 1, 0.5))
+		var ref: String = refs.get(String(r["type"]), "k:108")
+		var size := rad * 2.8
+		var phase := pos.x * 0.9 + Time.get_ticks_msec() / 100.0
+		var vx := 0.0
+		var pth: PackedVector2Array = r.get("path", PackedVector2Array())
+		if not pth.is_empty():
+			vx = (pth[0] - pos).x
+		Assets.draw_ref(self, ref, pos + Vector2(0, -absf(sin(phase)) * 1.5), size, vx < -1.0, Color.WHITE)
 		if int(r["hp"]) < int(r["max_hp"]):
 			var frac := clampf(float(r["hp"]) / float(r["max_hp"]), 0.0, 1.0)
 			draw_rect(Rect2(pos + Vector2(-12, -rad - 8), Vector2(24, 4)), Color(0.15, 0.1, 0.1))
@@ -272,24 +259,33 @@ func _bld_max_hp(type_id: String) -> float:
 
 
 func _draw_residents() -> void:
+	var child_ref := "k:88"  # рыжий мальчик — дети
 	for r in sim.residents:
 		var pos: Vector2 = r["pos"]
-		var col: Color = _prof_colors.get(String(r["prof"]), Color.WHITE)
-		var child := String(r["prof"]) == ""
-		var radius := 4.0 if child else 6.0
+		var prof := String(r["prof"])
+		var ref: String = _prof_sprites.get(prof, child_ref)
+		var child := prof == ""
+		var size := 20.0 if child else 26.0
+		var tint := Color.WHITE
 		var ail := String(r.get("ail", ""))
 		if ail == "sick":
-			col = Color("#9ccc65").darkened(0.25)
+			tint = Color(0.75, 0.95, 0.65)
 		elif ail == "wounded":
-			col = col.lerp(Color("#c62828"), 0.55)
+			tint = Color(1.0, 0.6, 0.6)
 		var sleeping: bool = r["state"] == "sleep" or r["state"] == "rest"
-		draw_circle(pos + Vector2(1, 2), radius, Color(0, 0, 0, 0.3))
-		draw_circle(pos, radius, col.darkened(0.35) if sleeping else col)
-		draw_circle(pos + Vector2(-1.5, -1.5), radius * 0.33, Color(1, 1, 1, 0.5))
-		# груз носильщика (M6): узел за плечами цвета ресурса
+		if sleeping:
+			tint = tint.darkened(0.35)
+		# бобинг ходьбы (M9): фаза от индекса, амплитуда только в движении
+		var moving: bool = bool(r.get("moving", true))
+		var phase := float(pos.x * 0.7 + pos.y * 1.3)
+		var bob := absf(sin(phase + Time.get_ticks_msec() / (1000.0 / 9.0))) * (2.0 if moving else 0.4)
+		Assets.draw_ref(self, ref, pos + Vector2(0, -bob), size,
+				String(r.get("dir", "")) == "left", tint)
+		# груз носильщика (M6): узел цвета ресурса
 		if float(r.get("carry", 0.0)) > 0.0:
 			var bag: Color = _pile_colors.get(String(r.get("carry_res", "")), Color(0.8, 0.7, 0.5))
-			draw_circle(pos + Vector2(radius + 2.0, -1.0), 3.0, bag)
+			draw_circle(pos + Vector2(11.0, -6.0 - bob), 4.0, bag.darkened(0.1))
+			draw_circle(pos + Vector2(10.0, -7.0 - bob), 2.0, bag.lightened(0.15))
 
 
 func _draw_ghost() -> void:

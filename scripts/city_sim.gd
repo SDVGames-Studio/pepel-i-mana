@@ -1486,10 +1486,13 @@ func _move_towards(r: Dictionary, tile: Vector2i, dt: float) -> void:
 		else:
 			pos += to_next / dist * step
 			step = 0.0
+		if absf(to_next.x) > 2.0:
+			r["dir"] = "left" if to_next.x < 0.0 else "right"
 	r["pos"] = pos
 	r["path"] = path
 	# протоптанная тропа (M6): сколько прошёл — столько износа оставил
 	var moved := step_total - step
+	r["moving"] = moved > 0.05
 	if moved > 0.0:
 		map.add_wear(map.tile_of_px(pos), moved / float(map.ts) * float(cfg.get("roads", {}).get("wear_per_tile", 1.0)))
 
