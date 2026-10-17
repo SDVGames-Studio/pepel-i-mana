@@ -3,7 +3,55 @@
 Разрешение заказчика: «можешь осмотреть папки с пиксель-артами и всяким таким,
 можешь их использовать, даже сцены движения были». Что найдено и годно:
 
-## 1. Kenney Tiny Dungeon 1.0 — ОСНОВНОЙ НАБОР (CC0, можно без ограничений)
+## 0. F:\kust\new-world-v-2 — ГЛАВНЫЙ СКЛАД (CraftPix-паки + готовые анимации!)
+Старый Godot-проект заказчика, ~4000 файлов ассетов. Лицензия CraftPix
+(license.txt в паках — ссылка на craftpix.net/file-licenses): свободные паки
+разрешено использовать в своих играх (в т.ч. коммерческих), нельзя только
+перепродавать сами ассеты отдельно. Разрешение заказчика на использование ЕСТЬ.
+
+### Готовые АНИМАЦИИ персонажей («сцены движения» — это здесь!)
+- `assets\human\` — ЧЕЛОВЕК-ГЕРОЙ: наборы Sword и Unarmed, полные анимации
+  по 4 направлениям (front/back/side_left/side_right): **Idle, Walk,
+  Walk_attack, Sword_Attack, Sword_Death** (+ Parts). Форматы: PNG
+  (With_shadow / Without_shadow) + исходники Aseprite. Это готовый герой
+  с idle/ходьбой/атакой/смертью — и образец стиля для жителей.
+- `assets\ork goblin\` — Orc1/Orc2/Orc3, тот же состав анимаций
+  (idle/walk/attack/death, 4 направления, PNG+Aseprite) — готовые враги.
+- `assets\enimi\` — иконки монстров/нежити (Icon1..50, фоны/прозрачные).
+
+### Тайлсеты и объекты
+- `assets\dom\` — Tropical Medieval City 2D Tileset: **18 зданий** (PNG,
+  building_1..N), decor, land, road (+ AI/EPS исходники) — город!
+- `assets\plitka\` = craftpix Fields Tileset — поля/фермы (тайлы + отдельно).
+- `assets\trava\` — кусты (времена года), `assets\derevo\` — деревья
+  (Autumn_tree…, отдельно по видам).
+- `assets\box eda\` — растения/еда.
+- `assets\dang\` — данж-пак: пропсы, ловушки (fire_trap), объекты (гильотина,
+  бомбы, пушки, колбы).
+- `assets\podzemele\` — подземелье: ловушки и пропсы.
+
+### CraftPix-паки по темам (каждый со своими PNG-наборами)
+- `craftpix-net-654184-main-characters-home…` — дом героя top-down: экстерьер,
+  интерьер, анимации птицы/кошки, детали травы.
+- `craftpix-net-658475-free-archer-towers…` — **башни лучников со стадиями
+  апгрейда и Idle-анимацией** (1 Upgrade/, 2 Idle/…) — наши вышки!
+- `craftpix-net-805745-free-magic-and-traps…` — **шипы, баррикады, стрелы,
+  магия top-down** — ловушки данжа и эффекты.
+- `craftpix-net-934618-free-top-down-ruins…` — руины (Blue-gray/Brown-gray
+  наборы) — биом руин и точки интереса.
+- `craftpix-net-688754-free-minerals…` — иконки минералов/руд — ресурсы.
+- `craftpix-net-986554-free-undead-loot…` — иконки лута нежити.
+- `craftpix-net-789196-free-top-down-hunt-animals…` — дикие животные (тетерев,
+  кабан…) с ПОЛНЫМИ анимациями Idle/Walk/Attack/Death/Flight/Hurt + тени.
+- `craftpix-net-639143-free-rocky-area…` — скалы/камни.
+- `craftpix-net-692491-free-glassblowers-workshop…` — мастерская top-down.
+- `craftpix-net-665895-free-pixel-dungeon-props…` — пропсы данжа.
+- `craftpix-net-814823-free-roguelike-shoot-em-up…` — набор roguelike.
+- `craftpix-net-694865-free-top-down-seabed…` — морское дно (вода города).
+- `assets\slavarium-main\` — референс-проект Godot (сцены characters/houses/
+  objects/ui) — пример сборки, не копировать вслепую.
+
+## 1. Kenney Tiny Dungeon 1.0 — дополнительный набор (CC0, без ограничений)
 Путь: `F:\Z2\tools\kenney\` (архив рядом: kenney_tiny-dungeon.zip)
 - **132 тайла 16×16** (сетка 12×11): `Tilemap\tilemap_packed.png` (атлас) и
   отдельные `Tiles\tile_0000.png … tile_0131.png`. Описание сетки — `Tilesheet.txt`.
@@ -42,11 +90,18 @@
 - Сцены движения персонажа (пример управления/анимации): `podzemie\scenes\player.tscn`
   и его скрипт — референс, не копировать вслепую.
 
-## Что брать в M9 (приоритет)
-1. Персонажи Kenney → герой, 17 врагов, жители города (16 профессий —
-   разные персонажи набора + подкраска).
-2. Тайлы данжа → пол/стены 4 биомов (подкраска биома), сундуки, двери.
-3. Предметы Kenney → рюны/зелья/лут в HUD и на земле.
-4. Здания города → из Blender (§3) + пиксель-конвейер (§2); декор из тайлов.
-5. Шрифт PressStart2P → опционально для HUD (проверить кириллицу! шрифт
-   содержит только латиницу — для русского НЕ годится, оставить системный).
+## Что брать в M9 (приоритет, обновлено 2026-10-17)
+1. **Герой** — `assets\human\` (Sword): готовые Idle/Walk/Attack/Death по 4
+   направлениям — сразу SpriteFrames в Godot.
+2. **Враги данжа** — `assets\ork goblin\` (орки 3 видов с анимациями) +
+   персонажи Kenney (слаймы/скелеты/призраки) + иконки `enimi\` и лут нежити.
+3. **Город** — здания из `assets\dom\` (18 шт), вышки из archer-towers
+   (стадии апгрейда!), поля `plitka\`, деревья `derevo\`, кусты `trava\`.
+4. **Животные охоты** — hunt-animals (Idle/Walk/Attack/Death + тени).
+5. **Данж** — тайлы Kenney (4 биома с подкраской), пропсы/ловушки `dang\`,
+   `podzemele\`, magic-and-traps (шипы/баррикады), руины 934618.
+6. **Иконки HUD/ресурсов** — minerals, undead-loot, предметы Kenney.
+7. Недостающее (жители-профессии) — раскраска человечка из human\ или
+   Blender-конвейер 32×32 (make_knight.py).
+8. Шрифт PressStart2P (podzemie) — БЕЗ кириллицы, для русского НЕ годится —
+   оставить системный шрифт.
