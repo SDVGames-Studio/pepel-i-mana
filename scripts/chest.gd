@@ -1,12 +1,24 @@
 extends Node2D
-## Сундук (M1): прототип — цветной прямоугольник; открытие через сцену данжа (E рядом).
+const Assets := preload("res://scripts/assets.gd")
+## Сундук (M1): спрайт Kenney (M9), при открытии — крышка сдвигается (бобинг-приём).
+## Открытие через сцену данжа (E рядом).
 
 var open := false
+var _sprite: Sprite2D = null
+
+
+func _ready() -> void:
+	_sprite = Sprite2D.new()
+	var tex: Texture2D = Assets.sprite("k:90")
+	_sprite.texture = tex
+	_sprite.scale = Vector2.ONE * (30.0 / 16.0)
+	_sprite.position = Vector2(0, -5)
+	add_child(_sprite)
 
 
 func _draw() -> void:
-	var body_color := Color("#4a3626") if open else Color("#7a5230")
-	draw_rect(Rect2(-10, -9, 20, 18), body_color)
-	draw_rect(Rect2(-10, -9, 20, 18), Color(0, 0, 0, 0.35), false, 1.5)
-	if not open:
-		draw_rect(Rect2(-10, -2, 20, 4), Color("#c9a227"))
+	if open and _sprite != null:
+		# «открыто»: спрайт серого сундука приподнят и пригашен
+		_sprite.texture = Assets.sprite("k:91")
+		_sprite.position.y = -9.0
+		_sprite.modulate = Color(0.85, 0.8, 0.7)

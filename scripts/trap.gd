@@ -1,4 +1,5 @@
 extends Node2D
+const Assets := preload("res://scripts/assets.gd")
 ## Ловушка данжа (M7): шипы, дарты, руна-мина. Параметры — из data/dungeon.json.
 ## Шипы: периодическая активация, жгут героя на тайле. Дарты: выстрел по герою
 ## в прямой видимости. Руна-мина: невидимая, взрывается при подходе — бьёт и
@@ -118,13 +119,9 @@ func _draw() -> void:
 			var period := float(cfg.get("period", 1.2))
 			var active := float(cfg.get("active_fraction", 0.45))
 			var out := _phase > period * active
-			if out:
-				for i in 4:
-					var a := TAU * float(i) / 4.0 + 0.4
-					var tip := Vector2.from_angle(a) * 10.0
-					draw_line(tip * 0.4, tip, Color(0.75, 0.75, 0.78, 0.9), 2.0)
-			else:
-				draw_circle(Vector2.ZERO, 3.0, Color(0.5, 0.48, 0.45, 0.4))
+			# спрайт зубчатой плиты (M9): вышедшие шипы — ярко, спрятанные — призрак
+			Assets.draw_ref(self, "k:41", Vector2.ZERO, 26.0, false,
+					Color(1, 1, 1, 0.95) if out else Color(0.75, 0.75, 0.8, 0.28))
 		"darts":
 			draw_circle(Vector2.ZERO, 5.0, Color(0.45, 0.4, 0.35, 0.9))
 			draw_arc(Vector2.ZERO, 6.0, 0.0, TAU, 12, Color(0.8, 0.7, 0.4, 0.5), 1.5)

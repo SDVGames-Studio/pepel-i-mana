@@ -1,4 +1,5 @@
 extends CharacterBody2D
+const Assets := preload("res://scripts/assets.gd")
 ## Враг данжа (M1): преследует героя в радиусе агро, бьёт в упор по кулдауну.
 ## M3: магические уязвимости (weak_school — урон школы ×2), антимаги immune
 ## (magic_immune — магия не действует), стан от корней.
@@ -15,6 +16,9 @@ var _attack_timer := 0.0
 var _hit_flash := 0.0
 var _slow_left := 0.0      # маяк света (M7): враг ползёт медленнее
 var _slow_mult := 1.0
+var _sprite: Sprite2D = null
+var _base_tint := Color.WHITE
+var _bob_time := 0.0
 
 
 ## Вызвать до add_child: строка из data/enemies.json.
@@ -41,6 +45,7 @@ func stun_for(seconds: float) -> void:
 func slow_for(seconds: float, mult: float) -> void:
 	_slow_left = seconds
 	_slow_mult = mult
+	queue_redraw()
 
 
 func _ready() -> void:
@@ -53,13 +58,31 @@ func _ready() -> void:
 	circle.radius = float(p["radius"])
 	shape.shape = circle
 	add_child(shape)
+	# спрайт врага (M9): ссылка из data/enemies.json, лёгкая подкраска цветом врага
+	_sprite = Sprite2D.new()
+	var tex: Texture2D = Assets.sprite(String(p.get("sprite", "")))
+	if tex != null:
+		var h := float(p["radius"]) * 2.8
+		_sprite.texture = tex
+		_sprite.scale = Vector2.ONE * (h / float(tex.get_height()))
+		_sprite.position = Vector2(0, -h * 0.12)
+		var col := Color(String(p["color"]))
+		_base_tint = Color.WHITE.lerp(col, 0.25)
+		_sprite.modulate = _base_tint
+	add_child(_sprite)
 	queue_redraw()
 
 
 func _physics_process(delta: float) -> void:
 	_hit_flash = maxf(0.0, _hit_flash - delta)
-	if _hit_flash <= 0.0 and stun_left <= 0.0:
-		queue_redraw()
+	# вспышка урона (M9): спрайт светлеет и гаснет без перерисовки _draw
+	if _sprite != null:
+		var k := clampf(_hit_flash / 0.2, 0.0, 1.0)
+		_sprite.modulate = _base_tint.lerp(Color(3, 3, 3), k * 0.8)
+		_bob_time += delta * (10.0 if velocity.length() > 5.0 else 2.5)
+		_sprite.position.y = -float(p["radius"]) * 0.34 - absf(sin(_bob_time)) * (1.4 if velocity.length() > 5.0 else 0.6)
+		if absf(velocity.x) > 1.0:
+			_sprite.flip_h = velocity.x < 0.0
 	if stun_left > 0.0:
 		stun_left = maxf(0.0, stun_left - delta)
 		velocity = Vector2.ZERO
@@ -71,7 +94,10 @@ func _physics_process(delta: float) -> void:
 		velocity = Vector2.ZERO
 		return
 	_attack_timer = maxf(0.0, _attack_timer - delta)
+	var was_slow := _slow_left > 0.0
 	_slow_left = maxf(0.0, _slow_left - delta)
+	if was_slow and _slow_left <= 0.0:
+		queue_redraw()
 	var to_hero: Vector2 = hero.global_position - global_position
 	var dist: float = to_hero.length()
 	if dist <= float(p["attack_range"]) + float(hero.p["radius"]):
@@ -107,9 +133,7 @@ func take_damage(dmg: int, school := "") -> void:
 
 
 func _draw() -> void:
-	var base := Color(String(p["color"]))
-	var col := base.lightened(0.5) if _hit_flash > 0.0 else base
-	draw_circle(Vector2.ZERO, float(p["radius"]), col)
+	# тело врага — спрайт (M9); здесь только hp-бар и статусные дуги
 	if hp < int(p["hp"]):
 		var frac := clampf(float(hp) / float(p["hp"]), 0.0, 1.0)
 		var bar_y := -float(p["radius"]) - 8.0

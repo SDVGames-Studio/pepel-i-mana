@@ -1,13 +1,22 @@
 extends Node2D
-## Лестница-выход из данжа (M1): стоит у точки входа, выход доступен всегда.
+const Assets := preload("res://scripts/assets.gd")
+## Лестница-выход из данжа (M1): спрайт-лестница Kenney (M9) с лёгким свечением.
+## Выход доступен всегда.
 
 var marker_color := Color("#d8c27a")
 
 
+func _ready() -> void:
+	var sprite := Sprite2D.new()
+	var tex: Texture2D = Assets.sprite("k:65")
+	sprite.texture = tex
+	sprite.scale = Vector2.ONE * (30.0 / 16.0)
+	sprite.position = Vector2(0, -4)
+	add_child(sprite)
+
+
 func _draw() -> void:
-	draw_rect(Rect2(-14, -14, 28, 28), Color(0, 0, 0, 0.35))
-	draw_rect(Rect2(-12, -12, 24, 24), marker_color)
-	draw_line(Vector2(0, 8), Vector2(0, -8), Color(0.1, 0.08, 0.06), 2.0)
-	draw_polyline(
-		PackedVector2Array([Vector2(-5, -3), Vector2(0, -8), Vector2(5, -3)]),
-		Color(0.1, 0.08, 0.06), 2.0)
+	# тёплое пятно под лестницей — выход видно в темноте
+	var pulse := 0.7 + 0.3 * sin(Time.get_ticks_msec() / 400.0)
+	draw_circle(Vector2.ZERO, 15.0, Color(marker_color.r, marker_color.g, marker_color.b, 0.12 + 0.08 * pulse))
+	draw_arc(Vector2.ZERO, 14.0, 0.0, TAU, 20, Color(marker_color.r, marker_color.g, marker_color.b, 0.5 * pulse), 1.5)

@@ -1,4 +1,5 @@
 extends CharacterBody2D
+const Assets := preload("res://scripts/assets.gd")
 ## Герой (M1): движение WASD/стрелки, уворот-отпрыг на Space,
 ## удар ближнего боя ЛКМ в сторону курсора. Примитивы вместо спрайтов — арт в M8.
 
@@ -24,6 +25,8 @@ var _mana_regen_acc := 0.0
 var _spell_cd := {}               # id заклинания -> остаток кулдауна, сек
 var _lantern: PointLight2D = null
 var _flicker_time := 0.0
+var _sprite: Sprite2D = null      # спрайт воина 32×32 (M9)
+var _bob_time := 0.0              # фаза бобинга ходьбы / дыхания в покое
 var _sk: Dictionary = {}          # постоянные бонусы дерева навыков (M7)
 var _temp_dmg_left := 0.0         # временное усиление (заклинание «Перегрузка», M7)
 var _temp_dmg := 0
@@ -95,6 +98,14 @@ func _ready() -> void:
 	circle.radius = float(p["radius"])
 	shape.shape = circle
 	add_child(shape)
+	# спрайт воина (M9): высота ~3.2 радиуса, ноги чуть ниже центра коллизии
+	_sprite = Sprite2D.new()
+	var hero_tex: Texture2D = Assets.sprite("img:knight")
+	_sprite.texture = hero_tex
+	var h := float(p["radius"]) * 3.2
+	_sprite.scale = Vector2.ONE * (h / float(hero_tex.get_height()))
+	_sprite.position = Vector2(0, -h * 0.15)
+	add_child(_sprite)
 	var cam := Camera2D.new()
 	cam.name = "Camera"
 	cam.zoom = Vector2(2, 2)
@@ -148,6 +159,14 @@ func _physics_process(delta: float) -> void:
 	if dead:
 		return
 	_flicker_time += delta
+	# бобинг (M9): частый в движении, медленный «дыхание» в покое
+	var moving := velocity.length() > 5.0
+	_bob_time += delta * (11.0 if moving else 2.2)
+	if _sprite != null:
+		var amp := 1.6 if moving else 0.5
+		_sprite.position.y = -float(p["radius"]) * 0.48 - absf(sin(_bob_time)) * amp
+		if absf(facing.x) > 0.05:
+			_sprite.flip_h = facing.x < 0.0
 	if _lantern != null:
 		# дыхание факела: лёгкое неровное мерцание яркости
 		_lantern.energy = LANTERN_ENERGY * (0.94
@@ -308,9 +327,7 @@ func dash_ready_fraction() -> float:
 
 
 func _draw() -> void:
-	draw_circle(Vector2.ZERO, float(p["radius"]), Color("#e0b060"))
-	draw_circle(Vector2.ZERO, float(p["radius"]) * 0.5, Color("#b5884a"))
-	# короткий взмах сразу после удара
+	# тело героя — спрайт воина (M9); здесь только боевые индикаторы
 	if _attack_cd > float(p["attack_cooldown"]) - 0.15:
 		draw_line(Vector2.ZERO, facing * float(p["attack_range"]), Color(1.0, 0.9, 0.6, 0.8), 3.0)
 	if _invuln > 0.0:

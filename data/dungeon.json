@@ -41,6 +41,12 @@
 		"enemy_drop_chance": 1.0,
 		"rune_per_chest": 1
 	},
+	"sprites": {
+		"mana": "k:116",
+		"spikes": "k:41",
+		"mine": "k:129",
+		"dart": "k:103"
+	},
 	"biome_weights": { "ruins": 40, "mutant_forest": 25, "crystal_caves": 20, "ash_wastes": 15 },
 	"biomes": {
 		"ruins": {
@@ -49,6 +55,8 @@
 			"wall_color": "#241f1d",
 			"bg_color": "#141110",
 			"exit_color": "#d8c27a",
+			"floor_sprite": "k:28",
+			"wall_sprite": "k:40",
 			"ambient": "#090910",
 			"loot_bonus": 0,
 			"pollution_on_visit": 0.0,
@@ -60,6 +68,8 @@
 			"wall_color": "#1c2a18",
 			"bg_color": "#0d140b",
 			"exit_color": "#9fd45a",
+			"floor_sprite": "k:28",
+			"wall_sprite": "k:40",
 			"ambient": "#070d07",
 			"enemy_weights": { "mutant": 40, "brute": 25, "spitter": 20, "rat": 15 },
 			"loot_bonus": 1,
@@ -72,6 +82,8 @@
 			"wall_color": "#1a2b33",
 			"bg_color": "#0b1418",
 			"exit_color": "#4dd0e1",
+			"floor_sprite": "k:28",
+			"wall_sprite": "k:40",
 			"ambient": "#081014",
 			"enemy_weights": { "crawler": 40, "wisp": 25, "shardling": 25 },
 			"loot_bonus": 1,
@@ -84,6 +96,8 @@
 			"wall_color": "#2b2220",
 			"bg_color": "#120d0c",
 			"exit_color": "#ff8a65",
+			"floor_sprite": "k:28",
+			"wall_sprite": "k:40",
 			"ambient": "#0d0806",
 			"enemy_weights": { "ash_hound": 35, "dust_stalker": 30, "cinder": 30 },
 			"loot_bonus": 2,
