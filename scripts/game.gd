@@ -62,6 +62,46 @@ func _process(delta: float) -> void:
 		city_sim.tick(delta)
 
 
+## --- Платформенные мелочи (M9): полноэкранный режим с запоминанием ---------
+
+const SETTINGS_PATH := "user://settings.cfg"
+var fullscreen := false
+
+
+func _ready() -> void:
+	var cf := ConfigFile.new()
+	if cf.load(SETTINGS_PATH) == OK:
+		fullscreen = bool(cf.get_value("video", "fullscreen", false))
+	if fullscreen:
+		_apply_window_mode()
+
+
+func set_fullscreen(on: bool) -> void:
+	if fullscreen == on:
+		return
+	fullscreen = on
+	_apply_window_mode()
+	var cf := ConfigFile.new()
+	cf.set_value("video", "fullscreen", fullscreen)
+	cf.save(SETTINGS_PATH)
+
+
+func toggle_fullscreen() -> void:
+	set_fullscreen(not fullscreen)
+
+
+func _apply_window_mode() -> void:
+	DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_FULLSCREEN if fullscreen
+			else DisplayServer.WINDOW_MODE_WINDOWED)
+
+
+func _input(event: InputEvent) -> void:
+	# F11 — полноэкранный режим из любой сцены
+	if event is InputEventKey and event.pressed and not event.echo \
+			and event.physical_keycode == KEY_F11:
+		toggle_fullscreen()
+
+
 ## Создать город с настройками старта (новая игра). Рюкзак и спеллбук очищаются.
 ## Новая игра — новый мир (M8): карта мира генерируется заново.
 func new_city() -> void:

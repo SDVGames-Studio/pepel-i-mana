@@ -31,6 +31,18 @@ func _ready() -> void:
 	new_game_button.pressed.connect(_on_new_game_pressed)
 	continue_button.pressed.connect(_on_continue_pressed)
 	exit_button.pressed.connect(_on_exit_pressed)
+	_build_fullscreen_check()
+
+
+## Галочка полноэкранного режима (M9): F11 работает в любой сцене,
+## выбор запоминается в user://settings.cfg.
+func _build_fullscreen_check() -> void:
+	var check := CheckButton.new()
+	check.text = Loc.t("menu.fullscreen")
+	check.button_pressed = Game.fullscreen
+	check.focus_mode = Control.FOCUS_NONE
+	check.toggled.connect(func(on: bool) -> void: Game.set_fullscreen(on))
+	($VBox as VBoxContainer).add_child(check)
 
 
 func _read_version() -> String:

@@ -32,6 +32,23 @@ var _rng := RandomNumberGenerator.new()
 var _loot_rng := RandomNumberGenerator.new()
 var _zones: Array = []            # зоны «Терновых шипов»: {pos, radius, until, acc, dps}
 var _zone_time := 0.0
+var _pause_layer: CanvasLayer = null   # пауза данжа (M9, Esc)
+var _pause_overlay = null
+
+
+## Пауза данжа (M9): Esc — вуаль + «Продолжить / В меню».
+func _toggle_pause() -> void:
+	if get_tree().paused:
+		return  # закрытие оверлея делает сам оверлей (ALWAYS)
+	_pause_overlay.open()
+
+
+func _build_pause() -> void:
+	_pause_layer = CanvasLayer.new()
+	_pause_layer.layer = 50
+	add_child(_pause_layer)
+	_pause_overlay = load("res://scripts/pause_overlay.gd").new()
+	_pause_layer.add_child(_pause_overlay)
 
 
 func _ready() -> void:
@@ -68,6 +85,7 @@ func _ready() -> void:
 	hud.init(hero, gen, loot_data)
 	add_child(hud)
 	hud.minimap.setup(gen)
+	_build_pause()
 	# дикий регион: посещение леса-мутанта добавляет городу загрязнения (M5)
 	var pol := float(biome.get("pollution_on_visit", 0.0))
 	if pol > 0.0 and Game.city_sim != null:
@@ -93,7 +111,9 @@ func _pick_biome() -> Dictionary:
 
 
 func _process(delta: float) -> void:
-	if hero.dead:
+	if Input.is_action_just_pressed("ui_cancel"):
+		_toggle_pause()
+	if get_tree().paused or hero.dead:
 		return
 	_zone_time += delta
 	_update_zones()
@@ -311,7 +331,16 @@ func _pick_enemy_data() -> Dictionary:
 
 func _spawn_pickup(kind: String, item_id: String, pos: Vector2) -> void:
 	var pickup = PickupScript.new()
-	pickup.setup(kind, item_id)
+	# спрайт лута (M9): из dungeon.json -> sprites (мана) или loot.json -> items (предмет)
+	var ref := ""
+	if kind == "mana":
+		ref = String(params.get("sprites", {}).get("mana", "k:116"))
+	else:
+		for it: Dictionary in loot_data.get("items", []):
+			if String(it["id"]) == item_id:
+				ref = String(it.get("sprite", ""))
+				break
+	pickup.setup(kind, item_id, ref)
 	pickup.position = pos
 	pickup.collected.connect(_on_pickup_collected)
 	add_child(pickup)

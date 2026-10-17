@@ -1,6 +1,6 @@
 {
 	"menu.title": "Пепел и Мана",
-	"menu.version": "версия %s — этап M8",
+	"menu.version": "версия %s — этап M9",
 	"menu.new_game": "Новая игра",
 	"menu.continue_city": "Продолжить игру",
 	"menu.exit": "Выход",
@@ -14,6 +14,10 @@
 	"menu.back": "Назад",
 	"menu.test_mode": "Тест-режим: много ресурсов, рун и добычи",
 	"menu.conflicts": "Ссоры и воровство среди жителей (M4)",
+	"menu.fullscreen": "Полноэкранный режим (F11)",
+	"menu.paused": "Пауза",
+	"menu.resume": "Продолжить",
+	"menu.quit_to_menu": "Выйти в меню",
 	"menu.new_game_warn": "Внимание: идёт другая игра — новая сотрёт её безвозвратно!",
 	"city.back_hint": "Esc — в меню, Tab — жители, C — летопись, R — магия",
 	"city.last_run_ok": "Добыча доставлена в город: %s",
