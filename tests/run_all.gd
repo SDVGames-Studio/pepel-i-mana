@@ -212,6 +212,7 @@ func _initialize() -> void:
 	_test_m6()
 	_test_m7()
 	_test_m8()
+	_test_m9()
 	if _fails == 0:
 		print("OK: все тесты пройдены")
 		quit(0)
@@ -2840,3 +2841,70 @@ func sim_m8_setup(map_b, scfg: Dictionary) -> void:
 	_check(border_ok, "рамка карты — зона перехода: border_dir по всем краям")
 	_check(cm0.nearest_walkable(Vector2i(0, 0)) != Vector2i(-1, -1),
 			"nearest_walkable всегда возвращает проходимый тайл")
+
+
+# --- M9: полировка — спрайты, ассеты, платформенные мелочи -------------------
+
+const _ASSETS := preload("res://scripts/assets.gd")
+
+func _test_m9() -> void:
+	print("[M9: спрайты и полировка]")
+	var assets := _ASSETS
+	# базовые файлы на месте
+	for path in ["res://assets/sprites/kenney.png", "res://assets/sprites/kenney_sprites.png",
+			"res://assets/sprites/knight.png", "res://assets/sprites/tree.png",
+			"res://assets/sprites/rock.png", "res://assets/sprites/ore.png", "res://icon.png"]:
+		_check(FileAccess.file_exists(path), "файл ассета есть: " + path)
+	# резолв ссылок: Kenney-тайлы, воин, здание
+	_check(assets.sprite("k:84") != null, "k:84 (маг Kenney) загружается")
+	_check(assets.sprite("k:28") != null, "k:28 (пол данжа) загружается")
+	_check(assets.sprite("img:knight") != null, "img:knight (герой 32x32) загружается")
+	_check(assets.sprite("b:house") != null, "b:house (сгенерированное здание) загружается")
+	_check(assets.sprite("") == null, "пустая ссылка — null, без ошибок")
+	# каждый враг, профессия, здание и предмет имеют рабочий спрайт
+	var missing := 0
+	for e: Dictionary in _read_json("res://data/enemies.json"):
+		if String(e.get("sprite", "")) == "" or assets.sprite(String(e["sprite"])) == null:
+			missing += 1
+	_check(missing == 0, "у всех врагов (%d) задан и загружается спрайт" % missing)
+	var cfg: Dictionary = _read_json("res://data/city.json")
+	missing = 0
+	for prof: Dictionary in cfg["professions"]:
+		if String(prof.get("sprite", "")) == "" or assets.sprite(String(prof["sprite"])) == null:
+			missing += 1
+	_check(missing == 0, "у всех профессий задан спрайт (недостающих: %d)" % missing)
+	missing = 0
+	for b: Dictionary in cfg["buildings"]:
+		var ref := String(b.get("sprite", ""))
+		if ref == "" or assets.sprite(ref) == null:
+			missing += 1
+	_check(missing == 0 and cfg["buildings"].size() == 20,
+			"у всех 20 зданий есть PNG-спрайт (недостающих: %d)" % missing)
+	missing = 0
+	for it: Dictionary in _read_json("res://data/loot.json")["items"]:
+		if String(it.get("sprite", "")) == "" or assets.sprite(String(it["sprite"])) == null:
+			missing += 1
+	_check(missing == 0, "у всех предметов лута задан спрайт (недостающих: %d)" % missing)
+	# тайлы биомов: у каждого биома floor/wall спрайт и он загружается
+	var dcfg: Dictionary = _read_json("res://data/dungeon.json")
+	missing = 0
+	for id in dcfg["biomes"]:
+		var b: Dictionary = dcfg["biomes"][id]
+		if not b.has("floor_sprite") or not b.has("wall_sprite") \
+				or assets.sprite(String(b["floor_sprite"])) == null \
+				or assets.sprite(String(b["wall_sprite"])) == null:
+			missing += 1
+	_check(missing == 0, "у всех 4 биомов заданы тайлы пола и стен (недостающих: %d)" % missing)
+	_check(String(dcfg.get("sprites", {}).get("mana", "")) != "",
+			"спрайт мана-кристалла задан в dungeon.json -> sprites")
+	# код спрайтовых скриптов компилируется (Assets preload не рвёт остальные)
+	for path in ["res://scripts/city_view.gd", "res://scripts/dungeon_view.gd",
+			"res://scripts/hero.gd", "res://scripts/enemy.gd", "res://scripts/pickup.gd",
+			"res://scripts/chest.gd", "res://scripts/trap.gd", "res://scripts/exit_marker.gd",
+			"res://scripts/city_terrain.gd", "res://scripts/world_view.gd",
+			"res://scripts/pause_overlay.gd", "res://scripts/game.gd", "res://scripts/main_menu.gd"]:
+		var s: Variant = load(path)
+		_check(s != null, path.get_file() + " компилируется")
+	# версия этапа
+	_check(String(_read_json("res://data/version.json")["version"]).begins_with("0.13"),
+			"версия проекта 0.13.x (этап M9)")
