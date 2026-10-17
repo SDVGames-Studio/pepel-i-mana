@@ -2904,7 +2904,7 @@ func _test_m9() -> void:
 			"res://scripts/city_terrain.gd", "res://scripts/world_view.gd",
 			"res://scripts/pause_overlay.gd", "res://scripts/game.gd", "res://scripts/main_menu.gd"]:
 		var s: Variant = load(path)
-		_check(s != null, path.get_file() + " компилируется")
+		_check(s != null and (s as Script).can_instantiate(), path.get_file() + " компилируется")
 	# версия этапа
 	_check(String(_read_json("res://data/version.json")["version"]).begins_with("0.13"),
 			"версия проекта 0.13.x (этап M9)")

@@ -25,8 +25,8 @@ func _draw() -> void:
 			var tile: int = map.grid[y][x]
 			var rect := Rect2(x * map.ts, y * map.ts, map.ts, map.ts)
 			var base := grass if (x + y) % 2 == 0 else grass_alt
-			var cx := x * map.ts + map.ts / 2.0
-			var cy := y * map.ts + map.ts / 2.0
+			var cx: float = x * float(map.ts) + float(map.ts) / 2.0
+			var cy: float = y * float(map.ts) + float(map.ts) / 2.0
 			match tile:
 				map.TILE_GRASS:
 					draw_rect(rect, base)
