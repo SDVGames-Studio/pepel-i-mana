@@ -1,4 +1,5 @@
 extends Node2D
+const Assets := preload("res://scripts/assets.gd")
 ## Отрисовка карты мира (M8): биомы цветом, туман войны, точки интереса,
 ## маршрут героя. Только показ — логика в world_map.gd/world_sim.gd.
 
@@ -10,6 +11,17 @@ const KIND_COLORS := {
 	"settlement": "#ffd54f",
 	"caravan": "#ffb300",
 	"obelisk": "#4dd0e1",
+}
+
+# спрайты точек интереса (M9): Kenney + сгенерированные здания
+const KIND_SPRITES := {
+	"city": "b:house",
+	"dungeon": "b:altar",
+	"ruins": "k:65",
+	"camp": "k:112",
+	"settlement": "k:85",
+	"caravan": "k:98",
+	"obelisk": "b:statue",
 }
 
 var map = null
@@ -55,10 +67,10 @@ func _draw() -> void:
 		_draw_poi(poi, ts)
 	# маршрут в пути
 	_draw_route(ts)
-	# герой
-	draw_circle(hero_px + Vector2(0, -2), 7.0, Color("#2b2b2b"))
-	draw_circle(hero_px + Vector2(0, -2), 5.0, Color("#f5f5f5"))
-	draw_rect(Rect2(hero_px + Vector2(-5, 3), Vector2(10, 6)), Color("#8d6e63"))
+	# герой (M9): спрайт воина с лёгким бобингом и тенью
+	var bob := absf(sin(_time * 6.0)) * 2.0
+	draw_circle(hero_px + Vector2(0, 6), 6.0, Color(0, 0, 0, 0.3))
+	Assets.draw_ref(self, "img:knight", hero_px + Vector2(0, -2 - bob), 26.0)
 
 
 func _tile_color(p: Vector2i) -> Color:
@@ -76,6 +88,25 @@ func _tile_color(p: Vector2i) -> Color:
 func _draw_poi(poi: Dictionary, ts: float) -> void:
 	var pos: Vector2 = Vector2(poi["tile"]) * ts + Vector2(ts, ts) / 2.0
 	var color := Color(String(KIND_COLORS.get(String(poi["kind"]), "#ffffff")))
+	# подложка-пятно цвета точки (видно поверх биома) + спрайт (M9)
+	var pulse := 0.8 + 0.2 * sin(_time * 2.5)
+	draw_circle(pos, ts * 0.62 * pulse, Color(color.r, color.g, color.b, 0.18))
+	var ref: String = KIND_SPRITES.get(String(poi["kind"]), "")
+	if ref != "":
+		var fallen := String(poi["kind"]) == "settlement" and String(poi["state"]) == "fallen"
+		Assets.draw_ref(self, ref, pos + Vector2(0, -2), ts * 1.3, false,
+				Color(0.55, 0.5, 0.5) if fallen else Color.WHITE)
+		if fallen:
+			draw_line(pos + Vector2(-9, -11), pos + Vector2(9, 7), Color("#1a1a1a"), 3.0)
+			draw_line(pos + Vector2(9, -11), pos + Vector2(-9, 7), Color("#1a1a1a"), 3.0)
+	else:
+		_draw_poi_fallback(poi, pos, color)
+	if poi["tile"] == selected_tile:
+		draw_rect(Rect2(pos - Vector2(16, 16), Vector2(32, 32)), Color("#ffffff"), false, 2.0)
+
+
+## Запасной вид точек (примитивы, M8) — если спрайт не задан.
+func _draw_poi_fallback(poi: Dictionary, pos: Vector2, color: Color) -> void:
 	match String(poi["kind"]):
 		"city":
 			draw_rect(Rect2(pos - Vector2(14, 14), Vector2(28, 28)), color)
@@ -108,8 +139,6 @@ func _draw_poi(poi: Dictionary, ts: float) -> void:
 		"obelisk":
 			draw_rect(Rect2(pos + Vector2(-4, -13), Vector2(8, 26)), color)
 			draw_rect(Rect2(pos + Vector2(-2, -11), Vector2(3, 22)), color.lightened(0.3))
-	if poi["tile"] == selected_tile:
-		draw_rect(Rect2(pos - Vector2(16, 16), Vector2(32, 32)), Color("#ffffff"), false, 2.0)
 
 
 func _draw_diamond(pos: Vector2, r: float, color: Color) -> void:
