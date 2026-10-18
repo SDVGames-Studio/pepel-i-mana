@@ -18,6 +18,10 @@ var _toast_time := 0.0
 var _pause_btn: Button
 var _speed_btns: Array = []
 var _bld_btns: Array = []
+var _cat_btns: Array = []          # [{btn, cat_id}] — категории построек (M11)
+var _cat_popup: PopupPanel = null  # выпадающий список мастерских/ресурсных и т.д.
+var _forest_label: Label = null    # гнев леса (M11)
+var _necro_label: Label = null     # тьма кладбища (M11)
 var _residents_panel: PanelContainer
 var _residents_text: RichTextLabel
 var _chron_panel: PanelContainer
@@ -85,6 +89,7 @@ func refresh() -> void:
 	_hungry_label.visible = float(sim.res["food"]) <= 0.0
 	_refresh_pollution()
 	_refresh_threat()
+	_refresh_forest_necro()
 	_pause_btn.set_pressed_no_signal(bool(sim.paused))
 	for i in _speed_btns.size():
 		_speed_btns[i].set_pressed_no_signal(int(sim.speed) == int(cfg["speeds"][i]))
@@ -485,6 +490,43 @@ func _pollution_text() -> String:
 	return text
 
 
+## Индикаторы вишлиста (M11): гнев леса и тьма кладбища.
+func _refresh_forest_necro() -> void:
+	var fcfg: Dictionary = cfg.get("forest", {})
+	if _forest_label != null:
+		if fcfg.is_empty() or float(sim.forest_anger) < 0.5:
+			_forest_label.visible = false
+		else:
+			_forest_label.visible = true
+			_forest_label.text = Loc.t("city.forest_anger") % int(sim.forest_anger)
+			var col := "#a5d6a7"
+			if float(sim.forest_anger) >= float(fcfg.get("boss_anger", 26.0)):
+				col = "#ff5252"
+			elif float(sim.forest_anger) >= float(fcfg.get("spirit_anger", 14.0)):
+				col = "#ffb74d"
+			_forest_label.add_theme_color_override("font_color", Color(col))
+	if _necro_label != null:
+		var has_cem := false
+		for b in sim.buildings:
+			if String(b["type"]) == "cemetery" and bool(b["done"]):
+				has_cem = true
+				break
+		if not has_cem:
+			_necro_label.visible = false
+			return
+		_necro_label.visible = true
+		var text := Loc.t("city.necro_label") % int(round(float(sim.necro_dark) * 100.0))
+		if bool(sim.necro_known):
+			text += " · " + Loc.t("city.necro_army") % int(sim.necro_army)
+		_necro_label.text = text
+		var ncol := "#b0bec5"
+		if sim.necro_army >= int(cfg.get("necro", {}).get("rise_at", 8)):
+			ncol = "#ce93d8"
+		elif bool(sim.necro_known):
+			ncol = "#9fa8da"
+		_necro_label.add_theme_color_override("font_color", Color(ncol))
+
+
 func _build() -> void:
 	var root := Control.new()
 	root.name = "Root"
@@ -512,6 +554,12 @@ func _build() -> void:
 	tl_box.add_child(_pollution_label)
 	_threat_label = _label(20)
 	tl_box.add_child(_threat_label)
+	# гнев леса (M11): показывается, когда лес хоть немного тронули
+	_forest_label = _label(18)
+	tl_box.add_child(_forest_label)
+	# тьма кладбища (M11): после постройки кладбища
+	_necro_label = _label(18)
+	tl_box.add_child(_necro_label)
 
 	# --- правый верх: пауза и скорость
 	var top_right := PanelContainer.new()
@@ -589,7 +637,7 @@ func _build() -> void:
 	_chron_text.custom_minimum_size = Vector2(390, 0)
 	ch_scroll.add_child(_chron_text)
 
-	# --- низ: подсказка + панель зданий
+	# --- низ: подсказка, панель категорий постройки (M11), кей-бар -------------
 	var bottom := VBoxContainer.new()
 	bottom.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
 	bottom.grow_horizontal = Control.GROW_DIRECTION_BOTH
@@ -600,20 +648,45 @@ func _build() -> void:
 	_hint_label = _label(20)
 	_hint_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	bottom.add_child(_hint_label)
+	# кей-бар: горячие клавиши всегда перед глазами (M11)
+	var keybar := PanelContainer.new()
+	keybar.add_theme_stylebox_override("panel", _panel_style(true))
+	var keylabel := _label(14)
+	keylabel.text = Loc.t("city.keys_bar")
+	keylabel.modulate = Color(1, 1, 1, 0.75)
+	keybar.add_child(keylabel)
+	bottom.add_child(keybar)
 	var panel := PanelContainer.new()
 	panel.add_theme_stylebox_override("panel", _panel_style())
 	bottom.add_child(panel)
-	var scroll := ScrollContainer.new()
-	scroll.custom_minimum_size = Vector2(1180, 244)
-	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
-	scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
-	panel.add_child(scroll)
-	var bld_box := HFlowContainer.new()
-	bld_box.add_theme_constant_override("separation", 6)
-	bld_box.custom_minimum_size = Vector2(1160, 0)
-	scroll.add_child(bld_box)
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 8)
+	panel.add_child(row)
 
-	# --- инструменты зон и дорог (M6) ---
+	# категории построек (M11): «навёлся или нажал — выпал список мастерских»
+	_cat_popup = PopupPanel.new()
+	_cat_popup.add_theme_stylebox_override("panel", _panel_style())
+	_cat_popup.mouse_filter = Control.MOUSE_FILTER_STOP
+	root.add_child(_cat_popup)
+	var cat_list: Array = ["living", "resource", "craft", "defence", "magic", "special"]
+	for cat_id in cat_list:
+		if not (cfg.get("cats", {}) as Dictionary).has(cat_id):
+			continue
+		var cid := String(cat_id)
+		var btn := Button.new()
+		btn.text = Loc.t("cat." + cid)
+		btn.tooltip_text = Loc.t("cat." + cid + "_tip")
+		btn.custom_minimum_size = Vector2(128, 52)
+		btn.add_theme_font_size_override("font_size", 18)
+		btn.add_theme_color_override("font_color", Color(String(cfg["cats"][cid]["color"])))
+		btn.focus_mode = Control.FOCUS_NONE
+		btn.pressed.connect(func() -> void: _open_cat(cid, btn))
+		row.add_child(btn)
+		_cat_btns.append({"btn": btn, "cat_id": cid})
+	var sep := VSeparator.new()
+	row.add_child(sep)
+
+	# --- инструменты зон, дорог и посадки (M6/M11) ---
 	var tools := [["field", func() -> void: city.set_zone_mode("field")],
 			["pasture", func() -> void: city.set_zone_mode("pasture")],
 			["living", func() -> void: city.set_zone_mode("living")]]
@@ -622,35 +695,60 @@ func _build() -> void:
 		var zbtn := Button.new()
 		zbtn.text = Loc.t("zone." + zone_type)
 		zbtn.tooltip_text = Loc.t("city.zone_tooltip") % Loc.t("zone." + zone_type)
-		zbtn.custom_minimum_size = Vector2(110, 52)
-		zbtn.add_theme_font_size_override("font_size", 18)
+		zbtn.custom_minimum_size = Vector2(104, 52)
+		zbtn.add_theme_font_size_override("font_size", 17)
 		zbtn.focus_mode = Control.FOCUS_NONE
 		zbtn.pressed.connect(t[1])
-		bld_box.add_child(zbtn)
+		row.add_child(zbtn)
 	var road_btn := Button.new()
 	road_btn.text = Loc.t("city.road")
 	road_btn.tooltip_text = Loc.t("city.road_tooltip")
-	road_btn.custom_minimum_size = Vector2(110, 52)
-	road_btn.add_theme_font_size_override("font_size", 18)
+	road_btn.custom_minimum_size = Vector2(104, 52)
+	road_btn.add_theme_font_size_override("font_size", 17)
 	road_btn.focus_mode = Control.FOCUS_NONE
 	road_btn.pressed.connect(func() -> void: city.set_road_mode(not city.road_mode))
-	bld_box.add_child(road_btn)
-
-	for b in cfg["buildings"]:
-		var type_id := String(b["id"])
-		var btn := Button.new()
-		btn.text = Loc.t(String(b["loc"]))
-		btn.tooltip_text = _bld_tooltip(b)
-		btn.custom_minimum_size = Vector2(150, 52)
-		btn.add_theme_font_size_override("font_size", 18)
-		btn.focus_mode = Control.FOCUS_NONE   # Tab не должен гонять фокус по кнопкам
-		btn.pressed.connect(func() -> void: city.set_build_mode(type_id))
-		bld_box.add_child(btn)
-		_bld_btns.append(btn)
+	row.add_child(road_btn)
+	var plant_btn := Button.new()
+	plant_btn.text = Loc.t("city.plant")
+	plant_btn.tooltip_text = Loc.t("city.plant_tooltip")
+	plant_btn.custom_minimum_size = Vector2(104, 52)
+	plant_btn.add_theme_font_size_override("font_size", 17)
+	plant_btn.focus_mode = Control.FOCUS_NONE
+	plant_btn.pressed.connect(func() -> void: city.set_plant_mode(not city.plant_mode))
+	row.add_child(plant_btn)
 
 	_build_magic_panel(root)
 	_build_research_panel(root)
 	_build_market_panel(root)
+
+
+## Выпадающий список построек категории (M11).
+func _open_cat(cat_id: String, btn: Button) -> void:
+	for child in _cat_popup.get_children():
+		child.queue_free()
+	var box := VBoxContainer.new()
+	box.add_theme_constant_override("separation", 4)
+	_cat_popup.add_child(box)
+	for b in cfg["buildings"]:
+		if String(b.get("cat", "")) != cat_id:
+			continue
+		var type_id := String(b["id"])
+		var bbtn := Button.new()
+		bbtn.text = Loc.t(String(b["loc"]))
+		bbtn.tooltip_text = _bld_tooltip(b)
+		bbtn.custom_minimum_size = Vector2(240, 44)
+		bbtn.add_theme_font_size_override("font_size", 17)
+		bbtn.focus_mode = Control.FOCUS_NONE
+		bbtn.alignment = HORIZONTAL_ALIGNMENT_LEFT
+		bbtn.pressed.connect(func() -> void:
+			city.set_build_mode(type_id)
+			_cat_popup.hide())
+		box.add_child(bbtn)
+	_bld_btns = []
+	_cat_popup.reset_size()
+	var gs: Vector2 = btn.get_screen_position()
+	_cat_popup.position = Vector2(gs.x, maxf(8.0, gs.y - _cat_popup.size.y - 8.0))
+	_cat_popup.popup()
 
 
 ## --- Панель дисциплин города (M7, клавиша U) -------------------------------
@@ -772,6 +870,9 @@ func _residents_bbcode() -> String:
 				for p_id in extras:
 					extra_names.append(_prof_loc(String(p_id)))
 				prof_text += " [color=#80cbc4](+%s)[/color]" % ", ".join(extra_names)
+			# тайный некромант (M11): после раскрытия виден в списке жителей
+			if String(r.get("secret", "")) == "necromancer" and bool(sim.necro_known):
+				prof_text += " [color=#ba68c8](%s)[/color]" % Loc.t("city.necro_tag")
 			parts.append(prof_text)
 			var traits := PackedStringArray()
 			for t_id in r.get("traits", []):
@@ -866,11 +967,20 @@ func _toggle_btn(text: String, on_press: Callable) -> Button:
 	return b
 
 
-func _panel_style() -> StyleBoxFlat:
+## Рамочный стиль панелей (M11): тёмный фон, светлая окантовка, скругления.
+func _panel_style(compact := false) -> StyleBoxFlat:
 	var style := StyleBoxFlat.new()
-	style.bg_color = Color(0.08, 0.07, 0.06, 0.85)
-	style.set_corner_radius_all(6)
-	style.set_content_margin_all(10)
+	style.bg_color = Color(0.07, 0.06, 0.05, 0.9)
+	style.set_corner_radius_all(8)
+	style.set_border_width_all(2)
+	style.border_color = Color(0.42, 0.36, 0.24, 0.9)
+	if compact:
+		style.content_margin_left = 10.0
+		style.content_margin_right = 10.0
+		style.content_margin_top = 4.0
+		style.content_margin_bottom = 4.0
+	else:
+		style.set_content_margin_all(12)
 	return style
 
 

@@ -86,6 +86,18 @@ var _storm_struck_at := 0.0     # время последнего удара б�
 var researched: Array = []      # изученные дисциплины (M7): id тиров research.json
 var research_cfg: Dictionary = {}  # data/research.json — 3 ветки прогрессии города
 
+# --- M11: вишлист (духи леса, некромант, добыча скалы) ----------------------
+var forest_anger := 0.0         # гнев леса: растёт от вырубки, спадает от посадки
+var necro_dark := 0.0           # тьма кладбища 0..1 — растёт, пока некромант работает
+var necro_army := 0             # тайная армия скелетов
+var necro_known := false        # некромантия раскрыта городу
+var necro_ghosts: Array = []    # ночные призывы у кладбища (для отрисовки): [px]
+var terrain_dirty := false      # ландшафт менялся (спил/посадка/выработка) — перерисовать слой
+var _raid_kind := "mutant"      # вид текущей волны: mutant | forest | undead
+var _forest_warned := false     # предупреждение «лес гневается» уже было
+var _forest_cooldown := 0.0     # время следующей атаки леса, сек
+var _necro_chosen := false      # житель-некромант уже выбран для кладбища
+
 const PEOPLE_CFG_PATH := "res://data/residents.json"
 const RESEARCH_CFG_PATH := "res://data/research.json"
 
@@ -124,6 +136,16 @@ func setup(city_map, city_cfg: Dictionary, residents_count: int, level: String) 
 	zones = []
 	_zone_id = 1
 	_livestock_id = 1
+	forest_anger = 0.0
+	necro_dark = 0.0
+	necro_army = 0
+	necro_known = false
+	necro_ghosts = []
+	terrain_dirty = false
+	_raid_kind = "mutant"
+	_forest_warned = false
+	_forest_cooldown = 0.0
+	_necro_chosen = false
 	for i in int(cfg.get("hunting", {}).get("animals", 8)):
 		animals.append(_new_animal())
 	_next_raid_at = 0.0
@@ -727,6 +749,9 @@ func _damage_building(b: Dictionary, amount: float) -> void:
 	if _def(b).get("effect", "") in ["wall", "gate"]:
 		map.set_solid(b["tile"], false)
 	buildings.erase(b)
+	# кладбище разрушено (мутантами, бурей) — тайная армия рассыпается (M11)
+	if String(b["type"]) == "cemetery":
+		_necro_purge()
 	events.append({"type": "razed", "bld": String(b["type"])})
 	_chron("chron.razed", String(b["type"]))
 
@@ -957,6 +982,7 @@ func tick(dt_raw: float) -> void:
 	_update_animals(dt)
 	_update_livestock(dt)
 	_update_zones(dt, day_len)
+	_update_forest(dt, day_len)
 	for r in residents:
 		_update_resident(r, dt)
 	# люди (M4): раз в игровой день — преемник старосты, болезни, беженцы, рождения, стройка, истории
@@ -978,6 +1004,7 @@ func tick(dt_raw: float) -> void:
 		_roll_market()
 		_tick_caravans()
 		_tick_orchards()
+		_roll_necro()
 	_update_gates()   # достроенные за тик вышки/ворота сразу меняют проходимость
 
 
@@ -1307,6 +1334,7 @@ func _do_work(r: Dictionary, bld: Dictionary, dt: float) -> void:
 
 ## Добытчик (лесоруб/каменотёс) работает у источника: ходит к дереву или скале
 ## рядом со зданием и добывает именно там (заказчик). Источника нет — работает у здания.
+## M11: лесоруб РУБИТ дерево — за chop_days оно падает (пень + гнев леса).
 func _gather_work(r: Dictionary, bld: Dictionary, dt: float) -> void:
 	if float(bld.get("stun_left", 0.0)) > 0.0:
 		r["state"] = "idle"
@@ -1318,7 +1346,30 @@ func _gather_work(r: Dictionary, bld: Dictionary, dt: float) -> void:
 	if map.tile_of_px(r["pos"]) != res_tile:
 		_move_towards(r, res_tile, dt)
 		return
+	if String(bld["type"]) == "sawmill":
+		_chop_tree(r, dt)
 	_produce_tick(r, bld, dt)
+
+
+## Рубка (M11): накопив chop_days на тайле дерева, лесоруб валит его.
+func _chop_tree(r: Dictionary, dt: float) -> void:
+	var tile: Vector2i = map.tile_of_px(r["pos"])
+	if map.grid[tile.y][tile.x] != map.TILE_TREE:
+		r["chop_t"] = 0.0
+		return
+	var fcfg: Dictionary = cfg.get("forest", {})
+	r["chop_t"] = float(r.get("chop_t", 0.0)) + dt
+	var need := float(fcfg.get("chop_days", 0.5)) * float(cfg["day_length"])
+	if float(r["chop_t"]) < need:
+		return
+	r["chop_t"] = 0.0
+	map.grid[tile.y][tile.x] = map.TILE_GRASS
+	map.stumps[tile] = true
+	terrain_dirty = true
+	forest_anger = clampf(forest_anger + float(fcfg.get("anger_per_tree", 2.5)), 0.0, 100.0)
+	events.append({"type": "tree_felled"})
+	_chron("chron.tree_felled")
+	r["gath_tile"] = Vector2i(-1, -1)
 
 
 ## Тайл, у которого добытчик работает: ближайший к зданию подходящий тайл природы
@@ -1327,7 +1378,8 @@ func _gather_target(r: Dictionary, bld: Dictionary) -> Vector2i:
 	var kinds: Array = [map.TILE_TREE] if String(bld["type"]) == "sawmill" else [map.TILE_ROCK, map.TILE_ORE]
 	var cached: Vector2i = r.get("gath_tile", Vector2i(-1, -1))
 	if cached != Vector2i(-1, -1) and map.in_bounds(cached) and map.is_walkable(cached) \
-			and cached != (bld["tile"] as Vector2i):
+			and cached != (bld["tile"] as Vector2i) \
+			and not (String(bld["type"]) == "sawmill" and map.grid[cached.y][cached.x] != map.TILE_TREE):
 		return cached
 	var radius := int(cfg.get("gather_range", 6))
 	var best_kind := Vector2i(-1, -1)
@@ -1422,6 +1474,10 @@ func _produce_tick(r: Dictionary, bld: Dictionary, dt: float) -> void:
 	if prod.has("res2"):
 		var amount2: float = float(prod["per_day2"]) * portion * boost * production_mult(bld) * work_mult(r)
 		_add_pile(bld, String(prod["res2"]), amount2)
+	# каменотёс вырабатывает тайл гряды (M11): на месте истощённой скалы
+	# вскрывается рудная жила или попадается кристалл — полезные материалы
+	if String(bld["type"]) == "quarry":
+		_deplete_rock(r, bld, portion)
 
 
 ## Куча у здания (M6): производство копится здесь, пока её не унесёт носильщик.
@@ -3207,6 +3263,7 @@ func _spawn_raid(size: int, siege: bool) -> void:
 	var tcfg: Dictionary = cfg.get("threat", {})
 	raid_active = true
 	raid_siege = siege
+	_raid_kind = "mutant"
 	raid_count += 1
 	razed_this_raid = 0
 	# каждая следующая волна сильнее (заказчик): больше размер и прочность тварей
@@ -3312,12 +3369,15 @@ func _nearest_raider(from_px: Vector2, radius_px: float) -> Dictionary:
 
 ## ИИ мутанта: герой рядом — дерётся с героем; здание в досягаемости — ломает;
 ## путь к центру открыт — идёт; заперт стеной — идёт к ближайшей стене/воротам.
+## M11: духи леса в режиме «hunt» гонятся за своей жертвой (лесорубом/каменотёсом).
 ## Возвращает false, если мутант погиб или волне нечего делать (убрать из списка).
 func _raider_update(r: Dictionary, dt: float, tcfg: Dictionary) -> bool:
 	if int(r["hp"]) <= 0:
 		return false
 	r["atk_cd"] = maxf(0.0, float(r["atk_cd"]) - dt)
 	var p: Dictionary = r["p"]
+	if String(r.get("mode", "")) == "hunt":
+		return _spirit_update(r, dt)
 	# герой в городе и рядом — мутант отвлекается на чемпиона (путь как у жителей:
 	# напрямую он резал бы углы сквозь скалы — заказчик видел проходы насквозь)
 	if hero_alive:
@@ -3431,23 +3491,48 @@ func hero_slash(origin_px: Vector2, facing: Vector2, range_px: float, arc_deg: f
 
 
 ## Конец волны: true — отбита (награда), false — осада удалась (город понёс потери).
+## M11: награда и переналадка мутантских волн — только для волн мутантов;
+## лес и неспокойные духи не трогают расписание угроз.
 func _raid_end(defended: bool) -> void:
+	var kind := _raid_kind
 	raid_active = false
 	raiders.clear()
 	var tcfg: Dictionary = cfg.get("threat", {})
+	if kind == "mutant":
+		if defended:
+			var reward := int(tcfg.get("reward_crystals", 2))
+			_add_resource_capped("crystal", reward)
+			for r in residents:
+				r["mood"] = clampf(float(r["mood"]) + float(tcfg.get("repelled_mood", 8.0)), 0.0, 100.0)
+			events.append({"type": "raid_repelled", "crystals": reward})
+			_chron("chron.repelled")
+		else:
+			events.append({"type": "raid_breached", "razed": razed_this_raid})
+			_chron("chron.breach")
+		razed_this_raid = 0
+		_schedule_next_raid()
+		_update_gates()   # ворота снова по правилу стража
+		return
+	# лес (M11): духи ушли или перебиты — лес немного успокаивается
+	var fcfg: Dictionary = cfg.get("forest", {})
 	if defended:
-		var reward := int(tcfg.get("reward_crystals", 2))
-		_add_resource_capped("crystal", reward)
-		for r in residents:
-			r["mood"] = clampf(float(r["mood"]) + float(tcfg.get("repelled_mood", 8.0)), 0.0, 100.0)
-		events.append({"type": "raid_repelled", "crystals": reward})
-		_chron("chron.repelled")
+		forest_anger = maxf(0.0, forest_anger - float(fcfg.get("anger_per_tree", 2.5)) * 4.0)
+		if kind == "forest":
+			for r in residents:
+				r["mood"] = clampf(float(r["mood"]) + 6.0, 0.0, 100.0)
+			events.append({"type": "forest_repelled"})
+			_chron("chron.forest_repelled")
+		elif kind == "undead":
+			for r in residents:
+				r["mood"] = clampf(float(r["mood"]) + float(tcfg.get("repelled_mood", 8.0)), 0.0, 100.0)
+			events.append({"type": "raid_repelled", "crystals": 0})
+			_chron("chron.repelled")
 	else:
-		events.append({"type": "raid_breached", "razed": razed_this_raid})
-		_chron("chron.breach")
+		# духам всё же надоели рабочие / мёртвые разграбили город
+		if kind == "forest":
+			forest_anger = maxf(0.0, forest_anger - float(fcfg.get("anger_per_tree", 2.5)) * 6.0)
 	razed_this_raid = 0
-	_schedule_next_raid()
-	_update_gates()   # ворота снова по правилу стража
+	_update_gates()
 
 
 ## --- магическая буря (M5) ---------------------------------------------------
@@ -3664,3 +3749,338 @@ func _roll_hunter() -> void:
 		events.append({"type": "hunter_trained", "name": String(r["name"])})
 		_assign_jobs()
 		return
+
+
+# --- M11: духи леса ---------------------------------------------------------
+
+## Лес живёт: саженцы растут в деревья, гнев спадает; переполнение гнева —
+## духи нападают на рубящих, при долгом злодействе — Древень с армией леса.
+func _update_forest(dt: float, day_len: float) -> void:
+	var fcfg: Dictionary = cfg.get("forest", {})
+	if fcfg.is_empty():
+		return
+	# посаженное растёт
+	if not map.saplings.is_empty():
+		for tile: Vector2i in map.saplings.keys():
+			var s: Dictionary = map.saplings[tile]
+			s["t"] = float(s.get("t", 0.0)) + dt
+			if float(s["t"]) < float(s.get("grow_days", fcfg.get("grow_days", 1.2))) * day_len:
+				continue
+			map.saplings.erase(tile)
+			if map.grid[tile.y][tile.x] == map.TILE_GRASS and building_at(tile).is_empty():
+				map.grid[tile.y][tile.x] = map.TILE_TREE
+				forest_anger = maxf(0.0, forest_anger - float(fcfg.get("calm_per_tree", 3.0)))
+				events.append({"type": "tree_grown"})
+				_chron("chron.tree_grown")
+			terrain_dirty = true
+	# гнев леса медленно уходит сам
+	forest_anger = maxf(0.0, forest_anger - float(fcfg.get("calm_per_day", 0.6)) * dt / day_len)
+	if raid_active:
+		return
+	if forest_anger >= float(fcfg.get("warn_anger", 8.0)) and not _forest_warned:
+		_forest_warned = true
+		events.append({"type": "forest_warn"})
+		_chron("chron.forest_warn")
+	if forest_anger < float(fcfg.get("spirit_anger", 14.0)) or time < _forest_cooldown:
+		return
+	_spawn_forest_wave(forest_anger >= float(fcfg.get("boss_anger", 26.0)))
+	_forest_cooldown = time + float(fcfg.get("cooldown_days", 1.5)) * day_len
+
+
+## Волна леса: духи охотятся на рубящих; с Древенем — покрупнее.
+func _spawn_forest_wave(boss: bool) -> void:
+	if _enemies_cfg.is_empty():
+		var ed: Variant = _read_json_file("res://data/enemies.json")
+		_enemies_cfg = ed if ed is Array else []
+	var def_spirit: Dictionary = {}
+	var def_boss: Dictionary = {}
+	for d: Dictionary in _enemies_cfg:
+		if String(d["id"]) == "forest_spirit":
+			def_spirit = d
+		elif String(d["id"]) == "forest_boss":
+			def_boss = d
+	if def_spirit.is_empty():
+		return
+	var fcfg: Dictionary = cfg.get("forest", {})
+	raid_active = true
+	raid_siege = false
+	_raid_kind = "forest"
+	# жертвы — те, кто рубит лес и ломает камень
+	var victims: Array = []
+	for r in residents:
+		if String(r["prof"]) in ["lumberjack", "miner", "hunter"] and r["bld"] != null:
+			victims.append(r)
+	if victims.is_empty():
+		for r in residents:
+			if String(r["prof"]) != "" and r["bld"] != null:
+				victims.append(r)
+	var count := int(fcfg.get("boss_spirits", 5)) if boss else int(fcfg.get("spirit_count", 3))
+	for i in count:
+		var vic: Dictionary = victims[_event_rng.randi_range(0, maxi(0, victims.size() - 1))] if not victims.is_empty() else {}
+		raiders.append({
+			"id": _next_id, "type": "forest_spirit", "p": def_spirit,
+			"hp": int(def_spirit["hp"]), "max_hp": int(def_spirit["hp"]),
+			"pos": _spirit_spawn_px(vic), "target": Vector2i(-1, -1),
+			"path": PackedVector2Array(), "atk_cd": 0.0, "mode": "hunt",
+			"victim_id": int(vic["id"]) if not vic.is_empty() else -1,
+			"ttl": float(cfg["day_length"]) * 0.5,
+		})
+		_next_id += 1
+	if boss and not def_boss.is_empty():
+		var vic2: Dictionary = victims[0] if not victims.is_empty() else {}
+		raiders.append({
+			"id": _next_id, "type": "forest_boss", "p": def_boss,
+			"hp": int(def_boss["hp"]), "max_hp": int(def_boss["hp"]),
+			"pos": _spirit_spawn_px(vic2), "target": Vector2i(-1, -1),
+			"path": PackedVector2Array(), "atk_cd": 0.0, "mode": "hunt",
+			"victim_id": int(vic2["id"]) if not vic2.is_empty() else -1,
+			"ttl": float(cfg["day_length"]) * 0.75,
+		})
+		_next_id += 1
+	var mood_hit := float(fcfg.get("boss_mood", -12.0)) if boss else float(fcfg.get("spirit_mood", -6.0))
+	for r in residents:
+		r["mood"] = clampf(float(r["mood"]) + mood_hit, 0.0, 100.0)
+	events.append({"type": "forest_boss_attack" if boss else "spirit_attack", "count": raiders.size()})
+	_chron("chron.forest_boss" if boss else "chron.spirit_attack", str(raiders.size()))
+	_update_gates()
+
+
+## Дух является из леса: тайл рядом с жертвой, иначе — у любого дерева.
+func _spirit_spawn_px(victim: Dictionary) -> Vector2:
+	var anchor: Vector2i = map.tile_of_px(victim["pos"]) if not victim.is_empty() else map.spawn_tile
+	for attempt in 40:
+		var off := Vector2i(_event_rng.randi_range(-4, 4), _event_rng.randi_range(-4, 4))
+		var tile := anchor + off
+		if map.is_walkable(tile):
+			return map.tile_center_px(tile)
+	return map.tile_center_px(anchor)
+
+
+## Охота духа (M11): догоняет свою жертву, ранит и пугает; без жертвы —
+## ломает лесопилку, а если и её нет — растворяется.
+func _spirit_update(r: Dictionary, dt: float) -> bool:
+	var p: Dictionary = r["p"]
+	var vic := _resident_by_id(int(r.get("victim_id", -1)))
+	if not vic.is_empty():
+		var to: Vector2 = (vic["pos"] as Vector2) - (r["pos"] as Vector2)
+		if to.length() <= float(p["attack_range"]) + 10.0:
+			if float(r["atk_cd"]) <= 0.0:
+				r["atk_cd"] = float(p["attack_cooldown"])
+				if _event_rng.randf() < 0.5:
+					_make_ail(vic, "wounded", "chron.spirit_hit")
+					events.append({"type": "spirit_hit", "name": String(vic["name"])})
+				else:
+					vic["mood"] = clampf(float(vic["mood"]) - 12.0, 0.0, 100.0)
+			return true
+		_raider_move_to(r, map.tile_of_px(vic["pos"]), float(p["speed"]) * dt)
+		return true
+	# жертвы нет: мстим лесопилке или растворяемся
+	r["ttl"] = float(r.get("ttl", 30.0)) - dt
+	if float(r["ttl"]) <= 0.0:
+		return false
+	var mill := _nearest_building_of(r, ["sawmill"])
+	if mill.is_empty():
+		return true
+	var reach := float(p["attack_range"]) + float(map.ts) * 0.5
+	if (r["pos"] as Vector2).distance_to(map.tile_center_px(mill["tile"])) <= reach:
+		if float(r["atk_cd"]) <= 0.0:
+			r["atk_cd"] = float(p["attack_cooldown"])
+			_damage_building(mill, float(p["damage"]))
+		return true
+	var goal := _walkable_next_to(mill["tile"])
+	if goal == Vector2i(-1, -1):
+		return true
+	_raider_move_to(r, goal, float(p["speed"]) * dt)
+	return true
+
+
+# --- M11: посадка леса -------------------------------------------------------
+
+## Годен ли тайл под саженец.
+func can_plant_at(tile: Vector2i) -> bool:
+	if not map.in_bounds(tile) or map.grid[tile.y][tile.x] != map.TILE_GRASS:
+		return false
+	if map.stumps.has(tile) or map.saplings.has(tile):
+		return false
+	if not building_at(tile).is_empty() or _tile_in_zone(tile):
+		return false
+	return true
+
+
+## Посадить саженец (семя из пула). "" — успех, иначе ключ ошибки.
+func plant_sapling(tile: Vector2i) -> String:
+	var fcfg: Dictionary = cfg.get("forest", {})
+	if not can_plant_at(tile):
+		return "bad"
+	var cost := int(fcfg.get("seed_cost", 1))
+	if float(res.get("seeds", 0.0)) < float(cost):
+		return "no_seeds"
+	res["seeds"] = float(res["seeds"]) - float(cost)
+	map.saplings[tile] = {"t": 0.0, "grow_days": float(fcfg.get("grow_days", 1.2))}
+	terrain_dirty = true
+	events.append({"type": "sapling_planted"})
+	_chron("chron.sapling_planted")
+	return ""
+
+
+# --- M11: добыча скалы -------------------------------------------------------
+
+## Тайл гряды рядом с добытчиком (свой тайл непроходим — берём соседний).
+func _rock_tile_near(px: Vector2) -> Vector2i:
+	var base: Vector2i = map.tile_of_px(px)
+	for d in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1),
+			Vector2i(1, 1), Vector2i(-1, -1), Vector2i(1, -1), Vector2i(-1, 1)]:
+		var t: Vector2i = base + d
+		if map.in_bounds(t) and map.rock_hp.has(t):
+			return t
+	return Vector2i(-1, -1)
+
+
+## Каменотёс вырабатывает тайл гряды: истощённая скала вскрывает рудную жилу,
+## изредка попадается кристалл, иначе тайл осыпается в траву (камень — в кучу).
+func _deplete_rock(r: Dictionary, bld: Dictionary, portion: float) -> void:
+	var mcfg: Dictionary = cfg.get("mountain", {})
+	if mcfg.is_empty():
+		return
+	var tile := _rock_tile_near(r["pos"])
+	if tile == Vector2i(-1, -1):
+		return
+	var hp: float = float(map.rock_hp.get(tile, float(mcfg.get("hp", 80.0))))
+	hp -= float(mcfg.get("rate", 55.0)) * portion * work_mult(r)
+	var kind := int(map.grid[tile.y][tile.x])
+	if hp > 0.0:
+		map.rock_hp[tile] = hp
+		return
+	var roll := _event_rng.randf()
+	map.rock_hp.erase(tile)
+	if kind == map.TILE_ROCK and roll < float(mcfg.get("ore_reveal", 0.35)):
+		map.grid[tile.y][tile.x] = map.TILE_ORE
+		map.rock_hp[tile] = float(mcfg.get("hp", 80.0)) * 1.3
+		events.append({"type": "ore_revealed"})
+		_chron("chron.ore_revealed")
+	elif roll < float(mcfg.get("ore_reveal", 0.35)) + float(mcfg.get("crystal_chance", 0.06)):
+		_add_pile(bld, "crystal", 1.0)
+		events.append({"type": "gem_found"})
+		_chron("chron.gem_found")
+	else:
+		_add_pile(bld, "stone", float(mcfg.get("bonus_stone", 6)))
+		map.grid[tile.y][tile.x] = map.TILE_GRASS
+		events.append({"type": "rock_gone"})
+		_chron("chron.rock_gone")
+	terrain_dirty = true
+
+
+# --- M11: некромант и кладбище ----------------------------------------------
+
+## Готовое кладбище ({} — нет).
+func _cemetery() -> Dictionary:
+	return _done_building_of_type("cemetery")
+
+
+## Ночной ритуал (дневной бросок): тьма растёт, скелеты собираются тайно,
+## при достаточной армии — восстание.
+func _roll_necro() -> void:
+	var ncfg: Dictionary = cfg.get("necro", {})
+	var cem := _cemetery()
+	if ncfg.is_empty() or cem.is_empty():
+		return
+	# однажды кто-то из жителей «слышит зов» и начинает тайные ритуалы
+	if not _necro_chosen:
+		var cands := _adults()
+		if not cands.is_empty():
+			var who: Dictionary = cands[_event_rng.randi_range(0, cands.size() - 1)]
+			who["secret"] = "necromancer"
+			_necro_chosen = true
+			_chron("chron.necro_chosen", String(who["name"]))
+	# кладбище темнеет со временем
+	necro_dark = clampf(necro_dark + float(ncfg.get("dark_per_night", 0.06)), 0.0, 1.0)
+	if not necro_known and necro_dark >= float(ncfg.get("reveal_dark", 0.45)):
+		necro_known = true
+		events.append({"type": "necro_revealed"})
+		_chron("chron.necro_revealed")
+	# ночные призывы: у кладбища видят огни и тени
+	if _necro_chosen and _event_rng.randf() < float(ncfg.get("summon_chance", 0.6)):
+		necro_army += _event_rng.randi_range(1, 2)
+		necro_ghosts.clear()
+		var c: Vector2i = cem["tile"]
+		for i in mini(3, necro_army):
+			var t := _walkable_next_to(c + Vector2i(_event_rng.randi_range(-1, 1), _event_rng.randi_range(-1, 1)))
+			if t != Vector2i(-1, -1):
+				necro_ghosts.append(map.tile_center_px(t))
+		if necro_known:
+			events.append({"type": "necro_summon"})
+		_chron("chron.necro_whisper")
+	# тайная армия созрела — восстание
+	if necro_army >= int(ncfg.get("rise_at", 8)):
+		_spawn_undead_wave()
+
+
+## Восстание (M11): мертвецы выходят из кладбища, армия тает вдвое.
+func _spawn_undead_wave() -> void:
+	var ncfg: Dictionary = cfg.get("necro", {})
+	var cem := _cemetery()
+	if cem.is_empty():
+		return
+	if _enemies_cfg.is_empty():
+		var ed: Variant = _read_json_file("res://data/enemies.json")
+		_enemies_cfg = ed if ed is Array else []
+	var skel: Dictionary = {}
+	for d: Dictionary in _enemies_cfg:
+		if String(d["id"]) == "skeleton":
+			skel = d
+			break
+	if skel.is_empty():
+		return
+	raid_active = true
+	raid_siege = true
+	_raid_kind = "undead"
+	var size := mini(necro_army, int(ncfg.get("wave_max", 8)))
+	necro_army = int(necro_army / 2)
+	var hp_mult := 1.0 + threat_value() * float(cfg.get("threat", {}).get("hp_per_threat", 0.04))
+	var anchor: Vector2i = cem["tile"]
+	for i in size:
+		var hp := int(round(float(skel["hp"]) * hp_mult))
+		var t := _walkable_next_to(anchor)
+		raiders.append({
+			"id": _next_id, "type": "skeleton", "p": skel,
+			"hp": hp, "max_hp": hp,
+			"pos": map.tile_center_px(t if t != Vector2i(-1, -1) else anchor),
+			"target": Vector2i(-1, -1), "path": PackedVector2Array(),
+			"atk_cd": 0.0, "mode": "advance",
+		})
+		_next_id += 1
+	for r in residents:
+		r["mood"] = clampf(float(r["mood"]) + float(ncfg.get("mood_hit", -8.0)), 0.0, 100.0)
+	events.append({"type": "undead_rising", "count": size})
+	_chron("chron.undead_rising", str(size))
+	_update_gates()
+
+
+## Кладбище разрушено — тайная армия рассыпается, некромант раскрыт.
+func _necro_purge() -> void:
+	necro_army = 0
+	necro_dark = 0.0
+	necro_ghosts = []
+	for r in residents:
+		if String(r.get("secret", "")) == "necromancer":
+			r["secret"] = ""
+			r["mood"] = clampf(float(r["mood"]) - 15.0, 0.0, 100.0)
+	_necro_chosen = false
+	events.append({"type": "necro_purged"})
+	_chron("chron.necro_purged")
+
+
+## Удар героя по кладбищу (M11): единственное здание, которое герой рушит сам.
+## Возвращает "" | "necro_hit" | "necro_purged".
+func hero_hit_building(origin_px: Vector2, facing: Vector2, range_px: float, arc_deg: float, dmg: int) -> String:
+	for b in buildings:
+		if String(b["type"]) != "cemetery" or not bool(b["done"]):
+			continue
+		var to: Vector2 = map.tile_center_px(b["tile"]) - origin_px
+		if to.length() > range_px + float(map.ts) * 0.6:
+			continue
+		if absf(facing.angle_to(to)) > deg_to_rad(arc_deg) / 2.0:
+			continue
+		_damage_building(b, float(dmg))
+		return "necro_purged" if not buildings.has(b) else "necro_hit"
+	return ""

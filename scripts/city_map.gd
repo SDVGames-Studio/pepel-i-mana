@@ -14,6 +14,9 @@ var ts := 32
 var grid: Array = []            # grid[y][x] -> TILE_*
 var road := {}                  # Vector2i -> true: дороги (M6) — ускорение и приоритет путей
 var wear := {}                  # Vector2i -> float: износ троп (M6) — город сам строит дороги там, где ходят
+var rock_hp := {}               # Vector2i -> float: запас скалы (M11) — добыча истощает тайл
+var stumps := {}                # Vector2i -> true: пни на месте срубленных деревьев (M11)
+var saplings := {}              # Vector2i -> {t: float}: посаженные деревья, растут (M11)
 var anomaly_tile := Vector2i.ZERO   # вход в данж (у аномалии)
 var spawn_tile := Vector2i.ZERO     # старт героя и жителей
 var world_exit_tile := Vector2i.ZERO  # край города — выход на карту мира (M8)
@@ -27,6 +30,9 @@ func generate(seed_value: int, params: Dictionary) -> void:
 	ts = int(params["tile_size"])
 	road = {}
 	wear = {}
+	rock_hp = {}
+	stumps = {}
+	saplings = {}
 	for attempt in 20:
 		_generate_once(seed_value + attempt * 1013, params)
 		if _connected():
@@ -43,14 +49,28 @@ func _generate_once(seed_value: int, params: Dictionary) -> void:
 		row.resize(w)
 		row.fill(TILE_GRASS)
 		grid.append(row)
-	# озёра и скалы — круглые пятна, не у краёв; скал больше и они крупнее (M5+)
+	# озёра — круглые пятна, не у краёв
 	for i in int(params["lakes"]):
 		_blob(_random_inner_tile(rng), rng.randi_range(2, 4), TILE_WATER)
-	for i in int(params["rocks"]):
-		_blob(_random_inner_tile(rng), rng.randi_range(3, 4), TILE_ROCK)
+	# скальные ГРЯДЫ (M11): не россыпь одиночных камней, а единые массивы —
+	# большое пятно плюс сателлиты внахлёст; в них живёт руда и их добывают
+	for i in int(params.get("rocks", 2)):
+		var center := _random_inner_tile(rng)
+		_blob(center, rng.randi_range(4, 6), TILE_ROCK)
+		for s in 2:
+			var off := Vector2i(rng.randi_range(-6, 6), rng.randi_range(-5, 5))
+			_blob(center + off, rng.randi_range(2, 3), TILE_ROCK)
 	# рудные жилы: железо в скалах и на голой земле — места под шахту (M5+)
 	for i in int(params.get("ore_spots", 0)):
 		_ore_blob(_random_inner_tile(rng), rng.randi_range(1, 2))
+	# запас прочности скалы (M11): тайлы гряды добываемы; руда богаче
+	var hp := float(params.get("mountain", {}).get("hp", 80.0))
+	for y in h:
+		for x in w:
+			if grid[y][x] == TILE_ROCK:
+				rock_hp[Vector2i(x, y)] = hp
+			elif grid[y][x] == TILE_ORE:
+				rock_hp[Vector2i(x, y)] = hp * 1.3
 	# деревья поодиночке на траве — лес гуще (M5+)
 	var placed := 0
 	var guard := 0

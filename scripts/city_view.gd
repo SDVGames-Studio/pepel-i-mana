@@ -13,6 +13,7 @@ var enchant_mode := ""          # выбранное зачарование (п�
 var enchant_colors: Dictionary = {}
 var zone_mode := ""             # инструмент зоны (M6): выделение областью
 var road_mode := false          # инструмент дороги (M6): рисование мышью
+var plant_mode := false         # инструмент посадки леса (M11)
 var dragging := false           # ЛКМ зажата — идёт выделение/рисование
 var drag_from := Vector2i(-1, -1)
 var drag_to := Vector2i(-1, -1)
@@ -246,12 +247,16 @@ func _draw_buildings() -> void:
 		else:
 			# спрайт здания (M9): ссылка b:<id>/e:<имя> из city.json -> buildings
 			var ref: String = _bld_sprites.get(String(b["type"]), "")
+			if ref == "dom_house":
+				# дома разные (M11): 7 вариантов dom-пака по номеру здания
+				var variants := ["b:dom2", "b:dom3", "b:dom5", "b:dom7", "b:dom10", "b:dom16", "b:dom18"]
+				ref = variants[absi(int(b["id"])) % variants.size()]
 			if ref != "":
 				var sref := ref
 				if String(b["type"]) == "orchard":
 					# яблоневый сад (M10): растёт — молодое дерево, зрелое — с яблоками
 					var stage := int(b.get("apple_stage", 0))
-					sref = "e:tree2" if stage < 2 else "e:tree_fruit"
+					sref = "e:tree_oak" if stage < 2 else "e:tree_fruit2"
 				var h := bld_size
 				if String(b["type"]) == "wall" or String(b["type"]) == "gate":
 					h = float(map.ts) * 1.15   # стены не должны нависать над рядом
@@ -263,6 +268,19 @@ func _draw_buildings() -> void:
 			# точка-работник: занятое здание подсвечено
 			if int(b["worker"]) > 0:
 				draw_circle(anchor + Vector2(0, -bld_size + 2.0), 2.5, Color(1, 1, 1, 0.9))
+		# кладбище темнеет (M11): тьма ползёт с кладбища, пока некромант работает
+		if String(b["type"]) == "cemetery" and bool(b["done"]):
+			var dark := clampf(float(sim.necro_dark), 0.0, 1.0)
+			if dark > 0.02:
+				var rings := 4
+				for i in rings:
+					var rr: float = map.ts * (0.8 + dark * 2.2) * (float(i + 1) / float(rings))
+					draw_circle(anchor - Vector2(0, 4), rr,
+							Color(0.08, 0.05, 0.14, 0.05 + 0.1 * dark))
+				if sim.necro_known:
+					var pulse := 0.5 + 0.5 * sin(Time.get_ticks_msec() / 500.0)
+					draw_arc(anchor - Vector2(0, 4), map.ts * (0.9 + dark * 2.0),
+							0.0, TAU, 24, Color(0.5, 0.3, 0.7, 0.12 + 0.1 * pulse), 2.0)
 		# зачарование: рамка цветом эффекта (M3)
 		if String(b.get("enchant", "")) != "":
 			var ecol: Color = enchant_colors.get(String(b["enchant"]), Color(0.8, 0.8, 1.0))
@@ -281,27 +299,36 @@ func _draw_buildings() -> void:
 			draw_rect(Rect2(rect.position + Vector2(4, -7), Vector2((map.ts - 8) * frac2, 4)), Color("#8bc34a"))
 
 
-## Мутанты-рейдеры (M5): спрайты данжевых мутантов (M9), полоска здоровья.
+## Атакующие (M5 мутанты; M11 духи леса, Древень, скелеты некроманта).
 func _draw_raiders() -> void:
-	var refs := {"mutant": "k:108", "brute": "k:109", "spitter": "k:110"}
+	var refs := {"mutant": "k:108", "brute": "k:109", "spitter": "k:110",
+			"forest_spirit": "e:spirit", "forest_boss": "e:treant", "skeleton": "k:121"}
 	for r in sim.raiders:
 		var pos: Vector2 = r["pos"]
 		var rad := float(r["p"]["radius"])
-		var ref: String = refs.get(String(r["type"]), "k:108")
+		var kind := String(r["type"])
+		var ref: String = refs.get(kind, "k:108")
 		var size := rad * 2.8
+		var lift := 0.0
+		var tint := Color.WHITE
+		if kind == "forest_spirit" or kind == "forest_boss":
+			# духи парят: синус повыше и медленнее, свечение бирюзой
+			lift = 4.0 + 2.5 * sin(Time.get_ticks_msec() / 260.0 + float(r["id"]))
+			tint = Color(0.8, 1.05, 1.0) if kind == "forest_spirit" else Color(0.9, 1.1, 0.85)
 		var phase := pos.x * 0.9 + Time.get_ticks_msec() / 100.0
 		var vx := 0.0
 		var pth: PackedVector2Array = r.get("path", PackedVector2Array())
 		if not pth.is_empty():
 			vx = (pth[0] - pos).x
-		Assets.draw_ref(self, ref, pos + Vector2(0, -absf(sin(phase)) * 1.5), size, vx < -1.0, Color.WHITE)
+		Assets.draw_ref(self, ref, pos + Vector2(0, -absf(sin(phase)) * 1.5 - lift), size, vx < -1.0, tint)
 		if int(r["hp"]) < int(r["max_hp"]):
 			var frac := clampf(float(r["hp"]) / float(r["max_hp"]), 0.0, 1.0)
 			draw_rect(Rect2(pos + Vector2(-12, -rad - 8), Vector2(24, 4)), Color(0.15, 0.1, 0.1))
 			draw_rect(Rect2(pos + Vector2(-12, -rad - 8), Vector2(24.0 * frac, 4)), Color(0.9, 0.25, 0.25))
-		# осадный мутант выделен — игрок видит, кто ломает стены
-		if String(r["type"]) == "brute":
-			draw_arc(pos, rad + 3.0, 0.0, TAU, 20, Color(0.9, 0.3, 0.2, 0.6), 2.0)
+		# осадный мутант и босс леса выделены — видно, кто главный
+		if kind == "brute" or kind == "forest_boss":
+			var ring := Color(0.9, 0.3, 0.2, 0.6) if kind == "brute" else Color(0.5, 0.9, 0.4, 0.7)
+			draw_arc(pos, rad + 3.0, 0.0, TAU, 20, ring, 2.0)
 
 
 func _bld_max_hp(type_id: String) -> float:
@@ -318,13 +345,18 @@ func _draw_residents() -> void:
 		var pos: Vector2 = r["pos"]
 		var prof := String(r["prof"])
 		var child := prof == ""
-		var size := 20.0 if child else 28.0
+		# M11 по замечанию заказчика: жители НЕ меньше героя-«великана» —
+		# кадры граждан 48px с полями, видимое тело ~30px при высоте 50px
+		var size := 26.0 if child else 50.0
 		var tint := Color.WHITE
 		var ail := String(r.get("ail", ""))
 		if ail == "sick":
 			tint = Color(0.75, 0.95, 0.65)
 		elif ail == "wounded":
 			tint = Color(1.0, 0.6, 0.6)
+		# некромант (M11): тайный — после раскрытия читается по лиловой тени
+		if String(r.get("secret", "")) == "necromancer" and sim.necro_known:
+			tint = tint.lerp(Color(0.75, 0.6, 0.95), 0.45)
 		var sleeping: bool = r["state"] == "sleep" or r["state"] == "rest"
 		if sleeping:
 			tint = tint.darkened(0.45)
@@ -360,6 +392,17 @@ func _draw_ghost() -> void:
 			var ok: bool = sim._zone_cell_ok(tile) and int(sim.res.get("stone", 0)) >= int(sim.cfg.get("roads", {}).get("cost_stone", 1))
 			draw_rect(Rect2(Vector2(tile) * map.ts, Vector2(map.ts, map.ts)),
 					Color(0.5, 1.0, 0.5, 0.35) if ok else Color(1.0, 0.3, 0.3, 0.35))
+		return
+	if plant_mode:
+		# посадка леса (M11): саженец под курсором, годность по траве и семенам
+		var ptile: Vector2i = map.tile_of_px(get_global_mouse_position())
+		if map.in_bounds(ptile):
+			var ok2: bool = sim.can_plant_at(ptile)
+			draw_rect(Rect2(Vector2(ptile) * map.ts, Vector2(map.ts, map.ts)),
+					Color(0.5, 1.0, 0.5, 0.35) if ok2 else Color(1.0, 0.3, 0.3, 0.35))
+			var bottom: Vector2 = Vector2(ptile) * map.ts + Vector2(map.ts / 2.0, map.ts * 0.92)
+			Assets.draw_ref(self, "e:sap2", bottom, map.ts * 0.9, false,
+					Color(1, 1, 1, 0.6))
 		return
 	if enchant_mode != "":
 		# режим зачарования: подсветка тайла под мышью

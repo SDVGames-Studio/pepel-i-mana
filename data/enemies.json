@@ -346,5 +346,40 @@
 		"drop_chance": 1.0,
 		"mana_chance": 1.0,
 		"xp": 35
+	},
+	{
+		"id": "forest_spirit",
+		"loc": "enemy.forest_spirit",
+		"hp": 8,
+		"damage": 2,
+		"speed": 75,
+		"aggro": 200,
+		"attack_range": 22,
+		"attack_cooldown": 2.0,
+		"radius": 10,
+		"color": "#7fd4c8",
+		"sprite": "e:spirit",
+		"weak_school": "light",
+		"drop_chance": 0.0,
+		"mana_chance": 0.0,
+		"xp": 4
+	},
+	{
+		"id": "forest_boss",
+		"loc": "enemy.forest_boss",
+		"boss": true,
+		"hp": 46,
+		"damage": 5,
+		"speed": 45,
+		"aggro": 260,
+		"attack_range": 30,
+		"attack_cooldown": 1.8,
+		"radius": 16,
+		"color": "#8bc34a",
+		"sprite": "e:treant",
+		"weak_school": "wild",
+		"drop_chance": 1.0,
+		"mana_chance": 1.0,
+		"xp": 30
 	}
 ]

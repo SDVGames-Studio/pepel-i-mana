@@ -22,12 +22,14 @@ var build_mode := ""            # выбранный тип здания для 
 var enchant_mode := ""          # выбранное зачарование (M3): клик по зданию применит
 var zone_mode := ""             # инструмент зоны (M6): "field" | "pasture" | "living"
 var road_mode := false          # инструмент дороги (M6)
+var plant_mode := false         # инструмент посадки леса (M11)
 var _dragging := false          # ЛКМ зажата — выделение зоны или рисование дороги
 var _drag_from := Vector2i(-1, -1)
 var _drag_to := Vector2i(-1, -1)
 var _road_warned := false       # тост «нет камня» не спамит при рисовании
 var _modulate: CanvasModulate
 var _static_body: StaticBody2D
+var _terrain: Node2D = null     # статический слой ландшафта (перерисовка по dirty, M11)
 var _near_anomaly := false
 var _near_armory: Dictionary = {}   # оружейка рядом с героем (E — комплект героя)
 
@@ -45,9 +47,9 @@ func _ready() -> void:
 	cfg = _read_json(CITY_CFG_PATH)
 	view = load(VIEW_SCRIPT).new()
 	# статический ландшафт — отдельным слоем под динамикой (M9, 60 FPS)
-	var terrain: Node2D = load("res://scripts/city_terrain.gd").new()
-	terrain.setup(map, cfg)
-	add_child(terrain)
+	_terrain = load("res://scripts/city_terrain.gd").new()
+	_terrain.setup(map, cfg)
+	add_child(_terrain)
 	view.setup(map, sim, cfg)
 	view.city = self
 	view.enchant_colors = _enchant_colors()
@@ -172,6 +174,11 @@ func _process(_delta: float) -> void:
 	if not hero.dead:
 		sim.hero_pos = hero.global_position
 		sim.hero_alive = true
+	# меч героя и ландшафт меняются — перерисовываем точечно
+	hero.queue_redraw()
+	if sim.terrain_dirty:
+		sim.terrain_dirty = false
+		_terrain.queue_redraw()
 	view.queue_redraw()
 	hud.refresh()
 	_update_daylight()
@@ -213,7 +220,7 @@ func _armory_near_hero() -> Dictionary:
 
 ## Название здания под курсором — тултип у мыши (просьба заказчика).
 func _update_hover() -> void:
-	if build_mode != "" or enchant_mode != "" or zone_mode != "" or road_mode:
+	if build_mode != "" or enchant_mode != "" or zone_mode != "" or road_mode or plant_mode:
 		hud.set_hover_info("", Vector2.ZERO)
 		return
 	var b: Dictionary = sim.building_at(map.tile_of_px(get_global_mouse_position()))
@@ -256,6 +263,10 @@ func _hover_base(b: Dictionary) -> String:
 		return "%s • %s" % [bld_name, Loc.t("city.gate_open" if sim.is_gate_open(b) else "city.gate_closed")]
 	if String(b.get("enchant", "")) != "":
 		return "%s • %s" % [bld_name, Loc.t("ench." + String(b["enchant"]))]
+	# кладбище (M11): после раскрытия видно тьму и численность тайной армии
+	if String(b["type"]) == "cemetery" and sim.necro_known:
+		return "%s • %s" % [bld_name, Loc.t("city.hover_necro")
+				% [int(round(float(sim.necro_dark) * 100.0)), int(sim.necro_army)]]
 	return bld_name
 
 
@@ -365,6 +376,40 @@ func _process_events() -> void:
 				hud.toast(Loc.t("city.caravan_returned_toast") % int(ev["coins"]))
 			"caravan_lost":
 				hud.toast(Loc.t("city.caravan_lost_toast") % Loc.t("res." + String(ev["res"])))
+			# --- вишлист M11: лес, скала, некромант ---
+			"tree_felled":
+				pass   # тихо: летопись знает, спиливать — работа
+			"sapling_planted":
+				hud.toast(Loc.t("city.sapling_toast"))
+			"tree_grown":
+				hud.toast(Loc.t("city.tree_grown_toast"))
+			"forest_warn":
+				hud.toast(Loc.t("city.forest_warn_toast"))
+			"spirit_attack":
+				hud.toast(Loc.t("city.spirit_toast") % int(ev.get("count", 0)))
+			"forest_boss_attack":
+				hud.toast(Loc.t("city.forest_boss_toast"))
+			"forest_repelled":
+				hud.toast(Loc.t("city.forest_repelled_toast"))
+			"spirit_hit":
+				hud.toast(Loc.t("city.spirit_hit_toast") % String(ev["name"]))
+			"ore_revealed":
+				hud.toast(Loc.t("city.ore_toast"))
+				_rebuild_collision()
+			"gem_found":
+				hud.toast(Loc.t("city.gem_toast"))
+			"rock_gone":
+				hud.toast(Loc.t("city.rock_gone_toast"))
+				_rebuild_collision()
+			"necro_revealed":
+				hud.toast(Loc.t("city.necro_revealed_toast"))
+			"necro_summon":
+				hud.toast(Loc.t("city.necro_summon_toast"))
+			"undead_rising":
+				hud.toast(Loc.t("city.undead_toast") % int(ev.get("count", 0)))
+			"necro_purged":
+				hud.toast(Loc.t("city.necro_purged_toast"))
+				_rebuild_collision()
 	sim.events.clear()
 
 
@@ -466,20 +511,28 @@ func _unhandled_input(event: InputEvent) -> void:
 			_drag_to = _drag_from
 			_sync_view_tools()
 			return
-		if event.button_index == MOUSE_BUTTON_RIGHT and (zone_mode != "" or road_mode):
+		if event.button_index == MOUSE_BUTTON_RIGHT and (zone_mode != "" or road_mode or plant_mode):
 			set_zone_mode("")
 			set_road_mode(false)
+			set_plant_mode(false)
 			return
 		if event.button_index == MOUSE_BUTTON_LEFT and road_mode:
 			_dragging = true
 			_paint_road(map.tile_of_px(get_global_mouse_position()))
 			return
+		if event.button_index == MOUSE_BUTTON_LEFT and plant_mode:
+			_try_plant(map.tile_of_px(get_global_mouse_position()))
+			return
 		if event.button_index == MOUSE_BUTTON_LEFT and build_mode != "":
 			_try_place()
 		elif event.button_index == MOUSE_BUTTON_RIGHT and build_mode != "":
 			set_build_mode("")
-		elif event.button_index == MOUSE_BUTTON_LEFT and zone_mode == "" and not road_mode:
+		elif event.button_index == MOUSE_BUTTON_LEFT and zone_mode == "" and not road_mode and not plant_mode:
 			hero.city_attack(sim)   # ЛКМ без режима — удар героя в городе (M5)
+			# удар героя по кладбищу (M11): выкорчёвывание нечистого места
+			if sim.hero_hit_building(hero.global_position, hero.facing,
+					float(hero.p["attack_range"]), float(hero.p["attack_arc"]), hero.eff_damage()) == "necro_hit":
+				hud.toast(Loc.t("city.necro_hit_toast"))
 	elif event is InputEventMouseButton and not event.pressed:
 		if event.button_index == MOUSE_BUTTON_LEFT and _dragging:
 			_dragging = false
@@ -500,6 +553,8 @@ func _unhandled_input(event: InputEvent) -> void:
 			set_zone_mode("")
 		elif road_mode:
 			set_road_mode(false)
+		elif plant_mode:
+			set_plant_mode(false)
 		elif hud.magic_visible():
 			hud.toggle_magic()
 		elif hud.research_visible():
@@ -556,10 +611,12 @@ func set_zone_mode(type_id: String) -> void:
 	zone_mode = "" if zone_mode == type_id else type_id
 	if zone_mode != "":
 		road_mode = false
+		plant_mode = false
+		view.plant_mode = false
 		if build_mode != "":
 			set_build_mode("")
 		hud.set_hint(Loc.t("city.zone_hint") % Loc.t("zone." + zone_mode))
-	elif build_mode == "" and not road_mode:
+	elif build_mode == "" and not road_mode and not plant_mode:
 		hud.set_hint(_default_hint())
 	_sync_view_tools()
 
@@ -572,9 +629,33 @@ func set_road_mode(on: bool) -> void:
 		if build_mode != "":
 			set_build_mode("")
 		hud.set_hint(Loc.t("city.road_hint") % int(cfg.get("roads", {}).get("cost_stone", 1)))
-	elif build_mode == "" and zone_mode == "":
+	elif build_mode == "" and zone_mode == "" and not plant_mode:
 		hud.set_hint(_default_hint())
 	_sync_view_tools()
+
+
+## Инструмент посадки леса (M11): клик — саженец (семя из пула).
+func set_plant_mode(on: bool) -> void:
+	plant_mode = on
+	view.plant_mode = on
+	if plant_mode:
+		zone_mode = ""
+		road_mode = false
+		if build_mode != "":
+			set_build_mode("")
+		hud.set_hint(Loc.t("city.plant_hint") % int(cfg.get("forest", {}).get("seed_cost", 1)))
+	elif build_mode == "" and zone_mode == "" and not road_mode:
+		hud.set_hint(_default_hint())
+	_sync_view_tools()
+
+
+## Посадить саженец в тайл. Ошибки — тостом.
+func _try_plant(tile: Vector2i) -> void:
+	var err: String = sim.plant_sapling(tile)
+	if err == "no_seeds":
+		hud.toast(Loc.t("city.plant_no_seeds"))
+	elif err == "bad":
+		hud.toast(Loc.t("city.plant_bad"))
 
 
 func _try_place() -> void:
@@ -599,10 +680,12 @@ func _try_place() -> void:
 func set_build_mode(type_id: String) -> void:
 	build_mode = type_id
 	view.build_mode = type_id
-	if type_id != "" and (zone_mode != "" or road_mode):
-		# выбор здания снимает инструменты зоны и дороги
+	if type_id != "" and (zone_mode != "" or road_mode or plant_mode):
+		# выбор здания снимает инструменты зоны, дороги и посадки
 		zone_mode = ""
 		road_mode = false
+		plant_mode = false
+		view.plant_mode = false
 		_sync_view_tools()
 	if type_id == "":
 		hud.set_hint(_default_hint())

@@ -332,10 +332,39 @@ func dash_ready_fraction() -> float:
 
 
 func _draw() -> void:
-	# тело героя — спрайт воина (M9); здесь только боевые индикаторы
+	# тело героя — спрайт воина (M9); здесь оружие и боевые индикаторы
+	_draw_sword()
 	if _attack_cd > float(p["attack_cooldown"]) - 0.15:
 		draw_line(Vector2.ZERO, facing * float(p["attack_range"]), Color(1.0, 0.9, 0.6, 0.8), 3.0)
 	if _invuln > 0.0:
 		draw_arc(Vector2.ZERO, float(p["radius"]) + 3.0, 0.0, TAU, 24, Color(1, 1, 1, 0.4), 1.5)
 	if _shield_left > 0.0:
 		draw_arc(Vector2.ZERO, float(p["radius"]) + 6.0, 0.0, TAU, 32, Color(1.0, 0.85, 0.35, 0.85), 2.5)
+
+
+## Меч героя (M11): виден в руке, при ударе — дуга замаха в сторону курсора.
+func _draw_sword() -> void:
+	var tex: Texture2D = Assets.sprite("e:sword")
+	if tex == null or _sprite == null:
+		return
+	var h := float(p["radius"]) * 1.7
+	var s := h / float(tex.get_height())
+	var w := float(tex.get_width()) * s
+	var cd_full := float(p["attack_cooldown"])
+	var attacking := _attack_cd > cd_full - 0.18
+	var hand: Vector2
+	var ang: float
+	if attacking:
+		# замах: от заноса за спиной (-2.2 рад) к завершению дуги (+1.4)
+		var swing := 1.0 - (_attack_cd - (cd_full - 0.18)) / 0.18   # 0..1
+		var arc := lerpf(-2.2, 1.4, clampf(swing, 0.0, 1.0))
+		ang = facing.angle() + arc
+		hand = facing.rotated(arc) * (float(p["radius"]) * 0.8) + Vector2(0, -float(p["radius"]) * 0.6)
+	else:
+		# в покое меч опущен по боку, отражается вместе с корпусом
+		var side := -1.0 if _sprite.flip_h else 1.0
+		ang = facing.angle() + 1.25 * side
+		hand = Vector2(side * float(p["radius"]) * 0.55, float(p["radius"]) * 0.15)
+	draw_set_transform(hand, ang + PI / 2.0, Vector2.ONE)
+	draw_texture_rect(tex, Rect2(-w / 2.0, -h / 2.0, w, h), false)
+	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)

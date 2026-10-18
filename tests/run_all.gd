@@ -172,6 +172,24 @@ const REQUIRED_LOCALES := [
 	"world.rune_btn", "world.trade_note", "world.bought", "world.sold",
 	"world.bartered", "world.rune_bought", "world.no_coins", "world.no_res",
 	"world.no_runes", "world.storage_full",
+	# --- M11: вишлист (духи леса, некромант, скала, UI) ---
+	"cat.living", "cat.living_tip", "cat.resource", "cat.resource_tip",
+	"cat.craft", "cat.craft_tip", "cat.defence", "cat.defence_tip",
+	"cat.magic", "cat.magic_tip", "cat.special", "cat.special_tip",
+	"bld.cemetery", "bld.desc.cemetery",
+	"enemy.forest_spirit", "enemy.forest_boss",
+	"city.plant", "city.plant_tooltip", "city.plant_hint", "city.plant_no_seeds", "city.plant_bad",
+	"city.sapling_toast", "city.tree_grown_toast", "city.forest_warn_toast",
+	"city.spirit_toast", "city.forest_boss_toast", "city.forest_repelled_toast", "city.spirit_hit_toast",
+	"city.ore_toast", "city.gem_toast", "city.rock_gone_toast", "city.forest_anger",
+	"city.necro_label", "city.necro_army", "city.necro_tag", "city.hover_necro",
+	"city.necro_revealed_toast", "city.necro_summon_toast", "city.undead_toast",
+	"city.necro_purged_toast", "city.necro_hit_toast", "city.keys_bar",
+	"chron.tree_felled", "chron.tree_grown", "chron.sapling_planted", "chron.forest_warn",
+	"chron.spirit_attack", "chron.forest_boss", "chron.forest_repelled", "chron.spirit_hit",
+	"chron.ore_revealed", "chron.gem_found", "chron.rock_gone",
+	"chron.necro_chosen", "chron.necro_revealed", "chron.necro_whisper",
+	"chron.undead_rising", "chron.necro_purged",
 ]
 
 const ALL_SCRIPTS := [
@@ -214,6 +232,7 @@ func _initialize() -> void:
 	_test_m8()
 	_test_m9()
 	_test_m10()
+	_test_wishlist()
 	if _fails == 0:
 		print("OK: все тесты пройдены")
 		quit(0)
@@ -260,8 +279,8 @@ func _test_data() -> void:
 		_check(hero is Dictionary and hero.has("speed") and hero.has("dash_cooldown"),
 				"dungeon.json: параметры героя полны")
 	var enemies: Variant = _read_json("res://data/enemies.json")
-	_check(enemies is Array and enemies.size() == 20,
-			"enemies.json — 20 врагов (M7: 13 обычных + 4 босса; M10: +3 бандита)")
+	_check(enemies is Array and enemies.size() == 22,
+			"enemies.json — 22 врага (M7: 13 обычных + 4 босса; M10: +3 бандита; M11: +дух и Древень)")
 	if enemies is Array:
 		var fields_ok := true
 		for enemy in enemies:
@@ -276,7 +295,7 @@ func _test_data() -> void:
 				bosses += 1
 				if int(enemy.get("hp", 0)) < 20:
 					boss_hp_ok = false
-		_check(bosses == 5, "enemies.json — 5 боссов (4 биома + атаман бандитов)")
+		_check(bosses == 6, "enemies.json — 6 боссов (4 биома + атаман + Древень, M11)")
 		_check(boss_hp_ok, "у всех боссов HP >= 20")
 	var magic: Variant = _read_json("res://data/magic.json")
 	_check(magic is Dictionary, "magic.json — валидный JSON-словарь")
@@ -299,7 +318,7 @@ func _test_data() -> void:
 			"zones", "roads", "piles", "layout", "repair", "decor_mood_max"]:
 		_check(city.has(key), "city.json содержит %s" % key)
 	var blds: Variant = city.get("buildings", [])
-	_check(blds is Array and blds.size() == 22, "city.json — 22 типа зданий (M10: +сад и торговый двор)")
+	_check(blds is Array and blds.size() == 23, "city.json — 23 типа зданий (M11: +кладбище)")
 	var bld_ok := true
 	if blds is Array:
 		for b in blds:
@@ -307,6 +326,21 @@ func _test_data() -> void:
 				if not (b is Dictionary and b.has(key)):
 					bld_ok = false
 	_check(bld_ok, "city.json: у зданий есть цена, время стройки и район")
+	# категории построек (M11): у каждого здания известная категория — «столбцы» UI
+	var cats := {"living": true, "resource": true, "craft": true, "defence": true, "magic": true, "special": true}
+	var cats_ok := true
+	var cat_n := {}
+	for b in city.get("buildings", []):
+		if b is Dictionary:
+			if not cats.has(String(b.get("cat", ""))):
+				cats_ok = false
+			cat_n[String(b.get("cat", ""))] = true
+	_check(cats_ok, "city.json: у всех зданий заполнена категория постройки")
+	_check(cat_n.size() >= 5, "город разбит минимум на 5 категорий построек")
+	_check((city.get("cats", {}) as Dictionary).size() == 6, "city.json — 6 категорий построек (M11)")
+	_check(city.has("mountain"), "city.json настроена добыча скалы (M11)")
+	_check(city.has("forest"), "city.json настроен лес: вырубка, гнев, посадка (M11)")
+	_check(city.has("necro"), "city.json настроен некромант: тьма, армия, восстание (M11)")
 	var decor_n := 0
 	for b in city.get("buildings", []):
 		if b is Dictionary and String(b.get("effect", "")) == "decor":
@@ -2905,10 +2939,13 @@ func _test_m9() -> void:
 	missing = 0
 	for b: Dictionary in cfg["buildings"]:
 		var ref := String(b.get("sprite", ""))
+		# dom_house — маркер: дом выбирается из 7 вариантов dom-пака в отрисовке
+		if ref == "dom_house":
+			continue
 		if ref == "" or assets.sprite(ref) == null:
 			missing += 1
-	_check(missing == 0 and cfg["buildings"].size() == 22,
-			"у всех 22 зданий есть PNG-спрайт (недостающих: %d)" % missing)
+	_check(missing == 0 and cfg["buildings"].size() == 23,
+			"у всех 23 зданий есть PNG-спрайт (недостающих: %d)" % missing)
 	missing = 0
 	for it: Dictionary in _read_json("res://data/loot.json")["items"]:
 		if String(it.get("sprite", "")) == "" or assets.sprite(String(it["sprite"])) == null:
@@ -3112,3 +3149,181 @@ func _test_m10() -> void:
 
 
 var _coins_log: Array = []
+
+
+# --- M11: вишлист — духи леса, некромант, добыча скалы -----------------------
+
+func _test_wishlist() -> void:
+	print("[Вишлист M11: лес, скала, некромант]")
+
+	# гряда: единые массивы скал с запасом прочности
+	var sim := _make_sim()
+	var rocks := 0
+	for y in sim.map.h:
+		for x in sim.map.w:
+			if sim.map.grid[y][x] == sim.map.TILE_ROCK:
+				rocks += 1
+	_check(rocks >= 25, "скальных гряд достаточно (%d тайлов)" % rocks)
+	_check(sim.map.rock_hp.size() >= 25, "у тайлов гряды есть запас прочности")
+
+	# вырубка: лесоруб валит дерево — пень, гнев леса
+	var sim_f := _make_sim()
+	var tree_tile := Vector2i(-1, -1)
+	for y in sim_f.map.h:
+		for x in sim_f.map.w:
+			if sim_f.map.grid[y][x] == sim_f.map.TILE_TREE:
+				tree_tile = Vector2i(x, y)
+				break
+		if tree_tile.x >= 0:
+			break
+	_check(tree_tile != Vector2i(-1, -1), "на карте есть дерево для вырубки")
+	sim_f.cfg["piles"] = {"chunk": 2.0, "max": 60.0, "carry": 10.0}
+	var spot := Vector2i(-1, -1)
+	for dy in range(-2, 3):
+		for dx in range(-2, 3):
+			var t := tree_tile + Vector2i(dx, dy)
+			if sim_f.is_buildable_tile(t) and sim_f.placement_block("sawmill", t) == "":
+				spot = t
+				break
+		if spot != Vector2i(-1, -1):
+			break
+	_check(spot != Vector2i(-1, -1), "у дерева есть место под лесопилку")
+	_check(sim_f.place_building("sawmill", spot), "лесопилка заложена у дерева")
+	var builder_f: Dictionary = _resident_by_prof(sim_f, "builder")
+	builder_f["mood"] = 100.0
+	builder_f["traits"] = []
+	_teleport(sim_f, builder_f, spot)
+	sim_f.tick(25.5)
+	_check(bool(sim_f.building_at(spot)["done"]), "лесопилка достроена")
+	var lumberjack: Dictionary = _resident_by_prof(sim_f, "lumberjack")
+	_check(not lumberjack.is_empty(), "лесоруб есть среди жителей")
+	_teleport(sim_f, lumberjack, tree_tile)
+	sim_f.cfg["food_per_resident_day"] = 0.0
+	sim_f.time = 10.0
+	var guard_ticks := 0
+	while sim_f.map.grid[tree_tile.y][tree_tile.x] == sim_f.map.TILE_TREE and guard_ticks < 60:
+		guard_ticks += 1
+		sim_f.tick(2.0)
+		sim_f.time = fmod(sim_f.time, float(sim_f.cfg["day_length"]) * 0.5) + 5.0
+	_check(sim_f.map.grid[tree_tile.y][tree_tile.x] == sim_f.map.TILE_GRASS, "лесоруб срубил дерево")
+	_check(sim_f.map.stumps.has(tree_tile), "на месте сруба остался пень")
+	_check(float(sim_f.forest_anger) > 0.0, "гнев леса вырос от вырубки")
+	_check(bool(sim_f.terrain_dirty), "ландшафт помечен к перерисовке")
+
+	# посадка: семя -> саженец -> дерево, гнев спадает
+	sim_f.res["seeds"] = 5.0
+	var anger_before := float(sim_f.forest_anger)
+	var plant_tile := tree_tile
+	for i in 40:
+		if sim_f.can_plant_at(plant_tile):
+			break
+		plant_tile += Vector2i(1, 0)
+	_check(sim_f.can_plant_at(plant_tile), "рядом есть место под саженец")
+	_check(String(sim_f.plant_sapling(plant_tile)) == "", "саженец посажен за семя")
+	_check(sim_f.map.saplings.has(plant_tile), "саженец отмечен на карте")
+	var seed_after: float = float(sim_f.res["seeds"])
+	_check(seed_after == 4.0, "посадка потратила семя")
+	sim_f.map.saplings[plant_tile]["t"] = 9999.0
+	sim_f.tick(0.5)
+	_check(sim_f.map.grid[plant_tile.y][plant_tile.x] == sim_f.map.TILE_TREE, "саженец вырос в дерево")
+	_check(float(sim_f.forest_anger) < anger_before, "выросший лес успокоил гнев")
+
+	# духи: сильный гнев — волна с Древенем, отбита — гнев спал
+	sim_f.forest_anger = 30.0
+	sim_f._forest_cooldown = 0.0
+	sim_f._update_forest(0.5, float(sim_f.cfg["day_length"]))
+	_check(sim_f.raid_active and not sim_f.raiders.is_empty(), "разозлённый лес послал духов")
+	_check(String(sim_f._raid_kind) == "forest", "волна помечена как лесная (не срывает план мутантов)")
+	var any_boss := false
+	for rr in sim_f.raiders:
+		if String(rr["type"]) == "forest_boss":
+			any_boss = true
+	_check(any_boss, "при сильном гневе из чащи вышел Древень")
+	sim_f.raiders.clear()
+	sim_f._raid_end(true)
+	_check(not sim_f.raid_active, "волна леса кончилась")
+	_check(float(sim_f.forest_anger) < 30.0, "после отпора гнев леса спал")
+
+	# скала: каменотёс вырабатывает тайл — жила руды / кристалл / осыпь
+	var sim_q := _make_sim()
+	sim_q.cfg["mountain"]["rate"] = 5000.0   # мгновенная выработка — для теста
+	sim_q.cfg["piles"] = {"chunk": 1.0, "max": 60.0, "carry": 10.0}
+	var rock_tile := Vector2i(-1, -1)
+	for y in sim_q.map.h:
+		for x in sim_q.map.w:
+			if sim_q.map.grid[y][x] == sim_q.map.TILE_ROCK:
+				rock_tile = Vector2i(x, y)
+				break
+		if rock_tile.x >= 0:
+			break
+	var qspot := Vector2i(-1, -1)
+	for dy in range(-2, 3):
+		for dx in range(-2, 3):
+			var t2 := rock_tile + Vector2i(dx, dy)
+			if sim_q.is_buildable_tile(t2) and sim_q.placement_block("quarry", t2) == "":
+				qspot = t2
+				break
+		if qspot != Vector2i(-1, -1):
+			break
+	_check(qspot != Vector2i(-1, -1), "у скалы есть место под каменоломню")
+	_check(sim_q.place_building("quarry", qspot), "каменоломня заложена у скалы")
+	var builder_q: Dictionary = _resident_by_prof(sim_q, "builder")
+	builder_q["mood"] = 100.0
+	builder_q["traits"] = []
+	_teleport(sim_q, builder_q, qspot)
+	sim_q.tick(25.5)
+	var miner_q: Dictionary = _resident_by_prof(sim_q, "miner")
+	if miner_q.is_empty():
+		miner_q = sim_q._new_resident("Герд", "miner", sim_q.map.spawn_tile)
+		sim_q.residents.append(miner_q)
+		sim_q._next_id += 1
+	sim_q._assign_jobs()
+	_teleport(sim_q, miner_q, qspot)
+	sim_q.cfg["food_per_resident_day"] = 0.0
+	sim_q.time = 10.0
+	var qticks := 0
+	var changed := false
+	while not changed and qticks < 40:
+		qticks += 1
+		sim_q.tick(1.0)
+		sim_q.time = fmod(sim_q.time, float(sim_q.cfg["day_length"]) * 0.5) + 5.0
+		for ev in sim_q.events:
+			if String(ev["type"]) in ["ore_revealed", "gem_found", "rock_gone"]:
+				changed = true
+	_check(changed, "выработка скалы дала событие (жила/кристалл/осыпь)")
+
+	# некромант: кладбище темнеет, армия растёт тайно, восстание, зачистка героем
+	var sim_n := _make_sim()
+	sim_n.cfg["necro"]["dark_per_night"] = 0.5
+	sim_n.cfg["necro"]["summon_chance"] = 1.0
+	sim_n.cfg["necro"]["rise_at"] = 3
+	var cem := _build_now(sim_n, "cemetery")
+	_check(bool(cem["done"]), "кладбище построено")
+	var cem_tile: Vector2i = cem["tile"]
+	sim_n._roll_necro()
+	_check(float(sim_n.necro_dark) > 0.0, "тьма кладбища растёт")
+	_check(int(sim_n.necro_army) > 0, "скелеты собираются тайно")
+	_check(bool(sim_n.necro_known), "некромантия раскрыта по тьме")
+	var has_secret := false
+	for r in sim_n.residents:
+		if String(r.get("secret", "")) == "necromancer":
+			has_secret = true
+	_check(has_secret, "в городе завёлся тайный некромант")
+	var attempts := 0
+	while not sim_n.raid_active and attempts < 8:
+		attempts += 1
+		sim_n._roll_necro()
+	_check(sim_n.raid_active and String(sim_n._raid_kind) == "undead", "мертвецы восстали из кладбища")
+	var skel_seen := false
+	for rr2 in sim_n.raiders:
+		if String(rr2["type"]) == "skeleton":
+			skel_seen = true
+	_check(skel_seen, "восставшие — скелеты")
+	sim_n.raiders.clear()
+	sim_n._raid_end(true)
+	_check(not sim_n.raid_active, "восстание подавлено")
+	var hit := String(sim_n.hero_hit_building(
+			sim_n.map.tile_center_px(cem_tile) + Vector2(64, 0), Vector2(-1, 0), 96.0, 360.0, 100))
+	_check(hit == "necro_purged", "герой выкорчевал кладбище")
+	_check(int(sim_n.necro_army) == 0, "тайная армия рассыпалась")
+	_check(sim_n.building_at(cem_tile).is_empty(), "кладбище разрушено ударом героя")
