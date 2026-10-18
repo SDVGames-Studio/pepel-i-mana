@@ -1,10 +1,8 @@
 # -*- coding: utf-8 -*-
-# Спрайты вишлиста M11: деревья с явным стволом, саженцы, меч героя,
-# дух леса, Древень (босс леса), кладбище. Запуск через Blender headless:
-#   blender -b --python tools/make_wishlist_sprites.py
+# Спрайты вишлиста M11 (v2): деревья со стволом строятся ГЕНЕРАТОРОМ —
+# профиль кроны + дизеринг трёх тонов + широкий ствол с расширением к низу.
 # Плюс: копия 18 домов из F:/kust/new-world-v-2/assets/dom и скал rocky-area.
-# Результат: assets/sprites/env/*.png, assets/sprites/buildings/*.png,
-# превью tools/wishlist_preview.png, tools/dom_sheet.png.
+# Запуск: blender -b --python tools/make_wishlist_sprites.py
 import os
 import struct
 import zlib
@@ -15,124 +13,140 @@ ENV = os.path.join(GAME, "assets", "sprites", "env")
 BLD = os.path.join(GAME, "assets", "sprites", "buildings")
 REF = "F:/kust/new-world-v-2/assets"
 
-# общие цвета
-OUT = (0, 0, 0, 0)
-
 
 def P(r, g, b, a=255):
     return (r, g, b, a)
 
 
-# ---------------------------------------------------------------- деревья ----
-# 24x36. '.' прозрачный. Ствол заметный: 6px ширина, ~10-12px высота.
+def _h(x, y, n=97, s=0):
+    v = (x * 73856093 + y * 19349663 + s * 83492791) & 0x7FFFFFFF
+    return v % max(1, n)
+
+
+# ------------------------------------------------- генератор круглой кроны ----
 
 PAL_LEAF = {
-    "k": P(24, 30, 18),      # контур листвы
-    "d": P(34, 62, 30),      # тень листвы
-    "l": P(58, 96, 44),      # листва
-    "h": P(84, 128, 58),     # свет листвы
-    "t": P(66, 44, 26),      # ствол тень
-    "T": P(104, 72, 42),     # ствол
-    "u": P(134, 98, 58),     # ствол свет
-    "g": P(120, 70, 30),     # сучок
+    "k": P(24, 30, 18),
+    "d": P(38, 66, 32),
+    "l": P(58, 96, 44),
+    "h": P(88, 132, 62),
+    "m": P(30, 44, 26),
+    "t": P(66, 44, 26),
+    "T": P(104, 72, 42),
+    "u": P(134, 98, 58),
 }
 
-OAK = [
-    "........kkkkkk..........",
-    "......kklhhhhlkk........",
-    ".....klhhhhhhhldk.......",
-    "....klhhhhhhhhhhldk.....",
-    "...kdlhhhhhhhhhhhldk....",
-    "..kdllhhhhhhhhhhhlllk...",
-    ".kdlleehhhhhhhheellldk..",
-    ".kdlleehhhhhhhheellldk..",
-    "kdllheehhhhhhhheehllldk.",
-    "kdlheeeeeehheeeeeehlldk.",
-    "kdheeeeeeeeeeeeeeeehldk.",
-    "kdeellllleeeeeelllleedk.",
-    "kdeehhhhhllllllhhhhheedk",
-    "kdeehhhhhllllllhhhhheedk",
-    ".kdehhhhhllllllhhhhhedk.",
-    ".kdehhhhhllllllhhhhhedk.",
-    "..kdhhhhhllllllhhhhdk...",
-    "..kddhhhhhllllhhhddk....",
-    "...kddhhhhhhhhhhddk.....",
-    "....kddddhhhhhdddk......",
-    ".....kkddddddddkk.......",
-    ".......kkddddkk.........",
-    "........kgtttgk.........",
-    "........kTuttuk.........",
-    "........kTuttuk.........",
-    "........kTuttTk.........",
-    "........kTutTTk.........",
-    "........kTutTTk.........",
-    ".......kuTutTTk.........",
-    ".......kuTutTTk.........",
-    "......kuTTutTTTk........",
-    "......kuTTutTTTk........",
-    ".....kuTTTttTTTTk.......",
-    ".....kttttttttttk.......",
-    "......kkkkkkkkkk........",
-    "........................",
-]
+PAL_AUTUMN = {
+    "k": P(46, 26, 14),
+    "d": P(132, 62, 24),
+    "l": P(190, 106, 36),
+    "h": P(232, 158, 58),
+    "m": P(110, 44, 20),
+    "t": P(66, 44, 26),
+    "T": P(104, 72, 42),
+    "u": P(134, 98, 58),
+    "r": P(198, 52, 48),
+}
 
-PINE_PAL = {
+PAL_PINE = {
     "k": P(16, 30, 20),
     "d": P(22, 52, 34),
     "l": P(34, 78, 48),
-    "h": P(52, 108, 64),
+    "h": P(56, 112, 66),
+    "m": P(16, 36, 24),
     "t": P(60, 40, 24),
     "T": P(96, 66, 38),
+    "u": P(122, 88, 52),
 }
 
-PINE = [
-    "...........kk...........",
-    "..........khhk..........",
-    ".........khhhhk.........",
-    ".........klhhlk.........",
-    "........kllhhllk........",
-    ".......kllhhhlllk.......",
-    ".......kdlhhlldk........",
-    "......kdllhhllldk.......",
-    ".....kdlhhhhhhldk.......",
-    ".....kdllhhhllldk.......",
-    "....kdllhhhhhllldk......",
-    "....kdlhhhhhhhhldk......",
-    "...kdllhhhhhhhhlldk.....",
-    "...kdlhhhhhhhhhhldk.....",
-    "..kdllhhhhhhhhhhlldk....",
-    "..kdlhhhhhhhhhhhhldk....",
-    ".kdllhhhhhhhhhhhhllldk..",
-    ".kdlhhhhhhhhhhhhhhhldk..",
-    "kdllhhhhhhhhhhhhhhllldk.",
-    "kddhhhhhhhhhhhhhhhhhddk.",
-    ".kkdddddddddddddddddkk..",
-    "..........kTTk..........",
-    "..........kTTk..........",
-    "..........kTTk..........",
-    ".........kuTTTk.........",
-    ".........kuTTTk.........",
-    "........kuTTTTTk........",
-    "........kuTTTTTk........",
-    ".......kuTTTTTTTk.......",
-    ".......kttttttttk.......",
-    "........kkkkkkkk........",
-    "........................",
-    "........................",
-    "........................",
-    "........................",
-    "........................",
-    "........................",
-]
+PAL_FRUIT = dict(PAL_LEAF)
+PAL_FRUIT["r"] = P(214, 60, 52)
+PAL_FRUIT["R"] = P(240, 110, 84)
 
+
+def build_tree(pal, seed=1, style="round", W=26, trunk_rows=15, dots=None):
+    """Крона по профилю + дизеринг, ствол с расширением к низу."""
+    if style == "cone":
+        prof = [1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 9, 10, 10, 11, 11, 12]
+        trunk_rows = 9
+    else:
+        prof = [2, 4, 6, 8, 9, 10, 11, 12, 12, 13, 13, 13, 13, 12, 12, 11, 10, 9, 8, 6, 4, 2]
+    H = len(prof)
+    cx = W // 2
+    total = H + trunk_rows
+    grid = [["." for _ in range(W)] for _ in range(total)]
+    # --- крона ---
+    for y in range(H):
+        half = prof[y]
+        wob = 1 if (y // 4) % 2 == 0 else -1
+        ccx = cx + (wob if style == "round" else 0)
+        for x in range(ccx - half, ccx + half + 1):
+            if x < 0 or x >= W:
+                continue
+            edge = abs(x - ccx) == half or y == 0 or y == H - 1
+            if edge:
+                grid[y][x] = "k"
+                continue
+            t = abs(x - ccx) / max(1.0, float(half))
+            ny = y / float(H - 1)
+            if style == "cone":
+                band = ny
+            else:
+                band = t * 0.75 + (ny - 0.3) * 0.45
+            r = _h(x, y, 100, seed)
+            if band < 0.34:
+                grid[y][x] = "h"
+            elif band < 0.68:
+                grid[y][x] = "l" if r > 28 else "h"
+            else:
+                grid[y][x] = "d" if r > 18 else "l"
+            if r < 2 and style == "round":
+                grid[y][x] = "m"
+    if dots:
+        for dx, dy, ch in dots:
+            if 0 <= dy < H and 0 <= dx < W and grid[dy][dx] not in ("." , "k"):
+                grid[dy][dx] = ch
+    # --- ствол ---
+    ty0 = H - 2
+    for i in range(trunk_rows):
+        y = ty0 + i
+        flare = 0 if i < trunk_rows - 5 else (i - (trunk_rows - 6) + 1) // 2
+        half = (2 if style != "cone" else 1) + flare
+        for x in range(cx - half - 1, cx + half + 2):
+            if x < 0 or x >= W:
+                continue
+            if x == cx - half - 1 or x == cx + half + 1:
+                grid[y][x] = "k"
+            elif x >= cx + half:
+                grid[y][x] = "u"
+            elif x <= cx - half + 1:
+                grid[y][x] = "t"
+            else:
+                grid[y][x] = "T"
+    # нижний обрез темнее
+    yb = total - 1
+    for x in range(W):
+        if grid[yb][x] != ".":
+            grid[yb][x] = "t"
+    return ["".join(row) for row in grid]
+
+
+FRUIT_DOTS = [(7, 6, "r"), (14, 5, "r"), (11, 10, "R"), (17, 11, "r"), (6, 13, "R"), (13, 15, "r")]
+
+OAK = build_tree(PAL_LEAF, seed=3)
+AUTUMN = build_tree(PAL_AUTUMN, seed=7)
+FRUIT = build_tree(PAL_FRUIT, seed=3, dots=FRUIT_DOTS)
+PINE = build_tree(PAL_PINE, seed=5, style="cone")
+
+# ------------------------------------------------------------- берёза --------
 BIRCH_PAL = {
     "k": P(26, 34, 24),
     "d": P(66, 100, 56),
     "l": P(104, 140, 74),
     "h": P(150, 178, 96),
-    "w": P(214, 214, 200),   # белая кора
+    "w": P(214, 214, 200),
     "W": P(238, 238, 226),
-    "b": P(40, 40, 40),      # чёрные чёрточки
+    "b": P(40, 40, 40),
 }
 
 BIRCH = [
@@ -167,106 +181,9 @@ BIRCH = [
     "....kuWWbbWWWk..........",
     "....kttttttttk..........",
     ".....kkkkkkkk...........",
-    "........................",
-    "........................",
-    "........................",
-    "........................",
-    "........................",
-    "........................",
 ]
 
-AUTUMN_PAL = {
-    "k": P(46, 26, 14),
-    "d": P(132, 62, 24),
-    "l": P(190, 106, 36),
-    "h": P(232, 158, 58),
-    "r": P(156, 48, 30),
-    "t": P(66, 44, 26),
-    "T": P(104, 72, 42),
-}
-
-AUTUMN = [
-    "........kkkkkk..........",
-    "......kklhhhhlkk........",
-    ".....klhhhhhhhhdk.......",
-    "....klhhhhlrhhhhldk.....",
-    "...kdlhhhhrrelhhlldk....",
-    "..kdllhhhhreeerhllllk...",
-    ".kdlhhhllhrreeehlllhdk..",
-    ".kdlhhlllhhhrehllllhdk..",
-    "kdllhhlllhhhhhhllllhldk.",
-    "kdlhhllhhhhhhhhhlllhldk.",
-    "kdhhllhhhhhhhhhhhhllhdk.",
-    "kdeelllhhhhhhhhhhllleedk",
-    "kdeehhlllhhhhhhllhhheedk",
-    "kdeehllllhhhhhhlllhheedk",
-    ".kdehllllhhhhhhlllheedk.",
-    ".kdeellllhhhhhhlllleedk.",
-    "..kdellllhhhhhhllledk...",
-    "..kddelllhhhhhhlledk....",
-    "...kddellhhhhhhhedk.....",
-    "....kdddellhhheddk......",
-    ".....kkdddddddddkk......",
-    ".......kkdddddkk........",
-    "........kTtttTk.........",
-    "........kTuttTk.........",
-    "........kTuttTk.........",
-    "........kTuttTk.........",
-    ".......kuTuttTk.........",
-    ".......kuTuttTk.........",
-    "......kuTTuttTk.........",
-    "......kuTTutTTk.........",
-    ".....kuTTTutTTTk........",
-    ".....kuTTTttTTTk........",
-    "....kuTTTttttTTTk.......",
-    "....ktttttttttttk.......",
-    ".....kkkkkkkkkkk........",
-    "........................",
-]
-
-FRUIT_PAL = dict(PAL_LEAF)
-FRUIT_PAL["r"] = P(198, 52, 48)
-FRUIT_PAL["R"] = P(238, 92, 70)
-
-FRUIT = [
-    "........kkkkkk..........",
-    "......kklhhhhlkk........",
-    ".....klhhhhhhhldk.......",
-    "....klhhhrhhhhhhldk.....",
-    "...kdlhhhhhhhhrhhldk....",
-    "..kdllhhhhhhhhhhhlllk...",
-    ".kdllhhrhhhhhhhhellldk..",
-    ".kdllehhrhhhhheelhllldk.",
-    "kdllheeeeeehheeeerlllldk",
-    "kdlheeeeeehheeeeeehllldk",
-    "kdheeeeeeeeeeeeeeeehrldk",
-    "kdeellllleeeeeelllleedk.",
-    "kdeehhhhhlllrllhhhhheedk",
-    "kdeehhhhhllllllhhhrheedk",
-    ".kdehhhhhllllllhhhhhedk.",
-    ".kderhhhhllllllhhhhredk.",
-    "..kdhhhhhlllrllhhhhdk...",
-    "..kddhhhhhllllhhhrdk....",
-    "...kddhhhhhhhhhhhdk.....",
-    "....kddddhhhhhdddk......",
-    ".....kkddddddddkk.......",
-    ".......kkddddkk.........",
-    "........kTtttTk.........",
-    "........kTuttTk.........",
-    "........kTuttTk.........",
-    "........kTuttTk.........",
-    ".......kuTuttTk.........",
-    ".......kuTuttTk.........",
-    "......kuTTutTTk.........",
-    "......kuTTutTTk.........",
-    ".....kuTTTutTTTk........",
-    ".....kuTTTttTTTk........",
-    "....kuTTTttttTTTk.......",
-    "....ktttttttttttk.......",
-    ".....kkkkkkkkkkk........",
-    "........................",
-]
-
+# --------------------------------------------------------- сухостой ----------
 OLD_PAL = {
     "k": P(30, 26, 22),
     "T": P(88, 76, 62),
@@ -457,12 +374,12 @@ TREANT = [
 # ------------------------------------------------------------- кладбище ------
 CEMETERY_PAL = {
     "k": P(26, 30, 24),
-    "g": P(58, 74, 44),      # тёмная трава
+    "g": P(58, 74, 44),
     "G": P(78, 92, 54),
-    "s": P(132, 134, 128),   # камень
+    "s": P(132, 134, 128),
     "S": P(174, 176, 168),
     "d": P(96, 98, 94),
-    "w": P(104, 84, 56),     # дерево креста
+    "w": P(104, 84, 56),
 }
 
 CEMETERY = [
@@ -508,7 +425,7 @@ def write_png(path, px):
 
 
 def grid_to_px(grid, pal):
-    return [[pal.get(ch, OUT) for ch in row] for row in grid]
+    return [[pal.get(ch, (0, 0, 0, 0)) for ch in row] for row in grid]
 
 
 def scale_px(px, f):
@@ -523,10 +440,10 @@ def scale_px(px, f):
 
 SPRITES = [
     ("tree_oak", OAK, PAL_LEAF),
-    ("tree_pine", PINE, PINE_PAL),
+    ("tree_pine", PINE, PAL_PINE),
     ("tree_birch", BIRCH, BIRCH_PAL),
-    ("tree_autumn", AUTUMN, AUTUMN_PAL),
-    ("tree_fruit2", FRUIT, FRUIT_PAL),
+    ("tree_autumn", AUTUMN, PAL_AUTUMN),
+    ("tree_fruit2", FRUIT, PAL_FRUIT),
     ("tree_old", OLD, OLD_PAL),
     ("sap1", SAP1, SAP_PAL),
     ("sap2", SAP2, SAP_PAL),
@@ -538,11 +455,10 @@ SPRITES = [
 
 
 def make_previews(made):
-    """Превью x5 всех новых спрайтов в один лист."""
-    f = 5
+    f = 4
     pad = 8
     imgs = [scale_px(px, f) for _, px, _ in made]
-    w = sum(i and len(i[0]) + pad for i in imgs) + pad
+    w = sum(len(i[0]) + pad for i in imgs) + pad
     h = max(len(i) for i in imgs) + 2 * pad
     sheet = [[(40, 44, 52, 255) for _ in range(w)] for _ in range(h)]
     x = pad
@@ -579,59 +495,6 @@ def copy_refs():
     print("rocks copied")
 
 
-def make_dom_sheet():
-    """Контактный лист 18 домов (по 6 в ряду, высота 180) — для выбора маппинга."""
-    import shutil
-
-    def read_png_wh(path):
-        with open(path, "rb") as f:
-            data = f.read(33)
-        w = int.from_bytes(data[16:20], "big")
-        h = int.from_bytes(data[20:24], "big")
-        return w, h
-
-    rows, cols = 3, 6
-    cell_w, cell_h = 240, 200
-    sheet = [[(46, 50, 58, 255) for _ in range(cols * cell_w)] for _ in range(rows * cell_h)]
-    for i in range(18):
-        path = os.path.join(BLD, "dom%d.png" % (i + 1))
-        if not os.path.exists(path):
-            continue
-        w, h = read_png_wh(path)
-        f = min(180.0 / h, 220.0 / w)
-        nw, nh = max(1, int(w * f)), max(1, int(h * f))
-        # ближайший сосед по решётке позиций (просто превью, не арт)
-        ox = (i % cols) * cell_w + (cell_w - nw) // 2
-        oy = (i // cols) * cell_h + (cell_h - nh) // 2
-        # читаем PNG целиком через zlib (без PIL): декодируем свой же формат
-        with open(path, "rb") as fobj:
-            data = fobj.read()
-        # deflate-поток между IDAT-чанками
-        idat = b""
-        pos = 8
-        while pos < len(data):
-            ln = int.from_bytes(data[pos:pos + 4], "big")
-            tag = data[pos + 4:pos + 8]
-            if tag == b"IDAT":
-                idat += data[pos + 8:pos + 8 + ln]
-            pos += 12 + ln
-        raw = zlib.decompress(idat)
-        stride = w * 4 + 1
-        for y in range(0, h, max(1, h // nh)):
-            row = raw[y * stride + 1:(y + 1) * stride]
-            ty = oy + (y * nh) // h
-            if ty >= (i // cols + 1) * cell_h:
-                break
-            for x in range(0, w, max(1, w // nw)):
-                px = row[x * 4:x * 4 + 4]
-                if len(px) < 4 or px[3] < 128:
-                    continue
-                tx = ox + (x * nw) // w
-                if 0 <= ty < len(sheet) and 0 <= tx < len(sheet[0]):
-                    sheet[ty][tx] = (px[0], px[1], px[2], 255)
-    write_png(os.path.join(HERE, "dom_sheet.png"), sheet)
-
-
 def main():
     os.makedirs(ENV, exist_ok=True)
     os.makedirs(BLD, exist_ok=True)
@@ -645,7 +508,6 @@ def main():
         made.append((name, px, pal))
     make_previews(made)
     copy_refs()
-    make_dom_sheet()
     print("OK")
 
 

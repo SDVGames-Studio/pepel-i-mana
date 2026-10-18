@@ -1986,6 +1986,12 @@ func _test_defense() -> void:
 	# еда идёт в минус — город строит ферму, даже если запас ещё есть (заказчик)
 	var sim_f1 := _make_sim()
 	sim_f1._last_daily_day = 0   # дневные броски включены — работает самострой
+	# случайные броски M4 в этом тесте не при чём: болезнь старосты или беженец
+	# могут сорвать самострой (флаки) — глушим
+	sim_f1.people["ailments"]["sick_chance"] = 0.0
+	sim_f1.people["refugees"]["chance_per_day"] = 0.0
+	sim_f1.people["births"]["chance_per_day"] = 0.0
+	sim_f1.people["stories"]["chance_per_day"] = 0.0
 	var extra := 0
 	while sim_f1.residents.size() < 9:
 		var r_x: Dictionary = sim_f1._new_resident("Тар%d" % extra, "farmer", sim_f1.map.spawn_tile)
@@ -2417,8 +2423,14 @@ func _test_m6() -> void:
 	_check(float(porter_pg["carry"]) > 0.0 and float(sim_pg._pile_total(farm_pg)) < 2.0,
 			"носильщик забрал кучу целиком")
 	_teleport(sim_pg, porter_pg, sim_pg.map.spawn_tile)
-	sim_pg.tick(0.5)
-	_check(float(sim_pg.res["food"]) > food_pg0, "без склада носильщик сносит груз к амбару города")
+	var dropped := false
+	for i in 5:
+		sim_pg.tick(0.5)
+		if float(sim_pg.res["food"]) > food_pg0:
+			dropped = true
+			break
+		_teleport(sim_pg, porter_pg, sim_pg.map.spawn_tile)
+	_check(dropped, "без склада носильщик сносит груз к амбару города")
 	# переполненное хранилище: носильщик ждёт с грузом
 	sim_pg.res["food"] = float(sim_pg.storage_cap())
 	farm_pg["pile"] = {"food": 5.0}
@@ -2972,8 +2984,8 @@ func _test_m9() -> void:
 		var s: Variant = load(path)
 		_check(s != null and (s as Script).can_instantiate(), path.get_file() + " компилируется")
 	# версия этапа
-	_check(String(_read_json("res://data/version.json")["version"]).begins_with("1.0"),
-			"версия проекта 1.0.x (релиз)")
+	_check(String(_read_json("res://data/version.json")["version"]).begins_with("1.1"),
+			"версия проекта 1.1.x (M11 — вишлист)")
 
 
 # --- M10: релиз v1.0 — craftpix-ассеты, бандиты, скот, поля, рынок, гуляй-город

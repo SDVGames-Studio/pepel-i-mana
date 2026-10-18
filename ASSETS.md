@@ -1,5 +1,16 @@
 # АССЕТЫ
 
+## M11 — свои спрайты-генератор + дом-пак (2026-10-18)
+- `tools/make_wishlist_sprites.py` (Blender headless) — деревья с явным стволом
+  (генератор кроны+дизеринг: `env/tree_oak|pine|birch|autumn|fruit2|old.png`),
+  саженцы (`sap1/2`), меч героя (`sword`), дух леса (`spirit`), Древень
+  (`treant`), кладбище (`cemetery`); превью `tools/wishlist_preview.png`.
+- `F:/kust/new-world-v-2/assets/dom` — 18 зданий (dom1..dom18 в
+  `assets/sprites/buildings/`): дома 7 вариантов + ферма/лесопилка/
+  каменоломня/склад/мастерские/таверна/лекарь/шахта/кузни.
+- Скалы rocky-area (mrock1..4) скопированы, но в M11 гряда рисуется
+  процедурно (city_terrain.gd) — файлы в резерве.
+
 ## M10 — craftpix в игре (2026-10-18)
 
 Источник: `F:\востановление кхорно юнитов\assets` (свободные паки CraftPix,

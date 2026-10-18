@@ -281,6 +281,14 @@ func _draw_buildings() -> void:
 					var pulse := 0.5 + 0.5 * sin(Time.get_ticks_msec() / 500.0)
 					draw_arc(anchor - Vector2(0, 4), map.ts * (0.9 + dark * 2.0),
 							0.0, TAU, 24, Color(0.5, 0.3, 0.7, 0.12 + 0.1 * pulse), 2.0)
+			# ночные призывы (M11): скелеты видны у кладбища только ночью
+			if sim.is_night() and int(sim.necro_army) > 0:
+				var shown: int = mini(3, sim.necro_ghosts.size())
+				for g in shown:
+					var gpx: Vector2 = sim.necro_ghosts[g]
+					var bob := absf(sin(Time.get_ticks_msec() / 320.0 + float(g) * 2.1)) * 2.0
+					Assets.draw_ref(self, "k:121", gpx + Vector2(0, -bob),
+							map.ts * 1.1, false, Color(0.75, 0.7, 0.9))
 		# зачарование: рамка цветом эффекта (M3)
 		if String(b.get("enchant", "")) != "":
 			var ecol: Color = enchant_colors.get(String(b["enchant"]), Color(0.8, 0.8, 1.0))

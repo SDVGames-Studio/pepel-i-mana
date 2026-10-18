@@ -33,8 +33,8 @@ func setup(city_map, city_cfg: Dictionary) -> void:
 
 
 ## Детерминированный «шум» тайла: 0..n-1 (одинаков при каждой перерисовке).
-static func _hash(x: int, y: int, n: int) -> int:
-	var v := int((x * 73856093) ^ (y * 19349663))
+static func _hash(x: int, y: int, n: int, salt: int = 0) -> int:
+	var v := int((x * 73856093) ^ (y * 19349663) ^ (salt * 83492791))
 	return absi(v) % maxi(1, n)
 
 
@@ -48,13 +48,14 @@ func _draw() -> void:
 			var rect := Rect2(x * map.ts, y * map.ts, map.ts, map.ts)
 			var base := _grass_at(x, y)
 			var bottom := Vector2(x * map.ts + map.ts / 2.0, y * map.ts + map.ts * 0.92)
-			var cx: float = x * float(map.ts) + float(map.ts) / 2.0
-			var cy: float = y * float(map.ts) + float(map.ts) / 2.0
 			match tile:
 				map.TILE_GRASS:
 					draw_rect(rect, base)
 					_draw_grass_detail(x, y, rect, base, ts)
-					if map.stumps.has(Vector2i(x, y)):
+					var key := Vector2i(x, y)
+					if map.saplings.has(key):
+						_draw_sapling(key, bottom, ts)
+					elif map.stumps.has(key):
 						_draw_shadow(bottom, ts * 0.3)
 						Assets.draw_ref(self, "e:stump", bottom, ts * 0.8)
 				map.TILE_WATER:
@@ -64,8 +65,6 @@ func _draw() -> void:
 					draw_rect(rect, base)
 					_draw_grass_detail(x, y, rect, base, ts)
 					_draw_rock(x, y, tile == map.TILE_ORE, ts)
-					if tile == map.TILE_ORE:
-						_draw_ore_flecks(cx, cy, ts, x, y)
 				map.TILE_TREE:
 					draw_rect(rect, base)
 					_draw_grass_detail(x, y, rect, base, ts)
@@ -78,13 +77,28 @@ func _draw() -> void:
 								bottom + Vector2(0, -2), ts * 2.6)
 
 
-## Трава: плавные пятна (шум блоками 5x5) + зерно яркости тайла — без шахматки.
+## Трава: плавные пятна (билинейный шум, без прямых краёв блоков) + зерно яркости.
+func _noise2(xf: float, yf: float, n: int, salt: int) -> float:
+	var x0 := int(floorf(xf))
+	var y0 := int(floorf(yf))
+	var fx := xf - float(x0)
+	var fy := yf - float(y0)
+	var sx := fx * fx * (3.0 - 2.0 * fx)
+	var sy := fy * fy * (3.0 - 2.0 * fy)
+	var a := float(_hash(x0, y0, n, salt))
+	var b := float(_hash(x0 + 1, y0, n, salt))
+	var c := float(_hash(x0, y0 + 1, n, salt))
+	var d := float(_hash(x0 + 1, y0 + 1, n, salt))
+	return lerpf(lerpf(a, b, sx), lerpf(c, d, sx), sy)
+
+
 func _grass_at(x: int, y: int) -> Color:
-	var shade: Color = _grass_shades[_hash(int(x / 5.0), int(y / 5.0), _grass_shades.size())]
+	var idx := int(_noise2(x / 7.0, y / 7.0, _grass_shades.size(), 11))
+	var shade: Color = _grass_shades[clampi(idx, 0, _grass_shades.size() - 1)]
 	var j := _hash(x, y, 9) - 4   # -4..4
 	if j > 0:
-		return shade.lightened(0.008 * j)
-	return shade.darkened(0.008 * -j)
+		return shade.lightened(0.01 * j)
+	return shade.darkened(0.01 * -j)
 
 
 ## Травинки: 3 короткие штриха темнее/светлее по хэшу — земля не «пластмассит».
@@ -122,54 +136,78 @@ func _rock_neighbors(x: int, y: int) -> int:
 	return n
 
 
-## Единая скальная гряда (M11): тёмная подошва связывает тайлы, внутренние
-## тайлы — крупные тёмные глыбы, крайние — светлые камни; при выработке — трещины.
+## Единая скальная гряда (M11): сплошное тело без щелей — серые плиты с
+## травяной бровкой по верхней кромке, тёмной передней стенкой по нижней,
+## лёгким рельефом и трещинами по мере добычи. Читается одним массивом.
 func _draw_rock(x: int, y: int, ore: bool, ts: float) -> void:
 	var key := Vector2i(x, y)
-	var nb := _rock_neighbors(x, y)
-	var rect := Rect2(Vector2(x * map.ts, y * map.ts), Vector2(ts, ts))
-	var inner := nb >= 5
-	# подошва массива: тянется к соседям, гряда читается одним куском
-	var pad := 6.0 if inner else 3.0
-	var l := pad if _rock_at(x - 1, y) else 1.0
-	var t := pad if _rock_at(x, y - 1) else 1.0
-	var r := pad if _rock_at(x + 1, y) else 1.0
-	var b := pad if _rock_at(x, y + 1) else 1.0
-	var grown := Rect2(rect.position - Vector2(l, t), rect.size + Vector2(l + r, t + b))
-	draw_rect(grown, _rock_deep)
-	var bottom := rect.get_center() + Vector2(0, ts * 0.42)
-	_draw_shadow(bottom, ts * (0.62 if inner else 0.55))
-	if inner:
-		Assets.draw_ref(self, "e:mrock%d" % (1 + _hash(x, y, 2)), bottom, ts * 1.75,
-				_hash(x + 7, y, 2) == 0, Color(0.82, 0.82, 0.85))
-	else:
-		Assets.draw_ref(self, "e:mrock%d" % (3 + _hash(x, y, 2)), bottom, ts * 1.2,
-				_hash(x + 3, y, 2) == 0, Color.WHITE)
+	var rect := Rect2(Vector2(x * ts, y * ts), Vector2(ts, ts))
+	var inner_top := _rock_at(x, y - 1)
+	var inner_bottom := _rock_at(x, y + 1)
+	var inner_left := _rock_at(x - 1, y)
+	var inner_right := _rock_at(x + 1, y)
+	# базовый тон плиты с лёгкой вариацией по тайлу
+	var base := Color("#716c60").lightened(0.02 * float(_hash(x, y, 5) - 2))
+	draw_rect(rect, base)
+	# рельеф: светлое пятно сверху и пара тёмных сколов по хэшу
+	var hx := _hash(x, y, 30)
+	var hy := _hash(y * 7, x * 3, 30)
+	_draw_ellipse(rect.position + Vector2(10.0 + float(hx % 12), 9.0 + float(hy % 8)),
+			8.0 + float(hx % 6), 5.0 + float(hy % 3), base.lightened(0.04))
+	draw_line(rect.position + Vector2(4.0 + float(hy % 10), 14.0 + float(hx % 12)),
+			rect.position + Vector2(12.0 + float(hx % 14), 22.0 + float(hy % 6)),
+			base.darkened(0.12), 2.0)
+	# верхняя кромка: травяная бровка и тень под ней (гряда лежит на земле)
+	if not inner_top:
+		draw_rect(Rect2(rect.position, Vector2(ts, 6.0)), _grass_shades[0].darkened(0.1))
+		draw_rect(Rect2(rect.position + Vector2(0, 6.0), Vector2(ts, 3.0)), base.lightened(0.12))
+	# нижняя кромка: передняя стенка обрыва с трещинами
+	if not inner_bottom:
+		var face := Rect2(rect.position + Vector2(0, ts - 10.0), Vector2(ts, 10.0))
+		draw_rect(face, Color("#454137"))
+		for i in 3:
+			var cxp := rect.position.x + 4.0 + float((_hash(x * 5 + i, y, 20) % int(ts - 8.0)))
+			draw_line(Vector2(cxp, face.position.y + 2.0), Vector2(cxp + 1.5, face.position.y + 9.0),
+					Color(0.1, 0.09, 0.07, 0.8), 1.4)
+	# боковые кромки
+	if not inner_left:
+		draw_rect(Rect2(rect.position, Vector2(2.5, ts)), Color("#565248"))
+	if not inner_right:
+		draw_rect(Rect2(rect.position + Vector2(ts - 2.5, 0), Vector2(2.5, ts)), Color("#565248"))
 	# трещины по мере добычи: скала «оседает»
 	if map.rock_hp.has(key):
 		var frac: float = clampf(float(map.rock_hp[key]) / maxf(1.0, _rock_hp_default), 0.0, 1.0)
 		if frac < 0.66:
 			draw_line(rect.position + Vector2(ts * 0.3, ts * 0.35),
-					rect.position + Vector2(ts * 0.45, ts * 0.7), Color(0.1, 0.1, 0.1, 0.6), 1.5)
+					rect.position + Vector2(ts * 0.5, ts * 0.7), Color(0.12, 0.11, 0.09, 0.85), 1.6)
 		if frac < 0.33:
-			draw_line(rect.position + Vector2(ts * 0.62, ts * 0.25),
-					rect.position + Vector2(ts * 0.52, ts * 0.62), Color(0.1, 0.1, 0.1, 0.6), 1.5)
+			draw_line(rect.position + Vector2(ts * 0.65, ts * 0.2),
+					rect.position + Vector2(ts * 0.5, ts * 0.55), Color(0.12, 0.11, 0.09, 0.85), 1.4)
+	# руда: золотые или рыжие вкрапления
+	if ore:
+		var gold := _hash(x, y, 4) == 0
+		var col := Color("#e0b13e") if gold else Color("#b0684a")
+		for i in 4:
+			var h2 := _hash(x * 13 + i, y * 17 + i, 100)
+			var fx := rect.position.x + 5.0 + float(h2 % int(ts - 10.0))
+			var fy := rect.position.y + 10.0 + float((h2 / 3) % int(ts - 16.0))
+			draw_circle(Vector2(fx, fy), 1.6 + float(h2 % 2), col)
+
+
+## Заполненный эллипс полигоном (для глыб гряды).
+func _draw_ellipse(center: Vector2, rx: float, ry: float, col: Color) -> void:
+	if rx <= 0.5 or ry <= 0.5:
+		return
+	var pts := PackedVector2Array()
+	for i in 18:
+		var a := TAU * float(i) / 18.0
+		pts.append(center + Vector2(cos(a) * rx, sin(a) * ry))
+	draw_colored_polygon(pts, col)
 
 
 func _rock_at(x: int, y: int) -> bool:
 	return map.in_bounds(Vector2i(x, y)) \
 			and (map.grid[y][x] == map.TILE_ROCK or map.grid[y][x] == map.TILE_ORE)
-
-
-## Руда: вкрапления цвета металла поверх скалы (железо — рыжий, золото — тёплый).
-func _draw_ore_flecks(cx: float, cy: float, ts: float, x: int, y: int) -> void:
-	var gold := _hash(x, y, 4) == 0
-	var col := Color("#e0b13e") if gold else Color("#b0684a")
-	for i in 4:
-		var h := _hash(x * 13 + i, y * 17 + i, 100)
-		var fx := cx - ts * 0.28 + float(h % int(ts * 0.56))
-		var fy := cy - ts * 0.2 + float((h / 3) % int(ts * 0.4))
-		draw_circle(Vector2(fx, fy), 1.6 + float(h % 2), col)
 
 
 ## Саженец: две стадии роста (малый росток, кустик).

@@ -666,7 +666,6 @@ func _build() -> void:
 	# категории построек (M11): «навёлся или нажал — выпал список мастерских»
 	_cat_popup = PopupPanel.new()
 	_cat_popup.add_theme_stylebox_override("panel", _panel_style())
-	_cat_popup.mouse_filter = Control.MOUSE_FILTER_STOP
 	root.add_child(_cat_popup)
 	var cat_list: Array = ["living", "resource", "craft", "defence", "magic", "special"]
 	for cat_id in cat_list:
