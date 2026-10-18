@@ -118,6 +118,7 @@ func _draw_world_sorted() -> void:
 	if city != null and city.hero != null and not city.hero.dead:
 		entries.append([city.hero.global_position.y, "hero", city.hero])
 	entries.sort_custom(func(a, b) -> bool: return float(a[0]) < float(b[0]))
+	_draw_campfire()
 	for e in entries:
 		match String(e[1]):
 			"tree":
@@ -136,6 +137,45 @@ func _draw_world_sorted() -> void:
 				_draw_resident(e[2])
 			"hero":
 				_draw_hero(e[2])
+
+
+## Городской костёр (M12): горит вечером, ночью и при тревоге — точка сбора
+## жителей и вечерних посиделок (рисуется под сортированным слоем).
+func _draw_campfire() -> void:
+	var fire := _fire_tile()
+	var evening := false
+	var day_len := float(sim.cfg["day_length"])
+	var life: Dictionary = sim.cfg.get("life", {})
+	var t := fmod(sim.time, day_len) / day_len
+	var nf := float(sim.cfg["night_fraction"])
+	evening = t >= maxf(0.0, 1.0 - nf - float(life.get("evening_len", 0.14)))
+	if not evening and not sim.is_night() and not sim._raid_warned:
+		return
+	var pos: Vector2 = map.tile_center_px(fire) + Vector2(0, 4)
+	var glow := 0.14 + 0.05 * sin(Time.get_ticks_msec() / 180.0)
+	draw_circle(pos, map.ts * 1.6, Color(1.0, 0.6, 0.25, glow))
+	Assets.draw_sheet(self, "fire", int(_anim_time * 9.0) % 5, pos, map.ts * 0.9)
+
+
+## Точка костра: у колодца, если он есть, иначе в центре (как в симуляции).
+func _fire_tile() -> Vector2i:
+	for b in sim.buildings:
+		if bool(b["done"]) and String(b["type"]) == "well":
+			return Vector2i(b["tile"]) + Vector2i(1, 0)
+	return map.spawn_tile
+
+
+## Могилки вокруг кладбища (M12): маленькие кресты, появляются после похорон.
+func _draw_graves(anchor: Vector2) -> void:
+	for g in sim.graves:
+		if not bool(g.get("ready", false)):
+			continue
+		var pos: Vector2 = map.tile_center_px(Vector2i(g["tile"]))
+		if pos.distance_to(anchor) > map.ts * 5.0:
+			continue
+		draw_line(pos + Vector2(-3, -8), pos + Vector2(3, -8), Color(0.86, 0.84, 0.78), 2.0)
+		draw_line(pos + Vector2(0, -11), pos + Vector2(0, -2), Color(0.86, 0.84, 0.78), 2.0)
+		draw_line(pos + Vector2(-3, 0), pos + Vector2(3, 0), Color(0.55, 0.52, 0.45), 2.0)
 
 
 ## Дерево/пень/саженец в тайле (переехали из статического слоя в M12).
@@ -378,6 +418,7 @@ func _draw_building(b: Dictionary) -> void:
 			draw_circle(anchor + Vector2(0, -h + 2.0), 2.5, Color(1, 1, 1, 0.9))
 	# кладбище темнеет (M11): тьма ползёт с кладбища, пока некромант работает
 	if String(b["type"]) == "cemetery" and bool(b["done"]):
+		_draw_graves(anchor - Vector2(0, 0))
 		var dark := clampf(float(sim.necro_dark), 0.0, 1.0)
 		if dark > 0.02:
 			var rings := 4
@@ -495,8 +536,10 @@ func _draw_resident(r: Dictionary) -> void:
 	var sleeping: bool = r["state"] == "sleep" or r["state"] == "rest"
 	if sleeping:
 		tint = tint.darkened(0.45)
+	# движение — по пути, не по флагу (M12): стоящий стоит на кадре покоя
 	var pth: PackedVector2Array = r.get("path", PackedVector2Array())
-	var moving: bool = String(r.get("state", "")) == "going" and not pth.is_empty() and not sleeping
+	var moving: bool = not sleeping and not pth.is_empty() \
+			and pos.distance_to(pth[pth.size() - 1]) > 2.0
 	var dir := String(r.get("dir", "front"))
 	if child:
 		# дети — кеноувский спрайт с бобингом
@@ -516,14 +559,13 @@ func _draw_resident(r: Dictionary) -> void:
 		draw_circle(pos + Vector2(11.0, -6.0), 4.0, bag.darkened(0.1))
 		draw_circle(pos + Vector2(10.0, -7.0), 2.0, bag.lightened(0.15))
 	# разговор-облачко (M12): реплика над головой болтающих
-	var chat: String = String(r.get("chat", ""))
-	if chat != "":
-		_draw_speech_bubble(pos, chat, r)
+	var chat_key := String(r.get("chat_key", ""))
+	if chat_key != "" and String(r["state"]) == "chat":
+		_draw_speech_bubble(pos, Loc.t(chat_key))
 
 
-## Облачко реплики (M12, имитация жизни): скруглённая плашка с текстом
-## и хвостиком, время показа живёт в resident.chat_left.
-func _draw_speech_bubble(pos: Vector2, text: String, r: Dictionary) -> void:
+## Облачко реплики (M12, имитация жизни): плашка с текстом и хвостиком.
+func _draw_speech_bubble(pos: Vector2, text: String) -> void:
 	var font := ThemeDB.fallback_font
 	var fsize := 10
 	var width := font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, fsize).x + 10.0

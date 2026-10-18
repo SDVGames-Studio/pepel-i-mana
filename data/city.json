@@ -9,6 +9,7 @@
 	"resident_speed": 70.0,
 	"day_length": 120.0,
 	"night_fraction": 0.3,
+	"life": {"evening_len": 0.1, "chat_lines": 8, "chat_seconds": 4.0, "chat_cd": 25.0},
 	"speeds": [1, 2, 3, 10],
 	"food_per_resident_day": 2.0,
 	"tired_at": 0.85,

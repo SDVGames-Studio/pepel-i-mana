@@ -233,6 +233,7 @@ func _initialize() -> void:
 	_test_m9()
 	_test_m10()
 	_test_wishlist()
+	_test_m12()
 	if _fails == 0:
 		print("OK: все тесты пройдены")
 		quit(0)
@@ -3339,3 +3340,63 @@ func _test_wishlist() -> void:
 	_check(hit == "necro_purged", "герой выкорчевал кладбище")
 	_check(int(sim_n.necro_army) == 0, "тайная армия рассыпалась")
 	_check(sim_n.building_at(cem_tile).is_empty(), "кладбище разрушено ударом героя")
+
+
+# --- M12: живой город — досуг, разговоры, похороны, сбор у костра ------------
+
+func _test_m12() -> void:
+	print("[M12: живой город — досуг, разговоры, похороны]")
+	var sim := _make_sim()
+	var day_len := float(sim.cfg["day_length"])
+	# вечер распознаётся, день — нет
+	sim.time = 0.3 * day_len
+	_check(not sim._is_evening(), "днём вечер не начинается")
+	sim.time = (1.0 - float(sim.cfg["night_fraction"]) - 0.05) * day_len
+	_check(sim._is_evening(), "вечером город отдыхает")
+	# работник уходит в досуг: таверны нет — идёт к костру (центр)
+	var sim2 := _make_sim()
+	sim2.time = (1.0 - float(sim2.cfg["night_fraction"]) - 0.05) * day_len
+	var farmer := _resident_by_prof(sim2, "farmer")
+	_teleport(sim2, farmer, Vector2i(40, 30))
+	sim2.tick(0.8)
+	_check(["leisure", "chat", "going"].has(String(farmer["state"])),
+			"вечером житель не работает, а отдыхает")
+	# разговор: два праздных рядом обмениваются репликой
+	var a := _add_resident(sim2, "Ада", "crafter")
+	var b := _add_resident(sim2, "Борис", "porter")
+	a["traits"] = []
+	b["traits"] = []
+	_teleport(sim2, a, Vector2i(40, 31))
+	_teleport(sim2, b, Vector2i(40, 32))
+	sim2.time = (1.0 - float(sim2.cfg["night_fraction"]) - 0.05) * day_len
+	sim2.tick(2.0)
+	_check(String(a.get("chat_key", "")) != "" or String(b.get("chat_key", "")) != "",
+			"двое рядом на досуге беседуют облачком")
+	# сбор у костра на тревогу
+	sim2._raid_warned = true
+	sim2.time = 10.0
+	var c := _add_resident(sim2, "Вера", "farmer")
+	c["traits"] = []   # не трусливая: трус вместо сбора прячется домой
+	_teleport(sim2, c, Vector2i(20, 20))
+	sim2.tick(30.0)
+	_check(String(c["state"]) == "gather"
+			or float((sim2.map.tile_of_px(c["pos"]) - sim2.fire_tile()).length()) <= 2.5,
+			"на тревогу жители собираются у костра")
+	sim2._raid_warned = false   # дальше — мирные проверки
+	# похороны: кладбище, смерть жителя → процессия и могилка
+	var cem := _build_now(sim2, "cemetery")
+	_check(bool(cem["done"]), "кладбище построено")
+	var victim := _add_resident(sim2, "Гриб", "farmer")
+	_teleport(sim2, victim, Vector2i(42, 32))
+	sim2.time = 10.0
+	sim2.tick(0.7)
+	sim2._kill(victim, "chron.plague")
+	_check(sim2.graves.size() == 1, "после смерти готовится могилка")
+	var mourners := 0
+	for r in sim2.residents:
+		if int(r.get("funeral", 0)) > 0:
+			mourners += 1
+	_check(mourners >= 1, "процессию провожают жители")
+	sim2.time = 10.0
+	sim2.tick(120.0)
+	_check(bool(sim2.graves[0]["ready"]), "могилка готова после прощания")

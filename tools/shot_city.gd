@@ -121,6 +121,9 @@ func _decorate(city: Node, game: Node) -> void:
 	sim.terrain_dirty = true
 	if OS.get_environment("SHOT_NIGHT") != "":
 		sim.time = float(sim.cfg["day_length"]) * 0.93   # ночь: видны скелеты кладбища
+	elif OS.get_environment("SHOT_EVENING") != "":
+		# вечер (M12): костёр горит, жители в досуге, разговоры-облачка
+		sim.time = float(sim.cfg["day_length"]) * 0.65
 	print("shot: город украшен")
 
 
