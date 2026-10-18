@@ -179,6 +179,7 @@ func _process(_delta: float) -> void:
 	if sim.terrain_dirty:
 		sim.terrain_dirty = false
 		_terrain.queue_redraw()
+		view.mark_trees_dirty()   # деревья ушли в сортированный слой (M12)
 	view.queue_redraw()
 	hud.refresh()
 	_update_daylight()

@@ -16,8 +16,6 @@ var colors: Dictionary = {}
 var _grass_shades: Array = []
 var _rock_deep := Color("#565248")
 var _rock_hp_default := 80.0
-const TREE_REFS := ["e:tree_oak", "e:tree_pine", "e:tree_birch", "e:tree_autumn",
-		"e:tree_oak", "e:tree_pine", "e:tree_fruit2", "e:tree_birch"]
 
 
 func setup(city_map, city_cfg: Dictionary) -> void:
@@ -42,22 +40,17 @@ func _draw() -> void:
 	if map == null:
 		return
 	var ts := float(map.ts)
+	# M12: деревья/пни/саженцы переехали в общий Y-сортированный слой
+	# (city_view._draw_world_sorted) — здесь только земля, вода и скалы
 	for y in map.h:
 		for x in map.w:
 			var tile: int = map.grid[y][x]
 			var rect := Rect2(x * map.ts, y * map.ts, map.ts, map.ts)
 			var base := _grass_at(x, y)
-			var bottom := Vector2(x * map.ts + map.ts / 2.0, y * map.ts + map.ts * 0.92)
 			match tile:
-				map.TILE_GRASS:
+				map.TILE_GRASS, map.TILE_TREE:
 					draw_rect(rect, base)
 					_draw_grass_detail(x, y, rect, base, ts)
-					var key := Vector2i(x, y)
-					if map.saplings.has(key):
-						_draw_sapling(key, bottom, ts)
-					elif map.stumps.has(key):
-						_draw_shadow(bottom, ts * 0.3)
-						Assets.draw_ref(self, "e:stump", bottom, ts * 0.8)
 				map.TILE_WATER:
 					draw_rect(rect, colors["water"])
 					_draw_water_detail(x, y, rect, ts)
@@ -65,16 +58,6 @@ func _draw() -> void:
 					draw_rect(rect, base)
 					_draw_grass_detail(x, y, rect, base, ts)
 					_draw_rock(x, y, tile == map.TILE_ORE, ts)
-				map.TILE_TREE:
-					draw_rect(rect, base)
-					_draw_grass_detail(x, y, rect, base, ts)
-					var key := Vector2i(x, y)
-					if map.saplings.has(key):
-						_draw_sapling(key, bottom, ts)
-					else:
-						_draw_shadow(bottom + Vector2(0, 2), ts * 0.6)
-						Assets.draw_ref(self, TREE_REFS[_hash(x, y, TREE_REFS.size())],
-								bottom + Vector2(0, -2), ts * 2.6)
 
 
 ## Трава: плавные пятна (билинейный шум, без прямых краёв блоков) + зерно яркости.
@@ -208,16 +191,3 @@ func _draw_ellipse(center: Vector2, rx: float, ry: float, col: Color) -> void:
 func _rock_at(x: int, y: int) -> bool:
 	return map.in_bounds(Vector2i(x, y)) \
 			and (map.grid[y][x] == map.TILE_ROCK or map.grid[y][x] == map.TILE_ORE)
-
-
-## Саженец: две стадии роста (малый росток, кустик).
-func _draw_sapling(key: Vector2i, bottom: Vector2, ts: float) -> void:
-	var s: Dictionary = map.saplings[key]
-	var frac: float = clampf(float(s.get("t", 0.0)) / maxf(0.1, float(s.get("grow_days", 1.2))), 0.0, 1.0)
-	var ref := "e:sap1" if frac < 0.5 else "e:sap2"
-	_draw_shadow(bottom, ts * 0.2)
-	Assets.draw_ref(self, ref, bottom, ts * (0.5 if frac < 0.5 else 0.85))
-
-
-func _draw_shadow(pos: Vector2, radius: float) -> void:
-	draw_circle(pos, radius * 0.5, Color(0, 0, 0, 0.18))

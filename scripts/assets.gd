@@ -41,6 +41,9 @@ static func sprite(ref: String) -> Texture2D:
 			if ResourceLoader.exists(path):
 				return tex(path)
 		return null
+	if ref.begins_with("p:"):
+		# пропы-предметы (M12, tools/make_props.py)
+		return tex("res://assets/sprites/props/%s.png" % ref.substr(2))
 	return null
 
 

@@ -18,6 +18,7 @@ var _slow_left := 0.0      # маяк света (M7): враг ползёт м�
 var _slow_mult := 1.0
 var _sprite: Sprite2D = null
 var _base_tint := Color.WHITE
+var _base_sheet_scale := Vector2.ONE   # масштаб кадра полного листа (M12: подмена листа)
 var _bob_time := 0.0
 var _anim_time := 0.0      # кадры листа (M10)
 var _dir := "front"        # направление анимации листа (M10)
@@ -76,6 +77,7 @@ func _ready() -> void:
 		var h := float(p["radius"]) * 2.8
 		_sprite.texture = tex
 		_sprite.scale = Vector2.ONE * (h / float(tex.get_height()) * float(_sprite.vframes))
+		_base_sheet_scale = _sprite.scale
 		_sprite.position = Vector2(0, -h * 0.12)
 		var col := Color(String(p["color"]))
 		_base_tint = Color.WHITE.lerp(col, 0.25)
@@ -108,7 +110,19 @@ func _physics_process(delta: float) -> void:
 				"right": row = 3
 			var anim := "walk" if moving else "idle"
 			var cols := 6 if moving else 4
-			_sprite.texture = Assets.sheet_frame(sheet + "_" + anim, row * cols + int(_anim_time * 8.0) % cols)
+			# M12: кадр переключается frame_coords на ПОЛНОМ листе. Прежний вариант
+			# клал AtlasTexture-кадр в спрайт с сеткой hframes×vframes — Sprite2D
+			# делил и без того вырезанный кадр, рисуя пустой угол («невидимые
+			# бандиты»). Лист walk/idle — разные PNG: подмена texture целиком
+			# с сеткой этого листа, масштаб кадра не меняется.
+			var info: Array = Assets.SHEETS[sheet + "_" + anim]
+			var full: Texture2D = Assets.tex(String(info[0]))
+			if _sprite.texture != full:
+				_sprite.texture = full
+				_sprite.hframes = int(info[3])
+				_sprite.vframes = int(info[4])
+				_sprite.scale = _base_sheet_scale
+			_sprite.frame_coords = Vector2i(int(_anim_time * 8.0) % cols, row)
 		elif absf(velocity.x) > 1.0:
 			_sprite.flip_h = velocity.x < 0.0
 	if stun_left > 0.0:

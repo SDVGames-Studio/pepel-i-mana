@@ -64,47 +64,168 @@ func _draw() -> void:
 	_draw_roads()
 	_draw_anomaly()
 	_draw_world_exit()
-	_draw_buildings()
-	_draw_piles()
-	_draw_animals()
-	_draw_livestock()
-	_draw_raiders()
-	_draw_residents()
+	_draw_world_sorted()
 	_draw_ghost()
 
 
 var _anim_time := 0.0
+
+# кэш тайлов деревьев/пней/саженцев (M12): ландшафт меняется редко —
+# список пересобирается по флагу, который ставит сцена при sim.terrain_dirty
+var _trees_dirty := true
+var _trees_cache: Array = []
 
 func _process(delta: float) -> void:
 	_anim_time += delta
 	queue_redraw()
 
 
-## Дикие животные (M5.1): цель охотника — индюк (M10, craftpix, 4 направления).
-func _draw_animals() -> void:
+## Пересобрать кэш деревьев (вызывает city.gd при sim.terrain_dirty).
+func mark_trees_dirty() -> void:
+	_trees_dirty = true
+
+
+## Единый Y-сортированный слой (M12): деревья, пни, саженцы, здания, кучи,
+## животные, скот, рейдеры, жители и герой рисуются в порядке «линии ног» —
+## нижние объекты перекрывают верхние, никто не проваливается сквозь текстуры.
+func _draw_world_sorted() -> void:
+	var ts := float(map.ts)
+	var entries: Array = []   # [y_px, kind, payload]
+	if _trees_dirty:
+		_trees_dirty = false
+		_trees_cache = []
+		for y in map.h:
+			for x in map.w:
+				var t: int = map.grid[y][x]
+				if t == map.TILE_TREE or map.stumps.has(Vector2i(x, y)) or map.saplings.has(Vector2i(x, y)):
+					_trees_cache.append(Vector2i(x, y))
+	for tile: Vector2i in _trees_cache:
+		entries.append([float(tile.y) * ts + ts * 0.92, "tree", tile])
+	for b in sim.buildings:
+		entries.append([float(Vector2(b["tile"]).y) * ts + ts - 2.0, "bld", b])
+		if bool(b["done"]) and (b as Dictionary).has("pile"):
+			var corner: Vector2 = Vector2(b["tile"]) * ts + Vector2(ts * 0.78, ts * 0.88)
+			if _pile_total(b) >= 0.5:
+				entries.append([corner.y, "pile", b])
 	for a in sim.animals:
-		var pos: Vector2 = a["pos"]
-		var vel := Vector2.ZERO
-		var pth: PackedVector2Array = a.get("path", PackedVector2Array())
-		if not pth.is_empty():
-			vel = pth[0] - pos
-		Assets.draw_animal(self, "turkey", Assets.dir_of(vel), not pth.is_empty(),
-				pos + Vector2(0, -4), 20.0, _anim_time + float(a["id"]) * 0.37)
+		entries.append([Vector2(a["pos"]).y, "animal", a])
+	for a in sim.livestock:
+		entries.append([Vector2(a["pos"]).y, "stock", a])
+	for r in sim.raiders:
+		entries.append([Vector2(r["pos"]).y, "raider", r])
+	for r in sim.residents:
+		entries.append([Vector2(r["pos"]).y, "res", r])
+	if city != null and city.hero != null and not city.hero.dead:
+		entries.append([city.hero.global_position.y, "hero", city.hero])
+	entries.sort_custom(func(a, b) -> bool: return float(a[0]) < float(b[0]))
+	for e in entries:
+		match String(e[1]):
+			"tree":
+				_draw_tree_at(e[2])
+			"bld":
+				_draw_building(e[2])
+			"pile":
+				_draw_pile(e[2])
+			"animal":
+				_draw_animal(e[2])
+			"stock":
+				_draw_stock(e[2])
+			"raider":
+				_draw_raider(e[2])
+			"res":
+				_draw_resident(e[2])
+			"hero":
+				_draw_hero(e[2])
+
+
+## Дерево/пень/саженец в тайле (переехали из статического слоя в M12).
+func _draw_tree_at(tile: Vector2i) -> void:
+	var ts := float(map.ts)
+	var bottom := Vector2(tile.x * ts + ts / 2.0, tile.y * ts + ts * 0.92)
+	var key := Vector2i(tile)
+	if map.saplings.has(key):
+		_draw_sapling(key, bottom, ts)
+	elif map.grid[tile.y][tile.x] == map.TILE_TREE:
+		_draw_shadow(bottom + Vector2(0, 2), ts * 0.6)
+		Assets.draw_ref(self, TREE_REFS[_hash(tile.x, tile.y, TREE_REFS.size())],
+				bottom + Vector2(0, -2), ts * 2.6)
+	else:
+		_draw_shadow(bottom, ts * 0.3)
+		Assets.draw_ref(self, "e:stump", bottom, ts * 0.8)
+
+
+const TREE_REFS := ["e:tree_oak", "e:tree_pine", "e:tree_birch", "e:tree_autumn",
+		"e:tree_oak", "e:tree_pine", "e:tree_fruit2", "e:tree_birch"]
+
+
+static func _hash(x: int, y: int, n: int) -> int:
+	var v := int((x * 73856093) ^ (y * 19349663))
+	return absi(v) % maxi(1, n)
+
+
+func _draw_shadow(pos: Vector2, radius: float) -> void:
+	draw_circle(pos, radius * 0.5, Color(0, 0, 0, 0.18))
+
+
+## Саженец: две стадии роста (малый росток, кустик).
+func _draw_sapling(key: Vector2i, bottom: Vector2, ts: float) -> void:
+	var s: Dictionary = map.saplings[key]
+	var frac: float = clampf(float(s.get("t", 0.0)) / maxf(0.1, float(s.get("grow_days", 1.2))), 0.0, 1.0)
+	var ref := "e:sap1" if frac < 0.5 else "e:sap2"
+	_draw_shadow(bottom, ts * 0.2)
+	Assets.draw_ref(self, ref, bottom, ts * (0.5 if frac < 0.5 else 0.85))
+
+
+func _pile_total(b: Dictionary) -> float:
+	var total := 0.0
+	for k in b.get("pile", {}):
+		total += float(b["pile"][k])
+	return total
+
+
+## Куча ресурса у здания (M6 → M12 сортированный слой).
+func _draw_pile(b: Dictionary) -> void:
+	var ts := float(map.ts)
+	var pile: Dictionary = b["pile"]
+	var total := 0.0
+	var key := ""
+	var best := 0.0
+	for k in pile:
+		total += float(pile[k])
+		if float(pile[k]) > best:
+			best = float(pile[k])
+			key = String(k)
+	if total < 0.5:
+		return
+	var corner: Vector2 = Vector2(b["tile"]) * ts + Vector2(ts * 0.78, ts * 0.88)
+	var size := 8.0 + minf(10.0, total / 3.0)
+	var tint: Color = _pile_colors.get(key, Color(0.8, 0.8, 0.8)).lightened(0.25)
+	Assets.draw_ref(self, PILE_SPRITES.get(key, "k:73"), corner, size, false, tint)
+
+
+## Дикие животные (M5.1): цель охотника — индюк (M10, craftpix, 4 направления).
+func _draw_animal(a: Dictionary) -> void:
+	var pos: Vector2 = a["pos"]
+	var vel := Vector2.ZERO
+	var pth: PackedVector2Array = a.get("path", PackedVector2Array())
+	if not pth.is_empty():
+		vel = pth[0] - pos
+	Assets.draw_animal(self, "turkey", Assets.dir_of(vel), not pth.is_empty(),
+			pos + Vector2(0, -4), 20.0, _anim_time + float(a["id"]) * 0.37)
 
 
 ## Скот на пастбищах (M10): коровы/овцы/свиньи/куры, детёныши мельче.
-func _draw_livestock() -> void:
-	for a in sim.livestock:
-		var pos: Vector2 = a["pos"]
-		var kind := String(a["kind"])
-		var adult := bool(a["adult"])
-		var size := 26.0 if adult else 16.0
-		if kind == "chicken" or kind == "chick":
-			size *= 0.7
-		var moving := bool(a.get("moving", false))
-		Assets.draw_animal(self, {"chick": "chicken"}.get(kind, kind),
-				String(a.get("dir", "front")), moving, pos + Vector2(0, -4),
-				size, _anim_time + float(a["id"]) * 0.53)
+func _draw_stock(a: Dictionary) -> void:
+	var pos: Vector2 = a["pos"]
+	var kind := String(a["kind"])
+	var adult := bool(a["adult"])
+	var size := 26.0 if adult else 16.0
+	if kind == "chicken" or kind == "chick":
+		size *= 0.7
+	var moving := bool(a.get("moving", false))
+	Assets.draw_animal(self, {"chick": "chicken"}.get(kind, kind),
+			String(a.get("dir", "front")), moving, pos + Vector2(0, -4),
+			size, _anim_time + float(a["id"]) * 0.53)
 
 
 ## Зоны (M6): заливка по типу, прогресс обустройства в незаполненных клетках.
@@ -161,28 +282,6 @@ func _draw_roads() -> void:
 		draw_circle(rect.position + Vector2(map.ts * 0.65, map.ts * 0.65), 1.6, col.lightened(0.15))
 
 
-## Кучи ресурсов у зданий (M6): добычу видно глазами — спрайт главного ресурса.
-func _draw_piles() -> void:
-	for b in sim.buildings:
-		if not bool(b["done"]) or not (b as Dictionary).has("pile"):
-			continue
-		var pile: Dictionary = b["pile"]
-		var total := 0.0
-		var key := ""
-		var best := 0.0
-		for k in pile:
-			total += float(pile[k])
-			if float(pile[k]) > best:
-				best = float(pile[k])
-				key = String(k)
-		if total < 0.5:
-			continue
-		var corner: Vector2 = Vector2(b["tile"]) * map.ts + Vector2(map.ts * 0.78, map.ts * 0.88)
-		var size := 8.0 + minf(10.0, total / 3.0)
-		var tint: Color = _pile_colors.get(key, Color(0.8, 0.8, 0.8)).lightened(0.25)
-		Assets.draw_ref(self, PILE_SPRITES.get(key, "k:73"), corner, size, false, tint)
-
-
 func _draw_anomaly() -> void:
 	var c: Color = colors["anomaly"]
 	var pulse := 0.75 + 0.25 * sin(Time.get_ticks_msec() / 300.0)
@@ -226,117 +325,143 @@ func _draw_world_exit() -> void:
 		Color(glow.r, glow.g, glow.b, 0.6 + 0.3 * pulse))
 
 
-func _draw_buildings() -> void:
-	# M10: здания крупнее (×1.55 тайла, якорь по низу) — город выглядит плотнее;
-	# рисуем с сортировкой по Y, чтобы нижние здания перекрывали верхние
-	var sorted: Array = sim.buildings.duplicate()
-	sorted.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
-		return (Vector2(a["tile"]).y) < (Vector2(b["tile"]).y))
-	var bld_size := float(map.ts) * 1.55
-	for b in sorted:
-		var rect := Rect2(Vector2(b["tile"]) * map.ts, Vector2(map.ts, map.ts))
-		var col: Color = _bld_colors.get(String(b["type"]), Color(0.91, 0.85, 0.62))
-		var anchor: Vector2 = Vector2(rect.get_center().x, rect.end.y - 2.0)
-		if not b["done"]:
-			# стройплощадка: каркас и полоса прогресса
-			draw_rect(rect.grow(-3), Color(col.r, col.g, col.b, 0.25))
-			draw_rect(rect.grow(-3), col.darkened(0.2), false, 2.0)
-			var work: float = _build_work(String(b["type"]))
-			var frac := clampf(float(b["progress"]) / work, 0.0, 1.0) if work > 0.0 else 0.0
-			draw_rect(Rect2(rect.position + Vector2(4, map.ts - 9), Vector2((map.ts - 8) * frac, 5)), Color("#ffe082"))
+## Здание в общем сортированном слое (M12). Стиль «рамка-фундамент +
+## предмет-функция» (замечание приёмки M11): производственные здания —
+## фундамент и характерный предмет (наковальня, верстак, котёл, пила…),
+## жилые дома — крупная картинка на общем фундаменте.
+func _draw_building(b: Dictionary) -> void:
+	var ts := float(map.ts)
+	var rect := Rect2(Vector2(b["tile"]) * ts, Vector2(ts, ts))
+	var col: Color = _bld_colors.get(String(b["type"]), Color(0.91, 0.85, 0.62))
+	var anchor: Vector2 = Vector2(rect.get_center().x, rect.end.y - 2.0)
+	if not b["done"]:
+		# стройплощадка: каркас и полоса прогресса
+		draw_rect(rect.grow(-3), Color(col.r, col.g, col.b, 0.25))
+		draw_rect(rect.grow(-3), col.darkened(0.2), false, 2.0)
+		var work: float = _build_work(String(b["type"]))
+		var frac := clampf(float(b["progress"]) / work, 0.0, 1.0) if work > 0.0 else 0.0
+		draw_rect(Rect2(rect.position + Vector2(4, ts - 9), Vector2((ts - 8) * frac, 5)), Color("#ffe082"))
+	else:
+		var h := ts * 1.9   # дома крупнее (M12, было ×1.55)
+		var ref: String = _bld_sprites.get(String(b["type"]), "")
+		if ref == "dom_house":
+			# дома разные (M11): 7 вариантов dom-пака по номеру здания
+			var variants := ["b:dom2", "b:dom3", "b:dom5", "b:dom7", "b:dom10", "b:dom16", "b:dom18"]
+			ref = variants[absi(int(b["id"])) % variants.size()]
+		if String(b["type"]) == "wall" or String(b["type"]) == "gate":
+			h = ts * 1.15   # стены не должны нависать над рядом
+		# рамка-фундамент (M12): плита под постройкой — общий «земляной» стиль
+		var work_kind: String = BLD_PROPS.get(String(b["type"]), "")
+		if work_kind != "" or ref == "dom_house":
+			var fr := rect.grow(-2)
+			draw_rect(Rect2(fr.position + Vector2(0, ts * 0.18), fr.size - Vector2(0, ts * 0.18)),
+					Color("#6e5f4a").darkened(0.05))
+			draw_rect(Rect2(fr.position + Vector2(0, ts * 0.18), fr.size - Vector2(0, ts * 0.18)),
+					Color("#8a7a5f"), false, 2.0)
+		if work_kind != "":
+			# предмет-функция (M12): у производственных зданий вместо картинки-дома
+			draw_circle(anchor + Vector2(0, -2), ts * 0.24, Color(0, 0, 0, 0.16))
+			Assets.draw_ref(self, work_kind, anchor - Vector2(0, ts * 0.42), ts * 0.95)
+		elif ref != "":
+			var sref := ref
+			if String(b["type"]) == "orchard":
+				# яблоневый сад (M10): растёт — молодое дерево, зрелое — с яблоками
+				var stage := int(b.get("apple_stage", 0))
+				sref = "e:tree_oak" if stage < 2 else "e:tree_fruit2"
+			draw_circle(anchor + Vector2(0, -2), h * 0.22, Color(0, 0, 0, 0.16))
+			Assets.draw_ref(self, sref, anchor - Vector2(0, h * 0.5), h)
 		else:
-			# спрайт здания (M9): ссылка b:<id>/e:<имя> из city.json -> buildings
-			var ref: String = _bld_sprites.get(String(b["type"]), "")
-			if ref == "dom_house":
-				# дома разные (M11): 7 вариантов dom-пака по номеру здания
-				var variants := ["b:dom2", "b:dom3", "b:dom5", "b:dom7", "b:dom10", "b:dom16", "b:dom18"]
-				ref = variants[absi(int(b["id"])) % variants.size()]
-			if ref != "":
-				var sref := ref
-				if String(b["type"]) == "orchard":
-					# яблоневый сад (M10): растёт — молодое дерево, зрелое — с яблоками
-					var stage := int(b.get("apple_stage", 0))
-					sref = "e:tree_oak" if stage < 2 else "e:tree_fruit2"
-				var h := bld_size
-				if String(b["type"]) == "wall" or String(b["type"]) == "gate":
-					h = float(map.ts) * 1.15   # стены не должны нависать над рядом
-				draw_circle(anchor + Vector2(0, -2), bld_size * 0.22, Color(0, 0, 0, 0.16))
-				Assets.draw_ref(self, sref, anchor - Vector2(0, h * 0.5), h)
-			else:
-				draw_rect(rect, col)
-				draw_rect(rect.grow(-4), col.darkened(0.25))
-			# точка-работник: занятое здание подсвечено
-			if int(b["worker"]) > 0:
-				draw_circle(anchor + Vector2(0, -bld_size + 2.0), 2.5, Color(1, 1, 1, 0.9))
-		# кладбище темнеет (M11): тьма ползёт с кладбища, пока некромант работает
-		if String(b["type"]) == "cemetery" and bool(b["done"]):
-			var dark := clampf(float(sim.necro_dark), 0.0, 1.0)
-			if dark > 0.02:
-				var rings := 4
-				for i in rings:
-					var rr: float = map.ts * (0.8 + dark * 2.2) * (float(i + 1) / float(rings))
-					draw_circle(anchor - Vector2(0, 4), rr,
-							Color(0.08, 0.05, 0.14, 0.05 + 0.1 * dark))
-				if sim.necro_known:
-					var pulse := 0.5 + 0.5 * sin(Time.get_ticks_msec() / 500.0)
-					draw_arc(anchor - Vector2(0, 4), map.ts * (0.9 + dark * 2.0),
-							0.0, TAU, 24, Color(0.5, 0.3, 0.7, 0.12 + 0.1 * pulse), 2.0)
-			# ночные призывы (M11): скелеты видны у кладбища только ночью
-			if sim.is_night() and int(sim.necro_army) > 0:
-				var shown: int = mini(3, sim.necro_ghosts.size())
-				for g in shown:
-					var gpx: Vector2 = sim.necro_ghosts[g]
-					var bob := absf(sin(Time.get_ticks_msec() / 320.0 + float(g) * 2.1)) * 2.0
-					Assets.draw_ref(self, "k:121", gpx + Vector2(0, -bob),
-							map.ts * 1.1, false, Color(0.75, 0.7, 0.9))
-		# зачарование: рамка цветом эффекта (M3)
-		if String(b.get("enchant", "")) != "":
-			var ecol: Color = enchant_colors.get(String(b["enchant"]), Color(0.8, 0.8, 1.0))
-			draw_rect(rect.grow(-1), ecol, false, 2.0)
-			draw_circle(rect.position + Vector2(5, 5), 3.0, ecol)
-		# дикая вспышка: здание оглушено
-		if float(b.get("stun_left", 0.0)) > 0.0:
-			draw_rect(rect, Color(0.1, 0.05, 0.15, 0.55))
-			var flash := 0.5 + 0.5 * sin(Time.get_ticks_msec() / 120.0)
-			draw_arc(rect.get_center(), map.ts * 0.4, 0.0, TAU, 20,
-					Color(0.9, 0.4, 1.0, 0.4 + 0.4 * flash), 2.0)
-		# прочность (M5): повреждённое здание показывает полоску
-		if bool(b["done"]) and float(b.get("hp", 999.0)) < float(_bld_max_hp(String(b["type"]))):
-			var frac2 := clampf(float(b["hp"]) / float(_bld_max_hp(String(b["type"]))), 0.0, 1.0)
-			draw_rect(Rect2(rect.position + Vector2(4, -7), Vector2(map.ts - 8, 4)), Color(0.15, 0.1, 0.1))
-			draw_rect(Rect2(rect.position + Vector2(4, -7), Vector2((map.ts - 8) * frac2, 4)), Color("#8bc34a"))
+			draw_rect(rect, col)
+			draw_rect(rect.grow(-4), col.darkened(0.25))
+		# точка-работник: занятое здание подсвечено
+		if int(b["worker"]) > 0:
+			draw_circle(anchor + Vector2(0, -h + 2.0), 2.5, Color(1, 1, 1, 0.9))
+	# кладбище темнеет (M11): тьма ползёт с кладбища, пока некромант работает
+	if String(b["type"]) == "cemetery" and bool(b["done"]):
+		var dark := clampf(float(sim.necro_dark), 0.0, 1.0)
+		if dark > 0.02:
+			var rings := 4
+			for i in rings:
+				var rr: float = ts * (0.8 + dark * 2.2) * (float(i + 1) / float(rings))
+				draw_circle(anchor - Vector2(0, 4), rr,
+						Color(0.08, 0.05, 0.14, 0.05 + 0.1 * dark))
+			if sim.necro_known:
+				var pulse := 0.5 + 0.5 * sin(Time.get_ticks_msec() / 500.0)
+				draw_arc(anchor - Vector2(0, 4), ts * (0.9 + dark * 2.0),
+						0.0, TAU, 24, Color(0.5, 0.3, 0.7, 0.12 + 0.1 * pulse), 2.0)
+		# ночные призывы (M11): скелеты видны у кладбища только ночью
+		if sim.is_night() and int(sim.necro_army) > 0:
+			var shown: int = mini(3, sim.necro_ghosts.size())
+			for g in shown:
+				var gpx: Vector2 = sim.necro_ghosts[g]
+				var bob := absf(sin(Time.get_ticks_msec() / 320.0 + float(g) * 2.1)) * 2.0
+				Assets.draw_ref(self, "k:121", gpx + Vector2(0, -bob),
+						ts * 1.1, false, Color(0.75, 0.7, 0.9))
+	# зачарование: рамка цветом эффекта (M3)
+	if String(b.get("enchant", "")) != "":
+		var ecol: Color = enchant_colors.get(String(b["enchant"]), Color(0.8, 0.8, 1.0))
+		draw_rect(rect.grow(-1), ecol, false, 2.0)
+		draw_circle(rect.position + Vector2(5, 5), 3.0, ecol)
+	# дикая вспышка: здание оглушено
+	if float(b.get("stun_left", 0.0)) > 0.0:
+		draw_rect(rect, Color(0.1, 0.05, 0.15, 0.55))
+		var flash := 0.5 + 0.5 * sin(Time.get_ticks_msec() / 120.0)
+		draw_arc(rect.get_center(), ts * 0.4, 0.0, TAU, 20,
+				Color(0.9, 0.4, 1.0, 0.4 + 0.4 * flash), 2.0)
+	# прочность (M5): повреждённое здание показывает полоску
+	if bool(b["done"]) and float(b.get("hp", 999.0)) < float(_bld_max_hp(String(b["type"]))):
+		var frac2 := clampf(float(b["hp"]) / float(_bld_max_hp(String(b["type"]))), 0.0, 1.0)
+		draw_rect(Rect2(rect.position + Vector2(4, -7), Vector2(ts - 8, 4)), Color(0.15, 0.1, 0.1))
+		draw_rect(Rect2(rect.position + Vector2(4, -7), Vector2((ts - 8) * frac2, 4)), Color("#8bc34a"))
+
+
+## Предмет-функция (M12): проп вместо картинки-дома у производственных зданий.
+## Генератор — tools/make_props.py (спрайты assets/sprites/props/).
+const BLD_PROPS := {
+	"sawmill": "p:sawlog",     # пила с брёвнами
+	"quarry": "p:tools_stone", # каменная плита с инструментом
+	"mine": "p:minecart",      # тачка руды у входа
+	"smelter": "p:crucible",   # горн с тиглем
+	"forge": "p:anvil",        # наковальня = кузня
+	"workshop": "p:workbench", # верстак = мастерская
+	"armory": "p:rack",        # стойка с оружием
+	"warehouse": "p:crates",   # ящики со складом
+	"farm": "p:hay",           # стог сена = ферма
+	"tavern": "p:cauldron",    # котёл = таверна
+	"healer_hut": "p:mortar",  # ступка = хижина лекаря
+	"market": "p:stall",       # прилавок торговца
+}
 
 
 ## Атакующие (M5 мутанты; M11 духи леса, Древень, скелеты некроманта).
-func _draw_raiders() -> void:
+func _draw_raider(r: Dictionary) -> void:
 	var refs := {"mutant": "k:108", "brute": "k:109", "spitter": "k:110",
 			"forest_spirit": "e:spirit", "forest_boss": "e:treant", "skeleton": "k:121"}
-	for r in sim.raiders:
-		var pos: Vector2 = r["pos"]
-		var rad := float(r["p"]["radius"])
-		var kind := String(r["type"])
-		var ref: String = refs.get(kind, "k:108")
-		var size := rad * 2.8
-		var lift := 0.0
-		var tint := Color.WHITE
-		if kind == "forest_spirit" or kind == "forest_boss":
-			# духи парят: синус повыше и медленнее, свечение бирюзой
-			lift = 4.0 + 2.5 * sin(Time.get_ticks_msec() / 260.0 + float(r["id"]))
-			tint = Color(0.8, 1.05, 1.0) if kind == "forest_spirit" else Color(0.9, 1.1, 0.85)
-		var phase := pos.x * 0.9 + Time.get_ticks_msec() / 100.0
-		var vx := 0.0
-		var pth: PackedVector2Array = r.get("path", PackedVector2Array())
-		if not pth.is_empty():
-			vx = (pth[0] - pos).x
-		Assets.draw_ref(self, ref, pos + Vector2(0, -absf(sin(phase)) * 1.5 - lift), size, vx < -1.0, tint)
-		if int(r["hp"]) < int(r["max_hp"]):
-			var frac := clampf(float(r["hp"]) / float(r["max_hp"]), 0.0, 1.0)
-			draw_rect(Rect2(pos + Vector2(-12, -rad - 8), Vector2(24, 4)), Color(0.15, 0.1, 0.1))
-			draw_rect(Rect2(pos + Vector2(-12, -rad - 8), Vector2(24.0 * frac, 4)), Color(0.9, 0.25, 0.25))
-		# осадный мутант и босс леса выделены — видно, кто главный
-		if kind == "brute" or kind == "forest_boss":
-			var ring := Color(0.9, 0.3, 0.2, 0.6) if kind == "brute" else Color(0.5, 0.9, 0.4, 0.7)
-			draw_arc(pos, rad + 3.0, 0.0, TAU, 20, ring, 2.0)
+	var pos: Vector2 = r["pos"]
+	var rad := float(r["p"]["radius"])
+	var kind := String(r["type"])
+	var ref: String = refs.get(kind, "k:108")
+	var size := rad * 2.8
+	var lift := 0.0
+	var tint := Color.WHITE
+	if kind == "forest_spirit" or kind == "forest_boss":
+		# духи парят: синус повыше и медленнее, свечение бирюзой
+		lift = 4.0 + 2.5 * sin(Time.get_ticks_msec() / 260.0 + float(r["id"]))
+		tint = Color(0.8, 1.05, 1.0) if kind == "forest_spirit" else Color(0.9, 1.1, 0.85)
+	var phase := pos.x * 0.9 + Time.get_ticks_msec() / 100.0
+	var vx := 0.0
+	var pth: PackedVector2Array = r.get("path", PackedVector2Array())
+	if not pth.is_empty():
+		vx = (pth[0] - pos).x
+	Assets.draw_ref(self, ref, pos + Vector2(0, -absf(sin(phase)) * 1.5 - lift), size, vx < -1.0, tint)
+	if int(r["hp"]) < int(r["max_hp"]):
+		var frac := clampf(float(r["hp"]) / float(r["max_hp"]), 0.0, 1.0)
+		draw_rect(Rect2(pos + Vector2(-12, -rad - 8), Vector2(24, 4)), Color(0.15, 0.1, 0.1))
+		draw_rect(Rect2(pos + Vector2(-12, -rad - 8), Vector2(24.0 * frac, 4)), Color(0.9, 0.25, 0.25))
+	# осадный мутант и босс леса выделены — видно, кто главный
+	if kind == "brute" or kind == "forest_boss":
+		var ring := Color(0.9, 0.3, 0.2, 0.6) if kind == "brute" else Color(0.5, 0.9, 0.4, 0.7)
+		draw_arc(pos, rad + 3.0, 0.0, TAU, 20, ring, 2.0)
 
 
 func _bld_max_hp(type_id: String) -> float:
@@ -347,46 +472,76 @@ func _bld_max_hp(type_id: String) -> float:
 	return float(hp_cfg.get("default", 20))
 
 
-func _draw_residents() -> void:
+## Житель (M12: per-object для общего сортированного слоя). Айдл без «марша на
+## месте»: движение читается из состояния и пути — раньше флаг moving,
+## выставленный в дороге, не сбрасывался у стоящих, и они «маршировали».
+func _draw_resident(r: Dictionary) -> void:
 	var child_ref := "k:88"  # рыжий мальчик — дети
-	for r in sim.residents:
-		var pos: Vector2 = r["pos"]
-		var prof := String(r["prof"])
-		var child := prof == ""
-		# M11 по замечанию заказчика: жители НЕ меньше героя-«великана» —
-		# кадры граждан 48px с полями, видимое тело ~30px при высоте 50px
-		var size := 26.0 if child else 50.0
-		var tint := Color.WHITE
-		var ail := String(r.get("ail", ""))
-		if ail == "sick":
-			tint = Color(0.75, 0.95, 0.65)
-		elif ail == "wounded":
-			tint = Color(1.0, 0.6, 0.6)
-		# некромант (M11): тайный — после раскрытия читается по лиловой тени
-		if String(r.get("secret", "")) == "necromancer" and sim.necro_known:
-			tint = tint.lerp(Color(0.75, 0.6, 0.95), 0.45)
-		var sleeping: bool = r["state"] == "sleep" or r["state"] == "rest"
-		if sleeping:
-			tint = tint.darkened(0.45)
-		var moving: bool = bool(r.get("moving", true)) and not sleeping
-		var dir := String(r.get("dir", "front"))
-		if child:
-			# дети — кеноувский спрайт с бобингом
-			var phase := float(pos.x * 0.7 + pos.y * 1.3)
-			var bob := absf(sin(phase + Time.get_ticks_msec() / (1000.0 / 9.0))) * (2.0 if moving else 0.4)
-			Assets.draw_ref(self, child_ref, pos + Vector2(0, -bob), size, dir == "left", tint)
-		else:
-			# взрослые — craftpix-граждане (M10): 4 направления, кадры ходьбы/idle;
-			# профессия читается по лёгкой подкраске одежды
-			var prof_color: Color = _prof_colors.get(prof, Color.WHITE)
-			var ctint := tint.lerp(prof_color, 0.22) if prof != "" else tint
-			Assets.draw_citizen(self, 1 + int(r["id"]) % 4, dir, moving, pos, size,
-					_anim_time + float(r["id"]) * 0.41, ctint)
-		# груз носильщика (M6): узел цвета ресурса
-		if float(r.get("carry", 0.0)) > 0.0:
-			var bag: Color = _pile_colors.get(String(r.get("carry_res", "")), Color(0.8, 0.7, 0.5))
-			draw_circle(pos + Vector2(11.0, -6.0), 4.0, bag.darkened(0.1))
-			draw_circle(pos + Vector2(10.0, -7.0), 2.0, bag.lightened(0.15))
+	var pos: Vector2 = r["pos"]
+	var prof := String(r["prof"])
+	var child := prof == ""
+	# M11 по замечанию заказчика: жители НЕ меньше героя-«великана» —
+	# кадры граждан 48px с полями, видимое тело ~30px при высоте 50px
+	var size := 26.0 if child else 50.0
+	var tint := Color.WHITE
+	var ail := String(r.get("ail", ""))
+	if ail == "sick":
+		tint = Color(0.75, 0.95, 0.65)
+	elif ail == "wounded":
+		tint = Color(1.0, 0.6, 0.6)
+	# некромант (M11): тайный — после раскрытия читается по лиловой тени
+	if String(r.get("secret", "")) == "necromancer" and sim.necro_known:
+		tint = tint.lerp(Color(0.75, 0.6, 0.95), 0.45)
+	var sleeping: bool = r["state"] == "sleep" or r["state"] == "rest"
+	if sleeping:
+		tint = tint.darkened(0.45)
+	var pth: PackedVector2Array = r.get("path", PackedVector2Array())
+	var moving: bool = String(r.get("state", "")) == "going" and not pth.is_empty() and not sleeping
+	var dir := String(r.get("dir", "front"))
+	if child:
+		# дети — кеноувский спрайт с бобингом
+		var phase := float(pos.x * 0.7 + pos.y * 1.3)
+		var bob := absf(sin(phase + Time.get_ticks_msec() / (1000.0 / 9.0))) * (2.0 if moving else 0.4)
+		Assets.draw_ref(self, child_ref, pos + Vector2(0, -bob), size, dir == "left", tint)
+	else:
+		# взрослые — craftpix-граждане (M10): 4 направления, кадры ходьбы/idle;
+		# профессия читается по лёгкой подкраске одежды
+		var prof_color: Color = _prof_colors.get(prof, Color.WHITE)
+		var ctint := tint.lerp(prof_color, 0.22) if prof != "" else tint
+		Assets.draw_citizen(self, 1 + int(r["id"]) % 4, dir, moving, pos, size,
+				_anim_time + float(r["id"]) * 0.41, ctint)
+	# груз носильщика (M6): узел цвета ресурса
+	if float(r.get("carry", 0.0)) > 0.0:
+		var bag: Color = _pile_colors.get(String(r.get("carry_res", "")), Color(0.8, 0.7, 0.5))
+		draw_circle(pos + Vector2(11.0, -6.0), 4.0, bag.darkened(0.1))
+		draw_circle(pos + Vector2(10.0, -7.0), 2.0, bag.lightened(0.15))
+	# разговор-облачко (M12): реплика над головой болтающих
+	var chat: String = String(r.get("chat", ""))
+	if chat != "":
+		_draw_speech_bubble(pos, chat, r)
+
+
+## Облачко реплики (M12, имитация жизни): скруглённая плашка с текстом
+## и хвостиком, время показа живёт в resident.chat_left.
+func _draw_speech_bubble(pos: Vector2, text: String, r: Dictionary) -> void:
+	var font := ThemeDB.fallback_font
+	var fsize := 10
+	var width := font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, fsize).x + 10.0
+	var top := pos + Vector2(-width * 0.5, -58.0)
+	var rect := Rect2(top, Vector2(width, 16.0))
+	draw_rect(rect, Color(1, 1, 0.96, 0.92))
+	draw_rect(rect, Color(0.35, 0.3, 0.25, 0.8), false, 1.0)
+	draw_colored_polygon(PackedVector2Array([
+		pos + Vector2(-3, -42), pos + Vector2(3, -42), pos + Vector2(0, -36)]),
+		Color(1, 1, 0.96, 0.92))
+	draw_string(font, top + Vector2(5, 12), text, HORIZONTAL_ALIGNMENT_LEFT, -1, fsize,
+			Color(0.2, 0.16, 0.12))
+
+
+## Герой в общем сортированном слое (M12): тело и меч рисует сам герой
+## в переданный canvas, спрайт-нода в городе скрыта.
+func _draw_hero(hero) -> void:
+	hero.draw_body(self, hero.global_position)
 
 
 func _draw_ghost() -> void:

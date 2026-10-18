@@ -111,6 +111,10 @@ func _ready() -> void:
 	cam.zoom = Vector2(2, 2)
 	add_child(cam)
 	cam.make_current()
+	# в городе героя рисует общий Y-сортированный слой сцены (M12):
+	# спрайт-нода скрыта, тело и меч выводит draw_body в city_view
+	if city_mode and _sprite != null:
+		_sprite.visible = false
 	queue_redraw()
 
 
@@ -332,8 +336,10 @@ func dash_ready_fraction() -> float:
 
 
 func _draw() -> void:
+	if city_mode:
+		return   # в городе тело и меч рисует общий сортированный слой (city_view)
 	# тело героя — спрайт воина (M9); здесь оружие и боевые индикаторы
-	_draw_sword()
+	draw_body(self, Vector2.ZERO)
 	if _attack_cd > float(p["attack_cooldown"]) - 0.15:
 		draw_line(Vector2.ZERO, facing * float(p["attack_range"]), Color(1.0, 0.9, 0.6, 0.8), 3.0)
 	if _invuln > 0.0:
@@ -342,10 +348,31 @@ func _draw() -> void:
 		draw_arc(Vector2.ZERO, float(p["radius"]) + 6.0, 0.0, TAU, 32, Color(1.0, 0.85, 0.35, 0.85), 2.5)
 
 
+## Тело и меч в переданный canvas (данж: свой canvas, город: city_view, M12).
+func draw_body(canvas: CanvasItem, pos: Vector2) -> void:
+	var h := float(p["radius"]) * 3.2
+	var moving := velocity.length() > 5.0
+	var amp := 1.6 if moving else 0.5
+	var body_y := -h * 0.15 - absf(sin(_bob_time)) * amp
+	var flip := facing.x < 0.0
+	# шаг виден и при движении вверх/вниз (M10): лёгкое покачивание корпусом
+	var rot := 0.0
+	if moving and absf(facing.y) >= absf(facing.x):
+		rot = sin(_bob_time) * 0.09
+	if _sprite != null and _sprite.texture != null:
+		canvas.draw_set_transform(pos, rot, Vector2.ONE)
+		var dst := Rect2(Vector2(-h / 2.0, body_y - h / 2.0), Vector2(h, h))
+		if flip:
+			dst.size.x = -dst.size.x
+		canvas.draw_texture_rect(_sprite.texture, dst, false)
+		canvas.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+	_draw_sword(canvas, pos, flip)
+
+
 ## Меч героя (M11): виден в руке, при ударе — дуга замаха в сторону курсора.
-func _draw_sword() -> void:
+func _draw_sword(canvas: CanvasItem, pos: Vector2, flip := false) -> void:
 	var tex: Texture2D = Assets.sprite("e:sword")
-	if tex == null or _sprite == null:
+	if tex == null:
 		return
 	var h := float(p["radius"]) * 1.7
 	var s := h / float(tex.get_height())
@@ -362,9 +389,9 @@ func _draw_sword() -> void:
 		hand = facing.rotated(arc) * (float(p["radius"]) * 0.8) + Vector2(0, -float(p["radius"]) * 0.6)
 	else:
 		# в покое меч опущен по боку, отражается вместе с корпусом
-		var side := -1.0 if _sprite.flip_h else 1.0
+		var side := 1.0 if not flip else -1.0
 		ang = facing.angle() + 1.25 * side
 		hand = Vector2(side * float(p["radius"]) * 0.55, float(p["radius"]) * 0.15)
-	draw_set_transform(hand, ang + PI / 2.0, Vector2.ONE)
-	draw_texture_rect(tex, Rect2(-w / 2.0, -h / 2.0, w, h), false)
-	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+	canvas.draw_set_transform(pos + hand, ang + PI / 2.0, Vector2.ONE)
+	canvas.draw_texture_rect(tex, Rect2(Vector2(-w / 2.0, -h / 2.0), Vector2(w, h)), false)
+	canvas.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
