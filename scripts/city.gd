@@ -411,6 +411,15 @@ func _process_events() -> void:
 			"necro_purged":
 				hud.toast(Loc.t("city.necro_purged_toast"))
 				_rebuild_collision()
+			# --- вишлист M13: пары и День основания ---
+			"wedding":
+				hud.toast(Loc.t("story.wedding_toast") % [String(ev["a"]), String(ev["b"])])
+			"widow":
+				hud.toast(Loc.t("story.widow_toast") % [String(ev["a"]), String(ev["b"])])
+			"found_day":
+				hud.toast(Loc.t("city.found_day_toast"))
+			"found_skip":
+				hud.toast(Loc.t("city.found_skip_toast"))
 	sim.events.clear()
 
 

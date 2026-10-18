@@ -117,6 +117,48 @@
 			"loot_bonus": 2,
 			"pollution_on_visit": 0.0,
 			"boss": "bandit_chief"
+		},
+		"cursed_hall": {
+			"loc": "biome.cursed_hall",
+			"floor_color": "#3f3a4c",
+			"wall_color": "#241f30",
+			"bg_color": "#0e0c16",
+			"exit_color": "#b39ddb",
+			"floor_sprite": "k:28",
+			"wall_sprite": "k:40",
+			"ambient": "#0a0812",
+			"enemy_weights": { "ghoul": 40, "wraith": 30, "fallen": 15, "skeleton": 15 },
+			"loot_bonus": 2,
+			"pollution_on_visit": 2.0,
+			"boss": "seraph_of_ash"
+		},
+		"demon_lair": {
+			"loc": "biome.demon_lair",
+			"floor_color": "#4a2c28",
+			"wall_color": "#2b1518",
+			"bg_color": "#140a0c",
+			"exit_color": "#ff8a65",
+			"floor_sprite": "k:28",
+			"wall_sprite": "k:40",
+			"ambient": "#0e0505",
+			"enemy_weights": { "imp": 40, "hellcaller": 30, "cinder": 15, "brute": 15 },
+			"loot_bonus": 2,
+			"pollution_on_visit": 3.0,
+			"boss": "demon_lord"
+		},
+		"dragon_lair": {
+			"loc": "biome.dragon_lair",
+			"floor_color": "#4a4234",
+			"wall_color": "#2a241c",
+			"bg_color": "#120e08",
+			"exit_color": "#ffd54f",
+			"floor_sprite": "k:28",
+			"wall_sprite": "k:40",
+			"ambient": "#0f0b06",
+			"enemy_weights": { "dragon_whelp": 55, "cinder": 20, "dust_stalker": 25 },
+			"loot_bonus": 3,
+			"pollution_on_visit": 3.0,
+			"boss": "ancient_dragon"
 		}
 	}
 }

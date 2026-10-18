@@ -35,7 +35,7 @@
 		{"id": "stoic", "weight": 6, "grief_mult": 0.7, "pollution_mood": -0.05}
 	],
 	"refugees": {"chance_per_day": 0.35, "wave_max": 2, "mood_gate": 45.0, "tower_bonus": 0.1, "tower_bonus_max": 0.4},
-	"births": {"chance_per_day": 0.25, "mood_gate": 60.0, "child_days": 8.0},
+	"births": {"chance_per_day": 0.25, "mood_gate": 60.0, "child_days": 8.0, "couple_boost": 1.5},
 	"ailments": {
 		"sick_chance": 0.02,
 		"pollution_sick_extra": 0.10,
@@ -46,6 +46,12 @@
 		"death_risk_after_days": 3.0,
 		"death_risk_growth": 0.05,
 		"wounded_on_surge": 1
+	},
+	"couples": {
+		"chance_per_day": 0.25,
+		"mood_gate": 62.0,
+		"pair_mood": 4.0,
+		"widow_grief": 10.0
 	},
 	"stories": {
 		"chance_per_day": 0.5,

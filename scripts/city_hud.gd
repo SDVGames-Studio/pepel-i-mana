@@ -858,7 +858,10 @@ func _residents_bbcode() -> String:
 			"child":
 				state_col = "#fff59d"
 		var parts := PackedStringArray()
-		parts.append("[b]%s[/b]" % String(r["name"]))
+		var name_line := String(r["name"])
+		if int(r.get("partner", -1)) >= 0:
+			name_line += " [color=#f48fb1]♥[/color]"   # состоит в паре (M13)
+		parts.append("[b]%s[/b]" % name_line)
 		if String(r["prof"]) == "":
 			parts.append("[color=#fff59d]%s[/color]" % Loc.t("city.state.child"))
 		else:

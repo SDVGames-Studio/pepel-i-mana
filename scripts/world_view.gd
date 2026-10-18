@@ -12,6 +12,7 @@ const KIND_COLORS := {
 	"caravan": "#ffb300",
 	"trade_camp": "#ffca28",
 	"obelisk": "#4dd0e1",
+	"dragon_castle": "#ef5350",
 }
 
 # спрайты точек интереса (M9): Kenney + сгенерированные здания
@@ -24,6 +25,7 @@ const KIND_SPRITES := {
 	"caravan": "k:98",
 	"trade_camp": "e:cart",
 	"obelisk": "b:statue",
+	"dragon_castle": "b:castle",
 }
 
 var map = null

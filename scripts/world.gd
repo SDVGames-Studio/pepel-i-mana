@@ -270,7 +270,7 @@ func _use_poi(poi: Dictionary) -> void:
 				_enter_location(poi)   # павшее поселение — там лагерь бандитов
 		"trade_camp":
 			_enter_trade_camp(poi)
-		"dungeon", "ruins", "camp":
+		"dungeon", "ruins", "camp", "dragon_castle":
 			if sim.poi_enterable(poi):
 				_enter_location(poi)
 			else:
@@ -338,6 +338,10 @@ func _enter_location(poi: Dictionary) -> void:
 			Game.dungeon_scale = sim.location_scale(poi)
 			Game.forced_biome = "bandit_camp"
 			Game.poi_coins = sim.coin_reward(poi)
+		"dragon_castle":
+			# логово древнего дракона (M13): гуща врагов и богатая сокровищница
+			Game.dungeon_scale = 1.4
+			Game.poi_coins = sim.coin_reward(poi)
 	get_tree().change_scene_to_file(DUNGEON_SCENE)
 
 
@@ -378,13 +382,14 @@ func _poi_hint(poi: Dictionary) -> String:
 			return Loc.t("world.hint_trade")
 		"trade_camp":
 			return Loc.t("world.hint_trade_camp")
-		"dungeon", "ruins", "camp":
+		"dungeon", "ruins", "camp", "dragon_castle":
 			if not sim.poi_enterable(poi):
 				return Loc.t("world.cleared") % _reset_left(poi)
 			if kind == "camp" and int(poi.get("nest_level", 0)) > 0:
 				return "%s • %s" % [Loc.t("world.hint_enter_loc"),
 						Loc.t("world.nest_level") % int(poi["nest_level"])]
-			return Loc.t("world.hint_enter_loc")
+			return Loc.t("world.hint_dragon_castle") if kind == "dragon_castle" \
+					else Loc.t("world.hint_enter_loc")
 	return Loc.t("world.hint")
 
 

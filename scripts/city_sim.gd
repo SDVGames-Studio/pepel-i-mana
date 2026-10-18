@@ -202,7 +202,7 @@ func _new_resident(res_name: String, prof: String, tile: Vector2i) -> Dictionary
 		"traits": traits, "mood": _start_mood(traits),
 		"skill": 0.0, "rank": 0, "age_days": 100.0,
 		"ail": "", "ail_days": 0.0, "friend": -1, "work_bonus": 0.0,
-		"prof_extra": [], "sub_prof": "", "atk_cd": 0.0,
+		"prof_extra": [], "sub_prof": "", "atk_cd": 0.0, "partner": -1,
 	}
 	return r
 
@@ -998,6 +998,8 @@ func tick(dt_raw: float) -> void:
 		_roll_births()
 		_roll_autobuild()
 		_roll_stories()
+		_roll_couples()
+		_roll_festival()
 		_roll_guards()
 		_roll_hunter()
 		_roll_porter()
@@ -1259,9 +1261,17 @@ func _leisure(r: Dictionary, dt: float) -> void:
 		_try_chat(r)
 
 
-## Выбор вечернего занятия: таверна 50%, друг 40%, костёр — остальное.
+## Выбор вечернего занятия: в День основания — весь город гуляет (M13),
+## иначе таверна 50%, любимый 60% / друг 40%, костёр — остальное.
 func _pick_leisure(r: Dictionary) -> Dictionary:
 	var tavern := _nearest_done_of_type(r["pos"], "tavern")
+	if _festival_today():
+		if not tavern.is_empty() and randf() < 0.7:
+			return {"tile": map.nearest_walkable(Vector2i(tavern["tile"]) + Vector2i(1, 0))}
+		return {"tile": map.nearest_walkable(fire_tile())}
+	var partner := _partner_of(r)
+	if not partner.is_empty() and randf() < 0.6:
+		return {"tile": map.nearest_walkable(map.tile_of_px(partner["pos"]))}
 	if not tavern.is_empty() and randf() < 0.5:
 		return {"tile": map.nearest_walkable(Vector2i(tavern["tile"]) + Vector2i(1, 0))}
 	var friend := _friend_of(r)
@@ -1280,7 +1290,24 @@ func _friend_of(r: Dictionary) -> Dictionary:
 	return {}
 
 
+func _partner_of(r: Dictionary) -> Dictionary:
+	var pid := int(r.get("partner", -1))
+	if pid < 0:
+		return {}
+	for other in residents:
+		if int(other["id"]) == pid and String(other.get("ail", "")) == "":
+			return other
+	return {}
+
+
+## День основания (M13): каждые N дней весь город гуляет у таверны и костра.
+func _festival_today() -> bool:
+	var every := int(cfg.get("life", {}).get("festival_every_days", 0))
+	return every > 0 and day_number() % every == 0 and not is_night()
+
+
 ## Разговор (M12): два праздных жителя рядом обмениваются репликой-облачком.
+## В День основания — праздничные реплики, пары говорят о своём (M13).
 func _try_chat(r: Dictionary) -> void:
 	var lcfg: Dictionary = cfg.get("life", {})
 	if float(r.get("chat_cd_left", 0.0)) > 0.0:
@@ -1295,7 +1322,15 @@ func _try_chat(r: Dictionary) -> void:
 			continue
 		if Vector2(other["pos"]).distance_to(Vector2(r["pos"])) > float(map.ts) * 1.5:
 			continue
-		var key := "chat.%d" % (randi() % maxi(1, int(lcfg.get("chat_lines", 8))))
+		var base := "chat"
+		var lines := maxi(1, int(lcfg.get("chat_lines", 8)))
+		if _festival_today():
+			base = "fest"
+			lines = maxi(1, int(lcfg.get("festival_lines", 4)))
+		elif int(other.get("partner", -1)) == int(r["id"]):
+			base = "love"
+			lines = maxi(1, int(lcfg.get("love_lines", 4)))
+		var key := "%s.%d" % [base, randi() % lines]
 		r["chat_key"] = key
 		other["chat_key"] = key
 		r["chat_left"] = float(lcfg.get("chat_seconds", 4.0))
@@ -2559,6 +2594,16 @@ func _kill(r: Dictionary, chron_key: String) -> void:
 		(r["site"] as Dictionary)["worker"] = -1
 	if bool(r.get("kit", false)):
 		res["kits"] = float(res.get("kits", 0.0)) + 1.0   # комплект вернулся в хранилище
+	# овдовевший партнёр (M13): сброс пары и дополнительное горе
+	var pid := int(r.get("partner", -1))
+	if pid >= 0:
+		var widow := _resident_by_id(pid)
+		if not widow.is_empty():
+			widow["partner"] = -1
+			widow["mood"] = clampf(float(widow["mood"])
+					- float(people.get("couples", {}).get("widow_grief", 10.0)), 0.0, 100.0)
+			_chron("chron.widow", String(widow["name"]), String(r["name"]))
+			events.append({"type": "widow", "a": String(widow["name"]), "b": String(r["name"])})
 	residents.erase(r)
 	_assign_jobs()
 
@@ -3033,13 +3078,17 @@ func _edge_tile() -> Vector2i:
 
 
 ## Дневной бросок: рождение ребёнка у случайного взрослого, когда всем хорошо.
+## Пары повышают шанс рождения (couple_boost, M13).
 func _roll_births() -> void:
 	var bcfg: Dictionary = people.get("births", {})
 	if bcfg.is_empty() or residents.size() >= pop_cap():
 		return
 	if not _food_reserve_ok() or _avg_mood() < float(bcfg.get("mood_gate", 60.0)):
 		return
-	if _event_rng.randf() >= float(bcfg.get("chance_per_day", 0.25)):
+	var chance := float(bcfg.get("chance_per_day", 0.25))
+	if _couples_count() > 0:
+		chance *= float(bcfg.get("couple_boost", 1.5))
+	if _event_rng.randf() >= chance:
 		return
 	var adults := _adults()
 	if adults.is_empty():
@@ -3054,6 +3103,69 @@ func _roll_births() -> void:
 	_next_id += 1
 	_chron("chron.birth", String(child["name"]))
 	events.append({"type": "birth", "name": String(child["name"])})
+
+
+## Число пар (M13): свадьбы друзей, поддержка и дети.
+func _couples_count() -> int:
+	var n := 0
+	for r in residents:
+		if int(r.get("partner", -1)) >= 0:
+			n += 1
+	return n / 2
+
+
+## Пары (M13): друзья с хорошим настроением со временем женятся;
+## живые пары каждый день поддерживают друг друга настроением.
+func _roll_couples() -> void:
+	var ccfg: Dictionary = people.get("couples", {})
+	if ccfg.is_empty():
+		return
+	var gate := float(ccfg.get("mood_gate", 62.0))
+	for r in residents:
+		if int(r.get("partner", -1)) >= 0 or String(r["prof"]) == "":
+			continue
+		var other := _friend_of(r)
+		if other.is_empty() or int(other.get("partner", -1)) >= 0:
+			continue
+		if float(r["mood"]) < gate or float(other["mood"]) < gate:
+			continue
+		if _event_rng.randf() >= float(ccfg.get("chance_per_day", 0.25)):
+			continue
+		r["partner"] = int(other["id"])
+		other["partner"] = int(r["id"])
+		var boost := float(people.get("wedding_mood", 12.0))
+		r["mood"] = clampf(float(r["mood"]) + boost, 0.0, 100.0)
+		other["mood"] = clampf(float(other["mood"]) + boost, 0.0, 100.0)
+		_chron("chron.wedding", String(r["name"]), String(other["name"]))
+		events.append({"type": "wedding", "a": String(r["name"]), "b": String(other["name"])})
+	var pm := float(ccfg.get("pair_mood", 4.0))
+	for r in residents:
+		var pid := int(r.get("partner", -1))
+		if pid < 0:
+			continue
+		if not _resident_by_id(pid).is_empty():
+			r["mood"] = clampf(float(r["mood"]) + pm, 0.0, 100.0)
+
+
+## День основания (M13): раз в N дней город гуляет всем городом —
+## вечером все у таверны и костра, еда расходуется, настроение поднимается.
+func _roll_festival() -> void:
+	var lcfg: Dictionary = cfg.get("life", {})
+	var every := int(lcfg.get("festival_every_days", 0))
+	if every <= 0 or day_number() % every != 0:
+		return
+	var cost := float(lcfg.get("festival_food", 12.0))
+	if float(res["food"]) + _piled_total_of("food") < cost:
+		_chron("chron.found_skip")
+		events.append({"type": "found_skip"})
+		return
+	res["food"] = maxf(0.0, float(res["food"]) - cost)
+	var dm := float(lcfg.get("festival_mood", 8.0))
+	for r in residents:
+		if String(r["prof"]) != "":
+			r["mood"] = clampf(float(r["mood"]) + dm, 0.0, 100.0)
+	_chron("chron.found_day")
+	events.append({"type": "found_day"})
 
 
 ## Ребёнок повзрослел: получает профессию (реже всех) и черты характера.

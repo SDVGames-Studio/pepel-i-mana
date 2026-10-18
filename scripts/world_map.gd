@@ -174,12 +174,17 @@ func _place_pois(params: Dictionary) -> void:
 	_place_kind("camp", "", int(d[0]), int(d[1]), int(pconf.get("camps", 4)), "bandits")
 	d = dist_cfg.get("obelisk", [18, 34])
 	_place_kind("obelisk", "", int(d[0]), int(d[1]), int(pconf.get("obelisks", 2)))
+	# замок дракона (вишлист M13): один дальний, логово-биом и сокровищница
+	d = dist_cfg.get("dragon_castle", [20, 36])
+	_place_kind("dragon_castle", "dragon_lair", int(d[0]), int(d[1]), int(pconf.get("dragon_castles", 0)))
 	# стартовые силы из конфига
 	var strengths: Dictionary = params.get("sim", {}).get("start_strength", {})
 	for poi in pois:
 		match String(poi["kind"]):
 			"camp", "settlement":
 				poi["strength"] = float(strengths.get("camp" if String(poi["kind"]) == "camp" else "settlement", 6.0))
+			"dragon_castle":
+				poi["strength"] = float(strengths.get("dragon_castle", 12.0))
 			"dungeon", "ruins":
 				poi["strength"] = float(strengths.get("dungeon" if String(poi["kind"]) == "dungeon" else "ruins", 5.0))
 
@@ -239,8 +244,10 @@ func _pois_ok() -> bool:
 	for poi in pois:
 		if not is_walkable(poi["tile"]):
 			return false
-	# город+аномалия+4 данжа+3 поселения+караван+гуляй-город+3 руины+4 лагеря+2 обелиска
-	return pois.size() >= 1 + 1 + 4 + 3 + 1 + 1 + 3 + 4 + 2
+	# город+аномалия+6 данжей+3 поселения+караван+гуляй-город+3 руины+4 лагеря+2 обелиска+замок дракона
+	var expected := 1 + 1 + 6 + 3 + 1 + 1 + 3 + 4 + 2 \
+			+ int(cfg.get("pois", {}).get("dragon_castles", 0))
+	return pois.size() >= expected
 
 
 func poi_at(tile: Vector2i) -> Dictionary:

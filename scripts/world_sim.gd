@@ -246,12 +246,12 @@ func _roll_dungeon_resets() -> Array:
 	var reset_days := int(cfg.get("sim", {}).get("dungeon_reset_days", 10))
 	for poi in map.pois:
 		var kind := String(poi["kind"])
-		if kind != "dungeon" and kind != "ruins" and kind != "camp":
+		if kind != "dungeon" and kind != "ruins" and kind != "camp" and kind != "dragon_castle":
 			continue
 		var cleared := int(poi["cleared_day"])
 		if cleared >= 0 and day - cleared >= reset_days:
 			poi["cleared_day"] = -1
-			var key := "camp" if kind == "camp" else ("ruins" if kind == "ruins" else "dungeon")
+			var key := kind if kind in ["camp", "ruins", "dragon_castle"] else "dungeon"
 			poi["strength"] = float(cfg.get("sim", {}).get("start_strength", {}).get(key, 5.0))
 			out.append({"type": "poi_reborn", "a": _poi_name(poi), "b": kind})
 	return out
@@ -327,7 +327,7 @@ func poi_enterable(poi: Dictionary) -> bool:
 	if poi.is_empty():
 		return false
 	match String(poi["kind"]):
-		"dungeon", "ruins", "camp":
+		"dungeon", "ruins", "camp", "dragon_castle":
 			return int(poi["cleared_day"]) < 0
 		"settlement", "trade_camp":
 			return true
@@ -337,7 +337,7 @@ func poi_enterable(poi: Dictionary) -> bool:
 
 ## Локация боевого типа (входим в сцену данжа)?
 func is_combat_poi(poi: Dictionary) -> bool:
-	return String(poi["kind"]) in ["dungeon", "ruins", "camp"] \
+	return String(poi["kind"]) in ["dungeon", "ruins", "camp", "dragon_castle"] \
 			or (String(poi["kind"]) == "settlement" and String(poi["state"]) == "fallen")
 
 
@@ -428,6 +428,9 @@ func coin_reward(poi: Dictionary) -> int:
 			return _rng.randi_range(int(tcfg.get("camp_coins_min", 8)), int(tcfg.get("camp_coins_max", 16))) + loot
 		"ruins":
 			return _rng.randi_range(int(tcfg.get("ruins_coins_min", 3)), int(tcfg.get("ruins_coins_max", 8)))
+		"dragon_castle":
+			# сокровищница дракона (M13)
+			return _rng.randi_range(int(tcfg.get("dragon_coins_min", 30)), int(tcfg.get("dragon_coins_max", 60)))
 	return 0
 
 

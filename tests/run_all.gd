@@ -234,6 +234,7 @@ func _initialize() -> void:
 	_test_m10()
 	_test_wishlist()
 	_test_m12()
+	_test_m13()
 	if _fails == 0:
 		print("OK: все тесты пройдены")
 		quit(0)
@@ -280,8 +281,8 @@ func _test_data() -> void:
 		_check(hero is Dictionary and hero.has("speed") and hero.has("dash_cooldown"),
 				"dungeon.json: параметры героя полны")
 	var enemies: Variant = _read_json("res://data/enemies.json")
-	_check(enemies is Array and enemies.size() == 22,
-			"enemies.json — 22 врага (M7: 13 обычных + 4 босса; M10: +3 бандита; M11: +дух и Древень)")
+	_check(enemies is Array and enemies.size() == 31,
+			"enemies.json — 31 враг (M11: 22 + M13: 9 — нежить, демоны, драконы)")
 	if enemies is Array:
 		var fields_ok := true
 		for enemy in enemies:
@@ -296,7 +297,7 @@ func _test_data() -> void:
 				bosses += 1
 				if int(enemy.get("hp", 0)) < 20:
 					boss_hp_ok = false
-		_check(bosses == 6, "enemies.json — 6 боссов (4 биома + атаман + Древень, M11)")
+		_check(bosses == 9, "enemies.json — 9 боссов (6 биомов + атаман + Древень + серафим/демон/дракон)")
 		_check(boss_hp_ok, "у всех боссов HP >= 20")
 	var magic: Variant = _read_json("res://data/magic.json")
 	_check(magic is Dictionary, "magic.json — валидный JSON-словарь")
@@ -1290,9 +1291,10 @@ func _test_magic_sim() -> void:
 	_check(absf(float(sim.production_mult({})) - 1.15) < 0.001, "полоса heart: ×1.15")
 	sim.add_pollution(500.0)
 	_check(absf(float(sim.pollution) - 100.0) < 0.001, "add_pollution ограничен 100")
-	# спад загрязнения со временем (бурю выключаем — тест не про неё)
+	# спад загрязнения со временем (бурю и дикие события выключаем — тест не про них)
 	sim.pollution = 50.0
 	sim.cfg["storm"]["base_chance"] = 0.0
+	sim.cfg["pollution"]["event_chance_per_day"] = 0.0
 	sim.tick(float(sim.cfg["day_length"]))
 	_check(absf(float(sim.pollution) - 48.0) < 0.1, "за день загрязнение падает на decay_per_day")
 
@@ -2536,8 +2538,8 @@ func _test_m7() -> void:
 	# --- 4 биома: цвета, веса врагов, босс существует ---
 	var biomes: Dictionary = dungeon_cfg.get("biomes", {})
 	var weights: Dictionary = dungeon_cfg.get("biome_weights", {})
-	_check(biomes.size() == 5 and weights.size() == 4,
-			"5 биомов данжа (M7: четыре + лагерь бандитов M10)")
+	_check(biomes.size() == 8 and weights.size() == 4,
+			"8 биомов данжа (M7: четыре + бандиты M10 + обитель/бездна/замок M13)")
 	var enemy_ids := {}
 	var bosses_by_id := {}
 	for e in enemies:
@@ -2751,7 +2753,7 @@ func _test_m8() -> void:
 			dungeon_biomes[String(poi["biome"])] = true
 	_check(int(kinds.get("city", 0)) == 1, "на карте есть город игрока")
 	_check(int(kinds.get("dungeon", 0)) >= 5, "городская аномалия + 4 данжа биомов на карте")
-	_check(dungeon_biomes.size() == 4, "данжи всех 4 биомов M7 представлены")
+	_check(dungeon_biomes.size() == 6, "данжи всех 6 биомов M7+M13 представлены")
 	_check(int(kinds.get("ruins", 0)) >= 1, "руины на карте")
 	_check(int(kinds.get("camp", 0)) >= 1, "лагеря бандитов на карте")
 	_check(int(kinds.get("settlement", 0)) >= 3, "3 поселения на карте")
@@ -2985,8 +2987,8 @@ func _test_m9() -> void:
 		var s: Variant = load(path)
 		_check(s != null and (s as Script).can_instantiate(), path.get_file() + " компилируется")
 	# версия этапа
-	_check(String(_read_json("res://data/version.json")["version"]).begins_with("1.1"),
-			"версия проекта 1.1.x (M11 — вишлист)")
+	_check(String(_read_json("res://data/version.json")["version"]).begins_with("1.3"),
+			"версия проекта 1.3.x (M13 — вишлист 2)")
 
 
 # --- M10: релиз v1.0 — craftpix-ассеты, бандиты, скот, поля, рынок, гуляй-город
@@ -3148,7 +3150,16 @@ func _test_m10() -> void:
 			"city.livestock_tame_toast", "world.poi.trade_camp", "world.hint_trade_camp",
 			"biome.bandit_camp", "enemy.bandit", "enemy.bandit_chief",
 			"camp.trade_title", "camp.hint_trade", "animal.sheep", "animal.chick",
-			"chron.caravan_returned", "chron.livestock_born"]:
+			"chron.caravan_returned", "chron.livestock_born",
+			# --- M13: бестиарий, замки драконов, пары и праздник ---
+			"enemy.ghoul", "enemy.wraith", "enemy.imp", "enemy.hellcaller", "enemy.fallen",
+			"enemy.dragon_whelp", "enemy.seraph_of_ash", "enemy.demon_lord",
+			"enemy.ancient_dragon", "biome.cursed_hall", "biome.demon_lair",
+			"biome.dragon_lair", "world.poi.dragon_castle", "world.hint_dragon_castle",
+			"chron.widow", "chron.found_day", "chron.found_skip", "story.widow_toast",
+			"city.found_day_toast", "city.found_skip_toast",
+			"love.0", "love.1", "love.2", "love.3",
+			"fest.0", "fest.1", "fest.2", "fest.3"]:
 		_check(loc_data.has(key) and String(loc_data[key]).length() > 0, "ключ локализации: " + key)
 	# --- новые и правленые скрипты компилируются ---
 	for path in ["res://scripts/world_camp.gd", "res://scripts/city_sim.gd",
@@ -3456,3 +3467,176 @@ func _test_m12() -> void:
 	wsim.tracks = {Vector2i(5, 5): {"dir": Vector2i(1, 0), "camp": int(camp["id"]), "age": 99}}
 	wsim._update_tracks()
 	_check(wsim.tracks.is_empty(), "старые следы стираются")
+
+
+# --- M13: вишлист 2 — ангелы/демоны/нежить, замки драконов, пары и праздник --
+
+func _test_m13() -> void:
+	print("[M13: бестиарий, замки драконов, пары и День основания]")
+	var loc: Dictionary = _read_json("res://loc/ru.json")
+	var enemies: Array = _read_json("res://data/enemies.json")
+	var dungeon: Dictionary = _read_json("res://data/dungeon.json")
+	var world_cfg: Dictionary = _read_json("res://data/world.json")
+
+	# --- новый бестиарий: 9 существ, локализация, боссы ---
+	var by_id := {}
+	for e in enemies:
+		by_id[String(e["id"])] = e
+	var new_kinds := {"ghoul": false, "wraith": false, "imp": false, "hellcaller": false,
+			"fallen": false, "dragon_whelp": false,
+			"seraph_of_ash": true, "demon_lord": true, "ancient_dragon": true}
+	for id in new_kinds:
+		_check(by_id.has(id), "враг %s есть в enemies.json" % id)
+		if not by_id.has(id):
+			continue
+		var e: Dictionary = by_id[id]
+		_check(String(loc.get(String(e["loc"]), "")) != "", "у %s есть имя в ru.json" % id)
+		_check(bool(e.get("boss", false)) == bool(new_kinds[id]), "у %s флаг босса верный" % id)
+		_check(String(loc.get("school." + String(e.get("weak_school", "")), "")) != ""
+				or String(e.get("weak_school", "")) == "",
+				"у %s корректная школа уязвимости" % id)
+
+	# --- три новых биома: население существует, босс на месте ---
+	var biomes: Dictionary = dungeon.get("biomes", {})
+	var eids := {}
+	for e in enemies:
+		eids[String(e["id"])] = true
+	for biome_id in ["cursed_hall", "demon_lair", "dragon_lair"]:
+		_check(biomes.has(biome_id), "биом %s есть в dungeon.json" % biome_id)
+		if not biomes.has(biome_id):
+			continue
+		var b: Dictionary = biomes[biome_id]
+		_check(String(loc.get(String(b["loc"]), "")) != "", "у биома %s есть название" % biome_id)
+		_check(eids.has(String(b["boss"])), "босс биома %s существует" % biome_id)
+		var weights: Dictionary = b.get("enemy_weights", {})
+		_check(not weights.is_empty(), "у биома %s задано население" % biome_id)
+		var ok_pop := true
+		for w_id in weights:
+			if not eids.has(String(w_id)):
+				ok_pop = false
+		_check(ok_pop, "население биома %s — известные враги" % biome_id)
+
+	# --- мир: замок дракона на карте, входит и возрождается ---
+	var pconf: Dictionary = world_cfg.get("pois", {})
+	_check(int(pconf.get("dragon_castles", 0)) >= 1, "на карте есть замок дракона")
+	var biome_list: Array = pconf.get("dungeon_biomes", [])
+	_check("cursed_hall" in biome_list and "demon_lair" in biome_list,
+			"аномалии бывают проклятыми и демоническими")
+	var wmap = load("res://scripts/world_map.gd").new()
+	wmap.generate(13, world_cfg)
+	var castle: Dictionary = {}
+	for poi in wmap.pois:
+		if String(poi["kind"]) == "dragon_castle":
+			castle = poi
+			break
+	_check(not castle.is_empty(), "замок дракона сгенерирован")
+	if not castle.is_empty():
+		_check(String(castle["biome"]) == "dragon_lair", "замок ведёт в логово дракона")
+		var dist := int(Vector2(castle["tile"]).distance_to(Vector2(wmap.city_tile)))
+		_check(dist >= int(world_cfg["distances"]["dragon_castle"][0]),
+				"замок далеко от города (%d тайлов)" % dist)
+	var wsim = load("res://scripts/world_sim.gd").new()
+	wsim.setup(wmap, world_cfg, 7)
+	if not castle.is_empty():
+		_check(wsim.poi_enterable(castle), "в замок можно войти, пока он не зачищен")
+		wsim.day = 20   # зачистка давно в прошлом — замок готов возродиться
+		castle["cleared_day"] = 10
+		_check(not wsim.poi_enterable(castle), "зачищенный замок закрыт до возрождения")
+		var coins: int = wsim.coin_reward(castle)
+		_check(coins >= 30 and coins <= 60, "сокровищница даёт %d монет" % coins)
+		var evs: Array = wsim._roll_dungeon_resets()
+		var reborn := false
+		for ev in evs:
+			if String(ev["b"]) == "dragon_castle":
+				reborn = true
+		_check(reborn, "замок дракона возрождается как остальные данжи")
+
+	# --- пары: друзья женятся, поддержка, вдовство ---
+	var sim := _make_sim()
+	sim.people["couples"]["chance_per_day"] = 1.0   # детерминизм теста
+	var a := _add_resident(sim, "Ада", "crafter")
+	var b := _add_resident(sim, "Борис", "porter")
+	a["traits"] = []
+	b["traits"] = []
+	a["friend"] = int(b["id"])
+	b["friend"] = int(a["id"])
+	a["mood"] = 80.0
+	b["mood"] = 80.0
+	sim._roll_couples()
+	_check(int(a["partner"]) == int(b["id"]) and int(b["partner"]) == int(a["id"]),
+			"друзья с хорошим настроением создали пару")
+	_check(float(a["mood"]) > 80.0, "свадьба подняла настроение")
+	var has_wed := false
+	for ev in sim.events:
+		if String(ev["type"]) == "wedding":
+			has_wed = true
+	_check(has_wed, "свадьба объявлена городом")
+	# поддержка пары: каждый день настроения понемногу прибавляется
+	var mood_before := float(a["mood"])
+	sim.events.clear()
+	sim._roll_couples()
+	_check(float(a["mood"]) > mood_before, "пара поддерживает друг друга")
+	# вдовство: сброс пары и двойное горе
+	sim._kill(a, "chron.test")
+	_check(int(b["partner"]) == -1, "после смерти партнёра пара распалась")
+	var has_widow := false
+	for ev in sim.events:
+		if String(ev["type"]) == "widow":
+			has_widow = true
+	_check(has_widow, "город узнал о вдовце")
+	_check(String(loc.get("chron.widow", "")) != "" and String(loc.get("story.widow_toast", "")) != "",
+			"вдовство описано в локализации")
+
+	# --- День основания: раз в N дней, еда за настроение ---
+	sim.cfg["life"]["festival_every_days"] = 1   # в тесте — каждый день (день 1)
+	_check(sim._festival_today(), "в День основания город гуляет")
+	sim.time = float(sim.cfg["day_length"]) * 0.9
+	_check(not sim._festival_today(), "ночью праздник затихает")
+	sim.time = 0.0
+	sim.res["food"] = 100.0
+	var mood_before2 := 0.0
+	for r in sim.residents:
+		r["traits"] = []
+		if String(r["prof"]) != "":
+			r["mood"] = 50.0
+			mood_before2 += 50.0
+	sim._roll_festival()
+	_check(float(sim.res["food"]) < 100.0, "праздник расходует еду")
+	var mood_after := 0.0
+	for r in sim.residents:
+		if String(r["prof"]) != "":
+			mood_after += float(r["mood"])
+	_check(mood_after > mood_before2, "праздник поднял настроение городу")
+	var has_found := false
+	for ev in sim.events:
+		if String(ev["type"]) == "found_day":
+			has_found = true
+	_check(has_found, "День основания объявлен")
+	# нехватка еды — праздник отменяется
+	sim.events.clear()
+	sim.res["food"] = 0.0
+	sim._roll_festival()
+	var has_skip := false
+	for ev in sim.events:
+		if String(ev["type"]) == "found_skip":
+			has_skip = true
+	_check(has_skip, "без еды праздник отменяется с летописью")
+
+	# --- вечер пары: план корректен, реплики локализованы ---
+	var sim2 := _make_sim()
+	sim2.cfg["life"]["festival_every_days"] = 0   # выключаем праздник для чистоты
+	var p1 := _add_resident(sim2, "Павел", "farmer")
+	var p2 := _add_resident(sim2, "Ольга", "crafter")
+	p1["traits"] = []
+	p2["traits"] = []
+	p1["partner"] = int(p2["id"])
+	p2["partner"] = int(p1["id"])
+	var day_len := float(sim2.cfg["day_length"])
+	sim2.time = (1.0 - float(sim2.cfg["night_fraction"]) - 0.05) * day_len
+	_teleport(sim2, p1, Vector2i(20, 20))
+	var plan: Dictionary = sim2._pick_leisure(p1)
+	var goal: Vector2i = Vector2i(plan.get("tile", Vector2i(-1, -1)))
+	_check(sim2.map.in_bounds(goal), "план вечера пары — корректный тайл")
+	_check(String(loc.get("love.0", "")) != "" and String(loc.get("fest.0", "")) != "",
+			"реплики любви и праздника локализованы")
+	print("[M13] готово")

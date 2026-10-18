@@ -96,7 +96,7 @@ func _refresh_poi() -> void:
 				lines.append(Loc.t("world.status_" + String(poi["state"])))
 			if _in_siege(poi):
 				lines.append("[color=#ff8a80]" + Loc.t("world.under_siege") + "[/color]")
-		"dungeon", "ruins":
+		"dungeon", "ruins", "dragon_castle":
 			if String(poi["biome"]) != "":
 				lines.append(Loc.t(String(_biome_loc(String(poi["biome"])))))
 		"obelisk":

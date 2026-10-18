@@ -24,7 +24,8 @@
 		"settlements": ["traders", "cult", "traders"],
 		"caravans": 1,
 		"trade_camps": 1,
-		"dungeon_biomes": ["ruins", "mutant_forest", "crystal_caves", "ash_wastes"]
+		"dragon_castles": 1,
+		"dungeon_biomes": ["ruins", "mutant_forest", "crystal_caves", "ash_wastes", "cursed_hall", "demon_lair"]
 	},
 	"distances": {
 		"city_dungeon": [3, 5],
@@ -34,7 +35,8 @@
 		"dungeon": [12, 30],
 		"ruins": [8, 26],
 		"camp": [8, 24],
-		"obelisk": [18, 34]
+		"obelisk": [18, 34],
+		"dragon_castle": [20, 36]
 	},
 	"sim": {
 		"camp_growth_min": 0.0,
@@ -47,7 +49,7 @@
 		"resettle_chance": 0.35,
 		"dungeon_reset_days": 10,
 		"caravan_move_days": 4,
-		"start_strength": {"camp": 4, "dungeon": 6, "ruins": 5, "settlement": 8}
+		"start_strength": {"camp": 4, "dungeon": 6, "ruins": 5, "settlement": 8, "dragon_castle": 12}
 	},
 	"nests": {
 		"max_level": 3,
@@ -77,6 +79,8 @@
 		"camp_coins_min": 8,
 		"camp_coins_max": 16,
 		"ruins_coins_min": 3,
-		"ruins_coins_max": 8
+		"ruins_coins_max": 8,
+		"dragon_coins_min": 30,
+		"dragon_coins_max": 60
 	}
 }
