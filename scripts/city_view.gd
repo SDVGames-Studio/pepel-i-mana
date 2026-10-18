@@ -28,12 +28,13 @@ var city = null                 # сцена города — для прове�
 var _pile_colors := {
 	"wood": Color("#8d6e63"), "stone": Color("#9e9e9e"), "food": Color("#8bc34a"),
 	"iron": Color("#b0684a"), "metal": Color("#cfd8dc"), "tools": Color("#78909c"),
-	"kits": Color("#ffb74d"), "crystal": Color("#b46ee0"),
+	"kits": Color("#ffb74d"), "crystal": Color("#b46ee0"), "seeds": Color("#c9b458"),
 }
 # спрайты куч (M9): мешок/брёвна/камень — по главному ресурсу
 const PILE_SPRITES := {
 	"wood": "k:75", "stone": "k:102", "food": "k:126", "iron": "k:102",
 	"metal": "k:102", "tools": "k:104", "kits": "k:103", "crystal": "k:116",
+	"seeds": "k:126",
 }
 
 
@@ -65,17 +66,44 @@ func _draw() -> void:
 	_draw_buildings()
 	_draw_piles()
 	_draw_animals()
+	_draw_livestock()
 	_draw_raiders()
 	_draw_residents()
 	_draw_ghost()
 
 
-## Дикие животные (M5.1): цель охотника — спрайт грызуна (M9).
+var _anim_time := 0.0
+
+func _process(delta: float) -> void:
+	_anim_time += delta
+	queue_redraw()
+
+
+## Дикие животные (M5.1): цель охотника — индюк (M10, craftpix, 4 направления).
 func _draw_animals() -> void:
 	for a in sim.animals:
 		var pos: Vector2 = a["pos"]
-		var phase := float(pos.x * 1.1 + pos.y * 0.7) + Time.get_ticks_msec() / 110.0
-		Assets.draw_ref(self, "k:123", pos + Vector2(0, -absf(sin(phase)) * 1.5), 18.0)
+		var vel := Vector2.ZERO
+		var pth: PackedVector2Array = a.get("path", PackedVector2Array())
+		if not pth.is_empty():
+			vel = pth[0] - pos
+		Assets.draw_animal(self, "turkey", Assets.dir_of(vel), not pth.is_empty(),
+				pos + Vector2(0, -4), 20.0, _anim_time + float(a["id"]) * 0.37)
+
+
+## Скот на пастбищах (M10): коровы/овцы/свиньи/куры, детёныши мельче.
+func _draw_livestock() -> void:
+	for a in sim.livestock:
+		var pos: Vector2 = a["pos"]
+		var kind := String(a["kind"])
+		var adult := bool(a["adult"])
+		var size := 26.0 if adult else 16.0
+		if kind == "chicken" or kind == "chick":
+			size *= 0.7
+		var moving := bool(a.get("moving", false))
+		Assets.draw_animal(self, {"chick": "chicken"}.get(kind, kind),
+				String(a.get("dir", "front")), moving, pos + Vector2(0, -4),
+				size, _anim_time + float(a["id"]) * 0.53)
 
 
 ## Зоны (M6): заливка по типу, прогресс обустройства в незаполненных клетках.
@@ -97,6 +125,16 @@ func _draw_zones() -> void:
 							var y: float = rect.position.y + map.ts * (0.25 + 0.25 * k)
 							draw_line(Vector2(rect.position.x + 4, y),
 									Vector2(rect.position.x + map.ts - 4, y), col.darkened(0.3), 1.5)
+						# посев (M10): стадия роста культуры — спрайт растения
+						var crops: Array = z.get("crops", [])
+						if i < crops.size() and not (crops[i] as Dictionary).is_empty():
+							var crop: Dictionary = crops[i]
+							var stage := int(crop.get("stage", 0)) + (1 if bool(crop.get("ripe", false)) else 0)
+							var ripe := bool(crop.get("ripe", false))
+							var crop_id := int(z["id"]) % 3
+							var ctint := Color.WHITE if not ripe else Color(1.15, 1.15, 0.95)
+							Assets.draw_ref(self, "e:crop%d_%d" % [crop_id, clampi(stage, 0, 3)],
+									rect.get_center() + Vector2(0, -2), map.ts * 0.9, false, ctint)
 					"pasture":
 						draw_circle(rect.position + Vector2(10, 20), 3.0, col.darkened(0.35))
 						draw_circle(rect.position + Vector2(22, 12), 3.0, col.darkened(0.35))
@@ -188,9 +226,16 @@ func _draw_world_exit() -> void:
 
 
 func _draw_buildings() -> void:
-	for b in sim.buildings:
+	# M10: здания крупнее (×1.55 тайла, якорь по низу) — город выглядит плотнее;
+	# рисуем с сортировкой по Y, чтобы нижние здания перекрывали верхние
+	var sorted: Array = sim.buildings.duplicate()
+	sorted.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
+		return (Vector2(a["tile"]).y) < (Vector2(b["tile"]).y))
+	var bld_size := float(map.ts) * 1.55
+	for b in sorted:
 		var rect := Rect2(Vector2(b["tile"]) * map.ts, Vector2(map.ts, map.ts))
 		var col: Color = _bld_colors.get(String(b["type"]), Color(0.91, 0.85, 0.62))
+		var anchor: Vector2 = Vector2(rect.get_center().x, rect.end.y - 2.0)
 		if not b["done"]:
 			# стройплощадка: каркас и полоса прогресса
 			draw_rect(rect.grow(-3), Color(col.r, col.g, col.b, 0.25))
@@ -199,16 +244,25 @@ func _draw_buildings() -> void:
 			var frac := clampf(float(b["progress"]) / work, 0.0, 1.0) if work > 0.0 else 0.0
 			draw_rect(Rect2(rect.position + Vector2(4, map.ts - 9), Vector2((map.ts - 8) * frac, 5)), Color("#ffe082"))
 		else:
-			# спрайт здания (M9): ссылка b:<id> из city.json -> buildings
+			# спрайт здания (M9): ссылка b:<id>/e:<имя> из city.json -> buildings
 			var ref: String = _bld_sprites.get(String(b["type"]), "")
 			if ref != "":
-				Assets.draw_ref(self, ref, rect.get_center(), float(map.ts))
+				var sref := ref
+				if String(b["type"]) == "orchard":
+					# яблоневый сад (M10): растёт — молодое дерево, зрелое — с яблоками
+					var stage := int(b.get("apple_stage", 0))
+					sref = "e:tree2" if stage < 2 else "e:tree_fruit"
+				var h := bld_size
+				if String(b["type"]) == "wall" or String(b["type"]) == "gate":
+					h = float(map.ts) * 1.15   # стены не должны нависать над рядом
+				draw_circle(anchor + Vector2(0, -2), bld_size * 0.22, Color(0, 0, 0, 0.16))
+				Assets.draw_ref(self, sref, anchor - Vector2(0, h * 0.5), h)
 			else:
 				draw_rect(rect, col)
 				draw_rect(rect.grow(-4), col.darkened(0.25))
 			# точка-работник: занятое здание подсвечено
 			if int(b["worker"]) > 0:
-				draw_circle(rect.get_center() + Vector2(0, -map.ts * 0.38), 2.5, Color(1, 1, 1, 0.9))
+				draw_circle(anchor + Vector2(0, -bld_size + 2.0), 2.5, Color(1, 1, 1, 0.9))
 		# зачарование: рамка цветом эффекта (M3)
 		if String(b.get("enchant", "")) != "":
 			var ecol: Color = enchant_colors.get(String(b["enchant"]), Color(0.8, 0.8, 1.0))
@@ -263,9 +317,8 @@ func _draw_residents() -> void:
 	for r in sim.residents:
 		var pos: Vector2 = r["pos"]
 		var prof := String(r["prof"])
-		var ref: String = _prof_sprites.get(prof, child_ref)
 		var child := prof == ""
-		var size := 20.0 if child else 26.0
+		var size := 20.0 if child else 28.0
 		var tint := Color.WHITE
 		var ail := String(r.get("ail", ""))
 		if ail == "sick":
@@ -274,18 +327,26 @@ func _draw_residents() -> void:
 			tint = Color(1.0, 0.6, 0.6)
 		var sleeping: bool = r["state"] == "sleep" or r["state"] == "rest"
 		if sleeping:
-			tint = tint.darkened(0.35)
-		# бобинг ходьбы (M9): фаза от индекса, амплитуда только в движении
-		var moving: bool = bool(r.get("moving", true))
-		var phase := float(pos.x * 0.7 + pos.y * 1.3)
-		var bob := absf(sin(phase + Time.get_ticks_msec() / (1000.0 / 9.0))) * (2.0 if moving else 0.4)
-		Assets.draw_ref(self, ref, pos + Vector2(0, -bob), size,
-				String(r.get("dir", "")) == "left", tint)
+			tint = tint.darkened(0.45)
+		var moving: bool = bool(r.get("moving", true)) and not sleeping
+		var dir := String(r.get("dir", "front"))
+		if child:
+			# дети — кеноувский спрайт с бобингом
+			var phase := float(pos.x * 0.7 + pos.y * 1.3)
+			var bob := absf(sin(phase + Time.get_ticks_msec() / (1000.0 / 9.0))) * (2.0 if moving else 0.4)
+			Assets.draw_ref(self, child_ref, pos + Vector2(0, -bob), size, dir == "left", tint)
+		else:
+			# взрослые — craftpix-граждане (M10): 4 направления, кадры ходьбы/idle;
+			# профессия читается по лёгкой подкраске одежды
+			var prof_color: Color = _prof_colors.get(prof, Color.WHITE)
+			var ctint := tint.lerp(prof_color, 0.22) if prof != "" else tint
+			Assets.draw_citizen(self, 1 + int(r["id"]) % 4, dir, moving, pos, size,
+					_anim_time + float(r["id"]) * 0.41, ctint)
 		# груз носильщика (M6): узел цвета ресурса
 		if float(r.get("carry", 0.0)) > 0.0:
 			var bag: Color = _pile_colors.get(String(r.get("carry_res", "")), Color(0.8, 0.7, 0.5))
-			draw_circle(pos + Vector2(11.0, -6.0 - bob), 4.0, bag.darkened(0.1))
-			draw_circle(pos + Vector2(10.0, -7.0 - bob), 2.0, bag.lightened(0.15))
+			draw_circle(pos + Vector2(11.0, -6.0), 4.0, bag.darkened(0.1))
+			draw_circle(pos + Vector2(10.0, -7.0), 2.0, bag.lightened(0.15))
 
 
 func _draw_ghost() -> void:

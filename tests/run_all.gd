@@ -213,6 +213,7 @@ func _initialize() -> void:
 	_test_m7()
 	_test_m8()
 	_test_m9()
+	_test_m10()
 	if _fails == 0:
 		print("OK: все тесты пройдены")
 		quit(0)
@@ -259,8 +260,8 @@ func _test_data() -> void:
 		_check(hero is Dictionary and hero.has("speed") and hero.has("dash_cooldown"),
 				"dungeon.json: параметры героя полны")
 	var enemies: Variant = _read_json("res://data/enemies.json")
-	_check(enemies is Array and enemies.size() == 17,
-			"enemies.json — 17 врагов (M7: 13 обычных + 4 босса)")
+	_check(enemies is Array and enemies.size() == 20,
+			"enemies.json — 20 врагов (M7: 13 обычных + 4 босса; M10: +3 бандита)")
 	if enemies is Array:
 		var fields_ok := true
 		for enemy in enemies:
@@ -275,7 +276,7 @@ func _test_data() -> void:
 				bosses += 1
 				if int(enemy.get("hp", 0)) < 20:
 					boss_hp_ok = false
-		_check(bosses == 4, "enemies.json — 4 босса (по одному на биом)")
+		_check(bosses == 5, "enemies.json — 5 боссов (4 биома + атаман бандитов)")
 		_check(boss_hp_ok, "у всех боссов HP >= 20")
 	var magic: Variant = _read_json("res://data/magic.json")
 	_check(magic is Dictionary, "magic.json — валидный JSON-словарь")
@@ -298,7 +299,7 @@ func _test_data() -> void:
 			"zones", "roads", "piles", "layout", "repair", "decor_mood_max"]:
 		_check(city.has(key), "city.json содержит %s" % key)
 	var blds: Variant = city.get("buildings", [])
-	_check(blds is Array and blds.size() == 20, "city.json — 20 типов зданий (M6: сад и статуя)")
+	_check(blds is Array and blds.size() == 22, "city.json — 22 типа зданий (M10: +сад и торговый двор)")
 	var bld_ok := true
 	if blds is Array:
 		for b in blds:
@@ -318,7 +319,7 @@ func _test_data() -> void:
 			districts[String(b["district"])] = true
 	_check(districts.has("living") and districts.has("work"), "город разбит на жилой и производственный районы")
 	var profs: Variant = city.get("professions", [])
-	_check(profs is Array and profs.size() == 16, "city.json — 16 профессий (M6: носильщик)")
+	_check(profs is Array and profs.size() == 17, "city.json — 17 профессий (M10: +торговец)")
 	var has_porter := false
 	for p in city.get("professions", []):
 		if p is Dictionary and String(p.get("id", "")) == "porter":
@@ -1254,8 +1255,9 @@ func _test_magic_sim() -> void:
 	_check(absf(float(sim.production_mult({})) - 1.15) < 0.001, "полоса heart: ×1.15")
 	sim.add_pollution(500.0)
 	_check(absf(float(sim.pollution) - 100.0) < 0.001, "add_pollution ограничен 100")
-	# спад загрязнения со временем
+	# спад загрязнения со временем (бурю выключаем — тест не про неё)
 	sim.pollution = 50.0
+	sim.cfg["storm"]["base_chance"] = 0.0
 	sim.tick(float(sim.cfg["day_length"]))
 	_check(absf(float(sim.pollution) - 48.0) < 0.1, "за день загрязнение падает на decay_per_day")
 
@@ -1426,12 +1428,25 @@ func _test_spell_damage() -> void:
 # --- M5: угрозы и оборона -------------------------------------------------
 
 ## Построить здание в конкретном тайле мгновенно (строитель телепортируется).
+## Если на выбранном тайле строить нельзя (M10: карта выросла, рельеф на старых
+## сидах сменился; пилораме нужен лес, шахте — руда) — перебираем случайные
+## тайлы, пока место не подойдёт под требования здания.
 func _build_at(sim: Object, type_id: String, tile: Vector2i) -> Dictionary:
 	var builder: Dictionary = _resident_by_prof(sim, "builder")
 	builder["mood"] = 100.0
 	builder["traits"] = []
 	builder["skill"] = 0.0
-	_check(sim.place_building(type_id, tile), "%s: стройплощадка в заданном тайле" % type_id)
+	var placed: bool = sim.place_building(type_id, tile)
+	if not placed:
+		var rng := RandomNumberGenerator.new()
+		rng.seed = 1234567
+		for i in 600:
+			var t := Vector2i(rng.randi_range(2, sim.map.w - 3), rng.randi_range(2, sim.map.h - 3))
+			if sim.place_building(type_id, t):
+				tile = t
+				placed = true
+				break
+	_check(placed, "%s: стройплощадка в заданном тайле" % type_id)
 	var work := 1.0
 	for d in sim.cfg["buildings"]:
 		if String(d["id"]) == type_id:
@@ -1521,6 +1536,9 @@ func _test_threat() -> void:
 	sim2._last_daily_day = 999
 	sim2.time = 10.0 * float(sim2.cfg["day_length"])
 	var wall_tile: Vector2i = sim2.map.spawn_tile + Vector2i(4, 0)
+	var grass_w: Array = _grass_tiles(sim2, wall_tile, 4)
+	if not grass_w.is_empty():
+		wall_tile = grass_w[0]
 	var wall := _build_at(sim2, "wall", wall_tile)
 	_check(bool(wall["done"]), "стена у города достроена")
 	_check(not sim2.map.is_walkable(wall_tile), "готовая стена непроходима")
@@ -1531,7 +1549,8 @@ func _test_threat() -> void:
 			sim2.residents.erase(r)
 	for r in sim2.residents:
 		r["traits"] = []
-	_spawn_one_raider(sim2, "brute", wall_tile + Vector2i(2, 0))
+	var brute_tile: Vector2i = sim2.map.nearest_walkable(wall_tile + Vector2i(2, 0))
+	_spawn_one_raider(sim2, "brute", brute_tile)
 	var razed_seen := false
 	for i in 1200:
 		sim2.tick(0.2)
@@ -2071,8 +2090,12 @@ func _test_gathering() -> void:
 	sim_nc.hero_alive = true
 	sim_nc.hero_pos = sim_nc.map.tile_center_px(sim_nc.map.spawn_tile)
 	var wall_nc: Vector2i = sim_nc.map.spawn_tile + Vector2i(3, 0)
+	var grass_nc: Array = _grass_tiles(sim_nc, wall_nc, 4)
+	if not grass_nc.is_empty():
+		wall_nc = grass_nc[0]
 	_build_at(sim_nc, "wall", wall_nc)
-	_spawn_one_raider(sim_nc, "mutant", wall_nc + Vector2i(1, 0))
+	var spawn_nc: Vector2i = sim_nc.map.nearest_walkable(wall_nc + Vector2i(1, 0))
+	_spawn_one_raider(sim_nc, "mutant", spawn_nc)
 	var never_clip := true
 	for i in 120:
 		sim_nc.tick(0.3)
@@ -2224,10 +2247,15 @@ func _test_m6() -> void:
 		_teleport(sim_f, worker_f, zfield["cells"][i])
 		sim_f.tick(6.0)
 	var food0: float = float(sim_f.res["food"])
-	sim_f.tick(float(sim_f.cfg["day_length"]))
-	var expected: float = float(fcells.size()) * float(sim_f.cfg["zones"]["types"]["field"]["food"])
-	_check(absf(float(sim_f.res["food"]) - food0 - expected) < 0.6,
-			"поле даёт еду сама: %d клетки × %.1f/день" % [fcells.size(), expected])
+	# M10: поле работает циклами посев→рост→урожай (stage_days 0.5 → урожай
+	# созревает за ~2.5 дня); тикаем полднями, пока не соберём урожай
+	for i in 6:
+		sim_f.tick(float(sim_f.cfg["day_length"]) / 2.0)
+	var expected: float = float(fcells.size()) * float(sim_f.cfg["farming"]["harvest_food"])
+	_check(float(sim_f.res["food"]) >= food0 + expected - 0.6,
+			"поле собрало урожай: %d клетки × %.1f" % [fcells.size(), expected])
+	_check(float(sim_f.res["seeds"]) >= 1.0 or (sim_f.zones[0]["crops"] as Array).size() > 0,
+			"урожай вернул семена — цикл поля замкнулся")
 
 	# --- здание на клетке зоны вытесняет её из зоны ---
 	var sim_z2 := _make_sim()
@@ -2461,7 +2489,8 @@ func _test_m7() -> void:
 	# --- 4 биома: цвета, веса врагов, босс существует ---
 	var biomes: Dictionary = dungeon_cfg.get("biomes", {})
 	var weights: Dictionary = dungeon_cfg.get("biome_weights", {})
-	_check(biomes.size() == 4 and weights.size() == 4, "4 биома данжа (M7: пещеры и пустоши)")
+	_check(biomes.size() == 5 and weights.size() == 4,
+			"5 биомов данжа (M7: четыре + лагерь бандитов M10)")
 	var enemy_ids := {}
 	var bosses_by_id := {}
 	for e in enemies:
@@ -2878,8 +2907,8 @@ func _test_m9() -> void:
 		var ref := String(b.get("sprite", ""))
 		if ref == "" or assets.sprite(ref) == null:
 			missing += 1
-	_check(missing == 0 and cfg["buildings"].size() == 20,
-			"у всех 20 зданий есть PNG-спрайт (недостающих: %d)" % missing)
+	_check(missing == 0 and cfg["buildings"].size() == 22,
+			"у всех 22 зданий есть PNG-спрайт (недостающих: %d)" % missing)
 	missing = 0
 	for it: Dictionary in _read_json("res://data/loot.json")["items"]:
 		if String(it.get("sprite", "")) == "" or assets.sprite(String(it["sprite"])) == null:
@@ -2894,7 +2923,7 @@ func _test_m9() -> void:
 				or assets.sprite(String(b["floor_sprite"])) == null \
 				or assets.sprite(String(b["wall_sprite"])) == null:
 			missing += 1
-	_check(missing == 0, "у всех 4 биомов заданы тайлы пола и стен (недостающих: %d)" % missing)
+	_check(missing == 0, "у всех %d биомов заданы тайлы пола и стен (недостающих: %d)" % [dcfg["biomes"].size(), missing])
 	_check(String(dcfg.get("sprites", {}).get("mana", "")) != "",
 			"спрайт мана-кристалла задан в dungeon.json -> sprites")
 	# код спрайтовых скриптов компилируется (Assets preload не рвёт остальные)
@@ -2906,5 +2935,180 @@ func _test_m9() -> void:
 		var s: Variant = load(path)
 		_check(s != null and (s as Script).can_instantiate(), path.get_file() + " компилируется")
 	# версия этапа
-	_check(String(_read_json("res://data/version.json")["version"]).begins_with("0.13"),
-			"версия проекта 0.13.x (этап M9)")
+	_check(String(_read_json("res://data/version.json")["version"]).begins_with("1.0"),
+			"версия проекта 1.0.x (релиз)")
+
+
+# --- M10: релиз v1.0 — craftpix-ассеты, бандиты, скот, поля, рынок, гуляй-город
+
+func _test_m10() -> void:
+	print("[M10: правки и улучшения]")
+	var assets := _ASSETS
+	var cfg: Dictionary = _read_json("res://data/city.json")
+	# --- новые окружение и реквизит ---
+	for ref in ["e:tree1", "e:tree2", "e:tree3", "e:tree4", "e:rock1", "e:rock4",
+			"e:tree_fruit", "e:stump", "e:cart", "e:tent", "e:crate", "e:sack",
+			"e:crop0_0", "e:crop1_3", "e:crop2_2"]:
+		_check(assets.sprite(ref) != null, "окружение/реквизит загружается: " + ref)
+	# --- листы анимаций ---
+	_check(assets.SHEETS.size() >= 36, "реестр листов анимаций наполнен (%d)" % assets.SHEETS.size())
+	for sheet in ["cit1_d_walk", "cit4_u_idle", "orc1_walk", "orc3_idle", "cow", "sheep", "pig", "chicken", "turkey", "fire"]:
+		_check(assets.sheet_frame(sheet, 0) != null, "кадр листа загружается: " + sheet)
+	_check(assets.sheet_frame("orc1_walk", 17) != null, "ряд/кадр листа орка считаются (17 = влево, кадр 5)")
+	_check(assets.sheet_frame("sheep", 43) != null, "ряд/кадр листа животного считаются (43 = вправо, walk)")
+	_check(assets.sheet_frame("нет_такого", 0) == null, "несуществующий лист — null без ошибок")
+	_check(Assets.dir_of(Vector2(-5, 1)) == "left" and Assets.dir_of(Vector2(1, 5)) == "front"
+			and Assets.dir_of(Vector2(1, -5)) == "back", "dir_of: 4 направления из вектора")
+	# --- бандиты-гуманоиды ---
+	var enemies: Array = _read_json("res://data/enemies.json")
+	var by_id := {}
+	for e: Dictionary in enemies:
+		by_id[String(e["id"])] = e
+	for bandit_id in ["bandit", "bandit_archer", "bandit_chief"]:
+		_check(by_id.has(bandit_id), "враг-гуманоид есть: " + bandit_id)
+		var info: Array = assets.SHEETS.get(String(by_id[bandit_id].get("sheet", "")) + "_walk", [])
+		_check(not info.is_empty(), "у %s лист анимаций зарегистрирован" % bandit_id)
+	var dcfg: Dictionary = _read_json("res://data/dungeon.json")
+	_check(dcfg["biomes"].has("bandit_camp"), "биом bandit_camp есть в dungeon.json")
+	var camp_biome: Dictionary = dcfg["biomes"]["bandit_camp"]
+	var weights: Dictionary = camp_biome["enemy_weights"]
+	var weights_ok := true
+	for enemy_id in weights:
+		if not by_id.has(String(enemy_id)):
+			weights_ok = false
+	_check(weights_ok and weights.has("bandit"),
+			"в лагере бандитов водятся только гуманоиды (из enemies.json)")
+	_check(String(camp_biome["boss"]) == "bandit_chief", "босс лагеря — атаман-гуманоид")
+	# --- карта города больше ---
+	_check(int(cfg["map_w"]) >= 80 and int(cfg["map_h"]) >= 60,
+			"карта города увеличена (%dx%d)" % [int(cfg["map_w"]), int(cfg["map_h"])])
+	# --- здания и профессии M10 ---
+	var bld_ids := {}
+	for b: Dictionary in cfg["buildings"]:
+		bld_ids[String(b["id"])] = b
+	_check(bld_ids.has("orchard") and bld_ids.has("market"), "есть яблоневый сад и торговый двор")
+	_check(String(bld_ids["market"].get("worker", "")) == "trader", "за торговым двором закреплён торговец")
+	var prof_ids := {}
+	for p: Dictionary in cfg["professions"]:
+		prof_ids[String(p["id"])] = true
+	_check(prof_ids.has("trader"), "профессия торговца есть")
+	# --- конфиги фермерства/скота/рынка ---
+	_check(cfg.has("farming") and int(cfg["farming"]["stages"]) >= 3, "конфиг посевов: стадии роста")
+	_check(cfg.has("livestock") and float(cfg["livestock"]["cells_per_animal"]) > 0,
+			"конфиг скота: ёмкость пастбища от клеток")
+	_check(cfg.has("market") and (cfg["market"]["deals"] as Array).size() >= 3,
+			"конфиг рынка: сделки караванов мэра")
+	# --- логика: симуляция города headless ---
+	var city_sim = load("res://scripts/city_sim.gd").new()
+	var cmap = load("res://scripts/city_map.gd").new()
+	cmap.generate(777, cfg)
+	city_sim.setup(cmap, cfg, 6, "normal")
+	_check(float(city_sim.res.get("seeds", 0.0)) >= float(cfg["farming"]["start_seeds"]),
+			"стартовые семена выданы")
+	# пастбище: ёмкость = клетки/4
+	var pasture := {"id": 1, "type": "pasture", "cells": [], "progress": []}
+	for i in 16:
+		pasture["cells"].append(Vector2i(5 + i % 4, 5 + i / 4))
+		pasture["progress"].append(9.0)
+	_check(city_sim.pasture_capacity(pasture) == 4, "ёмкость пастбища: 16 клеток -> 4 места")
+	# разведение ограничено ёмкостью (не геометрическая прогрессия)
+	city_sim.zones.append(pasture)
+	for i in 2:
+		city_sim.livestock.append({"id": i + 1, "kind": "sheep", "pasture": 1,
+				"pos": Vector2(160, 160), "target": Vector2i.ZERO, "path": PackedVector2Array(),
+				"idle": 0.0, "adult": true, "age": 99.0})
+	city_sim._event_rng.seed = 20260101
+	for i in 60:
+		city_sim._roll_livestock()
+	_check(city_sim.livestock.size() >= 3, "приплод появляется (пара взрослых даёт детёнышей)")
+	_check(city_sim.livestock.size() <= 4, "приплод не превысил ёмкость пастбища")
+	# поле: посев -> рост -> урожай возвращает семя и даёт еду
+	var field := {"id": 2, "type": "field", "cells": [Vector2i(10, 10), Vector2i(11, 10)],
+			"progress": [9.0, 9.0], "crops": [{}, {}]}
+	city_sim.zones.append(field)
+	city_sim.res["seeds"] = 10.0
+	city_sim.res["food"] = 10.0   # освобождаем склад: иначе урожай упрётся в кап
+	var food0 := float(city_sim.res["food"])
+	var day_len := float(cfg["day_length"])
+	for i in 30:
+		city_sim._update_zones(day_len / 2.0, day_len)
+	_check(float(city_sim.res["food"]) > food0, "поле дало урожай через стадии роста")
+	_check(float(city_sim.res["seeds"]) >= 8.0, "урожай возвращает семена (цикл замкнулся)")
+	# рынок и караваны мэра
+	_check(not city_sim.market_ready(), "без торгового двора рынка нет")
+	city_sim.buildings.append({"id": 99, "type": "market", "tile": Vector2i(3, 3), "done": true,
+			"progress": 0.0, "worker": 3, "enchant": "", "ench_mult": 1.0, "stun_left": 0.0, "hp": 999.0})
+	_check(city_sim.market_ready(), "торговый двор с торговцем открывает рынок")
+	city_sim.res["food"] = 100.0
+	var food_deal := {}
+	for d: Dictionary in (cfg["market"]["deals"] as Array):
+		if String(d["res"]) == "food":
+			food_deal = d
+	_coins_log.clear()
+	city_sim.coins_sink = func(n: int) -> void: _coins_log.append(n)
+	var quick_deal: Dictionary = food_deal.duplicate()
+	quick_deal["days"] = 1   # чтобы проверить возврат одним дневным тиком
+	var sent: String = city_sim.send_caravan(quick_deal)
+	_check(sent == "" and city_sim.caravans_out.size() == 1, "мэр отправил караван по сделке")
+	_check(float(city_sim.res["food"]) < 100.0, "товар каравана списан со склада")
+	city_sim.cfg["market"]["loss_chance"] = 0.0
+	city_sim._tick_caravans()
+	_check(city_sim.caravans_out.is_empty() and not _coins_log.is_empty() and _coins_log[0] > 0,
+			"караван вернулся с прибылью (монеты через колбэк)")
+	city_sim.res["food"] = 100.0
+	var sent2: String = city_sim.send_caravan(quick_deal)
+	_check(sent2 == "", "второй караван тоже отправлен")
+	city_sim.cfg["market"]["loss_chance"] = 1.0
+	city_sim._tick_caravans()
+	_check(city_sim.caravans_out.is_empty() and _coins_log.size() == 1,
+			"караван с риском 100% разграблен — монет нет")
+	# торговля с пришедшим караваном (монеты <-> пул)
+	city_sim.caravan_here = true
+	var purse := {"coins": 100}   # лямбды захватывают по значению — нужен словарь
+	city_sim.coins_source = func() -> int: return int(purse["coins"])
+	city_sim.coins_sink = func(n: int) -> void: purse["coins"] = int(purse["coins"]) + n
+	var price := int(ceilf(city_sim.caravan_price("food")))
+	var buy_err: String = city_sim.market_buy("food", 10)
+	_check(buy_err == "" and int(purse["coins"]) == 100 - price * 10, "покупка у каравана за монеты")
+	var sell_err: String = city_sim.market_sell("food", 10)
+	_check(sell_err == "" and int(purse["coins"]) > 100 - price * 10, "продажа каравану приносит монеты")
+	city_sim.caravan_here = false
+	_check(city_sim.market_buy("food", 1) == "no_caravan", "без каравана торговли нет")
+	# --- гуляй-город на карте мира ---
+	var wcfg: Dictionary = _read_json("res://data/world.json")
+	var wmap = load("res://scripts/world_map.gd").new()
+	wmap.generate(4242, wcfg)
+	var trade_camp_n := 0
+	var camp_poi := {}
+	for poi in wmap.pois:
+		if String(poi["kind"]) == "trade_camp":
+			trade_camp_n += 1
+			camp_poi = poi
+	_check(trade_camp_n >= 1, "лагерь торговцев размещён на карте мира")
+	var wsim = load("res://scripts/world_sim.gd").new()
+	wsim.setup(wmap, wcfg)
+	_check(wsim.poi_enterable(camp_poi), "в лагерь торговцев можно войти")
+	_check(wsim.trade_discount(camp_poi) < 1.0, "у лагеря торговцев цены со скидкой")
+	_check(not wsim.is_combat_poi(camp_poi), "лагерь торговцев — не боевая точка")
+	_check(int(wcfg["pois"].get("trade_camps", 0)) >= 1, "число гуляй-городов задаётся в world.json")
+	# --- локализация новых строк ---
+	var loc_data: Dictionary = _read_json("res://loc/ru.json")
+	for key in ["res.seeds", "bld.orchard", "bld.market", "prof.trader", "market.title",
+			"market.deal", "market.err_no_market", "city.caravan_arrived_toast",
+			"city.livestock_tame_toast", "world.poi.trade_camp", "world.hint_trade_camp",
+			"biome.bandit_camp", "enemy.bandit", "enemy.bandit_chief",
+			"camp.trade_title", "camp.hint_trade", "animal.sheep", "animal.chick",
+			"chron.caravan_returned", "chron.livestock_born"]:
+		_check(loc_data.has(key) and String(loc_data[key]).length() > 0, "ключ локализации: " + key)
+	# --- новые и правленые скрипты компилируются ---
+	for path in ["res://scripts/world_camp.gd", "res://scripts/city_sim.gd",
+			"res://scripts/assets.gd", "res://scripts/city_view.gd", "res://scripts/city_terrain.gd",
+			"res://scripts/enemy.gd", "res://scripts/hero.gd", "res://scripts/world.gd",
+			"res://scripts/world_sim.gd", "res://scripts/world_map.gd", "res://scripts/city_hud.gd",
+			"res://scripts/city.gd", "res://scripts/world_view.gd", "res://scripts/world_hud.gd"]:
+		var s: Variant = load(path)
+		_check(s != null and (s as Script).can_instantiate(), path.get_file() + " компилируется")
+	_check(FileAccess.file_exists("res://scenes/trade_camp.tscn"), "сцена лагеря торговцев есть")
+
+
+var _coins_log: Array = []

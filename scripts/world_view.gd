@@ -10,6 +10,7 @@ const KIND_COLORS := {
 	"camp": "#e57373",
 	"settlement": "#ffd54f",
 	"caravan": "#ffb300",
+	"trade_camp": "#ffca28",
 	"obelisk": "#4dd0e1",
 }
 
@@ -21,6 +22,7 @@ const KIND_SPRITES := {
 	"camp": "k:112",
 	"settlement": "k:85",
 	"caravan": "k:98",
+	"trade_camp": "e:cart",
 	"obelisk": "b:statue",
 }
 

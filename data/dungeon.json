@@ -103,6 +103,20 @@
 			"loot_bonus": 2,
 			"pollution_on_visit": 3.0,
 			"boss": "ash_tyrant"
+		},
+		"bandit_camp": {
+			"loc": "biome.bandit_camp",
+			"floor_color": "#4a4238",
+			"wall_color": "#332a1e",
+			"bg_color": "#100d08",
+			"exit_color": "#d8a25a",
+			"floor_sprite": "k:28",
+			"wall_sprite": "k:40",
+			"ambient": "#0e0a06",
+			"enemy_weights": { "bandit": 40, "bandit_archer": 25 },
+			"loot_bonus": 2,
+			"pollution_on_visit": 0.0,
+			"boss": "bandit_chief"
 		}
 	}
 }

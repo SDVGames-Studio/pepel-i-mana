@@ -62,7 +62,7 @@ func refresh() -> void:
 	if sim == null:
 		return
 	var cap: int = sim.storage_cap()
-	_res_label.text = "%s %d/%d   %s %d/%d   %s %d   %s %d   %s %d\n%s %d/%d   %s %d   %s %d   %s %d" % [
+	_res_label.text = "%s %d/%d   %s %d/%d   %s %d   %s %d   %s %d\n%s %d/%d   %s %d   %s %d   %s %d   %s %d" % [
 		Loc.t("res.wood"), int(sim.res["wood"]), cap,
 		Loc.t("res.stone"), int(sim.res["stone"]), cap,
 		Loc.t("res.food"), int(sim.res["food"]),
@@ -71,6 +71,7 @@ func refresh() -> void:
 		Loc.t("res.iron"), int(sim.res.get("iron", 0)), cap,
 		Loc.t("res.metal"), int(sim.res.get("metal", 0)),
 		Loc.t("res.kits"), int(sim.res.get("kits", 0)),
+		Loc.t("res.seeds"), int(sim.res.get("seeds", 0)),
 		Loc.t("res.coins"), Game.coins,
 	]
 	_pop_label.text = Loc.t("city.pop") % [sim.residents.size(), sim.pop_cap()]
@@ -93,6 +94,9 @@ func refresh() -> void:
 		_chron_text.text = _chronicle_bbcode()
 	if _magic_panel.visible:
 		_refresh_magic()
+	if market_visible() and int(sim.caravan_here) != _market_caravan_state:
+		_market_caravan_state = int(sim.caravan_here)
+		_rebuild_market()
 
 
 func toast(msg: String) -> void:
@@ -153,6 +157,121 @@ func toggle_magic() -> void:
 
 func magic_visible() -> bool:
 	return _magic_panel.visible
+
+
+## --- Панель рынка (M10, клавиша M): караваны и торговля мэра --------------
+
+var _market_panel: PanelContainer = null
+var _market_box: VBoxContainer = null
+var _market_caravan_state := -1
+
+
+func toggle_market() -> void:
+	if _market_panel == null:
+		return
+	_market_panel.visible = not _market_panel.visible
+	if _market_panel.visible:
+		_rebuild_market()
+
+
+func market_visible() -> bool:
+	return _market_panel != null and _market_panel.visible
+
+
+func _build_market_panel(root: Control) -> void:
+	_market_panel = PanelContainer.new()
+	_market_panel.add_theme_stylebox_override("panel", _panel_style())
+	_market_panel.set_anchors_preset(Control.PRESET_CENTER)
+	_market_panel.visible = false
+	root.add_child(_market_panel)
+	var scroll := ScrollContainer.new()
+	scroll.custom_minimum_size = Vector2(560, 560)
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	_market_panel.add_child(scroll)
+	_market_box = VBoxContainer.new()
+	_market_box.add_theme_constant_override("separation", 6)
+	_market_box.custom_minimum_size = Vector2(540, 0)
+	scroll.add_child(_market_box)
+
+
+func _rebuild_market() -> void:
+	for child in _market_box.get_children():
+		child.queue_free()
+	var mcfg: Dictionary = cfg.get("market", {})
+	var title := _label(26)
+	title.text = Loc.t("market.title")
+	_market_box.add_child(title)
+	if not sim.market_ready():
+		var no := _label(18)
+		no.text = Loc.t("market.need_building")
+		_market_box.add_child(no)
+		return
+	# пришедший караван: купить/продать
+	var caravan_title := _label(20)
+	caravan_title.text = Loc.t("market.caravan_here" if sim.caravan_here else "market.caravan_wait")
+	_market_box.add_child(caravan_title)
+	if sim.caravan_here:
+		for key in mcfg.get("caravan_buy", {}):
+			var k := String(key)
+			var price := int(ceilf(sim.caravan_price(k)))
+			var sell_price := int(floorf(float(price) * float(mcfg.get("caravan_sell_mult", 0.5))))
+			var row := HBoxContainer.new()
+			row.add_theme_constant_override("separation", 6)
+			var name_label := _label(16)
+			name_label.text = "%s — %d/%d %s" % [Loc.t("res." + k), price, sell_price, Loc.t("res.coins_short")]
+			name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			row.add_child(name_label)
+			row.add_child(_m_btn(Loc.t("market.buy_btn") % 10, func() -> void: _market_deal(func() -> String: return sim.market_buy(k, 10))))
+			row.add_child(_m_btn(Loc.t("market.sell_btn") % 10, func() -> void: _market_deal(func() -> String: return sim.market_sell(k, 10))))
+			_market_box.add_child(row)
+	# организовать караван (сделки из конфига)
+	var deals_title := _label(20)
+	deals_title.text = Loc.t("market.deals_title")
+	_market_box.add_child(deals_title)
+	for i in (mcfg.get("deals", []) as Array).size():
+		var deal: Dictionary = mcfg["deals"][i]
+		var row2 := HBoxContainer.new()
+		row2.add_theme_constant_override("separation", 6)
+		var deal_label := _label(16)
+		deal_label.text = Loc.t("market.deal") % [int(deal["amount"]), Loc.t("res." + String(deal["res"])),
+				int(deal["days"]), int(deal["coins"])]
+		deal_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		row2.add_child(deal_label)
+		var idx := i
+		row2.add_child(_m_btn(Loc.t("market.send_btn"), func() -> void:
+			var err: String = sim.send_caravan(mcfg["deals"][idx])
+			if err != "":
+				toast(Loc.t("market.err_" + err))
+			_rebuild_market()))
+		_market_box.add_child(row2)
+	# в пути
+	if not sim.caravans_out.is_empty():
+		var out_title := _label(18)
+		out_title.text = Loc.t("market.out_title")
+		_market_box.add_child(out_title)
+		for c: Dictionary in sim.caravans_out:
+			var line := _label(16)
+			line.text = Loc.t("market.out_line") % [int(c["amount"]), Loc.t("res." + String(c["res"])), int(c["left"])]
+			_market_box.add_child(line)
+	var note := _label(14)
+	note.text = Loc.t("market.note") % int(float(mcfg.get("loss_chance", 0.15)) * 100.0)
+	note.modulate = Color(1, 1, 1, 0.7)
+	_market_box.add_child(note)
+
+
+func _market_deal(action: Callable) -> void:
+	var err: String = action.call()
+	if err != "":
+		toast(Loc.t("market.err_" + err))
+	_rebuild_market()
+
+
+func _m_btn(text: String, action: Callable) -> Button:
+	var btn := Button.new()
+	btn.text = text
+	btn.focus_mode = Control.FOCUS_NONE
+	btn.pressed.connect(action)
+	return btn
 
 
 func _build_magic_panel(root: Control) -> void:
@@ -531,6 +650,7 @@ func _build() -> void:
 
 	_build_magic_panel(root)
 	_build_research_panel(root)
+	_build_market_panel(root)
 
 
 ## --- Панель дисциплин города (M7, клавиша U) -------------------------------
@@ -705,8 +825,10 @@ func _chron_text_of(e: Dictionary) -> String:
 
 
 func _chron_arg(v: String) -> String:
-	if v in ["wood", "stone", "food", "crystal"]:
+	if v in ["wood", "stone", "food", "crystal", "tools", "iron", "metal", "kits", "seeds"]:
 		return Loc.t("res." + v)
+	if v in ["sheep", "cow", "pig", "chicken", "chick", "turkey"]:
+		return Loc.t("animal." + v)
 	for prof in cfg["professions"]:
 		if String(prof["id"]) == v:
 			return Loc.t(String(prof["loc"]))

@@ -256,11 +256,21 @@ func _use_poi(poi: Dictionary) -> void:
 				hud.open_trade(poi)
 			else:
 				_enter_location(poi)   # павшее поселение — там лагерь бандитов
+		"trade_camp":
+			_enter_trade_camp(poi)
 		"dungeon", "ruins", "camp":
 			if sim.poi_enterable(poi):
 				_enter_location(poi)
 			else:
 				hud.toast(Loc.t("world.cleared") % _reset_left(poi))
+
+
+## Войти в лагерь торговцев «гуляй-город» (M10): телеги по кругу, костёр,
+## торговцы — торговля с ценами каравана.
+func _enter_trade_camp(poi: Dictionary) -> void:
+	Game.world_hero_tile = poi["tile"]
+	Game.poi_id = int(poi["id"])
+	get_tree().change_scene_to_file("res://scenes/trade_camp.tscn")
 
 
 func _reset_left(poi: Dictionary) -> int:
@@ -294,6 +304,8 @@ func _enter_city() -> void:
 
 
 ## Войти в локацию боевой точки: данж генерируется как сейчас (пункт плана M8).
+## Лагеря бандитов и павшие поселения — биом «лагерь бандитов» (M10): там
+## гуманоиды-бандиты (орки), а не живность.
 func _enter_location(poi: Dictionary) -> void:
 	Game.return_scene = "res://scenes/world.tscn"
 	Game.world_hero_tile = poi["tile"]
@@ -307,9 +319,11 @@ func _enter_location(poi: Dictionary) -> void:
 			Game.poi_coins = sim.coin_reward(poi)
 		"camp":
 			Game.dungeon_scale = 0.5
+			Game.forced_biome = "bandit_camp"
 			Game.poi_coins = sim.coin_reward(poi)
 		"settlement":
 			Game.dungeon_scale = 0.5
+			Game.forced_biome = "bandit_camp"
 			Game.poi_coins = sim.coin_reward(poi)
 	get_tree().change_scene_to_file(DUNGEON_SCENE)
 
@@ -349,6 +363,8 @@ func _poi_hint(poi: Dictionary) -> String:
 			if String(poi["state"]) == "fallen":
 				return Loc.t("world.hint_enter_loc")
 			return Loc.t("world.hint_trade")
+		"trade_camp":
+			return Loc.t("world.hint_trade_camp")
 		"dungeon", "ruins", "camp":
 			if not sim.poi_enterable(poi):
 				return Loc.t("world.cleared") % _reset_left(poi)

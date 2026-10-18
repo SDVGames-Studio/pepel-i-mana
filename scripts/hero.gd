@@ -167,6 +167,11 @@ func _physics_process(delta: float) -> void:
 		_sprite.position.y = -float(p["radius"]) * 0.48 - absf(sin(_bob_time)) * amp
 		if absf(facing.x) > 0.05:
 			_sprite.flip_h = facing.x < 0.0
+		# шаг виден и при движении вверх/вниз (M10): лёгкое покачивание корпусом
+		if moving and absf(facing.y) >= absf(facing.x):
+			_sprite.rotation = sin(_bob_time) * 0.09
+		else:
+			_sprite.rotation = lerpf(_sprite.rotation, 0.0, 0.3)
 	if _lantern != null:
 		# дыхание факела: лёгкое неровное мерцание яркости
 		_lantern.energy = LANTERN_ENERGY * (0.94

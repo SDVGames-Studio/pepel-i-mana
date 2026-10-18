@@ -19,6 +19,8 @@ var _slow_mult := 1.0
 var _sprite: Sprite2D = null
 var _base_tint := Color.WHITE
 var _bob_time := 0.0
+var _anim_time := 0.0      # кадры листа (M10)
+var _dir := "front"        # направление анимации листа (M10)
 
 
 ## Вызвать до add_child: строка из data/enemies.json.
@@ -60,11 +62,20 @@ func _ready() -> void:
 	add_child(shape)
 	# спрайт врага (M9): ссылка из data/enemies.json, лёгкая подкраска цветом врага
 	_sprite = Sprite2D.new()
-	var tex: Texture2D = Assets.sprite(String(p.get("sprite", "")))
+	var sheet: String = String(p.get("sheet", ""))
+	var tex: Texture2D
+	if sheet != "":
+		# лист анимаций (M10): полный PNG + hframes/vframes, кадр выбираем в апдейте
+		var info: Array = Assets.SHEETS[sheet + "_walk"]
+		tex = Assets.tex(String(info[0]))
+		_sprite.hframes = int(info[3])
+		_sprite.vframes = int(info[4])
+	else:
+		tex = Assets.sprite(String(p.get("sprite", "")))
 	if tex != null:
 		var h := float(p["radius"]) * 2.8
 		_sprite.texture = tex
-		_sprite.scale = Vector2.ONE * (h / float(tex.get_height()))
+		_sprite.scale = Vector2.ONE * (h / float(tex.get_height()) * float(_sprite.vframes))
 		_sprite.position = Vector2(0, -h * 0.12)
 		var col := Color(String(p["color"]))
 		_base_tint = Color.WHITE.lerp(col, 0.25)
@@ -79,9 +90,26 @@ func _physics_process(delta: float) -> void:
 	if _sprite != null:
 		var k := clampf(_hit_flash / 0.2, 0.0, 1.0)
 		_sprite.modulate = _base_tint.lerp(Color(3, 3, 3), k * 0.8)
-		_bob_time += delta * (10.0 if velocity.length() > 5.0 else 2.5)
-		_sprite.position.y = -float(p["radius"]) * 0.34 - absf(sin(_bob_time)) * (1.4 if velocity.length() > 5.0 else 0.6)
-		if absf(velocity.x) > 1.0:
+		var moving := velocity.length() > 5.0
+		_bob_time += delta * (10.0 if moving else 2.5)
+		_sprite.position.y = -float(p["radius"]) * 0.34 - absf(sin(_bob_time)) * (1.4 if moving else 0.6)
+		var sheet: String = String(p.get("sheet", ""))
+		if sheet != "":
+			# покадровая анимация (M10): кадры walk/idle, ряд по направлению
+			_anim_time += delta
+			if absf(velocity.x) >= absf(velocity.y) and absf(velocity.x) > 1.0:
+				_dir = "left" if velocity.x < 0.0 else "right"
+			elif absf(velocity.y) > 1.0:
+				_dir = "back" if velocity.y < 0.0 else "front"
+			var row := 0
+			match _dir:
+				"back": row = 1
+				"left": row = 2
+				"right": row = 3
+			var anim := "walk" if moving else "idle"
+			var cols := 6 if moving else 4
+			_sprite.texture = Assets.sheet_frame(sheet + "_" + anim, row * cols + int(_anim_time * 8.0) % cols)
+		elif absf(velocity.x) > 1.0:
 			_sprite.flip_h = velocity.x < 0.0
 	if stun_left > 0.0:
 		stun_left = maxf(0.0, stun_left - delta)

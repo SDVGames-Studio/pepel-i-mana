@@ -31,11 +31,11 @@ extends RefCounted
 ## Рейдер: {id, type, p(строка enemies.json), hp, max_hp, pos, target, path,
 ##          atk_cd, goal(тайл), mode(advance|break|fight|flee)}
 
-const RESOURCES := ["wood", "stone", "food", "crystal", "tools", "iron", "metal", "kits"]
+const RESOURCES := ["wood", "stone", "food", "crystal", "tools", "iron", "metal", "kits", "seeds"]
 
 var map = null                  # city_map.gd, нетипизированно (см. грабли GDScript)
 var cfg: Dictionary = {}
-var res: Dictionary = {"wood": 0, "stone": 0, "food": 0, "crystal": 0}
+var res: Dictionary = {"wood": 0, "stone": 0, "food": 0, "crystal": 0, "seeds": 0}
 var residents: Array = []
 var buildings: Array = []
 var time := 0.0                 # игровое время, сек (x1)
@@ -62,8 +62,13 @@ var storm_left := 0.0           # сек до конца бури / до нач�
 var hero_pos := Vector2.ZERO    # где герой в городе (сцена обновляет каждый кадр)
 var hero_alive := false         # герой в городе и на ногах
 var animals: Array = []         # дикие животные для охоты: {id, pos, target, path, idle}
-var zones: Array = []           # зоны (M6): {id, type, cells, progress}
+var livestock: Array = []       # скот на пастбищах (M10): {id, kind, pasture, pos, target, path, idle, adult, age}
+var caravans_out: Array = []    # отправленные караваны (M10): {res, amount, left, coins, dest}
+var caravan_here := false       # пришёл торговый караван в город (M10, рынок)
+var _last_caravan_day := -99
+var zones: Array = []           # зоны (M6): {id, type, cells, progress, crops: [{stage, t, fallow}]}
 var _zone_id := 1
+var _livestock_id := 1
 
 var _next_id := 1
 var _trait_map := {}            # id черты -> описание (из people["traits"])
@@ -112,8 +117,13 @@ func setup(city_map, city_cfg: Dictionary, residents_count: int, level: String) 
 	storm_left = 0.0
 	hero_alive = false
 	animals = []
+	livestock = []
+	caravans_out = []
+	caravan_here = false
+	_last_caravan_day = -99
 	zones = []
 	_zone_id = 1
+	_livestock_id = 1
 	for i in int(cfg.get("hunting", {}).get("animals", 8)):
 		animals.append(_new_animal())
 	_next_raid_at = 0.0
@@ -135,6 +145,8 @@ func setup(city_map, city_cfg: Dictionary, residents_count: int, level: String) 
 	var start_res: Dictionary = levels.get(level, levels["normal"])
 	for key in RESOURCES:
 		res[key] = int(start_res.get(key, 0))
+	# стартовые семена (M10): поля сеются, урожай возвращает часть
+	_add_resource_capped("seeds", float(cfg.get("farming", {}).get("start_seeds", 16)))
 	var profs: Array = cfg["start"]["professions"]
 	var names: Array = cfg["names"]
 	base_pop = residents_count
@@ -943,6 +955,7 @@ func tick(dt_raw: float) -> void:
 	_update_storm(dt, day_len)
 	_update_threat(dt, day_len)
 	_update_animals(dt)
+	_update_livestock(dt)
 	_update_zones(dt, day_len)
 	for r in residents:
 		_update_resident(r, dt)
@@ -961,6 +974,10 @@ func tick(dt_raw: float) -> void:
 		_roll_auto_roads()
 		_roll_animals()
 		_roll_storm()
+		_roll_livestock()
+		_roll_market()
+		_tick_caravans()
+		_tick_orchards()
 	_update_gates()   # достроенные за тик вышки/ворота сразу меняют проходимость
 
 
@@ -1486,8 +1503,10 @@ func _move_towards(r: Dictionary, tile: Vector2i, dt: float) -> void:
 		else:
 			pos += to_next / dist * step
 			step = 0.0
-		if absf(to_next.x) > 2.0:
+		if absf(to_next.x) >= absf(to_next.y) and absf(to_next.x) > 0.5:
 			r["dir"] = "left" if to_next.x < 0.0 else "right"
+		elif absf(to_next.y) > 0.5:
+			r["dir"] = "back" if to_next.y < 0.0 else "front"
 	r["pos"] = pos
 	r["path"] = path
 	# протоптанная тропа (M6): сколько прошёл — столько износа оставил
@@ -1700,25 +1719,327 @@ func _zone_check_done(z: Dictionary, who: Dictionary) -> void:
 	_chron("chron.zone_done", String(who["name"]), String(z["type"]))
 
 
-## Обустроенные клетки поля и пастбища понемногу дают еду в пул
-## (поле 1.5, пастбище 1.0 в день за клетку — city.json -> zones.types).
+## Поля (M10): обустроенная клетка сеется (1 семя), культура растёт стадиями
+## (спрайты plants/), спелый урожай даёт еду и возвращает семя. Без семян
+## клетка пустует (fallow). Пастбище даёт еду понемногу, как раньше.
 func _update_zones(dt: float, day_len: float) -> void:
 	var zcfg: Dictionary = cfg.get("zones", {})
 	if zcfg.is_empty():
 		return
+	var fcfg: Dictionary = cfg.get("farming", {})
+	var stage_days: float = float(fcfg.get("stage_days", 0.5))
+	var stages: int = int(fcfg.get("stages", 4))
+	var harvest_food: float = float(fcfg.get("harvest_food", 6.0))
+	var seed_return: int = int(fcfg.get("seed_return", 1))
+	var seed_bonus: float = float(fcfg.get("seed_bonus_chance", 0.15))
 	for z in zones:
 		var t := String(z["type"])
-		if t != "field" and t != "pasture":
+		if t == "pasture":
+			var rate: float = float(zcfg.get("types", {}).get(t, {}).get("food", 0.0))
+			var filled := 0
+			for i in (z["cells"] as Array).size():
+				if _cell_filled(z, i) and building_at(z["cells"][i]).is_empty():
+					filled += 1
+			if filled > 0 and rate > 0.0:
+				_add_resource_capped("food", rate * float(filled) * dt / day_len)
 			continue
-		var rate: float = float(zcfg.get("types", {}).get(t, {}).get("food", 0.0))
-		if rate <= 0.0:
+		if t != "field":
 			continue
-		var filled := 0
+		# посевы по клеткам (M10)
+		if not (z as Dictionary).has("crops"):
+			z["crops"] = []
+		var crops: Array = z["crops"]
 		for i in (z["cells"] as Array).size():
-			if _cell_filled(z, i) and building_at(z["cells"][i]).is_empty():
-				filled += 1
-		if filled > 0:
-			_add_resource_capped("food", rate * float(filled) * dt / day_len)
+			if not _cell_filled(z, i) or not building_at(z["cells"][i]).is_empty():
+				continue
+			while crops.size() <= i:
+				crops.append({})
+			var crop: Dictionary = crops[i]
+			if crop.is_empty():
+				# пусто: сеем, если есть семя
+				if float(res.get("seeds", 0.0)) >= float(fcfg.get("seed_sow", 1)):
+					res["seeds"] = float(res["seeds"]) - float(fcfg.get("seed_sow", 1))
+					crops[i] = {"stage": 0, "t": 0.0, "ripe": false}
+			elif not bool(crop.get("ripe", false)):
+				crop["t"] = float(crop.get("t", 0.0)) + dt
+				if crop["t"] >= stage_days:
+					crop["t"] = 0.0
+					crop["stage"] = int(crop.get("stage", 0)) + 1
+					if int(crop["stage"]) >= stages:
+						crop["ripe"] = true
+			else:
+				# спелое: сбор (сами жители «снимают» — упрощённо автосбор)
+				_add_resource_capped("food", harvest_food)
+				_add_resource_capped("seeds", float(seed_return))
+				if _event_rng.randf() < seed_bonus:
+					_add_resource_capped("seeds", 1.0)
+				crops[i] = {}
+
+
+## Пастбище: ёмкость по обустроенным клеткам. Разведение — логистическое:
+## только до ёмкости и только при паре взрослых (в меру, не геометрия).
+func pasture_capacity(z: Dictionary) -> int:
+	var lcfg: Dictionary = cfg.get("livestock", {})
+	var per: float = float(lcfg.get("cells_per_animal", 4))
+	var filled := 0
+	for i in (z["cells"] as Array).size():
+		if _cell_filled(z, i) and building_at(z["cells"][i]).is_empty():
+			filled += 1
+	return int(floorf(float(filled) / maxf(1.0, per)))
+
+
+func _livestock_in(pasture_id: int) -> int:
+	var n := 0
+	for a in livestock:
+		if int(a["pasture"]) == pasture_id:
+			n += 1
+	return n
+
+
+func _livestock_adults(pasture_id: int) -> int:
+	var n := 0
+	for a in livestock:
+		if int(a["pasture"]) == pasture_id and bool(a["adult"]):
+			n += 1
+	return n
+
+
+## Ежедневный тик скота: приручение диких, приплод, молоко/яйца в пул.
+func _roll_livestock() -> void:
+	var lcfg: Dictionary = cfg.get("livestock", {})
+	if lcfg.is_empty():
+		return
+	var kinds: Array = lcfg.get("kinds", {"sheep": 3, "chicken": 3, "cow": 2, "pig": 2}).keys()
+	var total_food := 0.0
+	var events_today := 0
+	for z in zones:
+		if String(z["type"]) != "pasture":
+			continue
+		var cap := pasture_capacity(z)
+		if cap <= 0:
+			continue
+		var count := _livestock_in(int(z["id"]))
+		# приручение: дикий зверь со двора — в загон (шанс в день)
+		if count < cap and not animals.is_empty() \
+				and _event_rng.randf() < float(lcfg.get("tame_chance", 0.5)):
+			var wild: Dictionary = animals[_event_rng.randi_range(0, animals.size() - 1)]
+			animals.erase(wild)
+			var kind: String = kinds[_event_rng.randi_range(0, kinds.size() - 1)]
+			livestock.append({"id": _livestock_id, "kind": kind, "pasture": int(z["id"]),
+					"pos": map.tile_center_px(z["cells"][0]), "target": Vector2i.ZERO,
+					"path": PackedVector2Array(), "idle": 0.0, "adult": true, "age": 99.0})
+			_livestock_id += 1
+			count += 1
+			events.append({"type": "livestock_tame", "kind": kind})
+			_chron("chron.livestock_tame", kind)
+		# приплод: пара взрослых и есть место (в меру — шанс в день)
+		if count < cap and _livestock_adults(int(z["id"])) >= 2 \
+				and _event_rng.randf() < float(lcfg.get("breed_chance", 0.25)):
+			var kind2 := "chick"
+			if not livestock.is_empty():
+				kind2 = String(livestock[_event_rng.randi_range(0, livestock.size() - 1)]["kind"])
+			livestock.append({"id": _livestock_id, "kind": kind2, "pasture": int(z["id"]),
+					"pos": map.tile_center_px(z["cells"][0]), "target": Vector2i.ZERO,
+					"path": PackedVector2Array(), "idle": 0.0, "adult": false, "age": 0.0})
+			_livestock_id += 1
+			events.append({"type": "livestock_born", "kind": kind2})
+			_chron("chron.livestock_born", kind2)
+		# продукция: взрослые дают еду (молоко/яйца) — в пул раз в день
+		total_food += float(_livestock_adults(int(z["id"]))) * float(lcfg.get("food_per_adult", 1.2))
+	if total_food >= 1.0:
+		_add_resource_capped("food", total_food)
+		events.append({"type": "livestock_food", "food": int(total_food)})
+
+
+## Скот бродит по клеткам своего пастбища, детёныши растут.
+func _update_livestock(dt: float) -> void:
+	var mature_days: float = float(cfg.get("livestock", {}).get("mature_days", 3.0))
+	for a in livestock:
+		if not bool(a["adult"]):
+			a["age"] = float(a.get("age", 0.0)) + dt / maxf(0.01, float(cfg["day_length"]))
+			if float(a["age"]) >= mature_days:
+				a["adult"] = true
+		a["idle"] = float(a["idle"]) - dt
+		if float(a["idle"]) > 0.0:
+			continue
+		a["idle"] = _event_rng.randf_range(2.0, 7.0)
+		var pasture := _pasture_by_id(int(a["pasture"]))
+		if pasture.is_empty():
+			continue
+		var cells: Array = pasture["cells"]
+		var goal: Vector2i = cells[_event_rng.randi_range(0, cells.size() - 1)]
+		a["path"] = map.path_px(a["pos"], map.nearest_walkable(goal))
+	var step_speed: float = float(cfg.get("livestock", {}).get("speed", 24.0))
+	for a2 in livestock:
+		var path: PackedVector2Array = a2["path"]
+		if path.is_empty():
+			continue
+		var pos: Vector2 = a2["pos"]
+		var step := step_speed * dt
+		while step > 0.0 and not path.is_empty():
+			var to_next: Vector2 = path[0] - pos
+			var dist := to_next.length()
+			if dist <= step:
+				pos = path[0]
+				step -= dist
+				path.remove_at(0)
+			else:
+				pos += to_next / dist * step
+				step = 0.0
+		if pos.distance_to(a2["pos"]) > 0.01:
+			a2["dir"] = Assets_dir_of(pos - a2["pos"])
+		a2["pos"] = pos
+		a2["path"] = path
+		a2["moving"] = not path.is_empty()
+
+
+func _pasture_by_id(pasture_id: int) -> Dictionary:
+	for z in zones:
+		if String(z["type"]) == "pasture" and int(z["id"]) == pasture_id:
+			return z
+	return {}
+
+
+## Направление из вектора (обёртка, чтобы не тянуть Assets в симуляцию).
+func Assets_dir_of(v: Vector2) -> String:
+	if absf(v.x) >= absf(v.y):
+		return "left" if v.x < 0.0 else "right"
+	return "back" if v.y < 0.0 else "front"
+
+
+# --- рынок и караваны мэра (M10) ---------------------------------------------
+
+## Рынок работает: построен и за ним закреплен торговец.
+func market_ready() -> bool:
+	for b in buildings:
+		if String(b["type"]) == "market" and bool(b["done"]) and int(b["worker"]) > 0:
+			return true
+	return false
+
+
+## Ежедневный бросок: раз в N дней караван приходит в город (рынок активен).
+func _roll_market() -> void:
+	var mcfg: Dictionary = cfg.get("market", {})
+	if mcfg.is_empty() or not market_ready():
+		caravan_here = false
+		return
+	if caravan_here:
+		caravan_here = false   # простоял день и уехал
+		events.append({"type": "caravan_left"})
+		return
+	if day - _last_caravan_day < int(mcfg.get("caravan_days", 4)):
+		return
+	caravan_here = true
+	_last_caravan_day = day
+	events.append({"type": "caravan_arrived"})
+
+
+## Отправить свой караван с товаром (организует мэр). deal — из city.json
+## "market.deals". Возвращает "" или ключ ошибки без префикса.
+func send_caravan(deal: Dictionary) -> String:
+	var mcfg: Dictionary = cfg.get("market", {})
+	if not market_ready():
+		return "no_market"
+	if caravans_out.size() >= int(mcfg.get("max_out", 2)):
+		return "caravan_busy"
+	var amount := float(deal["amount"])
+	if float(res.get(String(deal["res"]), 0.0)) < amount:
+		return "no_res"
+	res[String(deal["res"])] = float(res[String(deal["res"])]) - amount
+	caravans_out.append({"res": String(deal["res"]), "amount": amount,
+			"left": int(deal["days"]), "coins": int(deal["coins"]),
+			"dest": String(deal.get("dest", "traders"))})
+	events.append({"type": "caravan_sent", "res": String(deal["res"]), "amount": int(amount)})
+	_chron("chron.caravan_sent", Loc_res(String(deal["res"])), str(int(amount)))
+	return ""
+
+
+func Loc_res(key: String) -> String:
+	return key
+
+
+## Дневной тик отправленных караванов: доход в монеты или разграбление.
+func _tick_caravans() -> void:
+	var mcfg: Dictionary = cfg.get("market", {})
+	var still: Array = []
+	for c: Dictionary in caravans_out:
+		c["left"] = int(c["left"]) - 1
+		if int(c["left"]) > 0:
+			still.append(c)
+			continue
+		if _event_rng.randf() < float(mcfg.get("loss_chance", 0.15)):
+			events.append({"type": "caravan_lost", "res": String(c["res"])})
+			_chron("chron.caravan_lost", Loc_res(String(c["res"])), str(int(float(c["amount"]))))
+		else:
+			Game_coins_add(int(c["coins"]))
+			events.append({"type": "caravan_returned", "coins": int(c["coins"])})
+			_chron("chron.caravan_returned", str(int(c["coins"])))
+	caravans_out = still
+
+
+## Монеты общие с героем (Game) — симуляция без сцены копит через колбэк.
+var coins_sink: Callable = Callable()   # сцена ставит: func(n): Game.coins += n
+var coins_source: Callable = Callable() # сцена ставит: func(): return Game.coins
+
+
+func Game_coins_add(n: int) -> void:
+	if coins_sink.is_valid():
+		coins_sink.call(n)
+
+
+## Цена каравана на базаре (за единицу) — из city.json -> market.caravan_buy.
+func caravan_price(key: String) -> float:
+	return float(cfg.get("market", {}).get("caravan_buy", {}).get(key, 3))
+
+
+## Купить у пришедшего каравана (в пул города). "" или ключ ошибки.
+func market_buy(key: String, count: int) -> String:
+	if not caravan_here:
+		return "no_caravan"
+	var price := caravan_price(key)
+	var cost := int(ceilf(price * float(count)))
+	if coins_source.is_valid() and int(coins_source.call()) < cost:
+		return "no_coins"
+	var free := float(storage_cap()) - float(res.get(key, 0.0))
+	var add := minf(float(count), maxf(0.0, free))
+	if add <= 0.0:
+		return "storage_full"
+	res[key] = float(res.get(key, 0.0)) + add
+	Game_coins_add(-int(ceilf(price * add)))
+	return ""
+
+
+## Продать каравану из пула. "" или ключ ошибки.
+func market_sell(key: String, count: int) -> String:
+	if not caravan_here:
+		return "no_caravan"
+	var have := float(res.get(key, 0.0))
+	var take := minf(float(count), have)
+	if take <= 0.0:
+		return "no_res"
+	var price := caravan_price(key) * float(cfg.get("market", {}).get("caravan_sell_mult", 0.5))
+	res[key] = have - take
+	Game_coins_add(int(floorf(price * take)))
+	return ""
+
+
+# --- яблоневые сады (M10) -----------------------------------------------------
+
+## Сад растёт: у готового сада зреют яблоки (stage), потом урожай в пул.
+func _tick_orchards() -> void:
+	var ocfg: Dictionary = cfg.get("orchard", {})
+	if ocfg.is_empty():
+		return
+	for b in buildings:
+		if String(b["type"]) != "orchard" or not bool(b["done"]):
+			continue
+		b["apple_stage"] = int(b.get("apple_stage", 0))
+		if int(b["apple_stage"]) < int(ocfg.get("stages", 3)):
+			b["apple_stage"] = int(b["apple_stage"]) + 1
+		elif _event_rng.randf() < float(ocfg.get("harvest_chance", 0.7)):
+			_add_resource_capped("food", float(ocfg.get("food", 14.0)))
+			b["apple_stage"] = 0
+			events.append({"type": "orchard_harvest", "food": int(float(ocfg.get("food", 14.0)))})
 
 
 # --- ворота в стене ---------------------------------------------------------

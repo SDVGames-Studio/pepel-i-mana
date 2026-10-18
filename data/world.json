@@ -23,12 +23,14 @@
 		"obelisks": 2,
 		"settlements": ["traders", "cult", "traders"],
 		"caravans": 1,
+		"trade_camps": 1,
 		"dungeon_biomes": ["ruins", "mutant_forest", "crystal_caves", "ash_wastes"]
 	},
 	"distances": {
 		"city_dungeon": [3, 5],
 		"settlement": [10, 20],
 		"caravan": [8, 18],
+		"trade_camp": [6, 14],
 		"dungeon": [12, 30],
 		"ruins": [8, 26],
 		"camp": [8, 24],
@@ -49,7 +51,7 @@
 	},
 	"trade": {
 		"start_coins": 15,
-		"buy": {"food": 2, "wood": 2, "stone": 3, "crystal": 9, "tools": 6, "metal": 5, "iron": 4},
+		"buy": {"food": 2, "wood": 2, "stone": 3, "crystal": 9, "tools": 6, "metal": 5, "iron": 4, "seeds": 4},
 		"sell_mult": 0.5,
 		"camp_discount": 0.7,
 		"barter": [

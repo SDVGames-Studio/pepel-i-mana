@@ -164,6 +164,9 @@ func _place_pois(params: Dictionary) -> void:
 	# караван/лагерь торговцев
 	d = dist_cfg.get("caravan", [8, 18])
 	_place_kind("caravan", "", int(d[0]), int(d[1]), int(pconf.get("caravans", 1)), "traders")
+	# лагерь торговцев «гуляй-город» (M10): телеги по кругу, торговля на месте
+	d = dist_cfg.get("trade_camp", [6, 14])
+	_place_kind("trade_camp", "", int(d[0]), int(d[1]), int(pconf.get("trade_camps", 1)), "traders")
 	# руины, лагеря бандитов, обелиски
 	d = dist_cfg.get("ruins", [8, 26])
 	_place_kind("ruins", "", int(d[0]), int(d[1]), int(pconf.get("ruins", 3)))
@@ -236,7 +239,8 @@ func _pois_ok() -> bool:
 	for poi in pois:
 		if not is_walkable(poi["tile"]):
 			return false
-	return pois.size() >= 1 + 1 + 4 + 3 + 1 + 3 + 4 + 2   # город+аномалия+4 данжа+3 поселения+караван+3 руины+4 лагеря+2 обелиска
+	# город+аномалия+4 данжа+3 поселения+караван+гуляй-город+3 руины+4 лагеря+2 обелиска
+	return pois.size() >= 1 + 1 + 4 + 3 + 1 + 1 + 3 + 4 + 2
 
 
 func poi_at(tile: Vector2i) -> Dictionary:

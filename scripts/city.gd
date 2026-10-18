@@ -37,6 +37,9 @@ func _ready() -> void:
 		Game.new_city()
 	sim = Game.city_sim
 	sim.paused = false
+	# монеты общие с героем (M10): симуляция кладёт/берёт через колбэки
+	sim.coins_sink = func(n: int) -> void: Game.coins += n
+	sim.coins_source = func() -> int: return Game.coins
 	Game.world_active = false   # вернулись в город — «Продолжить» откроет город
 	map = sim.map
 	cfg = _read_json(CITY_CFG_PATH)
@@ -343,6 +346,25 @@ func _process_events() -> void:
 				hud.toast(Loc.t("city.porter_trained_toast") % String(ev["name"]))
 			"road_auto":
 				hud.toast(Loc.t("city.road_auto_toast") % int(ev["count"]))
+			# --- скот, поля, рынок (M10) ---
+			"livestock_tame":
+				hud.toast(Loc.t("city.livestock_tame_toast") % Loc.t("animal." + String(ev["kind"])))
+			"livestock_born":
+				hud.toast(Loc.t("city.livestock_born_toast") % Loc.t("animal." + String(ev["kind"])))
+			"livestock_food":
+				hud.toast(Loc.t("city.livestock_food_toast") % int(ev["food"]))
+			"orchard_harvest":
+				hud.toast(Loc.t("city.orchard_toast") % int(ev["food"]))
+			"caravan_arrived":
+				hud.toast(Loc.t("city.caravan_arrived_toast"))
+			"caravan_left":
+				hud.toast(Loc.t("city.caravan_left_toast"))
+			"caravan_sent":
+				hud.toast(Loc.t("city.caravan_sent_toast") % [int(ev["amount"]), Loc.t("res." + String(ev["res"]))])
+			"caravan_returned":
+				hud.toast(Loc.t("city.caravan_returned_toast") % int(ev["coins"]))
+			"caravan_lost":
+				hud.toast(Loc.t("city.caravan_lost_toast") % Loc.t("res." + String(ev["res"])))
 	sim.events.clear()
 
 
@@ -421,6 +443,8 @@ func _unhandled_input(event: InputEvent) -> void:
 				hud.toggle_research()
 			KEY_C:
 				hud.toggle_chronicle()
+			KEY_M:
+				hud.toggle_market()
 			KEY_1:
 				set_speed(1)
 			KEY_2:

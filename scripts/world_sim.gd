@@ -234,14 +234,14 @@ func touch_obelisk(poi_id: int) -> Array:
 
 
 ## Можно ли войти в локацию. Данж/руины/лагерь — пока не зачищены;
-## поселение (в т.ч. павшее — там лагерь бандитов) — всегда.
+## поселение (в т.ч. павшее — там лагерь бандитов) и лагерь торговцев — всегда.
 func poi_enterable(poi: Dictionary) -> bool:
 	if poi.is_empty():
 		return false
 	match String(poi["kind"]):
 		"dungeon", "ruins", "camp":
 			return int(poi["cleared_day"]) < 0
-		"settlement":
+		"settlement", "trade_camp":
 			return true
 		_:
 			return false
@@ -258,10 +258,10 @@ func is_trade_poi(poi: Dictionary) -> bool:
 	return String(poi["kind"]) in ["caravan", "settlement"] and String(poi["state"]) == "ok"
 
 
-## Скидка каравана: у лагеря торговцев цены лучше.
+## Скидка каравана: у лагеря торговцев (в т.ч. гуляй-города) цены лучше.
 func trade_discount(poi: Dictionary) -> float:
 	var tcfg: Dictionary = cfg.get("trade", {})
-	if String(poi["kind"]) == "caravan":
+	if String(poi["kind"]) in ["caravan", "trade_camp"]:
 		return float(tcfg.get("camp_discount", 0.7))
 	return 1.0
 
