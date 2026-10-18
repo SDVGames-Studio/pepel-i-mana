@@ -102,6 +102,7 @@ func _update_travel(delta: float) -> void:
 			path.remove_at(1)
 			hero_tile = path[0]
 			map.reveal_around(hero_tile, int(cfg.get("reveal_radius", 5)))
+			_scout_tracks()
 		else:
 			hero_px += to_next / dist * step
 			step = 0.0
@@ -123,6 +124,17 @@ func _advance_world_day() -> void:
 	_flush_chronicle()
 	if Game.city_sim != null:
 		Game.city_sim.advance_days(1)
+
+
+## Следы (M12): на каждом шаге герой затирает след под ногами и высматривает
+## чужие следы — возле цепочки неоткрытого гнезда открывается путь к нему.
+func _scout_tracks() -> void:
+	var res: Dictionary = sim.track_scout(hero_tile)
+	if bool(res["found"]):
+		hud.toast(Loc.t("world.track_found"))
+		view.queue_redraw()
+	if bool(res["wiped"]):
+		view.queue_redraw()
 
 
 ## Мировая летопись уходит в общую городскую (единый журнал M4).
@@ -318,11 +330,12 @@ func _enter_location(poi: Dictionary) -> void:
 			Game.dungeon_scale = 0.5
 			Game.poi_coins = sim.coin_reward(poi)
 		"camp":
-			Game.dungeon_scale = 0.5
+			# строители гнезда укрепляют лагерь — масштаб растёт с уровнем (M12)
+			Game.dungeon_scale = sim.location_scale(poi)
 			Game.forced_biome = "bandit_camp"
 			Game.poi_coins = sim.coin_reward(poi)
 		"settlement":
-			Game.dungeon_scale = 0.5
+			Game.dungeon_scale = sim.location_scale(poi)
 			Game.forced_biome = "bandit_camp"
 			Game.poi_coins = sim.coin_reward(poi)
 	get_tree().change_scene_to_file(DUNGEON_SCENE)
@@ -368,6 +381,9 @@ func _poi_hint(poi: Dictionary) -> String:
 		"dungeon", "ruins", "camp":
 			if not sim.poi_enterable(poi):
 				return Loc.t("world.cleared") % _reset_left(poi)
+			if kind == "camp" and int(poi.get("nest_level", 0)) > 0:
+				return "%s • %s" % [Loc.t("world.hint_enter_loc"),
+						Loc.t("world.nest_level") % int(poi["nest_level"])]
 			return Loc.t("world.hint_enter_loc")
 	return Loc.t("world.hint")
 

@@ -15,6 +15,7 @@ var day := 0                    # дни мира (синхронно с дня�
 var events: Array = []          # [{"type": "siege_start"|...}] — читает сцена
 var chronicle: Array = []       # мировая летопись [{day, key, a, b}] — сцена отдаст городу
 var sieges: Array = []          # активные осады: {settlement_id, camp_id, left}
+var tracks := {}                # Vector2i -> {dir: Vector2i, camp: int, age: int} — следы (M12)
 var _rng := RandomNumberGenerator.new()
 
 
@@ -25,6 +26,7 @@ func setup(world_map, world_cfg: Dictionary, seed_value := -1) -> void:
 	events = []
 	chronicle = []
 	sieges = []
+	tracks = {}
 	if seed_value >= 0:
 		_rng.seed = seed_value
 	else:
@@ -36,6 +38,8 @@ func advance_day() -> Array:
 	day += 1
 	var today: Array = []
 	_grow_camps()
+	_update_tracks()
+	_roll_tracks()
 	today.append_array(_update_sieges())
 	today.append_array(_roll_sieges())
 	today.append_array(_roll_resettlement())
@@ -45,15 +49,89 @@ func advance_day() -> Array:
 	return today
 
 
-# --- лагеря бандитов растут ----------------------------------------------
+# --- гнёзда бандитов: живые колонии (M12) ---------------------------------
+# Скауты ежедневно расширяют радиус поиска (осады чаще), добытчики таскают
+# добычу (гнездо богатеет — жирнее лут), строители укрепляют (враги сильнее).
+# Идеи — из референса new-world-v-2 (enemy/nest.gd), код свой.
 
 func _grow_camps() -> void:
 	var scfg: Dictionary = cfg.get("sim", {})
+	var ncfg: Dictionary = cfg.get("nests", {})
 	var gmin := float(scfg.get("camp_growth_min", 0.0))
 	var gmax := float(scfg.get("camp_growth_max", 2.0))
 	for poi in map.pois:
 		if String(poi["kind"]) == "camp" and int(poi["cleared_day"]) < 0:
 			poi["strength"] = float(poi["strength"]) + _rng.randf_range(gmin, gmax)
+			poi["nest_days"] = int(poi.get("nest_days", 0)) + 1
+			poi["nest_level"] = mini(int(ncfg.get("max_level", 3)),
+					floori(float(int(poi["nest_days"])) / maxf(1.0, float(ncfg.get("level_days", 4)))))
+			if int(poi["nest_level"]) >= 1:
+				poi["plunder"] = float(poi.get("plunder", 0.0)) + float(ncfg.get("plunder_per_day", 1.0))
+
+
+## Уровень гнезда для HUD (0..3).
+func nest_level(poi: Dictionary) -> int:
+	return int(poi.get("nest_level", 0))
+
+
+## Скауты: живые лагеря с уровня гнезда оставляют цепочки следов от гнезда —
+## герой выслеживает гнездо по стрелкам, пройдя по следу — затирает его.
+func _roll_tracks() -> void:
+	var ncfg: Dictionary = cfg.get("nests", {})
+	if ncfg.is_empty():
+		return
+	for poi in map.pois:
+		if String(poi["kind"]) != "camp" or int(poi["cleared_day"]) >= 0:
+			continue
+		if int(poi.get("nest_level", 0)) < 1:
+			continue
+		if _rng.randf() > float(ncfg.get("track_chance", 0.3)):
+			continue
+		var dirs := [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]
+		var dir: Vector2i = dirs[_rng.randi_range(0, 3)]
+		var tile: Vector2i = poi["tile"]
+		var length := _rng.randi_range(int(ncfg.get("track_len_min", 3)), int(ncfg.get("track_len_max", 6)))
+		for i in length:
+			tile += dir
+			if not map.in_bounds(tile) or not map.is_walkable(tile):
+				break
+			if not tracks.has(tile):
+				tracks[tile] = {"dir": dir, "camp": int(poi["id"]), "age": 0}
+
+
+func _update_tracks() -> void:
+	if tracks.is_empty():
+		return
+	var ttl := int(cfg.get("nests", {}).get("track_ttl", 5))
+	var gone: Array = []
+	for t in tracks:
+		var tr: Dictionary = tracks[t]
+		tr["age"] = int(tr["age"]) + 1
+		if int(tr["age"]) > ttl:
+			gone.append(t)
+	for t in gone:
+		tracks.erase(t)
+
+
+## Герой осматривается (M12): затирает след под ногами; рядом со следом
+## неоткрытого гнезда — открывает следующий тайл цепочки (выслеживание).
+func track_scout(hero_tile: Vector2i) -> Dictionary:
+	var out := {"found": false, "wiped": false}
+	if tracks.has(hero_tile):
+		tracks.erase(hero_tile)
+		out["wiped"] = true
+	var radius := float(cfg.get("nests", {}).get("spot_radius", 2))
+	for t in tracks:
+		if Vector2(t).distance_to(Vector2(hero_tile)) > radius:
+			continue
+		var camp: Dictionary = map.poi_by_id(int(tracks[t]["camp"]))
+		if camp.is_empty() or bool(camp.get("discovered", false)):
+			continue
+		# шаг к гнезду — против направления следа
+		map.reveal_around(t - Vector2i(tracks[t]["dir"]), 1)
+		out["found"] = true
+		break
+	return out
 
 
 # --- осады поселений -------------------------------------------------------
@@ -71,7 +149,13 @@ func _roll_sieges() -> Array:
 	var scfg: Dictionary = cfg.get("sim", {})
 	if not sieges.is_empty():
 		return out
-	if _rng.randf() > float(scfg.get("siege_chance_per_day", 0.06)):
+	# скауты гнёзд (M12): чем выше уровни лагерей, тем чаще находят поселения
+	var boost := 1.0
+	var nboost := float(cfg.get("nests", {}).get("siege_boost_per_level", 0.15))
+	for poi in map.pois:
+		if String(poi["kind"]) == "camp" and int(poi["cleared_day"]) < 0:
+			boost += nboost * float(int(poi.get("nest_level", 0)))
+	if _rng.randf() > float(scfg.get("siege_chance_per_day", 0.06)) * boost:
 		return out
 	var camps: Array = []
 	for poi in map.pois:
@@ -81,6 +165,8 @@ func _roll_sieges() -> Array:
 	if camps.is_empty() or settlements.is_empty():
 		return out
 	var camp: Dictionary = camps[_rng.randi_range(0, camps.size() - 1)]
+	# большой рейд (M12): гнездо верхнего уровня присылает усиленный отряд
+	var big := int(camp.get("nest_level", 0)) >= int(cfg.get("nests", {}).get("big_raid_level", 3))
 	# бандиты идут в ближнее поселение из нескольких случайных кандидатов
 	var target: Dictionary = {}
 	var best_d := float(scfg.get("siege_range", 26))
@@ -93,7 +179,7 @@ func _roll_sieges() -> Array:
 	if target.is_empty():
 		return out
 	sieges.append({"settlement_id": int(target["id"]), "camp_id": int(camp["id"]),
-			"left": int(scfg.get("siege_days", 3))})
+			"left": int(scfg.get("siege_days", 3)), "big": big})
 	out.append({"type": "siege_start", "a": _poi_name(camp), "b": _poi_name(target)})
 	_chron("chron.world_siege", _poi_name(target))
 	return out
@@ -112,9 +198,11 @@ func _update_sieges() -> Array:
 		if int(siege["left"]) > 0:
 			still.append(siege)
 			continue
-		# осада решила исход: сила лагеря против обороны поселения
+		# осада решила исход: сила лагеря против обороны поселения;
+		# большой рейд гнезда (M12) сильнее на полторы
+		var power := float(camp["strength"]) * (1.5 if bool(siege.get("big", false)) else 1.0)
 		var defense := float(scfg.get("settlement_defense", 12.0)) * _rng.randf_range(0.7, 1.3)
-		if float(camp["strength"]) > defense:
+		if power > defense:
 			target["state"] = "fallen"
 			target["faction"] = "bandits"
 			target["fell_day"] = day
@@ -331,14 +419,23 @@ func trade_rune(inventory: Array, coins: int, rune_id: String) -> Dictionary:
 
 
 ## Награда монетами за зачистку лагеря/руин (диапазоны из конфига).
+## Добытчики гнезда (M12) накопили добычу — лагерь жирнее.
 func coin_reward(poi: Dictionary) -> int:
 	var tcfg: Dictionary = cfg.get("trade", {})
 	match String(poi["kind"]):
 		"camp", "settlement":
-			return _rng.randi_range(int(tcfg.get("camp_coins_min", 8)), int(tcfg.get("camp_coins_max", 16)))
+			var loot := int(float(poi.get("plunder", 0.0)) * float(cfg.get("nests", {}).get("coin_per_plunder", 1.0)))
+			return _rng.randi_range(int(tcfg.get("camp_coins_min", 8)), int(tcfg.get("camp_coins_max", 16))) + loot
 		"ruins":
 			return _rng.randi_range(int(tcfg.get("ruins_coins_min", 3)), int(tcfg.get("ruins_coins_max", 8)))
 	return 0
+
+
+## Масштаб локации (M12): строители укрепляют гнездо — враги в лагере сильнее.
+func location_scale(poi: Dictionary) -> float:
+	if String(poi["kind"]) not in ["camp", "settlement"]:
+		return 1.0
+	return 0.5 + float(cfg.get("nests", {}).get("fortify_scale_per_level", 0.1)) * float(int(poi.get("nest_level", 0)))
 
 
 ## Случайная руна, которую готов продать культ (из лута — чистая логика без

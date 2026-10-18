@@ -22,6 +22,8 @@ var _base_sheet_scale := Vector2.ONE   # масштаб кадра полног�
 var _bob_time := 0.0
 var _anim_time := 0.0      # кадры листа (M10)
 var _dir := "front"        # направление анимации листа (M10)
+var patrol: PackedVector2Array = PackedVector2Array()  # точки патруля стражи гнезда (M12)
+var _patrol_i := 0
 
 
 ## Вызвать до add_child: строка из data/enemies.json.
@@ -149,6 +151,13 @@ func _physics_process(delta: float) -> void:
 			hero.take_damage(int(p["damage"]))
 	elif dist <= float(p["aggro"]):
 		velocity = to_hero.normalized() * float(p["speed"])
+	elif not patrol.is_empty():
+		# стража гнезда патрулирует (M12): ходит по точкам, пока герой далеко
+		var goal: Vector2 = patrol[_patrol_i]
+		if global_position.distance_to(goal) < 12.0:
+			_patrol_i = (_patrol_i + 1) % patrol.size()
+			goal = patrol[_patrol_i]
+		velocity = (goal - global_position).normalized() * float(p["speed"]) * 0.5
 	else:
 		velocity = Vector2.ZERO
 	if _slow_left > 0.0:

@@ -3400,3 +3400,59 @@ func _test_m12() -> void:
 	sim2.time = 10.0
 	sim2.tick(120.0)
 	_check(bool(sim2.graves[0]["ready"]), "могилка готова после прощания")
+
+	# --- гнёзда и следы (M12C): живые колонии бандитов на карте мира ---
+	var ws_cfg: Dictionary = _read_json("res://data/world.json")
+	var wmap = load("res://scripts/world_map.gd").new()
+	wmap.generate(11, ws_cfg)
+	var wsim = load("res://scripts/world_sim.gd").new()
+	wsim.setup(wmap, ws_cfg, 5)
+	var camp: Dictionary = {}
+	for poi in wmap.pois:
+		if String(poi["kind"]) == "camp":
+			camp = poi
+			break
+	_check(not camp.is_empty(), "на карте есть лагерь бандитов")
+	for i in 12:
+		wsim.advance_day()
+	_check(int(camp.get("nest_level", 0)) >= 1,
+			"гнездо растёт со временем (ур. %d)" % int(camp.get("nest_level", 0)))
+	_check(float(camp.get("plunder", 0.0)) > 0.0, "добытчики носят добычу в гнездо")
+	_check(wsim.location_scale(camp) > 0.5, "строители укрепляют лагерь — враги сильнее")
+	_check(wsim.coin_reward(camp) >= 8 + int(float(camp.get("plunder", 0.0))),
+			"зачистка богатого гнезда жирнее награждает")
+	# следы: скауты оставляют цепочку, герой заметает и выслеживает
+	camp["nest_level"] = 2
+	wsim.cfg["nests"]["track_chance"] = 1.0
+	wsim.tracks = {}
+	wsim._roll_tracks()
+	_check(wsim.tracks.size() >= 2, "скауты оставили цепочку следов (%d)" % wsim.tracks.size())
+	var t0: Vector2i = wsim.tracks.keys()[0]
+	var r1: Dictionary = wsim.track_scout(t0)
+	_check(bool(r1["wiped"]) and not wsim.tracks.has(t0), "герой заметает след под ногами")
+	camp["discovered"] = false
+	wsim.tracks = {}
+	wsim._roll_tracks()
+	var r2: Dictionary = wsim.track_scout(wsim.tracks.keys()[0])
+	_check(bool(r2["found"]), "след ведёт к скрытому гнезду — тайл цепочки открыт")
+	# большой рейд: гнездо верхнего уровня присылает усиленный отряд (×1.5)
+	var target_poi: Dictionary = {}
+	for poi in wmap.pois:
+		if String(poi["kind"]) == "settlement" and String(poi["state"]) == "ok":
+			target_poi = poi
+			break
+	if not target_poi.is_empty():
+		camp["strength"] = 12.0
+		camp["nest_level"] = 3
+		wsim.sieges = [{"settlement_id": int(target_poi["id"]), "camp_id": int(camp["id"]),
+				"left": 0, "big": true}]
+		var evs: Array = wsim._update_sieges()
+		var fell := false
+		for e in evs:
+			if String(e["type"]) == "siege_fell":
+				fell = true
+		_check(fell, "большой рейд гнезда (×1.5) гарантированно берёт поселение")
+	# следы стареют и исчезают
+	wsim.tracks = {Vector2i(5, 5): {"dir": Vector2i(1, 0), "camp": int(camp["id"]), "age": 99}}
+	wsim._update_tracks()
+	_check(wsim.tracks.is_empty(), "старые следы стираются")

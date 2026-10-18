@@ -49,6 +49,20 @@
 		"caravan_move_days": 4,
 		"start_strength": {"camp": 4, "dungeon": 6, "ruins": 5, "settlement": 8}
 	},
+	"nests": {
+		"max_level": 3,
+		"level_days": 4,
+		"plunder_per_day": 1.0,
+		"coin_per_plunder": 1.0,
+		"fortify_scale_per_level": 0.1,
+		"siege_boost_per_level": 0.15,
+		"big_raid_level": 3,
+		"track_chance": 0.3,
+		"track_len_min": 3,
+		"track_len_max": 6,
+		"track_ttl": 5,
+		"spot_radius": 2
+	},
 	"trade": {
 		"start_coins": 15,
 		"buy": {"food": 2, "wood": 2, "stone": 3, "crystal": 9, "tools": 6, "metal": 5, "iron": 4, "seeds": 4},

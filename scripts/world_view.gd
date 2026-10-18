@@ -67,6 +67,13 @@ func _draw() -> void:
 		if not bool(poi["discovered"]):
 			continue
 		_draw_poi(poi, ts)
+	# следы бандитов (M12): стрелки на исследованных тайлах — ведут от гнезда
+	var sim = get_parent().get("sim") if get_parent() != null else null
+	if sim != null and sim.tracks != null:
+		for t: Vector2i in sim.tracks:
+			if not map.is_explored(t):
+				continue
+			_draw_track(t, Vector2i(sim.tracks[t]["dir"]), ts)
 	# маршрут в пути
 	_draw_route(ts)
 	# герой (M9): спрайт воина с лёгким бобингом и тенью
@@ -105,6 +112,11 @@ func _draw_poi(poi: Dictionary, ts: float) -> void:
 		_draw_poi_fallback(poi, pos, color)
 	if poi["tile"] == selected_tile:
 		draw_rect(Rect2(pos - Vector2(16, 16), Vector2(32, 32)), Color("#ffffff"), false, 2.0)
+	# уровень гнезда (M12): красные метки над лагерем — видно, насколько вырос
+	var nest := int(poi.get("nest_level", 0))
+	if String(poi["kind"]) == "camp" and nest > 0:
+		for i in nest:
+			draw_rect(Rect2(pos + Vector2(-9 + i * 7, -23), Vector2(5, 3)), Color("#e57373"))
 
 
 ## Запасной вид точек (примитивы, M8) — если спрайт не задан.
@@ -146,6 +158,19 @@ func _draw_poi_fallback(poi: Dictionary, pos: Vector2, color: Color) -> void:
 func _draw_diamond(pos: Vector2, r: float, color: Color) -> void:
 	draw_colored_polygon(PackedVector2Array(
 			[pos + Vector2(0, -r), pos + Vector2(r, 0), pos + Vector2(0, r), pos + Vector2(-r, 0)]), color)
+
+
+## След (M12): шеврон направления + пара отпечатков — читается как тропа.
+func _draw_track(tile: Vector2i, dir: Vector2i, ts: float) -> void:
+	var pos: Vector2 = map.tile_center_px(tile)
+	var col := Color(0.3, 0.23, 0.15, 0.85)
+	var v := Vector2(dir)
+	var side := v.rotated(PI / 2.0)
+	var tip: Vector2 = pos + v * (ts * 0.28)
+	draw_line(tip - v * (ts * 0.22) + side * (ts * 0.16), tip, col, 2.0)
+	draw_line(tip - v * (ts * 0.22) - side * (ts * 0.16), tip, col, 2.0)
+	draw_circle(pos - v * (ts * 0.12) + side * (ts * 0.14), 1.8, col)
+	draw_circle(pos - v * (ts * 0.12) - side * (ts * 0.14), 1.8, col)
 
 
 func _draw_route(ts: float) -> void:

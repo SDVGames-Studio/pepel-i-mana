@@ -274,7 +274,24 @@ func _build_enemies() -> void:
 		enemy.position = _tile_to_pos(gen.enemy_spawns[i])
 		enemy.hero = hero
 		enemy.died.connect(_on_enemy_died)
+		# стража гнезда патрулирует (M12): в лагере бандитов часть врагов
+		# обходит точки рядом со своим постом, пока герой далеко
+		if Game.forced_biome == "bandit_camp" and i % 2 == 0:
+			enemy.patrol = _patrol_points(gen.enemy_spawns[i])
 		add_child(enemy)
+
+
+## Точки патруля: до 3 свободных тайлов в радиусе 3 от поста.
+func _patrol_points(home: Vector2i) -> PackedVector2Array:
+	var points := PackedVector2Array()
+	for d in [Vector2i(2, 0), Vector2i(-2, 0), Vector2i(0, 2), Vector2i(0, -2),
+			Vector2i(3, 1), Vector2i(-3, -1), Vector2i(1, 3), Vector2i(-1, -3)]:
+		var t: Vector2i = home + d
+		if gen.is_floor(t):
+			points.append(_tile_to_pos(t))
+		if points.size() >= 3:
+			break
+	return points
 
 
 ## Ловушки биома (M7): типы и числа — dungeon.json -> "traps".
