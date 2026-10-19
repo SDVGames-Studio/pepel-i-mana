@@ -142,6 +142,38 @@ PAL_CASTLE = {
     "w": P(250, 172, 62),
 }
 
+# Монстры аномалии (issue #1): замена тайлам Kenney k:108/109/110 —
+# в бою они читались как круглые кляксы («красные круги»).
+PAL_MUTANT = {
+    "k": P(18, 22, 12),
+    "s": P(122, 166, 82),
+    "d": P(86, 120, 56),
+    "h": P(164, 202, 114),
+    "e": P(226, 64, 54),
+    "n": P(232, 228, 202),
+    "t": P(98, 76, 58),
+}
+
+PAL_BRUTE = {
+    "k": P(14, 20, 10),
+    "s": P(94, 130, 60),
+    "d": P(64, 92, 40),
+    "h": P(132, 168, 84),
+    "e": P(250, 198, 60),
+    "n": P(226, 222, 196),
+    "t": P(78, 58, 44),
+}
+
+PAL_SPITTER = {
+    "k": P(18, 22, 10),
+    "s": P(156, 178, 70),
+    "d": P(114, 134, 46),
+    "h": P(192, 210, 106),
+    "e": P(255, 122, 66),
+    "n": P(238, 234, 206),
+    "m": P(72, 28, 28),
+}
+
 
 # ------------------------------------------------------------- сетки ---------
 
@@ -354,6 +386,64 @@ CASTLE = [
 ]
 
 
+# Монстры аномалии: мутант (тощий, зубы, рёбра), брют (массивный, кулаки до земли),
+# плевун (жаба с разинутой пастью).
+MUTANT = [
+    "      kkkkk       ",
+    "     khhhhhk      ",
+    "    khssssshk     ",
+    "    ksekkksek     ",
+    "    kssnnnssk     ",
+    "    kssdkkdssk    ",
+    "   kksssssssssk   ",
+    "  kssksdsdsdkssk  ",
+    " kssk.sdsdsd.kssk ",
+    " ksk..sdsdsd..ksk ",
+    " ksk..ksddsk..ksk ",
+    " .k...kssssk...k. ",
+    "      kttttk      ",
+    "      k.tt.k      ",
+    "     kss.kssk     ",
+    "     ks...ksk     ",
+    "     kk...kkk     ",
+]
+
+BRUTE = [
+    "       kkkk       ",
+    "      khssshk     ",
+    "      ksekesk     ",
+    "      kssdnsk     ",
+    "    kksssssskk    ",
+    "  kssssssssssk    ",
+    " ksdsssssssdssk   ",
+    " kssdsssssdsssk   ",
+    "ksssddddddssssk   ",
+    "kssk sddds kssk   ",
+    "kssk kdddk kssk   ",
+    "kdsk kkdkk ksdk   ",
+    "kkk  kttk  kkk    ",
+    "     ktt ktk      ",
+    "    ktsk ktsk     ",
+    "    kk...kkk      ",
+]
+
+SPITTER = [
+    "    kkkkkkk     ",
+    "   khssssshk    ",
+    "  ksekkkkkesk   ",
+    "  kssnnnnnssk   ",
+    " ksmmmmmmmmsk   ",
+    " ksmnnnnnmsk    ",
+    " ksssssssssk    ",
+    "ksdsssssssdsk   ",
+    "kssdssssdssk    ",
+    " ksssssssssk    ",
+    " kkssk..kssk    ",
+    " .ksk...ksk     ",
+    " .kkk...kkk     ",
+]
+
+
 # ------------------------------------------------------------- сборка --------
 
 # (имя, сетка, палитра, папка)
@@ -367,6 +457,9 @@ SPRITES = [
     ("dragon_whelp", WHELP, PAL_WHELP, ENV),
     ("dragon", DRAGON, PAL_DRAGON, ENV),
     ("castle", CASTLE, PAL_CASTLE, BLD),
+    ("mutant", MUTANT, PAL_MUTANT, ENV),
+    ("brute", BRUTE, PAL_BRUTE, ENV),
+    ("spitter", SPITTER, PAL_SPITTER, ENV),
 ]
 
 

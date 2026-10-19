@@ -476,12 +476,12 @@ const BLD_PROPS := {
 
 ## Атакующие (M5 мутанты; M11 духи леса, Древень, скелеты некроманта).
 func _draw_raider(r: Dictionary) -> void:
-	var refs := {"mutant": "k:108", "brute": "k:109", "spitter": "k:110",
+	var refs := {"mutant": "e:mutant", "brute": "e:brute", "spitter": "e:spitter",
 			"forest_spirit": "e:spirit", "forest_boss": "e:treant", "skeleton": "k:121"}
 	var pos: Vector2 = r["pos"]
 	var rad := float(r["p"]["radius"])
 	var kind := String(r["type"])
-	var ref: String = refs.get(kind, "k:108")
+	var ref: String = refs.get(kind, "e:mutant")
 	var size := rad * 2.8
 	var lift := 0.0
 	var tint := Color.WHITE
