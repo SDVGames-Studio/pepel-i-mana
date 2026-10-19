@@ -304,6 +304,7 @@ func _build_traps() -> void:
 		var trap = TrapScript.new()
 		trap.setup(kind, trap_cfg[kind], gen, hero)
 		trap.position = _tile_to_pos(spawn["tile"])
+		trap.add_to_group("traps")
 		add_child(trap)
 
 
@@ -615,6 +616,10 @@ func _update_hint() -> void:
 	if _near_ladder():
 		hud.set_hint(Loc.t("dungeon.hint_exit"))
 		return
+	var trap = _nearest_trap(float(ts) * 1.3)
+	if trap != null:
+		hud.set_hint(Loc.t("dungeon.hint_trap"))
+		return
 	var chest = _nearest_chest(float(ts) * 1.8)
 	if chest != null:
 		hud.set_hint(Loc.t("dungeon.hint_chest"))
@@ -646,9 +651,28 @@ func _try_interact() -> void:
 	if _near_ladder():
 		_leave_dungeon()
 		return
+	var trap = _nearest_trap(float(ts) * 1.3)
+	if trap != null:
+		trap.disarm()
+		hud.toast(Loc.t("dungeon.trap_disarmed"))
+		return
 	var chest = _nearest_chest(float(ts) * 1.8)
 	if chest != null:
 		_open_chest(chest)
+
+
+## Ближайшая заряженная ловушка в радиусе (issue #2): разминированные пропускаем.
+func _nearest_trap(radius: float):
+	var best = null
+	var best_d := radius
+	for t in get_tree().get_nodes_in_group("traps"):
+		if t.disarmed:
+			continue
+		var d: float = t.global_position.distance_to(hero.global_position)
+		if d < best_d:
+			best_d = d
+			best = t
+	return best
 
 
 func _open_chest(chest: Node) -> void:

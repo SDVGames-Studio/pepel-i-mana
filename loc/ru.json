@@ -165,6 +165,8 @@
 	"bld.desc.workshop": "Делает %d инструментов в день из дерева и камня — все работают быстрее",
 	"dungeon.enter_hint": "E — войти в аномалию",
 	"dungeon.hint_exit": "E — выйти из данжа",
+	"dungeon.hint_trap": "E — разминировать",
+	"dungeon.trap_disarmed": "Ловушка обезврежена",
 	"dungeon.hint_chest": "E — открыть сундук",
 	"dungeon.hint_empty_chest": "Сундук пуст",
 	"dungeon.mana_hungry": "МАНА-ГОЛОД! Мана на нуле — жизнь утекает",

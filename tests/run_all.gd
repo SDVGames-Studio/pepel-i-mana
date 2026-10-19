@@ -37,6 +37,7 @@ const REQUIRED_LOCALES := [
 	"item.rune_storm", "item.rune_frost", "item.rune_stone", "item.rune_growth",
 	"item.rune_light", "item.rune_shadow", "item.rune_chaos",
 	"dungeon.hint_spells",
+	"dungeon.hint_trap", "dungeon.trap_disarmed",
 	"magic.title", "magic.pollution", "magic.p_clean", "magic.p_mild",
 	"magic.p_heart", "magic.p_wild", "magic.city_spells",
 	"magic.craft", "magic.craft_pick", "magic.craft_none", "magic.craft_make",
@@ -2576,6 +2577,39 @@ func _test_m7() -> void:
 			trap_spawns_ok = false
 	_check(trap_spawns_ok, "ловушки размещены по числу конфига, на полу, типов из списка")
 
+	# --- разминирование ловушек по E (issue #2): шипы перестают жалить, дарты — стрелять ---
+	var fake_hero := FakeInteractHero.new()
+	var trap_sp = load("res://scripts/trap.gd")
+	var spike = trap_sp.new()
+	spike.setup("spikes", (traps.get("spikes", {}) as Dictionary), gen, fake_hero)
+	spike.position = Vector2(300, 300)
+	fake_hero.global_position = spike.position
+	root.add_child(spike)
+	spike._phase = 0.0  # активная фаза шипов — точно жалит
+	spike._process(0.016)
+	_check(int(fake_hero.hits) == 1, "заряженные шипы жалят героя на тайле")
+	spike.disarm()
+	spike._process(0.016)
+	_check(int(fake_hero.hits) == 1 and bool(spike.disarmed), "после разминирования шипы не жалят")
+	var dart = trap_sp.new()
+	dart.setup("darts", (traps.get("darts", {}) as Dictionary), gen, fake_hero)
+	var dtile: Vector2i = Vector2i((spike.position / 32.0).floor()) + Vector2i(1, 0)
+	while not gen.is_floor(dtile):
+		dtile += Vector2i(1, 0)
+	dart.position = Vector2(dtile) * 32.0 + Vector2(16, 16)
+	root.add_child(dart)
+	fake_hero.global_position = dart.position  # герой на тайле дартов — линия чиста точно
+	dart._dart_cd = 0.0
+	dart._process(0.016)
+	var live_hits := int(fake_hero.hits)
+	_check(live_hits == 2, "дарты стреляют до разминирования")
+	dart.disarm()
+	dart._dart_cd = 0.0
+	dart._process(0.016)
+	_check(int(fake_hero.hits) == live_hits and bool(dart.disarmed), "после разминирования дарты молчат (disarm один на все типы)")
+	spike.free()
+	dart.free()
+
 	# --- дерево навыков: XP, уровни, выбор узла, бонусы ---
 	var skills = load("res://scripts/skills.gd").new()
 	skills.setup(_read_json("res://data/skills.json"))
@@ -3640,3 +3674,13 @@ func _test_m13() -> void:
 	_check(String(loc.get("love.0", "")) != "" and String(loc.get("fest.0", "")) != "",
 			"реплики любви и праздника локализованы")
 	print("[M13] готово")
+
+
+## Фейковый герой для проверки разминирования ловушек (issue #2): duck typing —
+## trap.gd обращается к global_position/dead/take_damage динамически.
+class FakeInteractHero extends RefCounted:
+	var global_position := Vector2.ZERO
+	var dead := false
+	var hits := 0
+	func take_damage(_n: int, _s: String = "") -> void:
+		hits += 1

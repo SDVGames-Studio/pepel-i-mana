@@ -16,6 +16,7 @@ var _armed := false           # мина встала на боевой взво
 var _arm_left := -1.0         # отсчёт до взвода (в setup дерево ещё недоступно)
 var _boom := false            # мина сработала
 var _flash := 0.0
+var disarmed := false         # разминирована героем (E рядом, issue #2)
 
 const TS := 32.0
 
@@ -33,8 +34,19 @@ func setup(trap_kind: String, type_cfg: Dictionary, gen_ref, hero_ref) -> void:
 		_arm_left = 0.6
 
 
+## Разминирование (issue #2): ловушка любого типа перестаёт работать.
+## Без новой графики — тот же спрайт сильно тускнеет.
+func disarm() -> void:
+	if disarmed:
+		return
+	disarmed = true
+	modulate.a = 0.3
+	set_process(false)
+	queue_redraw()
+
+
 func _process(delta: float) -> void:
-	if hero == null or hero.dead:
+	if disarmed or hero == null or hero.dead:
 		return
 	if _arm_left >= 0.0:
 		_arm_left -= delta
