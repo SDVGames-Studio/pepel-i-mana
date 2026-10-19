@@ -1,5 +1,10 @@
 ; Engine configuration file.
-; Проект «Пепел и Мана» — Godot 4.7
+; It's best edited using the editor UI and not directly,
+; since the parameters that go here are not all obvious.
+;
+; Format:
+;   [section] ; section goes between []
+;   param=value ; assign values to parameters
 
 config_version=5
 
@@ -20,7 +25,6 @@ Game="*res://scripts/game.gd"
 window/size/viewport_width=1920
 window/size/viewport_height=1080
 window/stretch/mode="canvas_items"
-window/stretch/aspect="keep"
 
 [input]
 
