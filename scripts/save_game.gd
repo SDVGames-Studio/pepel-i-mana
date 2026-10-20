@@ -53,6 +53,8 @@ static func save_game(game, hero_tile: Vector2i, hero_hp: int, hero_mana: int) -
 		"hero": {"tile": [hero_tile.x, hero_tile.y], "hp": int(hero_hp), "mana": int(hero_mana)},
 		"city": _enc(_city_block(game.city_sim)),
 		"world": _enc(_world_block(game.world_map, game.world_sim)),
+		"codex": game.codex,
+		"stats": game.stats,
 	}
 	if DirAccess.make_dir_recursive_absolute(SAVE_PATH.get_base_dir()) != OK \
 			and not DirAccess.dir_exists_absolute(SAVE_PATH.get_base_dir()):
@@ -85,6 +87,11 @@ static func load_game(game) -> String:
 	if _apply_city(game, data["city"]) != "":
 		return "save.load_failed"
 	_apply_game(game, data["game"], data.get("skills", {}), data.get("hero", {}))
+	# кодекс и статистика (M14-K)
+	if data.get("codex", {}) is Dictionary:
+		game.codex = data["codex"]
+	if data.get("stats", {}) is Dictionary:
+		game.stats = data["stats"]
 	game.in_dungeon = false
 	game._autosave_day = int(game.city_sim.day)
 	return ""
@@ -211,6 +218,9 @@ static func _city_sim_block(sim) -> Dictionary:
 		"prayed_day": int(sim.prayed_day),
 		"weather": String(sim.weather),
 		"froze_last_night": bool(sim.froze_last_night),
+		"story_chapter": int(sim.story_chapter),
+		"story_side": String(sim.story_side),
+		"story_flags": sim.story_flags,
 	}
 
 
@@ -436,6 +446,10 @@ static func _apply_city(game, cd: Variant) -> String:
 	# погода (M14-J)
 	sim.weather = String(sd.get("weather", "clear"))
 	sim.froze_last_night = bool(sd.get("froze_last_night", false))
+	# сюжет (M14-L)
+	sim.story_chapter = int(sd.get("story_chapter", 0))
+	sim.story_side = String(sd.get("story_side", ""))
+	sim.story_flags = _dec(sd.get("story_flags", {}))
 	# жители после зданий: ссылки bld/site/home восстанавливаются по id
 	sim.residents = _dec(cd.get("residents", []))
 	for r in sim.residents:

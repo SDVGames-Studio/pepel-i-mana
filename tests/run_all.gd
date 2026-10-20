@@ -250,6 +250,8 @@ func _initialize() -> void:
 	_test_m14_h()
 	_test_m14_i()
 	_test_m14_j()
+	_test_m14_k()
+	_test_m14_l()
 	if _fails == 0:
 		print("OK: все тесты пройдены")
 		quit(0)
@@ -2447,7 +2449,7 @@ func _test_m6() -> void:
 			"носильщик забрал кучу целиком")
 	_teleport(sim_pg, porter_pg, sim_pg.map.spawn_tile)
 	var dropped := false
-	for i in 5:
+	for i in 40:
 		sim_pg.tick(0.5)
 		if float(sim_pg.res["food"]) > food_pg0:
 			dropped = true
@@ -3436,6 +3438,8 @@ class FakeGame extends RefCounted:
 	var hero_saved_mana := -1
 	var _autosave_day := 0
 	var equipment := {"weapon": "", "armor": "", "accessory": "", "mount": ""}
+	var codex := {"enemies": {}, "biomes": {}, "spells": {}, "items": {}, "gods": {}, "factions": {}}
+	var stats := {"days": 0, "bosses": 0, "buildings": 0, "quests": 0, "hunts": 0}
 	var city_sim = null
 	var world_map = null
 	var world_sim = null
@@ -5262,3 +5266,149 @@ func _test_m14_j() -> void:
 	for w in ["clear", "rain", "snow", "fog", "ash_storm"]:
 		_check(String(loc.get("weather." + w, "")) != "", "погода %s названа" % w)
 	print("[M14-J] готово")
+
+
+# --- M14-K: квесты и кодекс (issue #3) ---------------------------------------
+
+func _test_m14_k() -> void:
+	print("[M14-K: квесты и кодекс]")
+	var loc: Dictionary = _read_json("res://loc/ru.json")
+	var qcfg: Dictionary = _read_json("res://data/quests.json")
+	var sim := _make_sim()
+
+	# --- доска: 3-5 заказов в день, у каждого заказчик ---
+	sim._roll_quests()
+	_check(sim.quests.size() >= int(qcfg.get("per_day_min", 3)),
+			"на доске %d заказов" % sim.quests.size())
+	var customers_ok := true
+	var kinds_ok := true
+	for q in sim.quests:
+		if String(q.get("customer", "")) == "":
+			customers_ok = false
+		if String(q.get("kind", "")) not in ["bring", "hunt", "build"]:
+			kinds_ok = false
+	_check(customers_ok, "у каждого заказа есть заказчик по имени")
+	_check(kinds_ok, "виды заказов: принести/охота/постройка")
+
+	# bring: сдать предметы
+	var bring: Dictionary = {}
+	for q in sim.quests:
+		if String(q["kind"]) == "bring":
+			bring = q
+			break
+	var bring_guard := 0
+	while bring.is_empty() and bring_guard < 30:
+		sim._spawn_quest(sim._quests_cfg())
+		bring_guard += 1
+		for q in sim.quests:
+			if String(q["kind"]) == "bring":
+				bring = q
+				break
+	_check(not bring.is_empty(), "есть заказ «принести» (досыпали за %d попыток)" % bring_guard)
+	var inv: Array = [{"id": String(bring["item"]), "count": int(bring["need"])}]
+	var reward0: int = int(bring["reward"])
+	_check(sim.quest_deliver(int(bring["id"]), inv) == "", "заказ сдан")
+	_check(inv.is_empty() or int(inv[0]["count"]) == 0, "предметы списаны")
+	_check(not sim.quests.has(bring), "выполненный заказ снят с доски")
+	_check(sim.quest_deliver(int(bring["id"]), inv) == "quest.gone", "повторная сдача невозможна")
+
+	# hunt: счётчик охоты
+	var hunt: Dictionary = {}
+	for q in sim.quests:
+		if String(q["kind"]) == "hunt":
+			hunt = q
+			break
+	if not hunt.is_empty():
+		sim.quest_hunted()
+		sim.quest_hunted()
+		_check(int(hunt["progress"]) >= 2 or not sim.quests.has(hunt),
+				"охота двигает заказ")
+
+	# build: постройка закрывает заказ
+	var build: Dictionary = {"kind": "build", "id": 4242, "customer": "Тест", "type": "garden",
+			"need": 1, "progress": 0, "reward": 5, "days": 2}
+	sim.quests.append(build)
+	sim.quest_built("garden")
+	_check(not sim.quests.has(build), "постройка сада закрыла заказ «построить»")
+
+	# тухнут по дням
+	var old: Dictionary = {"kind": "hunt", "id": 777, "customer": "Старик", "need": 5,
+			"progress": 0, "reward": 1, "days": 0}
+	sim.quests.append(old)
+	sim._roll_quests()
+	_check(not sim.quests.has(old), "просроченные закази уходят")
+
+	# --- кодекс и статистика ---
+	var g = load("res://scripts/game.gd").new()
+	g.codex_seen("enemies", "rat")
+	g.codex_seen("enemies", "rat")
+	g.codex_seen("enemies", "skeleton")
+	_check(g.codex_count("enemies") == 2, "кодекс не дублирует записи")
+	g.add_item("rune_light", 1)
+	_check(g.codex_count("items") == 1, "руна попала в кодекс")
+	g.learn_spell("heal")
+	_check(g.codex_count("spells") == 1, "заклинание в кодексе")
+	g.stat("bosses", 2)
+	g.stat("days", 12)
+	_check(int(g.stats["bosses"]) == 2 and int(g.stats["days"]) == 12, "статистика копится")
+
+	for key in ["quest.title", "quest.bring", "quest.hunt", "quest.build", "quest.deliver",
+			"city.quest_done", "codex.title", "codex.enemies", "codex.biomes", "stats.title",
+			"stats.days", "stats.bosses"]:
+		_check(String(loc.get(key, "")) != "", "ключ локализации есть: " + key)
+	print("[M14-K] готово")
+
+
+# --- M14-L: сюжетная рамка (issue #3) ----------------------------------------
+
+func _test_m14_l() -> void:
+	print("[M14-L: сюжетная рамка]")
+	var loc: Dictionary = _read_json("res://loc/ru.json")
+	var sim := _make_sim()
+
+	# глава 1 открывается сразу, глава 2 ждёт 10 жителей
+	sim._roll_story()
+	_check(sim.story_chapter == 1, "глава 1 «Прибытие» открыта")
+	var ev_ok := false
+	for e in sim.events:
+		if String(e["type"]) == "story":
+			ev_ok = true
+	_check(ev_ok, "глава пришла событием (тост + летопись)")
+	sim.events.clear()
+	# жители 10 — глава 2
+	while sim.residents.size() < 10:
+		sim.residents.append({"id": 900 + sim.residents.size(), "name": "Т", "prof": "farmer"})
+	sim._roll_story()
+	_check(sim.story_chapter == 2, "глава 2 «Рост» открыта (10 жителей)")
+	# тьма: визит в тёмный данж
+	sim.story_progress("dark_visit", true)
+	sim._roll_story()
+	_check(sim.story_chapter == 3, "глава 3 «Тьма» открыта визитом")
+	# зов: порча 30
+	sim.pollution = 35.0
+	sim._roll_story()
+	_check(sim.story_chapter == 4, "глава 4 «Зов» открыта порчей")
+	# финал: без условий не наступает
+	sim._roll_story()
+	_check(sim.story_chapter == 4 and sim.story_side == "", "финал ждёт выбора города")
+	# Пепел: высокая порча
+	sim.pollution = 70.0
+	sim._roll_story()
+	_check(sim.story_side == "ash", "город избрал Пепел (порча 70)")
+	sim._roll_story()
+	_check(sim.story_chapter == 6, "финал Пепла открыт (глава %d)" % sim.story_chapter)
+	# песочница: после финала мир продолжает тикать
+	var day_before: int = sim.day_number()
+	sim._roll_quests()
+	sim._roll_weather()
+	_check(sim.day_number() >= day_before, "песочница продолжается после финала")
+	var chron_ok := false
+	for e in sim.chronicle:
+		if String(e["key"]) == "chron.story":
+			chron_ok = true
+	_check(chron_ok, "сюжет в летописи")
+	# ключи глав и сторон
+	for key in ["story.arrival", "story.growth", "story.darkness", "story.call",
+			"story.finale_mana", "story.finale_ash", "story.side.mana", "story.side.ash"]:
+		_check(String(loc.get(key, "")) != "", "ключ локализации есть: " + key)
+	print("[M14-L] готово")

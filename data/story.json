@@ -1,0 +1,13 @@
+{
+	"_note": "Сюжетная рамка «Пепел и Мана» (M14-L, issue #3 L): 7 глав, триггеры проверяются ежедневно. Главы — тосты и летопись, песочница продолжается после финала. Сторона: Мана — чистота и кристаллы у алтаря; Пепел — порча и тайная тьма. Выбор виден в кодексе (статистика).",
+	"chapters": [
+		{ "id": "arrival", "loc": "story.arrival", "when": "start" },
+		{ "id": "growth", "loc": "story.growth", "when": "residents", "count": 10 },
+		{ "id": "darkness", "loc": "story.darkness", "when": "dark" },
+		{ "id": "call", "loc": "story.call", "when": "pollution", "count": 30 },
+		{ "id": "finale_mana", "loc": "story.finale_mana", "when": "side", "side": "mana" },
+		{ "id": "finale_ash", "loc": "story.finale_ash", "when": "side", "side": "ash" }
+	],
+	"side_mana": { "crystals": 20, "max_pollution": 30 },
+	"side_ash": { "pollution": 60 }
+}

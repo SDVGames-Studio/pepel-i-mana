@@ -274,6 +274,7 @@ func try_attack() -> void:
 		if absf(facing.angle_to(to_enemy)) > deg_to_rad(arc) / 2.0:
 			continue
 		enemy.take_damage(eff_damage())
+		Game.codex_seen("enemies", String(enemy.p.get("id", enemy.p.get("type", ""))))   # кодекс (M14-K)
 	# мирная фауна данжа (замечание 2026-10-20): попадает той же дугой
 	for creature in get_tree().get_nodes_in_group("dungeon_fauna"):
 		if not is_instance_valid(creature) or bool(creature.dead):

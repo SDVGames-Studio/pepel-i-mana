@@ -1,0 +1,16 @@
+{
+	"_note": "Доска объявлений (M14-K, issue #3 K.1): 3–5 заказов в городе, каждый — от конкретного жителя. kind: bring (принести предмет, сдать через панель Q), hunt (добить N зверей — охота героя), build (построить здание типа type — любой строитель). days_active — сколько дней заказ висит. Заказы фракций доступны через панель управления при репутации ≥ quest_rep_min (factions.json).",
+	"max_active": 5,
+	"per_day_min": 3,
+	"days_active": 3,
+	"bring": {
+		"items": ["iron", "crystal", "wood", "rune_light", "rune_ash"],
+		"count": [3, 8],
+		"reward_coins": [6, 14]
+	},
+	"hunt": { "count": [1, 3], "reward_coins": [8, 16] },
+	"build": {
+		"types": ["garden", "statue", "well", "tavern"],
+		"reward_coins": [10, 20]
+	}
+}

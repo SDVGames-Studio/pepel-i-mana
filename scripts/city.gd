@@ -34,6 +34,8 @@ var _near_anomaly := false
 var _near_armory: Dictionary = {}   # оружейка рядом с героем (E — комплект героя)
 var _equip_panel = null         # панель экипировки и крафта (M14-B, клавиша I)
 var _gov_panel = null           # панель управления: законы/вера/дипломатия (M14-H, L)
+var _quests_panel = null        # доска объявлений (M14-K, клавиша Q)
+var _codex_panel = null         # кодекс и статистика (M14-K, клавиша K)
 var _ambience = null            # светлячки и огоньки (M14-C, T21/T23)
 var _weather_fx = null          # погода: дождь/снег/туман/буря (M14-J)
 var _near_temple := false       # храм рядом — E: молитва (M14-H)
@@ -92,6 +94,12 @@ func _ready() -> void:
 	# панель управления (M14-H, клавиша L): законы, вера, дипломатия
 	_gov_panel = load("res://scripts/governance_panel.gd").new()
 	add_child(_gov_panel)
+	# доска объявлений (M14-K, клавиша Q)
+	_quests_panel = load("res://scripts/quests_panel.gd").new()
+	add_child(_quests_panel)
+	# кодекс и статистика (M14-K, клавиша K)
+	_codex_panel = load("res://scripts/codex_panel.gd").new()
+	add_child(_codex_panel)
 
 
 ## Крафт предмета (M14-B/T05): оружейка куёт оружие и броню, мастерская —
@@ -353,6 +361,7 @@ func _process_events() -> void:
 			"built":
 				hud.toast(Loc.t("city.built_done") % bld_name)
 				_rebuild_collision()
+				Game.stat("buildings")   # статистика (M14-K)
 			"no_worker":
 				hud.toast(Loc.t("city.no_free_worker") % bld_name)
 			"wild_flash":
@@ -511,6 +520,12 @@ func _process_events() -> void:
 				hud.toast(Loc.t("god.prayed"))
 			"bridge":
 				hud.toast(Loc.t("city.bridge_done"))
+			"quest_done":
+				Game.stat("quests")
+				hud.toast(Loc.t("city.quest_done") % [String(ev["customer"]), int(ev["reward"])])
+			"story":
+				Game.codex_seen("story", String(ev["id"]))
+				hud.toast(Loc.t("story." + String(ev["id"])))
 	sim.events.clear()
 
 
@@ -590,6 +605,10 @@ func _unhandled_input(event: InputEvent) -> void:
 				_equip_panel.toggle()
 			KEY_L:
 				_gov_panel.toggle()
+			KEY_Q:
+				_quests_panel.toggle()
+			KEY_K:
+				_codex_panel.toggle()
 			KEY_P:
 				toggle_pause()
 			KEY_R:
@@ -651,6 +670,8 @@ func _unhandled_input(event: InputEvent) -> void:
 					parts.append("%s ×%d" % [Loc.t("item." + String(d["id"])), int(d["count"])])
 				hud.toast(Loc.t("world.hunt_got") % [Loc.t("fauna." + String(kill["kind"])), ", ".join(parts)])
 				sim.chronicle_add("chron.hunt", Loc.t("fauna." + String(kill["kind"])))
+				sim.quest_hunted()   # доска объявлений (M14-K)
+				Game.stat("hunts")
 			# удар героя по кладбищу (M11): выкорчёвывание нечистого места
 			if sim.hero_hit_building(hero.global_position, hero.facing,
 					float(hero.p["attack_range"]), float(hero.p["attack_arc"]), hero.eff_damage()) == "necro_hit":
@@ -691,6 +712,10 @@ func _unhandled_input(event: InputEvent) -> void:
 			_equip_panel.close()
 		elif _gov_panel.is_open():
 			_gov_panel.close()
+		elif _quests_panel.is_open():
+			_quests_panel.close()
+		elif _codex_panel.is_open():
+			_codex_panel.close()
 		else:
 			_exit_to_menu()
 
@@ -858,6 +883,8 @@ func _pray_at_temple() -> void:
 		hud.toast(Loc.t("god.need_choose"))
 		return
 	var err: String = sim.pray(sim.god)
+	if err == "":
+		Game.codex_seen("gods", sim.god)   # кодекс (M14-K)
 	hud.toast(Loc.t(err) if err != "" else Loc.t("god.prayed"))
 
 

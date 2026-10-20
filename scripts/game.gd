@@ -53,6 +53,9 @@ var in_dungeon := false          # герой в данже — сейв нед�
 var hero_saved_hp := -1          # HP героя из сейва (применится при спавне в городе)
 var hero_saved_mana := -1        # мана из сейва (в городе всегда стартует с нуля)
 var _autosave_day := 0           # последний день автосейва
+# кодекс и статистика (M14-K): {enemies:{}, biomes:{}, spells:{}, items:{}, gods:{}, factions:{}}
+var codex := {"enemies": {}, "biomes": {}, "spells": {}, "items": {}, "gods": {}, "factions": {}}
+var stats := {"days": 0, "bosses": 0, "buildings": 0, "quests": 0, "hunts": 0}
 # снимок героя на момент выхода в меню (Esc) — для «Сохранить игру» в меню
 var menu_hero_tile := Vector2i(-1, -1)
 var menu_hero_hp := -1
@@ -96,6 +99,7 @@ func _autosave_tick() -> void:
 	var day := int(city_sim.day)
 	if day <= 1 or day <= _autosave_day:
 		return
+	Game.stats["days"] = maxi(int(Game.stats.get("days", 0)), day)   # статистика (M14-K)
 	_autosave_day = day
 	var sg: Script = load(SAVE_SCRIPT)
 	var err: String = sg.save_game(self, sg.city_hero_tile(self), -1, -1)
@@ -137,6 +141,26 @@ func menu_save() -> String:
 func has_save() -> bool:
 	var sg: Script = load(SAVE_SCRIPT)
 	return sg.has_save()
+
+
+## Кодекс (M14-K): уникальная запись «увидел/открыл». cat: enemies|biomes|
+## spells|items|gods|factions.
+func codex_seen(cat: String, id: String) -> void:
+	if id == "":
+		return
+	var cat_dict: Dictionary = codex.get(cat, {})
+	if not cat_dict.has(id):
+		cat_dict[id] = true
+		codex[cat] = cat_dict
+
+
+func codex_count(cat: String) -> int:
+	return (codex.get(cat, {}) as Dictionary).size()
+
+
+## Статистика (M14-K): дни, боссы, постройки, заказы, охота.
+func stat(key: String, delta: int = 1) -> void:
+	stats[key] = int(stats.get(key, 0)) + delta
 
 
 ## --- Платформенные мелочи (M9): полноэкранный режим с запоминанием ---------
@@ -204,6 +228,8 @@ func new_city() -> void:
 	hero_saved_hp = -1
 	hero_saved_mana = -1
 	_autosave_day = 1   # автосейв — с утра 2-го дня
+	codex = {"enemies": {}, "biomes": {}, "spells": {}, "items": {}, "gods": {}, "factions": {}}
+	stats = {"days": 0, "bosses": 0, "buildings": 0, "quests": 0, "hunts": 0}
 	if skills != null:
 		skills.reset()
 	new_world()
@@ -263,15 +289,6 @@ func _read_json(path: String) -> Variant:
 	return JSON.parse_string(f.get_as_text())
 
 
-## Добавляет предмет в рюкзак, при совпадении складывается в стак.
-func add_item(id: String, count: int = 1) -> void:
-	for stack in inventory:
-		if stack["id"] == id:
-			stack["count"] = int(stack["count"]) + count
-			return
-	inventory.append({"id": id, "count": count})
-
-
 func count_item(id: String) -> int:
 	for stack in inventory:
 		if stack["id"] == id:
@@ -305,6 +322,18 @@ func has_spell(spell_id: String) -> bool:
 func learn_spell(spell_id: String) -> void:
 	if not spellbook.has(spell_id):
 		spellbook.append(spell_id)
+		codex_seen("spells", spell_id)   # кодекс (M14-K)
+
+
+## Добавляет предмет в рюкзак, при совпадении складывается в стак.
+func add_item(id: String, count: int = 1) -> void:
+	for stack in inventory:
+		if stack["id"] == id:
+			stack["count"] = int(stack["count"]) + count
+			return
+	inventory.append({"id": id, "count": count})
+	if id.begins_with("rune_"):
+		codex_seen("items", id)   # руны в кодекс (M14-K)
 
 
 ## Всего единиц добычи в рюкзаке.

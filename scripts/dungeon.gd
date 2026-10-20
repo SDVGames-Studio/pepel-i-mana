@@ -79,6 +79,8 @@ func _ready() -> void:
 			params[key] = maxi(1, int(round(float(params[key]) * Game.dungeon_scale)))
 		params["traps"]["count"] = maxi(1, int(round(float(params["traps"]["count"]) * Game.dungeon_scale)))
 	biome = _pick_biome()
+	# кодекс (M14-K): биом открыт
+	Game.codex_seen("biomes", _biome_id())
 
 	gen = DungeonGenScript.new()
 	gen.generate(_seed_value, params)
@@ -940,6 +942,7 @@ func _on_enemy_died(enemy) -> void:
 ## Босс повержен (M7): гарантированный жирный лут — трофей, кристалл эха, руна.
 ## M14-B: плюс гарантированный предмет экипировки по ярусу биома (T04).
 func _on_boss_died(enemy) -> void:
+	Game.stat("bosses")   # статистика (M14-K)
 	for item_id: String in loot_data.get("boss_guaranteed", []):
 		_spawn_pickup("item", item_id, enemy.position + Vector2(_loot_rng.randf_range(-14, 14), _loot_rng.randf_range(-10, 10)))
 	_spawn_pickup("item", _random_rune_id(), enemy.position + Vector2(0, 16))

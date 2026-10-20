@@ -220,9 +220,191 @@ const RELIGION_CFG_PATH := "res://data/religion.json"
 var weather: String = "clear"   # clear | rain | snow | fog | ash_storm
 var froze_last_night := false   # зима без дров — город мёрз (для настроения)
 const WEATHER_CFG_PATH := "res://data/weather.json"
+const QUESTS_CFG_PATH := "res://data/quests.json"
+const STORY_CFG_PATH := "res://data/story.json"
+
+# --- M14-K: доска объявлений -------------------------------------------------
+var quests: Array = []          # активные заказы {kind, customer, item/type, need, progress, reward, days}
+var _quest_id := 1
+
+# --- M14-L: сюжетная рамка ----------------------------------------------------
+var story_chapter := 0          # пройденные главы (индекс в story.json)
+var story_side := ""            # финал: "mana" | "ash" ("" — не выбран)
+var story_flags := {}           # флаги из других сцен (данжи, тьма)
 
 func _v3() -> Dictionary:
 	return people.get("v3", {})
+
+
+## --- сюжетная рамка «Пепел и Мана» (M14-L, issue #3 L) ----------------------
+
+## Флаги из сцен: данж-зачистки, визиты в тёмные биомы и т.п.
+func story_progress(flag: String, value) -> void:
+	story_flags[flag] = value
+
+
+## Ежедневная проверка триггеров глав. Главы — тосты и летопись; финал
+## выбирается состоянием города; песочница продолжается.
+func _roll_story() -> void:
+	var scfg: Dictionary = _read_json_file(STORY_CFG_PATH)
+	if scfg.is_empty():
+		return
+	var chapters: Array = scfg.get("chapters", [])
+	while story_chapter < chapters.size():
+		var ch: Dictionary = chapters[story_chapter]
+		if not _story_trigger_met(String(ch.get("when", "")), ch, scfg):
+			return
+		var id := String(ch["id"])
+		if id.begins_with("finale"):
+			if story_side == "":
+				return   # финал придёт, когда город определится
+			if id != "finale_" + story_side:
+				story_chapter += 1
+				continue
+		events.append({"type": "story", "id": id})
+		_chron("chron.story", "story." + id)
+		story_chapter += 1
+
+
+func _story_trigger_met(when: String, ch: Dictionary, scfg: Dictionary) -> bool:
+	match when:
+		"start":
+			return true
+		"residents":
+			return residents.size() >= int(ch.get("count", 10))
+		"dark":
+			return bool(story_flags.get("dark_visit", false)) or bool(necro_known)
+		"pollution":
+			return pollution >= float(ch.get("count", 30))
+		"side":
+			var side := String(ch.get("side", "mana"))
+			if story_side != "":
+				return story_side == side
+			# финал выбирается состоянием города
+			var mana: Dictionary = scfg.get("side_mana", {})
+			var ash: Dictionary = scfg.get("side_ash", {})
+			var altar_ok := false
+			for b in buildings:
+				if String(b["type"]) == "altar" and bool(b["done"]):
+					altar_ok = true
+			if float(res["crystal"]) >= float(mana.get("crystals", 20)) \
+					and pollution <= float(mana.get("max_pollution", 30)) and altar_ok:
+				story_side = "mana"
+				return true
+			if pollution >= float(ash.get("pollution", 60)):
+				story_side = "ash"
+				return true
+			return false
+	return false
+
+
+## --- доска объявлений (M14-K, issue #3 K.1) ---------------------------------
+
+func _quests_cfg() -> Dictionary:
+	var parsed: Variant = _read_json_file(QUESTS_CFG_PATH)
+	return parsed if parsed is Dictionary else {}
+
+
+## Ежедневно: старые заказы тухнут, доска пополняется до минимума.
+func _roll_quests() -> void:
+	var qcfg: Dictionary = _quests_cfg()
+	var gone: Array = []
+	for q in quests:
+		q["days"] = int(q["days"]) - 1
+		if int(q["days"]) <= 0:
+			gone.append(q)
+	for q in gone:
+		quests.erase(q)
+	var attempts := 0
+	while quests.size() < int(qcfg.get("per_day_min", 3)) and attempts < 30:
+		attempts += 1
+		_spawn_quest(qcfg)
+
+
+func _spawn_quest(qcfg: Dictionary) -> void:
+	var adults: Array = _adults()
+	if adults.is_empty():
+		return
+	var customer: Dictionary = adults[_event_rng.randi_range(0, adults.size() - 1)]
+	var roll := _event_rng.randf()
+	var q := {"id": _quest_id, "customer": String(customer["name"]),
+			"customer_id": int(customer["id"]), "progress": 0, "days": int(qcfg.get("days_active", 3))}
+	_quest_id += 1
+	if roll < 0.5:
+		var bcfg: Dictionary = qcfg.get("bring", {})
+		var items: Array = bcfg.get("items", [])
+		if items.is_empty():
+			return
+		q["kind"] = "bring"
+		q["item"] = String(items[_event_rng.randi_range(0, items.size() - 1)])
+		q["need"] = _event_rng.randi_range(int(bcfg["count"][0]), int(bcfg["count"][1]))
+		q["reward"] = _event_rng.randi_range(int(bcfg["reward_coins"][0]), int(bcfg["reward_coins"][1]))
+	elif roll < 0.75:
+		var hcfg: Dictionary = qcfg.get("hunt", {})
+		q["kind"] = "hunt"
+		q["need"] = _event_rng.randi_range(int(hcfg["count"][0]), int(hcfg["count"][1]))
+		q["reward"] = _event_rng.randi_range(int(hcfg["reward_coins"][0]), int(hcfg["reward_coins"][1]))
+	else:
+		var bcfg: Dictionary = qcfg.get("build", {})
+		var types: Array = bcfg.get("types", [])
+		if types.is_empty():
+			return
+		q["kind"] = "build"
+		q["type"] = String(types[_event_rng.randi_range(0, types.size() - 1)])
+		q["need"] = 1
+		q["reward"] = _event_rng.randi_range(int(bcfg["reward_coins"][0]), int(bcfg["reward_coins"][1]))
+	if int(q["reward"]) <= 0:
+		return
+	quests.append(q)
+
+
+## Сдать заказ «принести» (панель Q): предметы из рюкзака героя, монеты —
+## герою, настроение заказчику. Возвращает "" или ключ ошибки.
+func quest_deliver(q_id: int, inventory: Array) -> String:
+	var quest: Dictionary = {}
+	for q in quests:
+		if int(q["id"]) == q_id:
+			quest = q
+			break
+	if quest.is_empty() or String(quest["kind"]) != "bring":
+		return "quest.gone"
+	if _count_item(inventory, String(quest["item"])) < int(quest["need"]):
+		return "quest.no_items"
+	_take_item(inventory, String(quest["item"]), int(quest["need"]))
+	return _finish_quest(quest)
+
+
+## Охота героя (город/карта) двигает заказы «добить зверя».
+func quest_hunted() -> void:
+	for q in quests:
+		if String(q["kind"]) == "hunt":
+			q["progress"] = int(q["progress"]) + 1
+			if int(q["progress"]) >= int(q["need"]):
+				_finish_quest(q)
+				return
+
+
+## Достроенное здание двигает заказы «построить».
+func quest_built(type_id: String) -> void:
+	for q in quests:
+		if String(q["kind"]) == "build" and String(q["type"]) == type_id:
+			_finish_quest(q)
+			return
+
+
+## Награда: монеты герою (через колбэк города), радость заказчику, летопись.
+func _finish_quest(quest: Dictionary) -> String:
+	quests.erase(quest)
+	if coins_sink != null and coins_sink.is_valid():
+		coins_sink.call(int(quest["reward"]))
+	for r in residents:
+		if int(r["id"]) == int(quest.get("customer_id", -1)):
+			r["mood"] = clampf(float(r["mood"]) + 8.0, 0.0, 100.0)
+			break
+	_chron("chron.quest_done", String(quest["customer"]), str(int(quest["reward"])))
+	events.append({"type": "quest_done", "customer": String(quest["customer"]),
+			"reward": int(quest["reward"])})
+	return ""
 
 
 ## --- погода и сезоны (M14-J) -------------------------------------------------
@@ -1178,6 +1360,7 @@ func _complete_site(site: Dictionary) -> void:
 	site["worker"] = -1
 	if _def(site).get("mood", 0) != 0 or String(_def(site).get("effect", "")) == "decor":
 		_goal_garden_built(worker_id)   # личная цель v3: «построить сад»
+	quest_built(String(site["type"]))   # доска объявлений (M14-K)
 	if _def(site).get("effect", "") == "wall":
 		map.set_solid(site["tile"], true)
 		_step_off_solid(site["tile"])
@@ -1431,6 +1614,8 @@ func tick(dt_raw: float) -> void:
 		_roll_necro()
 		_roll_v3()   # жизнь v3 (M14-F): память, отношения, личные цели
 		_roll_weather()   # погода и сезоны (M14-J)
+		_roll_quests()   # доска объявлений (M14-K)
+		_roll_story()   # сюжетная рамка (M14-L)
 	_update_gates()   # достроенные за тик вышки/ворота сразу меняют проходимость
 
 

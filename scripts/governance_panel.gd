@@ -177,6 +177,7 @@ func _tribute(faction: String, fcfg: Dictionary) -> void:
 		return
 	Game.coins -= cost
 	Game.world_sim.tribute(faction)
+	Game.codex_seen("factions", faction)   # кодекс (M14-K)
 	_set_status(Loc.t("gov.tribute_sent"))
 	_rebuild()
 
