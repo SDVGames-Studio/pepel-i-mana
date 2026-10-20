@@ -205,6 +205,9 @@ static func _city_sim_block(sim) -> Dictionary:
 		"_necro_chosen": bool(sim._necro_chosen),
 		"_forest_warned": bool(sim._forest_warned),
 		"_forest_cooldown": float(sim._forest_cooldown),
+		"active_laws": sim.active_laws,
+		"god": String(sim.god),
+		"prayed_day": int(sim.prayed_day),
 	}
 
 
@@ -223,6 +226,7 @@ static func _world_block(wmap, wsim) -> Dictionary:
 			"sieges": wsim.sieges,
 			"tracks": wsim.tracks,
 			"giants": wsim.giants.giants if wsim.giants != null else [],
+			"rep": wsim.rep,
 		},
 	}
 
@@ -420,6 +424,12 @@ static func _apply_city(game, cd: Variant) -> String:
 	sim._necro_chosen = bool(sd.get("_necro_chosen", false))
 	sim._forest_warned = bool(sd.get("_forest_warned", false))
 	sim._forest_cooldown = float(sd.get("_forest_cooldown", 0.0))
+	# законы и вера (M14-H)
+	sim.active_laws = []
+	for l in sd.get("active_laws", []):
+		sim.active_laws.append(String(l))
+	sim.god = String(sd.get("god", ""))
+	sim.prayed_day = int(sd.get("prayed_day", -1))
 	# жители после зданий: ссылки bld/site/home восстанавливаются по id
 	sim.residents = _dec(cd.get("residents", []))
 	for r in sim.residents:
@@ -575,6 +585,11 @@ static func _apply_world(game, wd: Variant) -> String:
 		tr["dir"] = Vector2i(tr["dir"]) if tr["dir"] is Vector2i else Vector2i(int(tr["dir"][0]), int(tr["dir"][1]))
 		tr["camp"] = int(tr.get("camp", 0))
 		tr["age"] = int(tr.get("age", 0))
+	# репутация фракций (M14-H)
+	sim.rep = {}
+	var repd: Dictionary = wsd.get("rep", {})
+	for k in repd:
+		sim.rep[k] = float(repd[k])
 	# гиганты (M14-E): позиции/настроение из сейва, описания — из конфига
 	if sim.giants != null:
 		var saved_giants: Array = _dec(wsd.get("giants", []))

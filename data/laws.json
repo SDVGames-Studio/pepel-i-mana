@@ -1,0 +1,23 @@
+{
+	"_note": "Законы деревни (M14-H, issue #3 H.1): совет из старосты и лучших мастеров голосует; принятый закон меняет эффекты (множители/модификаторы читает city_sim). Повторное голосование по активному закону — отмена.",
+	"council_size": 4,
+	"vote_mood_yes": 60,
+	"laws": [
+		{
+			"id": "prohibition", "loc": "law.prohibition", "desc": "law.desc.prohibition",
+			"tavern_mood_mult": 0.3, "quarrel_chance_mult": 0.5, "mood": -3.0
+		},
+		{
+			"id": "taxes", "loc": "law.taxes", "desc": "law.desc.taxes",
+			"production_mult": 1.1, "mood": -5.0
+		},
+		{
+			"id": "refuge_shelter", "loc": "law.refuge_shelter", "desc": "law.desc.refuge_shelter",
+			"refugee_mult": 1.5, "food_mult": 1.1
+		},
+		{
+			"id": "martial_law", "loc": "law.martial_law", "desc": "law.desc.martial_law",
+			"tower_mult": 1.25, "production_mult": 0.9
+		}
+	]
+}

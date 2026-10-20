@@ -33,7 +33,9 @@ var _terrain: Node2D = null     # статический слой ландшаф
 var _near_anomaly := false
 var _near_armory: Dictionary = {}   # оружейка рядом с героем (E — комплект героя)
 var _equip_panel = null         # панель экипировки и крафта (M14-B, клавиша I)
+var _gov_panel = null           # панель управления: законы/вера/дипломатия (M14-H, L)
 var _ambience = null            # светлячки и огоньки (M14-C, T21/T23)
+var _near_temple := false       # храм рядом — E: молитва (M14-H)
 
 
 func _ready() -> void:
@@ -83,6 +85,9 @@ func _ready() -> void:
 		hero.set_equipment_bonuses(Game.equipment_bonuses())
 	_equip_panel.craft_cb = _craft_item
 	add_child(_equip_panel)
+	# панель управления (M14-H, клавиша L): законы, вера, дипломатия
+	_gov_panel = load("res://scripts/governance_panel.gd").new()
+	add_child(_gov_panel)
 
 
 ## Крафт предмета (M14-B/T05): оружейка куёт оружие и броню, мастерская —
@@ -238,6 +243,7 @@ func _process(_delta: float) -> void:
 		return
 	_near_anomaly = hero.position.distance_to(map.tile_center_px(map.anomaly_tile)) < map.ts * 1.7
 	_near_armory = _armory_near_hero()
+	_near_temple = _near_building_kind("temple")
 	if _near_map_border():
 		hud.set_hint(Loc.t("city.exit_world"))
 	elif _near_anomaly:
@@ -247,6 +253,8 @@ func _process(_delta: float) -> void:
 			hud.set_hint(Loc.t("city.dungeon_locked_hint") % (Game.dungeon_lock_day - sim.day_number()))
 	elif not _near_armory.is_empty():
 		hud.set_hint(Loc.t("city.armory_hint") % int(cfg.get("hero_kit", {}).get("cost_metal", 3)))
+	elif _near_temple:
+		hud.set_hint(Loc.t("city.temple_hint"))
 	elif build_mode == "":
 		hud.set_hint(_default_hint())
 
@@ -469,6 +477,14 @@ func _process_events() -> void:
 				hud.toast(Loc.t("city.goal_done") % [String(ev["name"]), Loc.t("goal." + String(ev["goal"]))])
 			"fest_gift":
 				hud.toast(Loc.t("city.fest_gift") % [String(ev["a"]), String(ev["b"])])
+			# --- управление (M14-H) ---
+			"law_vote":
+				hud.toast(Loc.t("city.law_vote") % [Loc.t("law." + String(ev["law"])),
+						Loc.t("gov.law_passed") if bool(ev["ok"]) else Loc.t("gov.law_rejected")])
+			"service":
+				hud.toast(Loc.t("city.service"))
+			"pray":
+				hud.toast(Loc.t("god.prayed"))
 	sim.events.clear()
 
 
@@ -536,6 +552,9 @@ func _unhandled_input(event: InputEvent) -> void:
 		if not _near_armory.is_empty():
 			_buy_hero_kit()
 			return
+		if _near_temple:
+			_pray_at_temple()
+			return
 	if event.is_action_pressed("inventory"):
 		hud.toggle_residents()
 		return
@@ -543,6 +562,8 @@ func _unhandled_input(event: InputEvent) -> void:
 		match event.physical_keycode:
 			KEY_I:
 				_equip_panel.toggle()
+			KEY_L:
+				_gov_panel.toggle()
 			KEY_P:
 				toggle_pause()
 			KEY_R:
@@ -642,6 +663,8 @@ func _unhandled_input(event: InputEvent) -> void:
 			hud.toggle_market()
 		elif _equip_panel.is_open():
 			_equip_panel.close()
+		elif _gov_panel.is_open():
+			_gov_panel.close()
 		else:
 			_exit_to_menu()
 
@@ -801,6 +824,15 @@ func _bld_hint(b: Dictionary) -> String:
 	elif String(b.get("effect", "")) == "decor":
 		desc = desc % int(b.get("mood", 0))
 	return "%s (%s; %s)" % [Loc.t(String(b["loc"])), ", ".join(parts), desc]
+
+
+## Молитва у храма (M14-H): раз в день избирает божество (выбор — в панели L).
+func _pray_at_temple() -> void:
+	if String(sim.god) == "":
+		hud.toast(Loc.t("god.need_choose"))
+		return
+	var err: String = sim.pray(sim.god)
+	hud.toast(Loc.t(err) if err != "" else Loc.t("god.prayed"))
 
 
 func toggle_pause() -> void:

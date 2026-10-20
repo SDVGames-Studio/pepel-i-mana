@@ -1,0 +1,21 @@
+{
+	"_note": "Дипломатия фракций (M14-H, issue #3 H.3): репутация −100..100. Торговые сделки с торговцами и зачистка лагерей бандитов меняют репутацию; дань (20 монет через панель управления) повышает её. Эффекты: высокая репутация торговцев — лучше цены; мир с бандитами (>= peace_rep) останавливает их осады; заказы фракций доступны от 40.",
+	"factions": [
+		{ "id": "traders", "loc": "world.faction.traders" },
+		{ "id": "bandits", "loc": "world.faction.bandits" },
+		{ "id": "cult", "loc": "world.faction.cult" },
+		{ "id": "angels", "loc": "world.faction.angels" },
+		{ "id": "demons", "loc": "world.faction.demons" },
+		{ "id": "undead", "loc": "world.faction.undead" }
+	],
+	"trade_rep_per_deal": 1,
+	"camp_clear_bandits": -5,
+	"camp_clear_traders": 2,
+	"tribute_cost": 20,
+	"tribute_rep": 10,
+	"peace_rep": 60,
+	"quest_rep_min": 40,
+	"discount_per_rep": 0.0015,
+	"discount_min_mult": 0.75,
+	"siege_rep_factor": 0.005
+}

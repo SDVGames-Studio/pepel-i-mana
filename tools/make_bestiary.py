@@ -625,6 +625,35 @@ LICH_TOWER = [
     "kkkkkkkkkkkkkkkkk",
 ]
 
+
+# ------------------------------------------------- M14-H: храм ---------------
+
+PAL_TEMPLE = {
+    "k": P(34, 30, 40),
+    "w": P(214, 208, 196),
+    "F": P(255, 168, 60),
+    "g": P(160, 152, 140),
+}
+
+TEMPLE = [
+    "       kFk       ",
+    "      kFFk       ",
+    "     kwwkwwk     ",
+    "    kwwkFkwwk    ",
+"    kwwkkkkwwk    ",
+"   kwwwwkkwwwwk   ",
+"   kwgwwkkwwgwk   ",
+"   kwwwwkkwwwwk   ",
+"  kwwgwwkkwwgwwk  ",
+" kwwwwwwkkwwwwwwk ",
+" kwgwwwwkkwwwwgwk ",
+" kwwkwwkkkkwwkwwk ",
+" kwwkwk kg kwkwwk ",
+" kwwkkk kkk kkkwk ",
+" kwwwwk k k kwwwk ",
+" kkgggkk k kkgggk ",
+]
+
 # ------------------------------------------------------------- сборка --------
 
 # (имя, сетка, палитра, папка)
@@ -648,6 +677,7 @@ SPRITES = [
     ("skeleton_mage", SKELETON_MAGE, PAL_SKMAGE, ENV),
     ("vampire_keep", VAMPIRE_KEEP, PAL_VKEEP, BLD),
     ("lich_tower", LICH_TOWER, PAL_LTOWER, BLD),
+    ("temple", TEMPLE, PAL_TEMPLE, BLD),
 ]
 
 

@@ -17,7 +17,44 @@ var chronicle: Array = []       # мировая летопись [{day, key, a,
 var sieges: Array = []          # активные осады: {settlement_id, camp_id, left}
 var tracks := {}                # Vector2i -> {dir: Vector2i, camp: int, age: int} — следы (M12)
 var giants = null               # world_giants.gd — грандиозные создания (M14-E)
+var rep: Dictionary = {}        # репутация фракций (M14-H): id -> −100..100
 var _rng := RandomNumberGenerator.new()
+
+
+## --- дипломатия (M14-H, issue #3 H.3) ---------------------------------------
+
+func _factions_cfg() -> Dictionary:
+	var parsed: Variant = _read_json_file("res://data/factions.json")
+	return parsed if parsed is Dictionary else {}
+
+
+func get_rep(faction: String) -> float:
+	return float(rep.get(faction, 0.0))
+
+
+func add_rep(faction: String, delta: float) -> void:
+	rep[faction] = clampf(get_rep(faction) + delta, -100.0, 100.0)
+
+
+## Дань фракции (панель управления платит монеты): +репутация.
+func tribute(faction: String) -> bool:
+	var fcfg: Dictionary = _factions_cfg()
+	for f in fcfg.get("factions", []):
+		if String(f["id"]) == faction:
+			add_rep(faction, float(fcfg.get("tribute_rep", 10)))
+			_chron("chron.tribute", faction)
+			return true
+	return false
+
+
+## Мир с бандитами: их осады прекращаются.
+func bandits_peace() -> bool:
+	return get_rep("bandits") >= float(_factions_cfg().get("peace_rep", 60))
+
+
+## Заказ фракции доступен от порога репутации.
+func faction_quest_available(faction: String) -> bool:
+	return get_rep(faction) >= float(_factions_cfg().get("quest_rep_min", 40))
 
 
 func setup(world_map, world_cfg: Dictionary, seed_value := -1) -> void:
@@ -181,6 +218,8 @@ func _roll_sieges() -> Array:
 			boost += nboost * float(int(poi.get("nest_level", 0)))
 	if _rng.randf() > float(scfg.get("siege_chance_per_day", 0.06)) * boost:
 		return out
+	if bandits_peace():   # мир с бандитами (M14-H): договор о ненападении
+		return out
 	var camps: Array = []
 	for poi in map.pois:
 		if String(poi["kind"]) == "camp" and int(poi["cleared_day"]) < 0:
@@ -314,6 +353,7 @@ func _chron(key: String, a := "", b := "") -> void:
 
 ## Локация зачищена (вызов из данжа). Возвращает события для тостов:
 ## руины и обелиски открывают далёкие места (ответ №24).
+## M14-H: зачистка лагеря бандитов портит репутацию с ними, но радует торговцев.
 func mark_cleared(poi_id: int) -> Array:
 	var poi: Dictionary = map.poi_by_id(poi_id)
 	if poi.is_empty():
@@ -327,6 +367,9 @@ func mark_cleared(poi_id: int) -> Array:
 				out.append({"type": "map_found", "a": str(opened.size())})
 		"camp":
 			poi["strength"] = 0.0
+			var fcfg: Dictionary = _factions_cfg()
+			add_rep("bandits", float(fcfg.get("camp_clear_bandits", -5)))
+			add_rep("traders", float(fcfg.get("camp_clear_traders", 2)))
 		"settlement":
 			# освобождённое поселение пусто — позже переселится (ответ №4)
 			poi["strength"] = 0.0
@@ -394,6 +437,7 @@ func trade_buy(pool: Dictionary, coins: int, key: String, count: int, poi: Dicti
 	if add <= 0.0:
 		return {"err": "storage_full", "coins": coins}
 	pool[key] = float(pool.get(key, 0.0)) + add
+	add_rep("traders", float(_factions_cfg().get("trade_rep_per_deal", 1)))   # дипломатия (M14-H)
 	return {"err": "", "coins": coins - int(ceilf(price * add))}
 
 
@@ -405,6 +449,7 @@ func trade_sell(pool: Dictionary, coins: int, key: String, count: int, poi: Dict
 		return {"err": "no_res", "coins": coins}
 	var price := sell_price(key, poi)
 	pool[key] = have - take
+	add_rep("traders", float(_factions_cfg().get("trade_rep_per_deal", 1)))   # дипломатия (M14-H)
 	return {"err": "", "coins": coins + int(floorf(price * take))}
 
 
@@ -421,10 +466,15 @@ func trade_barter(pool: Dictionary, deal: Dictionary) -> Dictionary:
 	return {"err": ""}
 
 
-## Цена покупки за единицу (скидка каравана — торговцы щедрее).
+## Цена покупки за единицу (скидка каравана — торговцы щедрее; репутация
+## торговцев (M14-H) делает цены ещё лучше).
 func buy_price(key: String, poi: Dictionary) -> float:
 	var base := float(cfg.get("trade", {}).get("buy", {}).get(key, 3))
-	return maxf(1.0, base * trade_discount(poi))
+	var price := maxf(1.0, base * trade_discount(poi))
+	var fcfg: Dictionary = _factions_cfg()
+	var mult := 1.0 - get_rep("traders") * float(fcfg.get("discount_per_rep", 0.0015))
+	mult = maxf(mult, float(fcfg.get("discount_min_mult", 0.75)))
+	return maxf(1.0, price * mult)
 
 
 ## Цена продажи за единицу (доля от покупки).

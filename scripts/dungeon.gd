@@ -265,6 +265,9 @@ func _build_hero() -> void:
 	var kit: Dictionary = Game.hero_kit_bonus(_read_json(CITY_CFG_PATH))
 	hero.bonus_damage = int(kit["damage"])
 	hero.bonus_armor = int(kit["armor"])
+	# благословение «Пепла» (M14-H): герой сильнее, пока божество избрано
+	if Game.city_sim != null and Game.city_sim.god == "ash":
+		hero.bonus_damage += int(Game.city_sim.god_def().get("value", 0))
 	hero.position = _tile_to_pos(gen.start_tile)
 	hero.died.connect(_on_hero_died)
 	add_child(hero)

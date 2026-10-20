@@ -247,6 +247,7 @@ func _initialize() -> void:
 	_test_m14_e()
 	_test_m14_f()
 	_test_m14_g()
+	_test_m14_h()
 	if _fails == 0:
 		print("OK: все тесты пройдены")
 		quit(0)
@@ -332,7 +333,7 @@ func _test_data() -> void:
 			"zones", "roads", "piles", "layout", "repair", "decor_mood_max"]:
 		_check(city.has(key), "city.json содержит %s" % key)
 	var blds: Variant = city.get("buildings", [])
-	_check(blds is Array and blds.size() == 23, "city.json — 23 типа зданий (M11: +кладбище)")
+	_check(blds is Array and blds.size() == 24, "city.json — 24 типа зданий (M11: +кладбище, M14-H: +храм)")
 	var bld_ok := true
 	if blds is Array:
 		for b in blds:
@@ -3011,8 +3012,8 @@ func _test_m9() -> void:
 			continue
 		if ref == "" or assets.sprite(ref) == null:
 			missing += 1
-	_check(missing == 0 and cfg["buildings"].size() == 23,
-			"у всех 23 зданий есть PNG-спрайт (недостающих: %d)" % missing)
+	_check(missing == 0 and cfg["buildings"].size() == 24,
+			"у всех 24 зданий есть PNG-спрайт (недостающих: %d)" % missing)
 	missing = 0
 	for it: Dictionary in _read_json("res://data/loot.json")["items"]:
 		if String(it.get("sprite", "")) == "" or assets.sprite(String(it["sprite"])) == null:
@@ -4894,3 +4895,171 @@ func _test_m14_g() -> void:
 	_check(String(loc.get("tree.s4", "")) != "" and String(loc.get("tree.desc.s4", "")) != "",
 			"узел s4 описан в локализации")
 	print("[M14-G] готово")
+
+
+# --- M14-H: законы, вера, дипломатия (issue #3) ------------------------------
+
+func _test_m14_h() -> void:
+	print("[M14-H: законы, вера, дипломатия]")
+	var loc: Dictionary = _read_json("res://loc/ru.json")
+	var laws: Dictionary = _read_json("res://data/laws.json")
+	var religion: Dictionary = _read_json("res://data/religion.json")
+	var factions: Dictionary = _read_json("res://data/factions.json")
+	var city_cfg: Dictionary = _read_json("res://data/city.json")
+	var world_cfg: Dictionary = _read_json("res://data/world.json")
+	var sim := _make_sim()
+
+	# --- конфиги ---
+	var law_ids := {}
+	for l: Dictionary in laws.get("laws", []):
+		law_ids[String(l["id"])] = true
+		_check(String(loc.get(String(l["loc"]), "")) != "" and String(loc.get(String(l["desc"]), "")) != "",
+				"закон %s описан" % String(l["id"]))
+	for need in ["prohibition", "taxes", "refuge_shelter", "martial_law"]:
+		_check(law_ids.has(need), "закон «%s» в laws.json" % need)
+	var god_ids := {}
+	for g: Dictionary in religion.get("gods", []):
+		god_ids[String(g["id"])] = true
+		_check(String(loc.get(String(g["loc"]), "")) != "", "божество %s названо" % String(g["id"]))
+	_check(god_ids.has("ash") and god_ids.has("mana") and god_ids.has("home"), "пантеон: Пепел, Мана, Дом")
+	var faction_ids := {}
+	for f: Dictionary in factions.get("factions", []):
+		faction_ids[String(f["id"])] = true
+	_check(faction_ids.has("traders") and faction_ids.has("bandits") and faction_ids.has("cult"),
+			"фракции описаны (торговцы/бандиты/культ + тьма)")
+	# храм — здание со служкой
+	var temple: Dictionary = {}
+	for b: Dictionary in city_cfg.get("buildings", []):
+		if String(b["id"]) == "temple":
+			temple = b
+	_check(not temple.is_empty() and String(temple["worker"]) == "acolyte", "храм со служкой-аколитом")
+
+	# --- совет и голосование ---
+	var council: Array = sim.council()
+	_check(council.size() >= 3 and council.size() <= int(laws.get("council_size", 4)) + 1,
+			"совет из %d жителей" % council.size())
+	sim._event_rng.seed = 42
+	for r in council:
+		r["mood"] = 90.0   # довольный совет принимает
+	var res_pass: Dictionary = sim.propose_law("taxes")
+	_check(bool(res_pass["ok"]) and sim.has_law("taxes"), "налоги приняты голосованием (%d/%d)" % [int(res_pass["yes"]), int(res_pass["no"])])
+	for r in council:
+		r["mood"] = 5.0    # недовольный совет отменяет
+	var res_repeal: Dictionary = sim.propose_law("taxes")
+	_check(bool(res_repeal["ok"]) and not sim.has_law("taxes"), "повторное голосование отменило закон")
+	_check(sim.propose_law("nonsense")["err"] == "law.unknown", "неизвестный закон отклонён")
+
+	# --- эффекты законов ---
+	sim.active_laws = ["taxes", "prohibition", "martial_law"]
+	var farm: Dictionary = {"tile": Vector2i(5, 5), "done": true, "ench_mult": 1.0, "type": "farm"}
+	sim.active_laws = ["taxes"]
+	var mult_tax: float = sim.production_mult(farm)
+	sim.active_laws = ["martial_law"]
+	var mult_martial: float = sim.production_mult(farm)
+	sim.active_laws = []
+	var mult_base: float = sim.production_mult(farm)
+	_check(mult_tax > mult_base and mult_martial < mult_base,
+			"налоги ускорили (%.2f > %.2f), военное положение замедлило (%.2f < %.2f)" % [mult_tax, mult_base, mult_martial, mult_base])
+	# настроение: налоги и сухой закон давят
+	var r0: Dictionary = sim.residents[0]
+	sim.active_laws = ["taxes", "prohibition"]
+	var mood_with: float = sim._mood_target(r0)
+	sim.active_laws = []
+	var mood_without: float = sim._mood_target(r0)
+	_check(mood_with < mood_without, "непопулярные законы давят настроение (%.1f < %.1f)" % [mood_with, mood_without])
+	# сухой закон: ссоры реже (50% шанс отмены)
+	sim.active_laws = ["prohibition"]
+	var quarrel_block := 0
+	for i in 200:
+		sim._event_rng.seed = 500 + i
+		var cnt_before: int = sim.events.size()
+		sim._story_quarrel({"quarrel_mood": -1.0})
+		if sim.events.size() == cnt_before:
+			quarrel_block += 1
+	_check(quarrel_block > 60, "сухой закон гасит ссоры (%d из 200)" % quarrel_block)
+	sim.active_laws = []
+	# военное положение: вышки бьют сильнее
+	sim.active_laws = ["martial_law"]
+	var mult_tower := 1.0
+	for l in laws.get("laws", []):
+		if String(l["id"]) == "martial_law":
+			mult_tower = float(l["tower_mult"])
+	_check(absf(mult_tower - 1.25) < 0.01, "военное положение: вышки ×1.25 (конфиг)")
+	sim.active_laws = []
+
+	# --- вера: молитва и благословения ---
+	sim.god = ""
+	sim.prayed_day = -1
+	sim.res["wood"] = 100.0
+	sim.res["stone"] = 100.0
+	sim.res["crystal"] = 10.0
+	_check(sim.pray("mana") == "god.no_temple", "без храма молитва не проходит")
+	# строим храм со служкой
+	var temple_site: Dictionary = _build_now(sim, "temple")
+	_check(not temple_site.is_empty() and sim.temple_staffed(), "храм построен, служка назначен")
+	_check(sim.pray("mana") == "", "молитва избирает Ману")
+	var mp: Dictionary = sim.hero_mana_params()
+	_check(int(mp["cap_extra"]) >= 4, "благословение Маны: +мана (%d)" % int(mp["cap_extra"]))
+	sim.god = "home"
+	_check(sim._mood_target(sim.residents[0]) > 40.0, "благословение Дома поддерживает город")
+	# повторная молитва в тот же день запрещена
+	_check(sim.pray("ash") == "god.prayed_today", "молитва раз в день")
+	# служба в праздник
+	sim.cfg["life"]["festival_every_days"] = 1
+	sim.time = 0.0
+	sim.res["food"] = 50.0
+	sim.chronicle.clear()
+	sim._roll_festival()
+	var has_service := false
+	for e in sim.chronicle:
+		if String(e["key"]) == "chron.service":
+			has_service = true
+	_check(has_service, "в праздник идёт служба в храме")
+
+	# --- дипломатия: репутация ---
+	var wmap = load("res://scripts/world_map.gd").new()
+	wmap.generate(11, world_cfg)
+	var wsim = load("res://scripts/world_sim.gd").new()
+	wsim.setup(wmap, world_cfg, 7)
+	_check(absf(wsim.get_rep("traders")) < 0.01, "репутация с нуля")
+	# сделка повышает репутацию торговцев
+	var pool: Dictionary = {"wood": 0.0}
+	var res_trade: Dictionary = wsim.trade_buy(pool, 100, "wood", 1, {"kind": "caravan"})
+	_check(res_trade["err"] == "" and wsim.get_rep("traders") > 0.0, "сделка подняла репутацию торговцев")
+	# зачистка лагеря: бандиты −, торговцы +
+	var camp: Dictionary = {"kind": "camp", "id": 555, "tile": wmap.city_tile}
+	wsim.map.pois.append(camp)
+	wsim.mark_cleared(555)
+	_check(wsim.get_rep("bandits") < 0.0 and wsim.get_rep("traders") > 0.0,
+			"зачистка лагеря: бандиты −, торговцы +")
+	# цены лучше с репутацией
+	wsim.rep["traders"] = 60.0
+	var price_high_rep: float = wsim.buy_price("wood", {"kind": "caravan"})
+	wsim.rep["traders"] = 0.0
+	var price_zero: float = wsim.buy_price("wood", {"kind": "caravan"})
+	_check(price_high_rep < price_zero, "высокая репутация снижает цены (%.2f < %.2f)" % [price_high_rep, price_zero])
+	# мир с бандитами останавливает осады
+	wsim.rep["bandits"] = 100.0
+	wsim.day += 1
+	var evs: Array = wsim._roll_sieges()
+	_check(evs.is_empty() or not any_siege_start(evs), "мир с бандитами: осад нет")
+	# дань
+	var ok_tribute: bool = wsim.tribute("cult")
+	_check(ok_tribute and wsim.get_rep("cult") == float(factions.get("tribute_rep", 10)), "дань подняла репутацию культа")
+	# заказ фракции от порога
+	wsim.rep["cult"] = 60.0
+	_check(wsim.faction_quest_available("cult"), "заказ культа доступен от репутации")
+
+	for key in ["gov.title", "gov.laws", "gov.propose", "gov.law_passed", "law.taxes",
+			"gov.faith", "god.ash", "god.mana", "god.home", "god.prayed", "god.no_temple",
+			"gov.diplomacy", "gov.tribute", "city.temple_hint", "bld.temple",
+			"chron.law_vote", "chron.service", "world.faction.angels"]:
+		_check(String(loc.get(key, "")) != "", "ключ локализации есть: " + key)
+	print("[M14-H] готово")
+
+
+func any_siege_start(evs: Array) -> bool:
+	for ev in evs:
+		if String(ev["type"]) == "siege_start":
+			return true
+	return false

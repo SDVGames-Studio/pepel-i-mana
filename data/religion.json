@@ -1,0 +1,8 @@
+{
+	"_note": "Пантеон (M14-H, issue #3 H.2): город избирает божество у храма (E — молитва, раз в день, нужен служка в храме). Благословение действует, пока божество избрано: ash — герой сильнее, mana — запас маны, home — городу настроение.",
+	"gods": [
+		{ "id": "ash", "loc": "god.ash", "desc": "god.desc.ash", "blessing": "hero_damage", "value": 2 },
+		{ "id": "mana", "loc": "god.mana", "desc": "god.desc.mana", "blessing": "mana_cap", "value": 4 },
+		{ "id": "home", "loc": "god.home", "desc": "god.desc.home", "blessing": "mood", "value": 5 }
+	]
+}

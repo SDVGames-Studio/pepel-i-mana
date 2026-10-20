@@ -210,8 +210,131 @@ func _new_resident(res_name: String, prof: String, tile: Vector2i) -> Dictionary
 
 ## --- Жизнь v3 (M14-F, issue #3): отношения, память, цели --------------------
 
+# --- M14-H: законы, вера -----------------------------------------------------
+var active_laws: Array = []     # принятые советом законы (id из data/laws.json)
+var god: String = ""            # избранное божество (data/religion.json)
+var prayed_day: int = -1        # день последней молитвы (раз в день)
+const LAWS_CFG_PATH := "res://data/laws.json"
+const RELIGION_CFG_PATH := "res://data/religion.json"
+
 func _v3() -> Dictionary:
 	return people.get("v3", {})
+
+
+## --- законы и совет (M14-H) -------------------------------------------------
+
+func _laws_cfg() -> Dictionary:
+	var parsed: Variant = _read_json_file(LAWS_CFG_PATH)
+	return parsed if parsed is Dictionary else {}
+
+
+func has_law(law_id: String) -> bool:
+	return active_laws.has(law_id)
+
+
+func law_param(law_id: String, key: String, fallback: float) -> float:
+	var cfg2: Dictionary = _laws_cfg()
+	for l in cfg2.get("laws", []):
+		if String(l["id"]) == law_id:
+			return float(l.get(key, fallback))
+	return fallback
+
+
+## Совет: староста + лучшие мастера (для голосования и панели).
+func council() -> Array:
+	var elders: Array = []
+	for r in residents:
+		if String(r["prof"]) == "elder":
+			elders.append(r)
+	if elders.is_empty() and not residents.is_empty():
+		elders.append(residents[0])
+	var rest: Array = []
+	for r in _adults():
+		if r in elders:
+			continue
+		rest.append(r)
+	rest.sort_custom(func(x, y) -> bool: return float(x.get("skill", 0.0)) > float(y.get("skill", 0.0)))
+	var size := int(_laws_cfg().get("council_size", 4))
+	return elders + rest.slice(0, maxi(0, size - 1))
+
+
+## Голосование совета: принять закон или отменить активный.
+## Каждый советник голосует «за» с шансом = настроение/100 (недовольные против).
+func propose_law(law_id: String) -> Dictionary:
+	var cfg2: Dictionary = _laws_cfg()
+	var known := false
+	for l in cfg2.get("laws", []):
+		if String(l["id"]) == law_id:
+			known = true
+			break
+	if not known:
+		return {"ok": false, "yes": 0, "no": 0, "err": "law.unknown"}
+	var councilors: Array = council()
+	if councilors.is_empty():
+		return {"ok": false, "yes": 0, "no": 0, "err": "law.no_council"}
+	var vote_mood := float(cfg2.get("vote_mood_yes", 60))
+	var repealing := active_laws.has(law_id)
+	var yes := 0
+	var no := 0
+	for c in councilors:
+		if repealing:
+			# отмена: недовольные законом хотят её (тем меньше настроения — тем «за»)
+			if _event_rng.randf() < clampf((100.0 - float(c["mood"])) / 100.0, 0.05, 0.95):
+				yes += 1
+			else:
+				no += 1
+		elif _event_rng.randf() < clampf(float(c["mood"]) / 100.0, 0.05, 0.95) \
+				and float(c["mood"]) >= vote_mood * 0.6:
+			yes += 1
+		else:
+			no += 1
+	var ok := yes > no
+	if ok:
+		if active_laws.has(law_id):
+			active_laws.erase(law_id)   # повторное голосование отменяет закон
+		else:
+			active_laws.append(law_id)
+	_chron("chron.law_vote", String(law_id), "%d/%d" % [yes, no])
+	events.append({"type": "law_vote", "law": law_id, "ok": ok, "yes": yes, "no": no})
+	return {"ok": ok, "yes": yes, "no": no}
+
+
+## --- вера (M14-H): божество и молитва ---------------------------------------
+
+func _religion_cfg() -> Dictionary:
+	var parsed: Variant = _read_json_file(RELIGION_CFG_PATH)
+	return parsed if parsed is Dictionary else {}
+
+
+func god_def() -> Dictionary:
+	for g in _religion_cfg().get("gods", []):
+		if String(g["id"]) == god:
+			return g
+	return {}
+
+
+## Храм построен и при нём служка?
+func temple_staffed() -> bool:
+	for b in buildings:
+		if bool(b["done"]) and String(b["type"]) == "temple" and int(b["worker"]) > 0:
+			return true
+	return false
+
+
+## Молитва у храма (E, раз в день, нужен служка): избирает божество.
+func pray(god_id: String) -> String:
+	if day == prayed_day:
+		return "god.prayed_today"
+	if not temple_staffed():
+		return "god.no_temple"
+	for g in _religion_cfg().get("gods", []):
+		if String(g["id"]) == god_id:
+			god = god_id
+			prayed_day = day
+			_chron("chron.pray", String(g["loc"]))
+			events.append({"type": "pray", "god": god_id})
+			return ""
+	return "god.unknown"
 
 
 ## Балл отношений a→b (и симметрично b→a хранится отдельно, меняются вместе).
@@ -538,6 +661,11 @@ func production_mult(bld: Dictionary) -> float:
 	if not bld.is_empty() and bld.has("type") \
 			and String(_def(bld).get("produce", {}).get("res", "")) == "food":
 		mult *= research_mult("food_prod", 1.0)
+	# законы (M14-H): налоги ускоряют, военное положение замедляет
+	if has_law("taxes"):
+		mult *= float(law_param("taxes", "production_mult", 1.0))
+	if has_law("martial_law"):
+		mult *= float(law_param("martial_law", "production_mult", 1.0))
 	return mult
 
 
@@ -646,8 +774,11 @@ func hero_mana_params() -> Dictionary:
 		regen = float(mana_cfg.get("altar_regen_period", 5.0))
 	# дисциплина «Тайное» (M7): регенерация маны героя быстрее
 	regen *= research_mult("mana_regen_mult", 1.0)
-	return {"cap_extra": int(mana_cfg.get("altar_cap_extra", 4)) if altar_enchanted() else 0,
-			"regen_period": regen}
+	var cap_extra := int(mana_cfg.get("altar_cap_extra", 4)) if altar_enchanted() else 0
+	# благословение «Маны» (M14-H): +запас маны, пока божество избрано
+	if god == "mana":
+		cap_extra += int(god_def().get("value", 0))
+	return {"cap_extra": cap_extra, "regen_period": regen}
 
 
 ## --- дисциплины прогрессии города (M7): 3 ветки исследований ----------------
@@ -1145,6 +1276,8 @@ func tick(dt_raw: float) -> void:
 			portion *= float(people.get("child_food", 0.5))
 		eaters += portion
 	var eat: float = float(cfg["food_per_resident_day"]) * dt / day_len * eaters
+	if has_law("refuge_shelter"):
+		eat *= float(law_param("refuge_shelter", "food_mult", 1.0))   # приют кормит лишние рты (M14-H)
 	res["food"] = maxf(0.0, float(res["food"]) - eat)
 	_tavern_beer(dt, day_len)
 	# инструменты изнашиваются у работающих (мастерская обновляет запас)
@@ -2728,7 +2861,16 @@ func _mood_target(r: Dictionary) -> float:
 		target += float(people.get("friend_mood", 6.0))
 	if tavern_active():
 		var tcfg: Dictionary = cfg.get("tavern", {})
-		target += float(tcfg.get("mood", 12.0))
+		var tavern_mood := float(tcfg.get("mood", 12.0))
+		if has_law("prohibition"):
+			tavern_mood *= float(law_param("prohibition", "tavern_mood_mult", 1.0))
+		target += tavern_mood
+	if has_law("prohibition"):
+		target += float(law_param("prohibition", "mood", 0.0))
+	if has_law("taxes"):
+		target += float(law_param("taxes", "mood", 0.0))
+	if god == "home":
+		target += float(god_def().get("value", 0.0))   # благословение «Дома»
 	# память v3 (M14-F): свежие события качают настроение, старые тлеют в хвосте
 	target += _memory_mood(r)
 	return clampf(target, 0.0, 100.0)
@@ -3254,6 +3396,8 @@ func _roll_refugees() -> void:
 		return
 	var chance: float = float(rcfg.get("chance_per_day", 0.35)) \
 			+ minf(float(rcfg.get("tower_bonus", 0.1)) * _manned_towers(), float(rcfg.get("tower_bonus_max", 0.4)))
+	if has_law("refuge_shelter"):
+		chance *= float(law_param("refuge_shelter", "refugee_mult", 1.0))   # приют (M14-H)
 	if _event_rng.randf() >= chance:
 		return
 	var wave := _event_rng.randi_range(1, maxi(1, int(rcfg.get("wave_max", 2))))
@@ -3394,6 +3538,12 @@ func _roll_festival() -> void:
 				_chron("chron.fest_gift", String(r["name"]), String(other["name"]))
 				events.append({"type": "fest_gift", "a": String(r["name"]), "b": String(other["name"])})
 				break
+	# служба в храме (M14-H): на праздник с живым служкой город молится усерднее
+	if temple_staffed():
+		for r in _adults():
+			r["mood"] = clampf(float(r["mood"]) + 8.0, 0.0, 100.0)
+		_chron("chron.service")
+		events.append({"type": "service"})
 	_chron("chron.found_day")
 	events.append({"type": "found_day"})
 
@@ -3467,6 +3617,10 @@ func _roll_stories() -> void:
 ## Ссора (ответ №29, отключается галочкой): ворчун портит настроение ещё кому-то.
 func _story_quarrel(scfg: Dictionary) -> void:
 	if not conflicts or residents.size() < 2:
+		return
+	# сухой закон (M14-H): ссор реже
+	if has_law("prohibition") \
+			and _event_rng.randf() < float(law_param("prohibition", "quarrel_chance_mult", 1.0)):
 		return
 	var instigators: Array = []
 	for r in _adults():
@@ -3943,6 +4097,8 @@ func _shoot_towers(dt: float, tcfg: Dictionary) -> void:
 		var worker := _resident_by_id(int(b["worker"]))
 		if not worker.is_empty() and bool(worker.get("kit", false)):
 			mult = float(tcfg.get("kit_damage_mult", 2.0))
+		if has_law("martial_law"):
+			mult *= float(law_param("martial_law", "tower_mult", 1.0))   # военное положение (M14-H)
 		_hit_raider(target, int(round((float(tcfg.get("tower_damage", 2)) + research_sum("tower_damage")) * mult)))
 
 
