@@ -52,6 +52,7 @@ var conflicts := true           # ссоры и воровство включе�
 var people: Dictionary = {}     # data/residents.json — черты, настроение, истории
 var autonomous := false         # автономная деревня (правки v1.12.0): с 10 жителей
                                 # деревня живёт сама — строит без старосты, зовёт поселенцев
+var _chop_progress := {}        # недоруб героем: тайл -> удары (правки v1.12.2, транзитно)
 
 # --- M5: угрозы -----------------------------------------------------------
 var raiders: Array = []         # мутанты текущей волны
@@ -5148,6 +5149,126 @@ func _deplete_rock(r: Dictionary, bld: Dictionary, portion: float) -> void:
 		events.append({"type": "rock_gone"})
 		_chron("chron.rock_gone")
 	terrain_dirty = true
+
+
+# --- ручной труд героя (правки v1.12.2): E у дерева/скалы/стройки -----------
+
+func _hero_work_cfg() -> Dictionary:
+	return cfg.get("hero_work", {})
+
+
+## Дерево у ног героя (свой тайл тоже — деревья проходимы):
+## {tile, hits, need} — для подсказки и добивки.
+func hero_tree_near(px: Vector2) -> Dictionary:
+	var base: Vector2i = map.tile_of_px(px)
+	for t in [base, base + Vector2i(1, 0), base + Vector2i(-1, 0),
+			base + Vector2i(0, 1), base + Vector2i(0, -1)]:
+		if map.in_bounds(t) and map.grid[t.y][t.x] == map.TILE_TREE:
+			return {"tile": t, "hits": int(_chop_progress.get(t, 0)),
+					"need": maxi(1, int(_hero_work_cfg().get("chop_hits", 5)))}
+	return {}
+
+
+## Скала или рудная жила в шаге от героя: {tile, kind: "rock"|"ore"}.
+func hero_rock_near(px: Vector2) -> Dictionary:
+	var tile: Vector2i = _rock_tile_near(px)
+	if tile == Vector2i(-1, -1):
+		return {}
+	return {"tile": tile,
+			"kind": "ore" if int(map.grid[tile.y][tile.x]) == map.TILE_ORE else "rock"}
+
+
+## Недостроенное здание в шаге от героя ({}, если стройки рядом нет).
+func hero_site_near(px: Vector2) -> Dictionary:
+	var best: Dictionary = {}
+	var best_d := 1.6 * float(map.ts)
+	for b in buildings:
+		if bool(b["done"]):
+			continue
+		var d: float = (map.tile_center_px(b["tile"]) as Vector2).distance_to(px)
+		if d <= best_d:
+			best_d = d
+			best = b
+	return best
+
+
+## Удар топором: chop_hits ударов — дерево валится по правилам лесоруба
+## (пень, гнев леса), дрова сразу в общий пул. "" — рядом нет дерева,
+## "hit" — удар засчитан, "fell" — дерево повалено.
+func hero_chop(px: Vector2) -> String:
+	var tree: Dictionary = hero_tree_near(px)
+	if tree.is_empty():
+		return ""
+	var tile: Vector2i = tree["tile"]
+	var hits := int(_chop_progress.get(tile, 0)) + 1
+	if hits < int(tree["need"]):
+		_chop_progress[tile] = hits
+		return "hit"
+	_chop_progress.erase(tile)
+	var fcfg: Dictionary = cfg.get("forest", {})
+	map.grid[tile.y][tile.x] = map.TILE_GRASS
+	map.stumps[tile] = true
+	terrain_dirty = true
+	forest_anger = clampf(forest_anger + float(fcfg.get("anger_per_tree", 2.5)), 0.0, 100.0)
+	_add_resource_capped("wood", float(_hero_work_cfg().get("wood_per_tree", 6)))
+	events.append({"type": "tree_felled"})
+	_chron("chron.tree_felled")
+	return "fell"
+
+
+## Удар киркой: камень в общий пул, жила вырабатывается по общим правилам
+## каменотёса — вскрытие руды, кристалл или осыпание с бонусом.
+## "" — рядом нет скалы, "hit" — удар засчитан, "ore"/"gem"/"stone" — жила
+## выработана с соответствующим исходом.
+func hero_mine(px: Vector2) -> String:
+	var rock: Dictionary = hero_rock_near(px)
+	if rock.is_empty():
+		return ""
+	var mcfg: Dictionary = cfg.get("mountain", {})
+	var tile: Vector2i = rock["tile"]
+	_add_resource_capped("stone", float(_hero_work_cfg().get("stone_per_hit", 2)))
+	var max_hp := float(mcfg.get("hp", 80.0))
+	if int(map.grid[tile.y][tile.x]) == map.TILE_ORE:
+		max_hp *= 1.3   # жила жирнее скалы — как при генерации карты
+	var hp := float(map.rock_hp.get(tile, max_hp)) \
+			- max_hp / float(maxi(1, int(_hero_work_cfg().get("mine_hits", 4))))
+	if hp > 0.0:
+		map.rock_hp[tile] = hp
+		return "hit"
+	# тайл выработан — тот же бросок, что у каменотёса (M11)
+	var roll := _event_rng.randf()
+	map.rock_hp.erase(tile)
+	terrain_dirty = true
+	if int(map.grid[tile.y][tile.x]) == map.TILE_ROCK and roll < float(mcfg.get("ore_reveal", 0.35)):
+		map.grid[tile.y][tile.x] = map.TILE_ORE
+		map.rock_hp[tile] = max_hp * 1.3
+		events.append({"type": "ore_revealed"})
+		_chron("chron.ore_revealed")
+		return "ore"
+	if roll < float(mcfg.get("ore_reveal", 0.35)) + float(mcfg.get("crystal_chance", 0.06)):
+		_add_resource_capped("crystal", 1.0)
+		events.append({"type": "gem_found"})
+		_chron("chron.gem_found")
+		return "gem"
+	_add_resource_capped("stone", float(mcfg.get("bonus_stone", 6)))
+	map.grid[tile.y][tile.x] = map.TILE_GRASS
+	events.append({"type": "rock_gone"})
+	_chron("chron.rock_gone")
+	return "stone"
+
+
+## Удар молотком у стройки: работа идёт в прогресс, достройка — общая
+## (стены становятся преградой, декор радует, заказ «построить» закрывается).
+## "" — рядом нет стройки, "hit" — удар засчитан, "done" — здание готово.
+func hero_build(px: Vector2) -> String:
+	var site: Dictionary = hero_site_near(px)
+	if site.is_empty():
+		return ""
+	site["progress"] = float(site["progress"]) + float(_hero_work_cfg().get("build_per_hit", 2.5))
+	if float(site["progress"]) >= float(_def(site)["build_work"]):
+		_complete_site(site)
+		return "done"
+	return "hit"
 
 
 # --- M11: некромант и кладбище ----------------------------------------------

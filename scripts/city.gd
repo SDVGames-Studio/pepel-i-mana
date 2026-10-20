@@ -39,6 +39,10 @@ var _codex_panel = null         # кодекс и статистика (M14-K, �
 var _ambience = null            # светлячки и огоньки (M14-C, T21/T23)
 var _weather_fx = null          # погода: дождь/снег/туман/буря (M14-J)
 var _near_temple := false       # храм рядом — E: молитва (M14-H)
+var _hero_tree: Dictionary = {} # дерево у ног героя (E — рубить, правки v1.12.2)
+var _hero_rock: Dictionary = {} # скала/руда рядом (E — добыть)
+var _hero_site: Dictionary = {} # недострой рядом (E — помочь)
+var _hero_work_cd := 0.0        # кулдаун удара героя по природе/стройке
 
 
 func _ready() -> void:
@@ -81,6 +85,10 @@ func _ready() -> void:
 	add_child(hud)
 	hud.set_enchant_colors(_enchant_colors())
 	hud.set_hint(_default_hint())
+	# соло-старт (правки v1.12.2): герой видит рядом NPC — это и есть единственный
+	# житель, основатель-староста. Объясняем сразу, чтобы не гадать.
+	if sim.residents.size() == 1:
+		hud.toast(Loc.t("city.founder_hint"))
 	hero.died.connect(_on_hero_down)
 	_deposit_loot()
 	# панель экипировки (M14-B, клавиша I): в городе ещё и крафт у мастеровых
@@ -231,7 +239,7 @@ func _leftover_line() -> String:
 	return " ".join(parts)
 
 
-func _process(_delta: float) -> void:
+func _process(delta: float) -> void:
 	# герой в городе: мутанты могут гнаться за ним (M5)
 	if not hero.dead:
 		sim.hero_pos = hero.global_position
@@ -265,6 +273,11 @@ func _process(_delta: float) -> void:
 	_near_anomaly = hero.position.distance_to(map.tile_center_px(map.anomaly_tile)) < map.ts * 1.7
 	_near_armory = _armory_near_hero()
 	_near_temple = _near_building_kind("temple")
+	# ручной труд героя (правки v1.12.2): что можно потрогать по E
+	_hero_work_cd = maxf(0.0, _hero_work_cd - delta)
+	_hero_site = sim.hero_site_near(hero.position)
+	_hero_tree = sim.hero_tree_near(hero.position)
+	_hero_rock = sim.hero_rock_near(hero.position)
 	if _near_map_border():
 		hud.set_hint(Loc.t("city.exit_world"))
 	elif _near_anomaly:
@@ -276,6 +289,13 @@ func _process(_delta: float) -> void:
 		hud.set_hint(Loc.t("city.armory_hint") % int(cfg.get("hero_kit", {}).get("cost_metal", 3)))
 	elif _near_temple:
 		hud.set_hint(Loc.t("city.temple_hint"))
+	elif not _hero_site.is_empty():
+		var site_work: float = maxf(1.0, float(sim._def(_hero_site)["build_work"]))
+		hud.set_hint(Loc.t("city.hint_build") % int(100.0 * clampf(float(_hero_site["progress"]) / site_work, 0.0, 1.0)))
+	elif not _hero_tree.is_empty():
+		hud.set_hint(Loc.t("city.hint_chop") % [int(_hero_tree["hits"]), int(_hero_tree["need"])])
+	elif not _hero_rock.is_empty():
+		hud.set_hint(Loc.t("city.hint_mine_ore" if String(_hero_rock["kind"]) == "ore" else "city.hint_mine"))
 	elif build_mode == "":
 		hud.set_hint(_default_hint())
 
@@ -598,6 +618,9 @@ func _unhandled_input(event: InputEvent) -> void:
 			return
 		if _near_temple:
 			_pray_at_temple()
+			return
+		# ручной труд героя (правки v1.12.2): стройка/дерево/скала
+		if _hero_act():
 			return
 	if event.is_action_pressed("inventory"):
 		hud.toggle_residents()
@@ -977,6 +1000,41 @@ func go_autonomous() -> void:
 	elif err_key != "":
 		hud.toast(Loc.t(err_key))
 	hud.refresh()
+
+
+## E у природы или стройки: герой работает сам (правки v1.12.2).
+## Порядок: стройка → дерево → скала/руда. true — удар нашёл применение.
+func _hero_act() -> bool:
+	if _hero_work_cd > 0.0:
+		return false   # кулдаун: молча, тосты не спамим
+	var hw: Dictionary = cfg.get("hero_work", {})
+	var res: String = sim.hero_build(hero.position)
+	if res == "":
+		res = sim.hero_chop(hero.position)
+	if res == "":
+		res = sim.hero_mine(hero.position)
+	if res == "":
+		return false
+	_hero_work_cd = float(hw.get("cooldown", 0.35))
+	match res:
+		"fell":
+			hud.toast(Loc.t("city.hero_tree_felled") % int(hw.get("wood_per_tree", 6)))
+		"ore":
+			hud.toast(Loc.t("city.hero_ore_found"))
+		"gem":
+			hud.toast(Loc.t("city.hero_gem_found"))
+		"stone":
+			hud.toast(Loc.t("city.hero_rock_done"))
+		"done":
+			# стена/ворота стали преградой — не даём герою остаться внутри
+			var st: Vector2i = map.tile_of_px(hero.position)
+			if not map.is_walkable(st):
+				for n in [st + Vector2i(1, 0), st + Vector2i(-1, 0),
+						st + Vector2i(0, 1), st + Vector2i(0, -1)]:
+					if map.in_bounds(n) and map.is_walkable(n):
+						hero.position = map.tile_center_px(n)
+						break
+	return true
 
 
 ## Комплект героя из оружейки: металл из пула, бонусы урона/брони (M5.1).

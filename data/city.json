@@ -31,6 +31,14 @@
 		"refugee_mult": 1.5,
 		"mood": 5.0
 	},
+	"hero_work": {
+		"chop_hits": 5,
+		"wood_per_tree": 6,
+		"mine_hits": 4,
+		"stone_per_hit": 2,
+		"build_per_hit": 2.5,
+		"cooldown": 0.35
+	},
 	"storage_base": 150,
 	"storage_per_warehouse": 200,
 	"altar_boost": 1.1,

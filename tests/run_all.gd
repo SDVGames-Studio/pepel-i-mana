@@ -253,6 +253,7 @@ func _initialize() -> void:
 	_test_m14_k()
 	_test_m14_l()
 	_test_fixes_v121()
+	_test_hero_work()
 	if _fails == 0:
 		print("OK: все тесты пройдены")
 		quit(0)
@@ -5535,3 +5536,112 @@ func _test_fixes_v121() -> void:
 			"city.autonomy_done", "city.autonomy_tip", "chron.autonomy", "menu.solo_start"]:
 		_check(String(loc.get(key, "")) != "", "ключ локализации есть: " + key)
 	print("[Правки v1.12.0] готово")
+
+
+# --- Правки v1.12.2: ручной труд героя (добыча и стройка) --------------------
+
+func _test_hero_work() -> void:
+	print("[Правки v1.12.2: герой добывает и строит]")
+	var loc: Dictionary = _read_json("res://loc/ru.json")
+	var sim := _make_sim()
+	var hw: Dictionary = sim.cfg.get("hero_work", {})
+	_check(not hw.is_empty(), "city.json: настроен ручной труд героя")
+
+	# --- рубка дерева ---
+	var tree := Vector2i(-1, -1)
+	for y in sim.map.h:
+		for x in sim.map.w:
+			if sim.map.grid[y][x] == sim.map.TILE_TREE:
+				tree = Vector2i(x, y)
+				break
+		if tree.x >= 0:
+			break
+	_check(tree.x >= 0, "на карте есть дерево для героя")
+	var wood0 := int(sim.res["wood"])
+	var anger0 := float(sim.forest_anger)
+	var res := ""
+	for i in maxi(1, int(hw.get("chop_hits", 5))):
+		res = sim.hero_chop(sim.map.tile_center_px(tree))
+	_check(res == "fell", "герой валит дерево за %d ударов" % int(hw.get("chop_hits", 5)))
+	_check(sim.map.grid[tree.y][tree.x] == sim.map.TILE_GRASS and sim.map.stumps.has(tree),
+			"на месте дерева остался пень")
+	_check(int(sim.res["wood"]) == wood0 + int(hw.get("wood_per_tree", 6)), "дрова легли в общий пул")
+	_check(absf(sim.forest_anger - anger0 - float(sim.cfg["forest"]["anger_per_tree"])) < 0.001,
+			"гнев леса растёт по тем же правилам, что у лесоруба")
+	# вдали от леса герой не рубит (ищем тайл без деревьев вокруг)
+	var lonely := Vector2i(-1, -1)
+	for y in sim.map.h:
+		for x in sim.map.w:
+			var t := Vector2i(x, y)
+			if not sim.map.is_walkable(t):
+				continue
+			var clean := true
+			for n in [t, t + Vector2i(1, 0), t + Vector2i(-1, 0), t + Vector2i(0, 1), t + Vector2i(0, -1)]:
+				if sim.map.in_bounds(n) and sim.map.grid[n.y][n.x] == sim.map.TILE_TREE:
+					clean = false
+					break
+			if clean:
+				lonely = t
+				break
+	_check(lonely.x >= 0 and sim.hero_chop(sim.map.tile_center_px(lonely)) == "",
+			"вдали от леса герой не рубит")
+
+	# --- добыча скалы ---
+	var near_rock := Vector2i(-1, -1)
+	for y in sim.map.h:
+		for x in sim.map.w:
+			var t := Vector2i(x, y)
+			if sim.map.is_walkable(t) and not sim._rock_tile_near(sim.map.tile_center_px(t)) == Vector2i(-1, -1):
+				near_rock = t
+				break
+		if near_rock.x >= 0:
+			break
+	_check(near_rock.x >= 0, "на карте есть скала в шаге от проходимого тайла")
+	var target: Vector2i = sim._rock_tile_near(sim.map.tile_center_px(near_rock))
+	var stone0 := int(sim.res["stone"])
+	var hp0 := float(sim.map.rock_hp.get(target, 0.0))
+	res = sim.hero_mine(sim.map.tile_center_px(near_rock))
+	_check(res == "hit", "удар киркой засчитан")
+	_check(int(sim.res["stone"]) == stone0 + int(hw.get("stone_per_hit", 2)), "камень в общий пул за удар")
+	_check(float(sim.map.rock_hp.get(target, 0.0)) < hp0, "жила вырабатывается")
+	res = ""
+	var guard := 0
+	while not res in ["ore", "gem", "stone"] and guard < 10:
+		guard += 1
+		res = sim.hero_mine(sim.map.tile_center_px(near_rock))
+	_check(res in ["ore", "gem", "stone"], "выработанная жила даёт исход: " + res)
+	_check(int(sim.res["stone"]) > stone0, "добыча не пропала даром")
+
+	# --- стройка героем (при соло-старте строителей нет) ---
+	var elder_only = load("res://scripts/city_sim.gd").new()
+	elder_only.setup(sim.map, sim.cfg, 1, "normal")
+	elder_only._last_daily_day = 1
+	var spot := _find_free_tile(elder_only, elder_only.map.spawn_tile)
+	_check(spot != Vector2i(-1, -1), "найдено место под дом")
+	_check(elder_only.place_building("house", spot), "герой поставил площадку дома")
+	var site: Dictionary = elder_only.building_at(spot)
+	_check(not site.is_empty() and not bool(site["done"]), "стройка ждёт мастера")
+	# староста не подменяет строителя — стройку ждёт именно герой
+	elder_only._assign_jobs()
+	_check(int(site["worker"]) <= 0, "при соло-старте строить некому — это работа героя")
+	var guard2 := 0
+	res = ""
+	while not bool(site["done"]) and guard2 < 100:
+		guard2 += 1
+		res = elder_only.hero_build(elder_only.map.tile_center_px(spot))
+	_check(res == "done", "герой достраивает дом сам")
+	_check(bool(site["done"]), "дом готов без строителей")
+	var built_ev := false
+	for e in elder_only.events:
+		if String(e["type"]) == "built" and String(e["bld"]) == "house":
+			built_ev = true
+	_check(built_ev, "достройка пришла событием (тост)")
+	_check(elder_only.hero_build(elder_only.map.tile_center_px(Vector2i(0, 0))) == "",
+			"вдали от стройки герой не стучит")
+
+	# --- ключи локализации ---
+	for key in ["city.hint_build", "city.hint_chop", "city.hint_mine", "city.hint_mine_ore",
+			"city.hero_tree_felled", "city.hero_rock_done", "city.hero_ore_found",
+			"city.hero_gem_found", "city.founder_hint"]:
+		_check(String(loc.get(key, "")) != "", "ключ локализации есть: " + key)
+	print("[Правки v1.12.2] готово")
