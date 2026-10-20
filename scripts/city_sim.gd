@@ -203,8 +203,189 @@ func _new_resident(res_name: String, prof: String, tile: Vector2i) -> Dictionary
 		"skill": 0.0, "rank": 0, "age_days": 100.0,
 		"ail": "", "ail_days": 0.0, "friend": -1, "work_bonus": 0.0,
 		"prof_extra": [], "sub_prof": "", "atk_cd": 0.0, "partner": -1,
+		"rel": {}, "mem": [], "goal": "", "goal_prev": "", "tavern_visited": false,
 	}
 	return r
+
+
+## --- Жизнь v3 (M14-F, issue #3): отношения, память, цели --------------------
+
+func _v3() -> Dictionary:
+	return people.get("v3", {})
+
+
+## Балл отношений a→b (и симметрично b→a хранится отдельно, меняются вместе).
+func _rel_change(a: Dictionary, b: Dictionary, delta: float) -> void:
+	var cap := 100.0
+	var lo := -100.0
+	for pair in [[a, b], [b, a]]:
+		var rel: Dictionary = pair[0].get("rel", {})
+		if (rel as Dictionary).is_empty() and delta > 0.0 and not (pair[0] as Dictionary).has("rel"):
+			pair[0]["rel"] = {}
+		rel = pair[0].get("rel", {})
+		var key := str(int(pair[1]["id"]))
+		rel[key] = clampf(float(rel.get(key, 0.0)) + delta, lo, cap)
+
+
+func _rel_score(r: Dictionary, other_id: int) -> float:
+	var rel: Dictionary = r.get("rel", {})
+	return float(rel.get(str(other_id), 0.0))
+
+
+## Лучший друг / заклятый враг по карте отношений (для панели и досуга).
+func rel_best(r: Dictionary) -> Dictionary:
+	var rel: Dictionary = r.get("rel", {})
+	var best_id := -1
+	var best_score := float(_v3().get("friend_threshold", 50.0))
+	for k in rel:
+		if float(rel[k]) >= best_score:
+			best_score = float(rel[k])
+			best_id = int(k)
+	if best_id < 0:
+		return {}
+	var other := _resident_by_id(best_id)
+	if other.is_empty():
+		return {}
+	return {"other": other, "score": best_score}
+
+
+func rel_worst(r: Dictionary) -> Dictionary:
+	var rel: Dictionary = r.get("rel", {})
+	var worst_id := -1
+	var worst_score := float(_v3().get("foe_threshold", -30.0))
+	for k in rel:
+		if float(rel[k]) <= worst_score:
+			worst_score = float(rel[k])
+			worst_id = int(k)
+	if worst_id < 0:
+		return {}
+	var other := _resident_by_id(worst_id)
+	if other.is_empty():
+		return {}
+	return {"other": other, "score": worst_score}
+
+
+## Память (M14-F): последние N личных событий; вклад в настроение тает со
+## временем, но не гаснет до нуля (негаснущий хвост, grief затухает медленно).
+func _mem_push(r: Dictionary, key: String) -> void:
+	var slots := int(_v3().get("memory_slots", 3))
+	var mem: Array = r.get("mem", [])
+	mem.append({"k": key, "age": 0.0})
+	while mem.size() > slots:
+		mem.pop_front()
+	r["mem"] = mem
+
+
+func _memory_mood(r: Dictionary) -> float:
+	var v3 := _v3()
+	var moods: Dictionary = v3.get("mood_per_event", {})
+	var decay_days := maxf(1.0, float(v3.get("memory_decay_days", 10.0)))
+	var min_factor := float(v3.get("memory_min_factor", 0.2))
+	var total := 0.0
+	for m in r.get("mem", []):
+		var decay := maxf(min_factor, 1.0 - float(m["age"]) / decay_days)
+		total += float(moods.get(String(m["k"]), 0.0)) * decay
+	return total
+
+
+## Ежедневный тик v3: память стареет; отношения от совместной работы;
+## друг = лучший балл; новые личные цели.
+func _roll_v3() -> void:
+	var v3 := _v3()
+	var adults: Array = _adults()
+	# память стареет
+	for r in adults:
+		var mem: Array = r.get("mem", [])
+		for m in mem:
+			m["age"] = float(m["age"]) + 1.0
+	# отношения: работа рядом сближает
+	var near_tiles := float(v3.get("work_near_tiles", 3))
+	var bonus := float(v3.get("work_near_bonus", 1.0))
+	for i in adults.size():
+		var a: Dictionary = adults[i]
+		var bld_a = a.get("bld")
+		if bld_a == null or not bool((bld_a as Dictionary).get("done", false)):
+			continue
+		for j in range(i + 1, adults.size()):
+			var b: Dictionary = adults[j]
+			var bld_b = b.get("bld")
+			if bld_b == null or not bool((bld_b as Dictionary).get("done", false)):
+				continue
+			if Vector2(bld_a["tile"]).distance_to(Vector2(bld_b["tile"])) <= near_tiles:
+				_rel_change(a, b, bonus)
+	# друг = лучший балл отношений (используется вечерним досугом M12)
+	var friend_at := float(v3.get("friend_threshold", 50.0))
+	for r in adults:
+		var rel: Dictionary = r.get("rel", {})
+		var best_id := -1
+		var best_score := friend_at
+		for k in rel:
+			if float(rel[k]) >= best_score:
+				best_score = float(rel[k])
+				best_id = int(k)
+		r["friend"] = best_id
+	# вечерняя попойка в таверне забыта до следующего вечера
+	for r in residents:
+		r["tavern_visited"] = false
+	_roll_goals()
+
+
+## Новая личная цель свободному взрослому; выполненная — награда и новая.
+func _roll_goals() -> void:
+	var v3 := _v3()
+	var pool: Array = people.get("goals", [])
+	if pool.is_empty():
+		return
+	for r in _adults():
+		var goal := String(r.get("goal", ""))
+		if goal == "":
+			_assign_goal(r, pool)
+			continue
+		var done := false
+		match goal:
+			"become_master":
+				done = int(r.get("rank", 0)) >= 5
+			"feast_tavern":
+				done = bool(r.get("tavern_visited", false))
+			"store_food":
+				var need := float(_adults().size()) * float(cfg.get("food_per_resident_day", 2.0)) \
+						* float(v3.get("goal_food_days", 7))
+				done = float(res["food"]) >= need
+			"build_garden":
+				pass   # завершается постройкой сада/статуи (см. _complete_site)
+		if done:
+			_complete_goal(r, pool)
+
+
+func _assign_goal(r: Dictionary, pool: Array) -> void:
+	for attempt in 6:
+		var pick: Dictionary = pool[_event_rng.randi_range(0, pool.size() - 1)]
+		var gid := String(pick["id"])
+		if gid == String(r.get("goal_prev", "")) and attempt < 5:
+			continue
+		r["goal"] = gid
+		return
+
+
+## Цель достигнута: настроение, летопись, память — и новая цель.
+func _complete_goal(r: Dictionary, pool: Array) -> void:
+	var goal := String(r.get("goal", ""))
+	if goal == "":
+		return
+	r["goal_prev"] = goal
+	r["goal"] = ""
+	r["mood"] = clampf(float(r["mood"]) + float(_v3().get("goal_mood", 6.0)), 0.0, 100.0)
+	_mem_push(r, "goal")
+	_chron("chron.goal_done", String(r["name"]), "goal." + goal)
+	events.append({"type": "goal_done", "name": String(r["name"]), "goal": goal})
+	_assign_goal(r, pool)
+
+
+## Достигнуть цель «построить сад» у строителя (декор готов, M14-F).
+func _goal_garden_built(worker_id: int) -> void:
+	var r := _resident_by_id(worker_id)
+	if not r.is_empty() and String(r.get("goal", "")) == "build_garden":
+		_complete_goal(r, people.get("goals", []))
 
 
 func _start_mood(traits: Array) -> float:
@@ -760,10 +941,14 @@ func _damage_building(b: Dictionary, amount: float) -> void:
 	_chron("chron.razed", String(b["type"]))
 
 
+## Цель достигнута (стройка готова): декор закрывает цель «построить сад».
 func _complete_site(site: Dictionary) -> void:
+	var worker_id := int(site.get("worker", -1))
 	site["done"] = true
 	site["progress"] = 0.0
 	site["worker"] = -1
+	if _def(site).get("mood", 0) != 0 or String(_def(site).get("effect", "")) == "decor":
+		_goal_garden_built(worker_id)   # личная цель v3: «построить сад»
 	if _def(site).get("effect", "") == "wall":
 		map.set_solid(site["tile"], true)
 		_step_off_solid(site["tile"])
@@ -1011,6 +1196,7 @@ func tick(dt_raw: float) -> void:
 		_tick_caravans()
 		_tick_orchards()
 		_roll_necro()
+		_roll_v3()   # жизнь v3 (M14-F): память, отношения, личные цели
 	_update_gates()   # достроенные за тик вышки/ворота сразу меняют проходимость
 
 
@@ -1258,6 +1444,9 @@ func _leisure(r: Dictionary, dt: float) -> void:
 	if _arrived(r, target):
 		r["state"] = "leisure"
 		r["path"] = PackedVector2Array()
+		# личная цель «пировать в таверне» (M14-F): вечер в таверне засчитан
+		if bool(plan.get("tavern", false)):
+			r["tavern_visited"] = true
 		_try_chat(r)
 
 
@@ -1265,19 +1454,31 @@ func _leisure(r: Dictionary, dt: float) -> void:
 ## иначе таверна 50%, любимый 60% / друг 40%, костёр — остальное.
 func _pick_leisure(r: Dictionary) -> Dictionary:
 	var tavern := _nearest_done_of_type(r["pos"], "tavern")
+	var plan: Dictionary
 	if _festival_today():
 		if not tavern.is_empty() and randf() < 0.7:
-			return {"tile": map.nearest_walkable(Vector2i(tavern["tile"]) + Vector2i(1, 0))}
-		return {"tile": map.nearest_walkable(fire_tile())}
-	var partner := _partner_of(r)
-	if not partner.is_empty() and randf() < 0.6:
-		return {"tile": map.nearest_walkable(map.tile_of_px(partner["pos"]))}
-	if not tavern.is_empty() and randf() < 0.5:
-		return {"tile": map.nearest_walkable(Vector2i(tavern["tile"]) + Vector2i(1, 0))}
-	var friend := _friend_of(r)
-	if not friend.is_empty() and randf() < 0.4:
-		return {"tile": map.nearest_walkable(map.tile_of_px(friend["pos"]))}
-	return {"tile": map.nearest_walkable(fire_tile())}
+			plan = {"tile": map.nearest_walkable(Vector2i(tavern["tile"]) + Vector2i(1, 0)), "tavern": true}
+		else:
+			plan = {"tile": map.nearest_walkable(fire_tile())}
+	else:
+		var partner := _partner_of(r)
+		if not partner.is_empty() and randf() < 0.6:
+			plan = {"tile": map.nearest_walkable(map.tile_of_px(partner["pos"]))}
+		elif not tavern.is_empty() and randf() < 0.5:
+			plan = {"tile": map.nearest_walkable(Vector2i(tavern["tile"]) + Vector2i(1, 0)), "tavern": true}
+		else:
+			var friend := _friend_of(r)
+			if not friend.is_empty() and randf() < 0.4:
+				plan = {"tile": map.nearest_walkable(map.tile_of_px(friend["pos"]))}
+			else:
+				plan = {"tile": map.nearest_walkable(fire_tile())}
+	# ссорящиеся (M14-F) избегают друг друга вечером: цель рядом с врагом — к костру
+	var foe: Dictionary = rel_worst(r)
+	if not foe.is_empty():
+		var foe_tile: Vector2i = map.tile_of_px(foe["other"]["pos"])
+		if Vector2i(plan["tile"]).distance_to(foe_tile) <= 2:
+			plan = {"tile": map.nearest_walkable(fire_tile())}
+	return plan
 
 
 func _friend_of(r: Dictionary) -> Dictionary:
@@ -1330,6 +1531,10 @@ func _try_chat(r: Dictionary) -> void:
 		elif int(other.get("partner", -1)) == int(r["id"]):
 			base = "love"
 			lines = maxi(1, int(lcfg.get("love_lines", 4)))
+		elif _rel_score(r, int(other["id"])) <= float(_v3().get("foe_threshold", -30.0)):
+			# ссорящиеся (M14-F): обмениваются колкостями
+			base = "spite"
+			lines = maxi(1, int(_v3().get("spite_lines", 4)))
 		var key := "%s.%d" % [base, randi() % lines]
 		r["chat_key"] = key
 		other["chat_key"] = key
@@ -2524,6 +2729,8 @@ func _mood_target(r: Dictionary) -> float:
 	if tavern_active():
 		var tcfg: Dictionary = cfg.get("tavern", {})
 		target += float(tcfg.get("mood", 12.0))
+	# память v3 (M14-F): свежие события качают настроение, старые тлеют в хвосте
+	target += _memory_mood(r)
 	return clampf(target, 0.0, 100.0)
 
 
@@ -2603,6 +2810,7 @@ func _kill(r: Dictionary, chron_key: String) -> void:
 			widow["mood"] = clampf(float(widow["mood"])
 					- float(people.get("couples", {}).get("widow_grief", 10.0)), 0.0, 100.0)
 			_chron("chron.widow", String(widow["name"]), String(r["name"]))
+			_mem_push(widow, "widow")   # память v3: горе тает медленно
 			events.append({"type": "widow", "a": String(widow["name"]), "b": String(r["name"])})
 	residents.erase(r)
 	_assign_jobs()
@@ -3136,6 +3344,9 @@ func _roll_couples() -> void:
 		var boost := float(people.get("wedding_mood", 12.0))
 		r["mood"] = clampf(float(r["mood"]) + boost, 0.0, 100.0)
 		other["mood"] = clampf(float(other["mood"]) + boost, 0.0, 100.0)
+		_rel_change(r, other, float(_v3().get("wedding_rel_bonus", 40.0)))   # v3
+		_mem_push(r, "wedding")
+		_mem_push(other, "wedding")
 		_chron("chron.wedding", String(r["name"]), String(other["name"]))
 		events.append({"type": "wedding", "a": String(r["name"]), "b": String(other["name"])})
 	var pm := float(ccfg.get("pair_mood", 4.0))
@@ -3164,6 +3375,25 @@ func _roll_festival() -> void:
 	for r in residents:
 		if String(r["prof"]) != "":
 			r["mood"] = clampf(float(r["mood"]) + dm, 0.0, 100.0)
+	# друзья дарят подарки (M14-F): отношения крепнут, память хранит праздник
+	var friends_at := float(_v3().get("friend_threshold", 50.0))
+	var gift_bonus := float(_v3().get("gift_rel_bonus", 6.0))
+	var gifted: Array = []
+	for r in _adults():
+		var rel: Dictionary = r.get("rel", {})
+		for k in rel:
+			var other := _resident_by_id(int(k))
+			if other.is_empty() or gifted.has(other) or gifted.has(r):
+				continue
+			if float(rel[k]) >= friends_at and _rel_score(other, int(r["id"])) >= friends_at:
+				_rel_change(r, other, gift_bonus)
+				_mem_push(r, "gift")
+				_mem_push(other, "gift")
+				gifted.append(r)
+				gifted.append(other)
+				_chron("chron.fest_gift", String(r["name"]), String(other["name"]))
+				events.append({"type": "fest_gift", "a": String(r["name"]), "b": String(other["name"])})
+				break
 	_chron("chron.found_day")
 	events.append({"type": "found_day"})
 
@@ -3255,6 +3485,9 @@ func _story_quarrel(scfg: Dictionary) -> void:
 	var dm: float = float(scfg.get("quarrel_mood", -15.0))
 	for side in [a, b]:
 		side["mood"] = clampf(float(side["mood"]) + dm, 0.0, 100.0)
+	_rel_change(a, b, float(_v3().get("quarrel_rel_hit", -18.0)))   # отношения v3
+	_mem_push(a, "quarrel")
+	_mem_push(b, "quarrel")
 	_chron("chron.quarrel", String(a["name"]), String(b["name"]))
 	events.append({"type": "quarrel", "a": String(a["name"]), "b": String(b["name"])})
 

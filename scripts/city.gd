@@ -464,6 +464,11 @@ func _process_events() -> void:
 			# --- сейв (M14-A) ---
 			"autosaved":
 				hud.toast(Loc.t("menu.autosaved"))
+			# --- жизнь v3 (M14-F) ---
+			"goal_done":
+				hud.toast(Loc.t("city.goal_done") % [String(ev["name"]), Loc.t("goal." + String(ev["goal"]))])
+			"fest_gift":
+				hud.toast(Loc.t("city.fest_gift") % [String(ev["a"]), String(ev["b"])])
 	sim.events.clear()
 
 

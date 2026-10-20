@@ -896,6 +896,15 @@ func _residents_bbcode() -> String:
 				skill_key = "skill.expert"
 			parts.append("[color=%s]%d%%[/color]" % [mood_col, mood])
 			parts.append(Loc.t(skill_key))
+		# жизнь v3 (M14-F): личная цель и отношения
+		if String(r.get("goal", "")) != "":
+			parts.append("[color=#ce93d8]Цель: %s[/color]" % Loc.t("goal." + String(r["goal"])))
+		var best: Dictionary = sim.rel_best(r)
+		if not best.is_empty():
+			parts.append("[color=#80cbc4]%s %s[/color]" % [Loc.t("city.rel_friend"), String(best["other"]["name"])])
+		var worst: Dictionary = sim.rel_worst(r)
+		if not worst.is_empty():
+			parts.append("[color=#ef9a9a]%s %s[/color]" % [Loc.t("city.rel_foe"), String(worst["other"]["name"])])
 		lines.append(" — ".join(parts))
 	# почему не идут беженцы и не рождаются дети (M4-фикс по фидбеку)
 	var block: String = sim.growth_block()
@@ -928,6 +937,8 @@ func _chron_text_of(e: Dictionary) -> String:
 
 
 func _chron_arg(v: String) -> String:
+	if v.begins_with("goal."):
+		return Loc.t(v)
 	if v in ["wood", "stone", "food", "crystal", "tools", "iron", "metal", "kits", "seeds"]:
 		return Loc.t("res." + v)
 	if v in ["sheep", "cow", "pig", "chicken", "chick", "turkey"]:

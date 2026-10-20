@@ -436,6 +436,17 @@ static func _apply_city(game, cd: Variant) -> String:
 		r["bld"] = _building_ref(sim, r.get("bld"))
 		r["site"] = _building_ref(sim, r.get("site"))
 		r["home"] = _building_ref(sim, r.get("home"))
+		# жизнь v3 (M14-F): старые сейвы без новых полей получают пустые значения
+		if not r.has("rel"):
+			r["rel"] = {}
+		if not r.has("mem"):
+			r["mem"] = []
+		if not r.has("goal"):
+			r["goal"] = ""
+		if not r.has("goal_prev"):
+			r["goal_prev"] = ""
+		if not r.has("tavern_visited"):
+			r["tavern_visited"] = false
 	# события-тосты прошлой сессии не переигрываем; ландшафт перерисовать
 	sim.events = []
 	sim.hero_alive = false
