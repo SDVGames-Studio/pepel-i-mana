@@ -654,6 +654,23 @@ TEMPLE = [
 " kkgggkk k kkgggk ",
 ]
 
+
+# ------------------------------------------------- M14-I: мост ---------------
+
+PAL_BRIDGE = {
+    "b": P(90, 61, 47),
+    "w": P(161, 102, 47),
+    "k": P(34, 30, 40),
+}
+
+BRIDGE = [
+    "................",
+    ".kkkkkkkkkkkkkk.",
+    ".kwwkwwkwwkwwkk.",
+    ".kwwkwwkwwkwwkk.",
+    ".kkkkkkkkkkkkkk.",
+]
+
 # ------------------------------------------------------------- сборка --------
 
 # (имя, сетка, палитра, папка)
@@ -678,6 +695,7 @@ SPRITES = [
     ("vampire_keep", VAMPIRE_KEEP, PAL_VKEEP, BLD),
     ("lich_tower", LICH_TOWER, PAL_LTOWER, BLD),
     ("temple", TEMPLE, PAL_TEMPLE, BLD),
+    ("bridge", BRIDGE, PAL_BRIDGE, BLD),
 ]
 
 

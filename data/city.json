@@ -237,7 +237,8 @@
 		{"id": "orchard", "sprite": "e:tree_fruit2", "loc": "bld.orchard", "desc": "bld.desc.orchard", "color": "#7cb342", "cost": {"wood": 15, "seeds": 2}, "build_work": 25, "effect": "orchard", "district": "work", "cat": "resource"},
 		{"id": "market", "sprite": "e:tent", "loc": "bld.market", "desc": "bld.desc.market", "color": "#ffd54f", "cost": {"wood": 25, "stone": 15}, "build_work": 35, "worker": "trader", "effect": "market", "district": "work", "cat": "special"},
 		{"id": "cemetery", "sprite": "e:cemetery", "loc": "bld.cemetery", "desc": "bld.desc.cemetery", "color": "#6b7a5a", "cost": {"stone": 12, "wood": 6}, "build_work": 25, "effect": "cemetery", "district": "living", "cat": "special"},
-		{"id": "temple", "sprite": "b:temple", "loc": "bld.temple", "desc": "bld.desc.temple", "color": "#ffb74d", "cost": {"wood": 20, "stone": 15, "crystal": 3}, "build_work": 35, "worker": "acolyte", "effect": "temple", "district": "living", "cat": "special"}
+		{"id": "temple", "sprite": "b:temple", "loc": "bld.temple", "desc": "bld.desc.temple", "color": "#ffb74d", "cost": {"wood": 20, "stone": 15, "crystal": 3}, "build_work": 35, "worker": "acolyte", "effect": "temple", "district": "living", "cat": "special"},
+		{"id": "bridge", "sprite": "b:bridge", "loc": "bld.bridge", "desc": "bld.desc.bridge", "color": "#a1662f", "cost": {"wood": 4}, "build_work": 6, "effect": "bridge", "district": "living", "cat": "special"}
 	],
 	"loot_to_pool": {
 		"stone_chip": "stone",

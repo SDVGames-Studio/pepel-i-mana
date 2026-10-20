@@ -160,6 +160,20 @@
 			"pollution_on_visit": 3.0,
 			"boss": "ancient_dragon"
 		},
+		"swamp_mire": {
+			"loc": "biome.swamp_mire",
+			"floor_color": "#44503a",
+			"wall_color": "#232b1c",
+			"bg_color": "#0b0e08",
+			"exit_color": "#9ccc65",
+			"floor_sprite": "k:28",
+			"wall_sprite": "k:40",
+			"ambient": "#0a0d08",
+			"enemy_weights": { "spitter": 40, "crawler": 30, "rat": 20 },
+			"loot_bonus": 1,
+			"pollution_on_visit": 1.0,
+			"boss": "broodmother"
+		},
 		"vampire_keep": {
 			"loc": "biome.vampire_keep",
 			"floor_color": "#3a3238",

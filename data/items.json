@@ -97,6 +97,13 @@
 		{ "id": "potion_rage", "kind": "potion", "rarity": "uncommon", "tier": 2,
 			"use": { "effect": "temp_damage", "amount": 3, "duration": 10 }, "sprite": "k:127", "loc": "item.potion_rage", "desc": "item.desc.potion_rage", "value": 10 },
 		{ "id": "potion_stone", "kind": "potion", "rarity": "uncommon", "tier": 2,
-			"use": { "effect": "temp_armor", "amount": 2, "duration": 12 }, "sprite": "k:126", "loc": "item.potion_stone", "desc": "item.desc.potion_stone", "value": 10 }
+			"use": { "effect": "temp_armor", "amount": 2, "duration": 12 }, "sprite": "k:126", "loc": "item.potion_stone", "desc": "item.desc.potion_stone", "value": 10 },
+
+		{ "id": "boat", "kind": "tool", "rarity": "uncommon", "tier": 1,
+			"sprite": "k:98", "loc": "item.boat", "desc": "item.desc.boat", "value": 25,
+			"craft": { "where": "workshop", "cost": { "wood": 6, "iron": 1 } } },
+		{ "id": "horse", "kind": "mount", "rarity": "uncommon", "tier": 1,
+			"bonuses": { "speed": 10 }, "sprite": "k:112", "loc": "item.horse", "desc": "item.desc.horse", "value": 30,
+			"craft": { "where": "armory", "cost": { "wood": 4, "food": 6 } } }
 	]
 }

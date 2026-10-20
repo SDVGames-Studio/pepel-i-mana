@@ -15,6 +15,7 @@ const TILE_FOREST := 2
 const TILE_HILL := 3
 const TILE_WASTE := 4
 const TILE_ROAD := 5
+const TILE_SWAMP := 6   # болото (M14-I): проходимо, но дорого — замедление
 
 var w := 0
 var h := 0
@@ -25,6 +26,7 @@ var city_tile := Vector2i.ZERO      # город игрока — стартов
 var pois: Array = []                # точки интереса, см. шапку
 var fog: Dictionary = {}            # Vector2i -> true: исследованные тайлы
 var astar: AStarGrid2D = null
+var boats_enabled := false   # лодки (M14-I): вода проходима, но медленна
 var _rng := RandomNumberGenerator.new()
 var _poi_id := 1
 
@@ -57,7 +59,7 @@ func _generate_once(seed_value: int, params: Dictionary) -> void:
 	# пятна биомов, не у краёв (как озёра и скалы города)
 	var blobs: Dictionary = params.get("blobs", {})
 	var radii: Dictionary = params.get("blob_radius", {})
-	var kinds := {"forest": TILE_FOREST, "hills": TILE_HILL, "waste": TILE_WASTE, "water": TILE_WATER}
+	var kinds := {"forest": TILE_FOREST, "hills": TILE_HILL, "waste": TILE_WASTE, "water": TILE_WATER, "swamp": TILE_SWAMP}
 	for key in blobs:
 		for i in int(blobs[key]):
 			var r: Array = radii.get(key, [3, 5])
@@ -106,6 +108,8 @@ func in_bounds(p: Vector2i) -> bool:
 
 
 func is_walkable(p: Vector2i) -> bool:
+	if boats_enabled and in_bounds(p) and grid[p.y][p.x] == TILE_WATER:
+		return true   # лодка (M14-I): вода — медленный, но проходимый путь
 	return in_bounds(p) and grid[p.y][p.x] != TILE_WATER
 
 
@@ -135,6 +139,7 @@ func tile_cost(p: Vector2i) -> float:
 		TILE_HILL: return float(biomes["hills"]["cost"])
 		TILE_WASTE: return float(biomes["waste"]["cost"])
 		TILE_ROAD: return float(biomes["road"]["cost"])
+		TILE_SWAMP: return float(biomes.get("swamp", {}).get("cost", 2.5))
 	return 1.0
 
 
@@ -330,6 +335,14 @@ func _setup_astar() -> void:
 				astar.set_point_solid(p, true)
 				continue
 			astar.set_point_weight_scale(p, tile_cost(p))
+
+
+## Лодки (M14-I): вода становится проходимой (медленной) — пересборка путей.
+func set_boats(on: bool) -> void:
+	if boats_enabled == on:
+		return
+	boats_enabled = on
+	_setup_astar()
 
 
 ## Тайлы пути от тайла к тайлу (по воде не пройти). Пустой — пути нет.

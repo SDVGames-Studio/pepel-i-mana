@@ -24,6 +24,9 @@
 			"drop": [ { "id": "meat", "count": [1, 2] }, { "id": "hide", "count": [1, 1] } ] },
 		{ "id": "fish", "loc": "fauna.fish", "biomes": ["water"], "behavior": "fish",
 			"speed": 0.0, "size": 0.6, "color": "#7fd0e0",
-			"drop": [ { "id": "fish_raw", "count": [1, 1] } ] }
+			"drop": [ { "id": "fish_raw", "count": [1, 1] } ] },
+		{ "id": "toad", "loc": "fauna.toad", "biomes": ["swamp"], "behavior": "flee",
+			"speed": 35.0, "size": 0.7, "color": "#7a9a4a",
+			"drop": [ { "id": "meat", "count": [1, 1] } ] }
 	]
 }

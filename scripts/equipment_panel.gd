@@ -161,7 +161,7 @@ func _rebuild() -> void:
 	var any := false
 	for stack in Game.inventory:
 		var item: Dictionary = Game.item_def(String(stack["id"]))
-		if item.is_empty() or not String(item.get("kind", "")) in ["weapon", "armor", "accessory", "scroll", "potion"]:
+		if item.is_empty() or not String(item.get("kind", "")) in ["weapon", "armor", "accessory", "scroll", "potion", "tool", "mount"]:
 			continue
 		_content.add_child(_stack_row(stack))
 		any = true

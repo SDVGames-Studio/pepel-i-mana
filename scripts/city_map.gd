@@ -17,6 +17,7 @@ var wear := {}                  # Vector2i -> float: износ троп (M6) �
 var rock_hp := {}               # Vector2i -> float: запас скалы (M11) — добыча истощает тайл
 var stumps := {}                # Vector2i -> true: пни на месте срубленных деревьев (M11)
 var saplings := {}              # Vector2i -> {t: float}: посаженные деревья, растут (M11)
+var bridges := {}               # Vector2i -> true: мосты через воду (M14-I)
 var anomaly_tile := Vector2i.ZERO   # вход в данж (у аномалии)
 var spawn_tile := Vector2i.ZERO     # старт героя и жителей
 var world_exit_tile := Vector2i.ZERO  # край города — выход на карту мира (M8)
@@ -33,6 +34,7 @@ func generate(seed_value: int, params: Dictionary) -> void:
 	rock_hp = {}
 	stumps = {}
 	saplings = {}
+	bridges = {}
 	for attempt in 20:
 		_generate_once(seed_value + attempt * 1013, params)
 		if _connected():
@@ -180,7 +182,10 @@ func nearest_walkable(tile: Vector2i) -> Vector2i:
 
 
 ## Проходимость ландшафта (без учёта зданий). Руда — как скала: непроходима.
+## Мост (M14-I) делает водный тайл проходимым.
 func is_nature_walkable(p: Vector2i) -> bool:
+	if in_bounds(p) and bridges.has(p):
+		return true
 	return in_bounds(p) and grid[p.y][p.x] != TILE_WATER and grid[p.y][p.x] != TILE_ROCK \
 			and grid[p.y][p.x] != TILE_ORE
 

@@ -14,10 +14,11 @@
 		"forest": {"color": "#3e5a2a", "cost": 1.6},
 		"hills": {"color": "#6e6a63", "cost": 2.0},
 		"waste": {"color": "#7a6a55", "cost": 2.0},
+		"swamp": {"color": "#5a6b4a", "cost": 2.5},
 		"road": {"color": "#6e5f4a", "cost": 0.5}
 	},
-	"blobs": {"forest": 16, "hills": 10, "waste": 9, "water": 9},
-	"blob_radius": {"forest": [3, 6], "hills": [3, 5], "waste": [4, 7], "water": [3, 5]},
+	"blobs": {"forest": 16, "hills": 10, "waste": 9, "water": 9, "swamp": 6},
+	"blob_radius": {"forest": [3, 6], "hills": [3, 5], "waste": [4, 7], "water": [3, 5], "swamp": [3, 5]},
 	"pois": {
 		"ruins": 3,
 		"camps": 4,
@@ -28,7 +29,7 @@
 		"dragon_castles": 1,
 		"vampire_keeps": 1,
 		"lich_towers": 1,
-		"dungeon_biomes": ["ruins", "mutant_forest", "crystal_caves", "ash_wastes", "cursed_hall", "demon_lair"]
+		"dungeon_biomes": ["ruins", "mutant_forest", "crystal_caves", "ash_wastes", "cursed_hall", "demon_lair", "swamp_mire"]
 	},
 	"distances": {
 		"city_dungeon": [3, 5],

@@ -28,6 +28,7 @@ var _flicker_time := 0.0
 var _sprite: Sprite2D = null      # спрайт воина 32×32 (M9)
 var _bob_time := 0.0              # фаза бобинга ходьбы / дыхания в покое
 var projectile_solid_check := Callable()   # сцена передаёт проверку стены (M14-B)
+var city_speed_mult := 1.0        # вязкая земля у воды в городе (M14-I)
 var _sk: Dictionary = {}          # постоянные бонусы дерева навыков (M7)
 var _eq: Dictionary = {}          # бонусы экипировки (M14-B): броня/аксессуар
 var _temp_dmg_left := 0.0         # временное усиление (заклинание «Перегрузка», M7)
@@ -223,7 +224,7 @@ func _physics_process(delta: float) -> void:
 		_regen_mana(delta)
 	var dir := Input.get_vector("move_left", "move_right", "move_up", "move_down")
 	if city_mode:
-		velocity = dir * float(p["speed"])
+		velocity = dir * float(p["speed"]) * city_speed_mult
 		move_and_slide()
 		return
 	if dir != Vector2.ZERO:

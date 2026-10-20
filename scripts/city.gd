@@ -155,10 +155,14 @@ func _rebuild_collision() -> void:
 	for y in map.h:
 		for x in map.w:
 			if map.grid[y][x] == map.TILE_WATER or map.grid[y][x] == map.TILE_ROCK:
-				blocked[Vector2i(x, y)] = true
+				# мост (M14-I) стоит на воде и не блокирует проход
+				if not map.bridges.has(Vector2i(x, y)):
+					blocked[Vector2i(x, y)] = true
 	for b in sim.buildings:
 		if b["done"]:
 			if _bld_effect(b) == "gate" and sim.is_gate_open(b):
+				continue
+			if _bld_effect(b) == "bridge":
 				continue
 			blocked[b["tile"]] = true
 	for tile: Vector2i in blocked:
@@ -222,6 +226,8 @@ func _process(_delta: float) -> void:
 		sim.hero_alive = true
 	# меч героя и ландшафт меняются — перерисовываем точечно
 	hero.queue_redraw()
+	# болотная зона города (M14-I): тайлы у воды вязнут — герой медленнее
+	hero.city_speed_mult = 0.7 if _near_water(hero.position) else 1.0
 	if sim.terrain_dirty:
 		sim.terrain_dirty = false
 		_terrain.queue_redraw()
@@ -257,6 +263,17 @@ func _process(_delta: float) -> void:
 		hud.set_hint(Loc.t("city.temple_hint"))
 	elif build_mode == "":
 		hud.set_hint(_default_hint())
+
+
+## Вода в 2 тайлах — «влажная низина» города (болотная зона, M14-I).
+func _near_water(pos: Vector2) -> bool:
+	var t: Vector2i = map.tile_of_px(pos)
+	for dy in range(-2, 3):
+		for dx in range(-2, 3):
+			var n := t + Vector2i(dx, dy)
+			if map.in_bounds(n) and map.grid[n.y][n.x] == map.TILE_WATER:
+				return true
+	return false
 
 
 ## Оружейка рядом с героем (M5.1): за металл герой надевает боевой комплект.
@@ -485,6 +502,8 @@ func _process_events() -> void:
 				hud.toast(Loc.t("city.service"))
 			"pray":
 				hud.toast(Loc.t("god.prayed"))
+			"bridge":
+				hud.toast(Loc.t("city.bridge_done"))
 	sim.events.clear()
 
 

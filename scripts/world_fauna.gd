@@ -29,7 +29,7 @@ func species_def(kind: String) -> Dictionary:
 	return {}
 
 
-## Биом тайла в терминах фауны: равнина/лес/холмы/пустошь/вода/дорога.
+## Биом тайла в терминах фауны: равнина/лес/холмы/пустошь/вода/дорога/болото.
 func biome_of(tile: Vector2i) -> String:
 	if map == null or not map.in_bounds(tile):
 		return ""
@@ -40,6 +40,7 @@ func biome_of(tile: Vector2i) -> String:
 		map.TILE_HILL: return "hills"
 		map.TILE_WASTE: return "waste"
 		map.TILE_ROAD: return "road"
+		map.TILE_SWAMP: return "swamp"
 	return ""
 
 

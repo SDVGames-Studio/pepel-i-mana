@@ -70,6 +70,11 @@ func _ready() -> void:
 
 
 func _process(delta: float) -> void:
+	# M14-I: лодки сокращают путь (вода проходима, когда лодка в рюкзаке),
+	# маунт ускоряет шаг; болото замедляет.
+	var has_boat := Game.count_item("boat") > 0
+	if map.boats_enabled != has_boat:
+		map.set_boats(has_boat)
 	_update_travel(delta)
 	if fauna != null:
 		fauna.update(delta, hero_px)
@@ -229,7 +234,13 @@ func _update_travel(delta: float) -> void:
 	if travel.is_empty():
 		return
 	var path: Array = travel["path"]
-	var step: float = float(cfg["hero_speed"]) * delta
+	var speed_mult := 1.0
+	if String(Game.equipment.get("mount", "")) == "horse":
+		speed_mult *= 1.5   # маунт (M14-I) сокращает дни пути
+	var here: Vector2i = map.tile_of_px(hero_px)
+	if map.in_bounds(here) and int(map.grid[here.y][here.x]) == map.TILE_SWAMP:
+		speed_mult *= 0.6   # болото (M14-I) вязнет
+	var step: float = float(cfg["hero_speed"]) * speed_mult * delta
 	while step > 0.0 and path.size() > 1:
 		var next: Vector2 = map.tile_center_px(path[1])
 		var to_next: Vector2 = next - hero_px

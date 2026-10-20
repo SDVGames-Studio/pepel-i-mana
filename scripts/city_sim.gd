@@ -880,14 +880,22 @@ func is_buildable_tile(tile: Vector2i, type_id := "") -> bool:
 		# шахту ставим прямо на рудную жилу (заказчик: место под шахту)
 		if type_id == "mine" and map.grid[tile.y][tile.x] == map.TILE_ORE:
 			pass
+		# мост (M14-I) ставится прямо на воду
+		elif type_id == "bridge" and map.grid[tile.y][tile.x] == map.TILE_WATER:
+			pass
 		else:
 			return false
+	if type_id == "bridge" and map.grid[tile.y][tile.x] != map.TILE_WATER:
+		return false   # мост — только на воде
 	return building_at(tile).is_empty()
 
 
 ## Заложить стройплощадку: ресурсы списываются сразу (ответ №16 — достраивают рабочие).
 ## Особые здания требуют места: шахта — руда, пирс — вода рядом, оружейная — кузня рядом.
 func place_building(type_id: String, tile: Vector2i) -> bool:
+	# мост (M14-I): единственная постройка НА воде, соединяет берега
+	if String(type_id) == "bridge":
+		return _place_bridge(tile)
 	var def := _def({"type": type_id})
 	if def.is_empty() or not is_buildable_tile(tile, type_id) or not can_afford(def["cost"]):
 		return false
@@ -908,6 +916,19 @@ func place_building(type_id: String, tile: Vector2i) -> bool:
 	_drop_zone_cell(tile)
 	events.append({"type": "site", "bld": type_id})
 	_assign_jobs()
+	return true
+
+
+## Мост (M14-I): дерево 4 — строится только на воде, делает тайл проходимым.
+func _place_bridge(tile: Vector2i) -> bool:
+	if not map.in_bounds(tile) or map.grid[tile.y][tile.x] != map.TILE_WATER \
+			or map.bridges.has(tile) or not can_afford(_def({"type": "bridge"})["cost"]):
+		return false
+	for key in _def({"type": "bridge"})["cost"]:
+		res[key] = float(res[key]) - float(_def({"type": "bridge"})["cost"][key])
+	map.bridges[tile] = true
+	_chron("chron.bridge")
+	events.append({"type": "bridge"})
 	return true
 
 

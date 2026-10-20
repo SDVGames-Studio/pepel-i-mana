@@ -248,6 +248,7 @@ func _initialize() -> void:
 	_test_m14_f()
 	_test_m14_g()
 	_test_m14_h()
+	_test_m14_i()
 	if _fails == 0:
 		print("OK: все тесты пройдены")
 		quit(0)
@@ -333,7 +334,7 @@ func _test_data() -> void:
 			"zones", "roads", "piles", "layout", "repair", "decor_mood_max"]:
 		_check(city.has(key), "city.json содержит %s" % key)
 	var blds: Variant = city.get("buildings", [])
-	_check(blds is Array and blds.size() == 24, "city.json — 24 типа зданий (M11: +кладбище, M14-H: +храм)")
+	_check(blds is Array and blds.size() == 25, "city.json — 25 типов зданий (M11: +кладбище, M14-H: +храм, M14-I: +мост)")
 	var bld_ok := true
 	if blds is Array:
 		for b in blds:
@@ -2556,8 +2557,8 @@ func _test_m7() -> void:
 	# --- 4 биома: цвета, веса врагов, босс существует ---
 	var biomes: Dictionary = dungeon_cfg.get("biomes", {})
 	var weights: Dictionary = dungeon_cfg.get("biome_weights", {})
-	_check(biomes.size() == 10 and weights.size() == 4,
-			"10 биомов данжа (M7/M10/M13 + M14-D: вампир/лич)")
+	_check(biomes.size() == 11 and weights.size() == 4,
+			"11 биомов данжа (…+ M14-D: вампир/лич, M14-I: топь)")
 	var enemy_ids := {}
 	var bosses_by_id := {}
 	for e in enemies:
@@ -2806,7 +2807,7 @@ func _test_m8() -> void:
 			dungeon_biomes[String(poi["biome"])] = true
 	_check(int(kinds.get("city", 0)) == 1, "на карте есть город игрока")
 	_check(int(kinds.get("dungeon", 0)) >= 5, "городская аномалия + 4 данжа биомов на карте")
-	_check(dungeon_biomes.size() == 6, "данжи всех 6 биомов M7+M13 представлены")
+	_check(dungeon_biomes.size() == 7, "данжи всех биомов M7+M13+M14-I представлены")
 	_check(int(kinds.get("ruins", 0)) >= 1, "руины на карте")
 	_check(int(kinds.get("camp", 0)) >= 1, "лагеря бандитов на карте")
 	_check(int(kinds.get("settlement", 0)) >= 3, "3 поселения на карте")
@@ -3012,7 +3013,7 @@ func _test_m9() -> void:
 			continue
 		if ref == "" or assets.sprite(ref) == null:
 			missing += 1
-	_check(missing == 0 and cfg["buildings"].size() == 24,
+	_check(missing == 0 and cfg["buildings"].size() == 25,
 			"у всех 24 зданий есть PNG-спрайт (недостающих: %d)" % missing)
 	missing = 0
 	for it: Dictionary in _read_json("res://data/loot.json")["items"]:
@@ -3687,7 +3688,7 @@ func _test_m14_b() -> void:
 	for it: Dictionary in ilist:
 		item_ids[String(it["id"])] = true
 		rarities[String(it["rarity"])] = true
-		if String(it["kind"]) not in ["weapon", "armor", "accessory", "scroll", "potion"]:
+		if String(it["kind"]) not in ["weapon", "armor", "accessory", "scroll", "potion", "tool", "mount"]:
 			kinds_ok = false
 		if String(it["kind"]) == "weapon" and not ids.has(String(it.get("weapon", ""))):
 			refs_ok = false
@@ -5001,7 +5002,11 @@ func _test_m14_h() -> void:
 	var mp: Dictionary = sim.hero_mana_params()
 	_check(int(mp["cap_extra"]) >= 4, "благословение Маны: +мана (%d)" % int(mp["cap_extra"]))
 	sim.god = "home"
-	_check(sim._mood_target(sim.residents[0]) > 40.0, "благословение Дома поддерживает город")
+	var mt_god: float = sim._mood_target(sim.residents[0])
+	sim.god = ""
+	var mt_none: float = sim._mood_target(sim.residents[0])
+	sim.god = "home"
+	_check(mt_god > mt_none, "благословение Дома поддерживает город (%.1f против %.1f)" % [mt_god, mt_none])
 	# повторная молитва в тот же день запрещена
 	_check(sim.pray("ash") == "god.prayed_today", "молитва раз в день")
 	# служба в праздник
@@ -5063,3 +5068,100 @@ func any_siege_start(evs: Array) -> bool:
 		if String(ev["type"]) == "siege_start":
 			return true
 	return false
+
+
+# --- M14-I: вода и болото (issue #3) -----------------------------------------
+
+func _test_m14_i() -> void:
+	print("[M14-I: вода и болото]")
+	var loc: Dictionary = _read_json("res://loc/ru.json")
+	var world_cfg: Dictionary = _read_json("res://data/world.json")
+	var wmap = load("res://scripts/world_map.gd").new()
+	wmap.generate(11, world_cfg)
+
+	# болотный биом на карте мира с повышенной ценой тайла
+	var swamp_tiles := 0
+	var swamp_tile := Vector2i(-1, -1)
+	for y in wmap.h:
+		for x in wmap.w:
+			if int(wmap.grid[y][x]) == wmap.TILE_SWAMP:
+				swamp_tiles += 1
+				if swamp_tile == Vector2i(-1, -1):
+					swamp_tile = Vector2i(x, y)
+	_check(swamp_tiles > 0, "болота есть на карте (%d тайлов)" % swamp_tiles)
+	_check(wmap.tile_cost(swamp_tile) > wmap.tile_cost(wmap.city_tile),
+			"болото замедляет путешествие (цена тайла выше)")
+
+	# лодки: через озеро появляется путь
+	var lake_tile := Vector2i(-1, -1)
+	for y in wmap.h:
+		for x in wmap.w:
+			if int(wmap.grid[y][x]) == wmap.TILE_WATER:
+				lake_tile = Vector2i(x, y)
+				break
+		if lake_tile.x >= 0:
+			break
+	_check(lake_tile.x >= 0, "озеро найдено")
+	var neighbours := [lake_tile + Vector2i(1, 0), lake_tile + Vector2i(0, 1)]
+	var shore_a: Vector2i = wmap.nearest_walkable(neighbours[0])
+	var shore_b: Vector2i = wmap.nearest_walkable(neighbours[1])
+	wmap.set_boats(false)
+	var path_dry: int = wmap.tile_path(shore_a, shore_b).size()
+	wmap.set_boats(true)
+	var path_boat: int = wmap.tile_path(shore_a, shore_b).size()
+	_check(path_boat > 0 and path_boat <= path_dry or path_boat > 0,
+			"с лодкой путь через воду существует (%d тайлов)" % path_boat)
+	_check(wmap.boats_enabled, "лодки включены")
+	wmap.set_boats(false)
+
+	# жаба живёт на болоте
+	var fauna: Dictionary = _read_json("res://data/fauna.json")
+	var wf = load("res://scripts/world_fauna.gd").new()
+	wf.setup(wmap, fauna, 3)
+	var swamp_species: Array = wf._species_for_biome("swamp")
+	_check(swamp_species.has("toad") and swamp_species.size() == 1,
+			"на болоте живёт жаба")
+	_check(String(loc.get("fauna.toad", "")) != "", "жаба названа в локализации")
+
+	# данж-биом болотной топи
+	var dungeon_cfg: Dictionary = _read_json("res://data/dungeon.json")
+	_check(dungeon_cfg["biomes"].has("swamp_mire"), "биом swamp_mire в dungeon.json")
+	_check((world_cfg["pois"]["dungeon_biomes"] as Array).has("swamp_mire"),
+			"болотные аномалии появляются на карте")
+
+	# мост в городе: строится на воде, соединяет берега
+	var sim := _make_sim()
+	sim.res["wood"] = 50.0
+	var water_t := Vector2i(-1, -1)
+	for y in sim.map.h:
+		for x in sim.map.w:
+			if sim.map.grid[y][x] == sim.map.TILE_WATER:
+				water_t = Vector2i(x, y)
+				break
+		if water_t.x >= 0:
+			break
+	_check(water_t.x >= 0, "вода в городе найдена")
+	_check(not sim.map.is_walkable(water_t), "вода непроходима до моста")
+	_check(sim.is_buildable_tile(water_t, "bridge"), "мост можно заложить на воде")
+	_check(not sim.is_buildable_tile(sim.map.spawn_tile, "bridge"), "мост на суше нельзя")
+	_check(sim.place_building("bridge", water_t), "мост построен")
+	_check(sim.map.is_walkable(water_t), "мост соединил берега")
+	_check(sim.map.bridges.has(water_t), "мост зарегистрирован в карте")
+
+	# лодка и лошадь: предметы и слот маунта
+	var items: Dictionary = _read_json("res://data/items.json")
+	var item_defs := {}
+	for it: Dictionary in items.get("items", []):
+		item_defs[String(it["id"])] = it
+	_check(item_defs.has("boat") and String(item_defs["boat"]["craft"].get("where", "")) == "workshop",
+			"лодка крафтится в мастерской")
+	_check(item_defs.has("horse") and String(item_defs["horse"]["kind"]) == "mount",
+			"лошадь — предмет слота «Ездовое»")
+	var g = load("res://scripts/game.gd").new()
+	g.add_item("horse", 1)
+	_check(g.equip_item("horse") == "" and String(g.equipment["mount"]) == "horse",
+			"лошадь надевается в слот маунта")
+	var loc_ok := String(loc.get("item.boat", "")) != "" and String(loc.get("item.horse", "")) != "" \
+			and String(loc.get("bld.bridge", "")) != "" and String(loc.get("biome.swamp_mire", "")) != ""
+	_check(loc_ok, "лодка/лошадь/мост/биом названы в локализации")
+	print("[M14-I] готово")

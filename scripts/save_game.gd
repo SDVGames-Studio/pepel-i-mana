@@ -148,6 +148,7 @@ static func _city_block(sim) -> Dictionary:
 			"rock_hp": _tile_vals(m.rock_hp),
 			"stumps": _tile_keys(m.stumps),
 			"saplings": _tile_vals(m.saplings),
+			"bridges": _tile_keys(m.bridges),
 		},
 		"residents": _residents_save(sim),
 		"sim": _city_sim_block(sim),
@@ -505,6 +506,9 @@ static func _apply_city_map(map, md: Variant, cfg: Dictionary) -> String:
 	map.stumps = {}
 	for e in md.get("stumps", []):
 		map.stumps[Vector2i(int(e[0]), int(e[1]))] = true
+	map.bridges = {}
+	for e in md.get("bridges", []):
+		map.bridges[Vector2i(int(e[0]), int(e[1]))] = true
 	map.saplings = {}
 	for e in md.get("saplings", []):
 		map.saplings[Vector2i(int(e[0]), int(e[1]))] = {"t": float(e[2].get("t", 0.0))}

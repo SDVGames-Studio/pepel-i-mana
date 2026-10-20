@@ -107,6 +107,12 @@ func _tile_color(p: Vector2i) -> Color:
 		map.TILE_HILL: return Color(String(biomes["hills"]["color"]))
 		map.TILE_WASTE: return Color(String(biomes["waste"]["color"]))
 		map.TILE_ROAD: return Color(String(biomes["road"]["color"]))
+		map.TILE_SWAMP:
+			# болото (M14-I): тина с кочками-камышами
+			var base := Color(String(biomes.get("swamp", {}).get("color", "#5a6b4a")))
+			if (p.x + p.y) % 3 == 0:
+				return base.lightened(0.08)
+			return base
 	return Color.SILVER
 
 
