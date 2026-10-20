@@ -420,18 +420,33 @@ func trade_rune(inventory: Array, coins: int, rune_id: String) -> Dictionary:
 
 ## Награда монетами за зачистку лагеря/руин (диапазоны из конфига).
 ## Добытчики гнезда (M12) накопили добычу — лагерь жирнее.
+## M14-C (T17): награды растут с уровнем точки — гнездо уровня L даёт
+## монеты × (1 + coin_mult_per_nest_level × L) из balance.json -> rewards.
 func coin_reward(poi: Dictionary) -> int:
 	var tcfg: Dictionary = cfg.get("trade", {})
+	var rewards := _balance_rewards()
 	match String(poi["kind"]):
 		"camp", "settlement":
 			var loot := int(float(poi.get("plunder", 0.0)) * float(cfg.get("nests", {}).get("coin_per_plunder", 1.0)))
-			return _rng.randi_range(int(tcfg.get("camp_coins_min", 8)), int(tcfg.get("camp_coins_max", 16))) + loot
+			var base := _rng.randi_range(int(tcfg.get("camp_coins_min", 8)), int(tcfg.get("camp_coins_max", 16))) + loot
+			var level := float(int(poi.get("nest_level", 0)))
+			if String(poi["kind"]) == "settlement":
+				level = 0.0   # у поселений своего уровня роста нет
+			return int(round(float(base) * (1.0 + float(rewards.get("coin_mult_per_nest_level", 0.25)) * level)))
 		"ruins":
 			return _rng.randi_range(int(tcfg.get("ruins_coins_min", 3)), int(tcfg.get("ruins_coins_max", 8)))
 		"dragon_castle":
 			# сокровищница дракона (M13)
 			return _rng.randi_range(int(tcfg.get("dragon_coins_min", 30)), int(tcfg.get("dragon_coins_max", 60)))
 	return 0
+
+
+## Секция rewards из balance.json (читается один раз за вызов — вызовов мало).
+func _balance_rewards() -> Dictionary:
+	var parsed: Variant = _read_json_file("res://data/balance.json")
+	if parsed is Dictionary:
+		return parsed.get("rewards", {})
+	return {}
 
 
 ## Масштаб локации (M12): строители укрепляют гнездо — враги в лагере сильнее.

@@ -23,6 +23,9 @@ var hero_px := Vector2.ZERO
 var selected: Dictionary = {}   # выбранный POI (панель справа)
 var travel := {}                # {path, days, px_done, px_total, day_mark}
 var _near_poi: Dictionary = {}  # POI у ног героя (действие E)
+var fauna = null                # мирная фауна и хищники (M14-C, T01)
+const FAUNA_CFG_PATH := "res://data/fauna.json"
+const FAUNA_SCRIPT := "res://scripts/world_fauna.gd"
 
 
 func _ready() -> void:
@@ -35,6 +38,9 @@ func _ready() -> void:
 	Game.in_dungeon = false    # вышли из данжа на карту — автосейв снова работает
 	if Game.city_sim != null:
 		Game.city_sim.paused = false   # город живёт, пока герой на большой карте
+	# мирная фауна (M14-C/T01): олени, кабаны, птицы, волки, рыба
+	fauna = load(FAUNA_SCRIPT).new()
+	fauna.setup(map, _read_json(FAUNA_CFG_PATH), randi())
 	# вернулись из локации — герой там, где вошёл; иначе у города
 	if Game.world_hero_tile.x >= 0 and map.in_bounds(Game.world_hero_tile):
 		hero_tile = Game.world_hero_tile
@@ -42,7 +48,7 @@ func _ready() -> void:
 		hero_tile = map.city_tile
 	Game.world_hero_tile = Vector2i(-1, -1)
 	hero_px = map.tile_center_px(hero_tile)
-	map.reveal_around(hero_tile, int(cfg.get("reveal_radius", 5)))
+	_reveal(hero_tile)
 
 	camera = Camera2D.new()
 	camera.limit_left = 0
@@ -65,6 +71,8 @@ func _ready() -> void:
 
 func _process(delta: float) -> void:
 	_update_travel(delta)
+	if fauna != null:
+		fauna.update(delta, hero_px)
 	camera.position = hero_px
 	view.hero_px = hero_px
 	view.hero_tile = hero_tile
@@ -73,8 +81,26 @@ func _process(delta: float) -> void:
 	_update_near_poi()
 
 
+## Открытие тайла (M14-C/T13): на исследованном земле радиус полный,
+## в тумане — уменьшенный ((cfg -> fog_reveal_radius)). Заодно подкидывает
+## фауну возле открытых тайлов.
+func _reveal(tile: Vector2i) -> void:
+	var full := int(cfg.get("reveal_radius", 5))
+	var radius := full if map.is_explored(tile) else int(cfg.get("fog_reveal_radius", 2))
+	map.reveal_around(tile, radius)
+	if fauna != null:
+		fauna.try_spawn_near(tile)
+
+
 ## Идём ли мы и на что наступили — рядом с каким POI герой стоит.
 func _update_near_poi() -> void:
+	# зверь рядом — подсказка охоты/рыбалки важнее POI (M14-C/T01)
+	if fauna != null:
+		var prey: Dictionary = fauna.interact_check(hero_px)
+		if not prey.is_empty():
+			hud.set_hint(Loc.t("world.hint_fish" if String(prey["behavior"]) == "fish" else "world.hint_hunt")
+					% Loc.t("fauna." + String(prey["kind"])))
+			return
 	_near_poi = map.poi_at(hero_tile)
 	if _near_poi.is_empty():
 		# соседний тайл тоже считается (POI занимают один тайл)
@@ -102,7 +128,7 @@ func _update_travel(delta: float) -> void:
 			step -= dist
 			path.remove_at(1)
 			hero_tile = path[0]
-			map.reveal_around(hero_tile, int(cfg.get("reveal_radius", 5)))
+			_reveal(hero_tile)
 			_scout_tracks()
 		else:
 			hero_px += to_next / dist * step
@@ -125,6 +151,24 @@ func _advance_world_day() -> void:
 	_flush_chronicle()
 	if Game.city_sim != null:
 		Game.city_sim.advance_days(1)
+
+
+## Охота/рыбалка (M14-C/T01): E у зверя — добыча через стандартный лут.
+func _try_hunt() -> bool:
+	if fauna == null:
+		return false
+	var result: Dictionary = fauna.interact(hero_px)
+	if result.is_empty():
+		return false
+	var kind := String(result["kind"])
+	var parts := PackedStringArray()
+	for drop: Dictionary in result["drops"]:
+		Game.add_item(String(drop["id"]), int(drop["count"]))
+		parts.append("%s ×%d" % [Loc.t("item." + String(drop["id"])), int(drop["count"])])
+	hud.toast(Loc.t("world.hunt_got") % [Loc.t("fauna." + kind), ", ".join(parts)])
+	if Game.city_sim != null:
+		Game.city_sim.chronicle_add("chron.hunt", Loc.t("fauna." + kind))
+	return true
 
 
 ## Следы (M12): на каждом шаге герой затирает след под ногами и высматривает
@@ -164,7 +208,7 @@ func _finish_travel() -> void:
 		_advance_world_day()
 	travel = {}
 	hero_tile = map.tile_of_px(hero_px)
-	map.reveal_around(hero_tile, int(cfg.get("reveal_radius", 5)))
+	_reveal(hero_tile)
 	var poi: Dictionary = map.poi_at(hero_tile)
 	if poi.is_empty():
 		return
@@ -181,6 +225,9 @@ func _finish_travel() -> void:
 
 func _unhandled_input(event: InputEvent) -> void:
 	if event.is_action_pressed("interact"):
+		# фауна ближе POI: охота/рыбалка (M14-C/T01)
+		if _try_hunt():
+			return
 		if not _near_poi.is_empty():
 			_use_poi(_near_poi)
 		return
@@ -226,12 +273,11 @@ func _click_map(tile: Vector2i) -> void:
 		return
 	if not map.in_bounds(tile):
 		return
-	if not map.is_explored(tile):
-		hud.toast(Loc.t("world.fog"))
-		return
 	if not map.is_walkable(tile):
 		hud.toast(Loc.t("world.impassable"))
 		return
+	# туман (M14-C/T13): маршрут прокладывается и в неисследованное — так
+	# карта и открывается; радиус открытия в тумане меньше (см. _reveal)
 	start_travel_to(tile)
 
 

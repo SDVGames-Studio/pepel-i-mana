@@ -1,0 +1,29 @@
+{
+	"_note": "Мирная фауна и хищники карты мира (M14-C, issue #3 T01). behavior: flee — убегает от героя (охота по E), hunt — хищник охотится на мирных (героя не трогает: бой только в данжах), fish — водная, добывается по E у воды. drop — выпадает через стандартный лут (loot.json) при охоте. Спавн — вокруг героя на открытых тайлах, по биому тайла.",
+	"spawn": {
+		"max_active": 12,
+		"chance_per_reveal": 0.1,
+		"min_dist": 2,
+		"max_dist": 6,
+		"despawn_dist": 24.0
+	},
+	"flee_radius_px": 70.0,
+	"interact_dist_px": 44.0,
+	"species": [
+		{ "id": "deer", "loc": "fauna.deer", "biomes": ["plains", "forest"], "behavior": "flee",
+			"speed": 60.0, "size": 1.0, "color": "#b08a5a",
+			"drop": [ { "id": "meat", "count": [1, 2] }, { "id": "hide", "count": [1, 1] } ] },
+		{ "id": "boar", "loc": "fauna.boar", "biomes": ["forest"], "behavior": "flee",
+			"speed": 45.0, "size": 0.9, "color": "#6b5a45",
+			"drop": [ { "id": "meat", "count": [2, 3] }, { "id": "hide", "count": [1, 1] } ] },
+		{ "id": "bird", "loc": "fauna.bird", "biomes": ["forest", "plains", "hills", "waste"],
+			"behavior": "flee", "speed": 90.0, "size": 0.55, "color": "#d8d8d8",
+			"drop": [ { "id": "feather", "count": [1, 2] } ] },
+		{ "id": "wolf", "loc": "fauna.wolf", "biomes": ["forest", "hills", "waste"], "behavior": "hunt",
+			"speed": 75.0, "size": 0.85, "color": "#8a8a92",
+			"drop": [ { "id": "meat", "count": [1, 2] }, { "id": "hide", "count": [1, 1] } ] },
+		{ "id": "fish", "loc": "fauna.fish", "biomes": ["water"], "behavior": "fish",
+			"speed": 0.0, "size": 0.6, "color": "#7fd0e0",
+			"drop": [ { "id": "fish_raw", "count": [1, 1] } ] }
+	]
+}

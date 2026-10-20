@@ -76,6 +76,11 @@ func _draw() -> void:
 			if not map.is_explored(t):
 				continue
 			_draw_track(t, Vector2i(sim.tracks[t]["dir"]), ts)
+	# фауна (M14-C/T01): звери видны рядом с героем
+	var fauna = get_parent().get("fauna") if get_parent() != null else null
+	if fauna != null and fauna.fauna != null:
+		for a in fauna.fauna:
+			_draw_animal(a, fauna.species_def(String(a["kind"])))
 	# маршрут в пути
 	_draw_route(ts)
 	# герой (M9): спрайт воина с лёгким бобингом и тенью
@@ -188,3 +193,26 @@ func _draw_route(ts: float) -> void:
 	for i in points.size():
 		draw_circle(points[i], 3.0, Color(1, 1, 1, 0.5) if i % 2 == 0 else Color(1, 1, 1, 0.25))
 	draw_circle(points[points.size() - 1], 6.0, Color(1, 1, 1, 0.7))
+
+
+## Зверь на карте мира (M14-C/T01): тело + голова, у рыбы — плеск-кружки.
+func _draw_animal(a: Dictionary, def: Dictionary) -> void:
+	if def.is_empty():
+		return
+	var pos: Vector2 = a["px"]
+	var col := Color(String(def.get("color", "#cccccc")))
+	var size := float(def.get("size", 1.0))
+	var bob := absf(sin(_time * 3.0 + float(a["id"]))) * 1.5
+	draw_circle(pos + Vector2(0, 4.0 * size), 5.0 * size, Color(0, 0, 0, 0.25))
+	if String(def.get("behavior", "")) == "fish":
+		# рыба: круги на воде
+		var ripple := fmod(_time * 1.5 + float(a["id"]) * 0.7, 1.0)
+		draw_arc(pos, 3.0 + ripple * 7.0, 0.0, TAU, 20, Color(col.r, col.g, col.b, 0.5 - ripple * 0.45), 1.5)
+		draw_circle(pos, 2.5 * size, col)
+		return
+	# тело и голова, направление — к цели/от героя
+	draw_circle(pos, 5.0 * size, col)
+	draw_circle(pos + Vector2(4.0 * size, -2.0 * size - bob * 0.3), 2.8 * size, col.lightened(0.15))
+	# хищника помечаем тёмной спинкой, мирных — светлым брюшком
+	if String(def.get("behavior", "")) == "hunt":
+		draw_circle(pos, 2.2 * size, col.darkened(0.35))

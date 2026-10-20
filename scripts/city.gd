@@ -33,6 +33,7 @@ var _terrain: Node2D = null     # статический слой ландшаф
 var _near_anomaly := false
 var _near_armory: Dictionary = {}   # оружейка рядом с героем (E — комплект героя)
 var _equip_panel = null         # панель экипировки и крафта (M14-B, клавиша I)
+var _ambience = null            # светлячки и огоньки (M14-C, T21/T23)
 
 
 func _ready() -> void:
@@ -63,6 +64,10 @@ func _ready() -> void:
 	_modulate = CanvasModulate.new()
 	_modulate.color = Color.WHITE
 	add_child(_modulate)
+	# светлячки и болотные огоньки (M14-C/T21/T23): VFX ночи без просадки FPS
+	_ambience = load("res://scripts/city_ambience.gd").new()
+	_ambience.setup(map)
+	add_child(_ambience)
 	hud = load(HUD_SCRIPT).new()
 	hud.init(sim, self, cfg)
 	add_child(hud)
@@ -491,6 +496,8 @@ func _update_daylight() -> void:
 		amount = 1.0 - t / fade
 	var night_color := Color(0.45, 0.5, 0.72)
 	_modulate.color = Color.WHITE.lerp(night_color, amount)
+	if _ambience != null:
+		_ambience.night = amount   # светлячки и огоньки разгораются к ночи
 	# магическое загрязнение подкрашивает воздух (больше — фиолетовее)
 	var pol_cfg: Dictionary = cfg.get("pollution", {})
 	var pol_t := clampf(sim.pollution / maxf(1.0, float(pol_cfg.get("max", 100.0))), 0.0, 1.0)

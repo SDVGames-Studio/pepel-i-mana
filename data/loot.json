@@ -29,7 +29,11 @@
 		{ "id": "rune_core", "sprite": "k:129", "loc": "item.rune_core", "rarity": "rare", "value": 14 },
 		{ "id": "echo_crystal", "sprite": "k:116", "loc": "item.echo_crystal", "rarity": "rare", "value": 15 },
 		{ "id": "heart_of_ruins", "sprite": "k:92", "loc": "item.heart_of_ruins", "rarity": "legendary", "value": 40 },
-		{ "id": "boss_trophy", "sprite": "k:106", "loc": "item.boss_trophy", "rarity": "legendary", "value": 60 }
+		{ "id": "boss_trophy", "sprite": "k:106", "loc": "item.boss_trophy", "rarity": "legendary", "value": 60 },
+		{ "id": "meat", "sprite": "k:106", "loc": "item.meat", "rarity": "common", "value": 3 },
+		{ "id": "hide", "sprite": "k:102", "loc": "item.hide", "rarity": "common", "value": 4 },
+		{ "id": "feather", "sprite": "k:130", "loc": "item.feather", "rarity": "common", "value": 2 },
+		{ "id": "fish_raw", "sprite": "k:116", "loc": "item.fish_raw", "rarity": "common", "value": 3 }
 	],
 	"boss_guaranteed": ["boss_trophy", "echo_crystal"],
 	"chest_items_min": 1,

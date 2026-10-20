@@ -6,6 +6,7 @@
 	"day_seconds": 1.4,
 	"tiles_per_day": 22.0,
 	"reveal_radius": 5,
+	"fog_reveal_radius": 2,
 	"city_reveal_radius": 9,
 	"biomes": {
 		"plains": {"color": "#5d7a3a", "cost": 1.0},

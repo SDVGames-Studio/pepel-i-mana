@@ -55,6 +55,9 @@
 		"cooldown": 4.0,
 		"damage_mult": 1.0
 	},
+	"rewards": {
+		"coin_mult_per_nest_level": 0.25
+	},
 	"equipment": {
 		"chest_chance": 0.3,
 		"bonus_per_tier": 0.06,

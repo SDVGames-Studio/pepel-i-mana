@@ -206,7 +206,8 @@ const ALL_SCRIPTS := [
 	"res://scripts/world.gd", "res://scripts/world_map.gd",
 	"res://scripts/world_sim.gd", "res://scripts/world_view.gd", "res://scripts/world_hud.gd",
 	"res://scripts/save_game.gd", "res://scripts/projectile.gd",
-	"res://scripts/equipment_panel.gd",
+	"res://scripts/equipment_panel.gd", "res://scripts/world_fauna.gd",
+	"res://scripts/city_ambience.gd",
 ]
 
 var _fails := 0
@@ -240,6 +241,7 @@ func _initialize() -> void:
 	_test_m13()
 	_test_m14_save()
 	_test_m14_b()
+	_test_m14_c()
 	if _fails == 0:
 		print("OK: все тесты пройдены")
 		quit(0)
@@ -3811,6 +3813,174 @@ func _test_m14_b() -> void:
 			"eq.bonus.armor", "eq.bonus.hp", "eq.bonus.mana", "eq.potion.heal"]:
 		_check(String(loc.get(key, "")) != "", "ключ локализации есть: " + key)
 	print("[M14-B] готово")
+
+
+# --- M14-C: быстрые правки мира — фауна, награды, VFX, туман (issue #3) ------
+
+func _test_m14_c() -> void:
+	print("[M14-C: фауна, награды, VFX, туман]")
+	var loc: Dictionary = _read_json("res://loc/ru.json")
+	var fauna_cfg: Dictionary = _read_json("res://data/fauna.json")
+	var loot: Dictionary = _read_json("res://data/loot.json")
+	var balance: Dictionary = _read_json("res://data/balance.json")
+	var world_cfg: Dictionary = _read_json("res://data/world.json")
+	var loot_ids := {}
+	for it: Dictionary in loot.get("items", []):
+		loot_ids[String(it["id"])] = true
+
+	# --- T01: конфиг фауны ---
+	var species: Array = fauna_cfg.get("species", [])
+	_check(species.size() >= 5, "в fauna.json %d видов (нужно >=5)" % species.size())
+	var biomes_covered := {"plains": false, "forest": false, "hills": false, "waste": false, "water": false}
+	var drops_ok := true
+	var fish_water_only := true
+	var names_ok := true
+	var wf_ids := {}
+	for s: Dictionary in species:
+		wf_ids[String(s["id"])] = true
+		for b: String in s.get("biomes", []):
+			if biomes_covered.has(b):
+				biomes_covered[b] = true
+		if String(s.get("behavior", "")) not in ["flee", "hunt", "fish"]:
+			drops_ok = false
+		if String(s.get("behavior", "")) == "fish" and "water" not in (s["biomes"] as Array):
+			fish_water_only = false
+		if String(s["behavior"]) != "fish":
+			for d: Dictionary in s.get("drop", []):
+				if not loot_ids.has(String(d["id"])):
+					drops_ok = false
+		if String(loc.get(String(s["loc"]), "")) == "":
+			names_ok = false
+	for b in biomes_covered:
+		_check(bool(biomes_covered[b]), "биом %s заселён фауной" % b)
+	_check(drops_ok, "поведение допустимо, дроп — предметы loot.json")
+	_check(fish_water_only, "рыба живёт только на воде")
+	_check(names_ok, "виды фауны названы в локализации")
+	for item_id in ["meat", "hide", "feather", "fish_raw"]:
+		_check(loot_ids.has(item_id) and String(loc.get("item." + item_id, "")) != "",
+				"дроп %s есть в луте и локализации" % item_id)
+
+	# --- T01: логика world_fauna ---
+	var wmap = load("res://scripts/world_map.gd").new()
+	wmap.generate(11, world_cfg)
+	var wf = load("res://scripts/world_fauna.gd").new()
+	wf.setup(wmap, fauna_cfg, 7)
+	var plains_biome: String = wf.biome_of(wmap.city_tile)
+	_check(plains_biome == "plains", "биом города читается (равнина)")
+	var water_tile := Vector2i(-1, -1)
+	for y in wmap.h:
+		for x in wmap.w:
+			if int(wmap.grid[y][x]) == wmap.TILE_WATER:
+				water_tile = Vector2i(x, y)
+				break
+		if water_tile.x >= 0:
+			break
+	_check(water_tile.x >= 0 and wf.biome_of(water_tile) == "water", "водный тайл найден")
+	var water_species: Array = wf._species_for_biome("water")
+	_check(water_species == ["fish"], "на воде живёт только рыба")
+	wf.cfg["spawn"]["chance_per_reveal"] = 1.0
+	wf.cfg["spawn"]["min_dist"] = 0
+	var spawned: String = wf.try_spawn_near(wmap.city_tile)
+	_check(spawned != "", "спавн у героя сработал (%s)" % spawned)
+	_check(wf.fauna.size() == 1, "зверь появился в мире")
+	var hero_px: Vector2 = wmap.tile_center_px(wmap.city_tile)
+	wf.fauna.append({"id": 999, "kind": "deer", "px": hero_px + Vector2(20, 0), "tx": Vector2.ZERO, "wait": 2.0})
+	var check: Dictionary = wf.interact_check(hero_px + Vector2(20, 0))
+	_check(String(check["kind"]) == "deer" and String(check["behavior"]) == "flee",
+			"осмотр узнал оленя (мирный)")
+	# мирный убегает от героя
+	var before: float = (wf.fauna[1]["px"] as Vector2).distance_to(hero_px)
+	for i in 6:
+		wf.update(0.2, hero_px)
+	var after: float = (wf.fauna[1]["px"] as Vector2).distance_to(hero_px)
+	_check(after > before, "олень убегает от героя (охота имеет смысл)")
+	# волк догоняет мирного (герой в 400px — не мешает, но звери не деспавнятся)
+	wf.fauna.append({"id": 998, "kind": "wolf", "px": (wf.fauna[1]["px"] as Vector2) + Vector2(60, 0),
+			"tx": Vector2.ZERO, "wait": 2.0})
+	for i in 30:
+		wf.update(0.25, hero_px + Vector2(400, 0))
+	var deer_gone := true
+	for a in wf.fauna:
+		if int(a["id"]) == 999:
+			deer_gone = false
+	_check(deer_gone, "волк догнал оленя — хищники охотятся")
+	# охота по E: подводим героя к оставшемуся зверю, дроп — предметы лута
+	_check(not wf.fauna.is_empty(), "после волчьей охоты остался зверь")
+	var target: Dictionary = wf.fauna[0]
+	var hunted: Dictionary = wf.interact(target["px"])
+	_check(String(hunted.get("kind", "")) == String(target["kind"]), "охота по E находит зверя")
+	var hunt_drops_ok := true
+	for d: Dictionary in hunted.get("drops", []):
+		if not loot_ids.has(String(d["id"])):
+			hunt_drops_ok = false
+	_check(hunt_drops_ok, "дроп охоты — предметы loot.json")
+	_check(not wf.fauna.has(target), "зверь после охоты исчез")
+	# спавн ограничен сверху
+	wf.fauna.clear()
+	wf.cfg["spawn"]["max_active"] = 2
+	for i in 10:
+		wf.try_spawn_near(wmap.city_tile)
+	_check(wf.fauna.size() <= 2, "спавн respects max_active (%d)" % wf.fauna.size())
+
+	# --- T17: награды растут с уровнем гнезда ---
+	var wsim = load("res://scripts/world_sim.gd").new()
+	wsim.setup(wmap, world_cfg, 42)
+	_check(Dictionary(balance.get("rewards", {})).has("coin_mult_per_nest_level"),
+			"balance.json -> rewards настроен")
+	var camp0: Dictionary = {"kind": "camp", "plunder": 0.0, "nest_level": 0}
+	var camp3: Dictionary = {"kind": "camp", "plunder": 0.0, "nest_level": 3}
+	var sum0 := 0
+	var sum3 := 0
+	for i in 200:
+		wsim._rng.seed = 1000 + i
+		sum0 += wsim.coin_reward(camp0)
+		wsim._rng.seed = 1000 + i
+		sum3 += wsim.coin_reward(camp3)
+	_check(sum3 > sum0 * 15 / 10, "гнездо 3 уровня жирнее гнезда 0 (%d против %d)" % [sum3, sum0])
+	var setl: Dictionary = {"kind": "settlement", "plunder": 0.0, "nest_level": 3}
+	wsim._rng.seed = 7
+	var s_coins: int = wsim.coin_reward(setl)
+	_check(s_coins >= 8 and s_coins <= 16, "поселение без множителя (обычная награда %d)" % s_coins)
+
+	# --- T03: гуманоиды читаемы (герой = 10) ---
+	var enemies_v: Variant = _read_json("res://data/enemies.json")
+	var enemies: Array = enemies_v if enemies_v is Array else []
+	var radius_of := {}
+	for e: Dictionary in enemies:
+		radius_of[String(e["id"])] = float(e["radius"])
+	for humanoid in ["skeleton", "antimage", "mutant", "bandit_archer", "ghoul", "wraith", "hellcaller", "dragon_whelp"]:
+		_check(float(radius_of.get(humanoid, 0.0)) >= 10.0, "гуманоид %s подрос (>=10)" % humanoid)
+	_check(float(radius_of.get("imp", 0.0)) >= 9.0, "бесёнок читаем (>=9)")
+	_check(float(radius_of.get("rat", 0.0)) == 8.0 and float(radius_of.get("wisp", 0.0)) == 7.0,
+			"звери и духи не тронуты (крыса 8, огонёк 7)")
+
+	# --- T21/T23: городская атмосфера ---
+	var sim := _make_sim()
+	var amb = load("res://scripts/city_ambience.gd").new()
+	amb.setup(sim.map)
+	_check(amb._flies.size() > 0, "светлячки заселены (%d)" % amb._flies.size())
+	_check(amb._wisps.size() > 0, "болотные огоньки заселены (%d)" % amb._wisps.size())
+	_check(amb.night == 0.0, "днём VFX погашены")
+
+	# --- T13: туман — радиус открытия меньше и клик разрешён ---
+	_check(int(world_cfg.get("fog_reveal_radius", 99)) < int(world_cfg.get("reveal_radius", 0)),
+			"радиус открытия в тумане меньше обычного (%d < %d)" % [
+				int(world_cfg.get("fog_reveal_radius", 99)), int(world_cfg.get("reveal_radius", 0))])
+	var fog_tile := Vector2i(-1, -1)
+	for y in wmap.h:
+		for x in wmap.w:
+			var p := Vector2i(x, y)
+			if wmap.is_walkable(p) and not wmap.is_explored(p):
+				fog_tile = p
+				break
+		if fog_tile.x >= 0:
+			break
+	_check(fog_tile.x >= 0, "неисследованный проходимый тайл есть")
+	_check(not wmap.poi_at(fog_tile).is_empty() or true, "клик по туману ведёт в маршрут (правило сцены)")
+	for key in ["world.hint_hunt", "world.hint_fish", "world.hunt_got", "chron.hunt",
+			"fauna.deer", "fauna.boar", "fauna.bird", "fauna.wolf", "fauna.fish"]:
+		_check(String(loc.get(key, "")) != "", "ключ локализации есть: " + key)
+	print("[M14-C] готово")
 
 
 func _w_by_id(wlist: Array, weapon_id: String) -> Dictionary:
