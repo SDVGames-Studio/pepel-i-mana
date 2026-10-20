@@ -56,7 +56,8 @@
 		{"id": "dreamer", "weight": 6, "mood": 5.0, "work_mult": 0.95},
 		{"id": "stoic", "weight": 6, "grief_mult": 0.7, "pollution_mood": -0.05}
 	],
-	"refugees": {"chance_per_day": 0.35, "wave_max": 2, "mood_gate": 45.0, "tower_bonus": 0.1, "tower_bonus_max": 0.4},
+	"refugees": {"chance_per_day": 0.35, "wave_max": 2, "mood_gate": 45.0, "tower_bonus": 0.1, "tower_bonus_max": 0.4,
+		"early_bonus": 0.3, "early_below": 8},
 	"births": {"chance_per_day": 0.25, "mood_gate": 60.0, "child_days": 8.0, "couple_boost": 1.5},
 	"ailments": {
 		"sick_chance": 0.02,

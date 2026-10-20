@@ -1,9 +1,8 @@
 extends Control
-## Главное меню: новая игра с настройками старта (вопрос 11: жители и ресурсы
-## настраиваются до старта), продолжить город, выход.
+## Главное меню: новая игра с настройками старта (вопрос 11: жители всегда
+## с одного — правки v1.12.0; ресурсы настраиваются до старта), продолжить, выход.
 
 const VERSION_PATH := "res://data/version.json"
-const CITY_CFG_PATH := "res://data/city.json"
 const LEVELS := ["low", "normal", "high"]
 
 @onready var title_label: Label = %TitleLabel
@@ -12,16 +11,13 @@ const LEVELS := ["low", "normal", "high"]
 @onready var continue_button: Button = %ContinueButton
 @onready var exit_button: Button = %ExitButton
 
-var _city_cfg: Dictionary = {}
 var _setup_box: VBoxContainer
-var _residents_spin: SpinBox
 var _level_option: OptionButton
 var _test_check: CheckButton
 var _conflicts_check: CheckButton
 
 
 func _ready() -> void:
-	_city_cfg = _read_json(CITY_CFG_PATH)
 	title_label.text = Loc.t("menu.title")
 	version_label.text = Loc.t("menu.version") % _read_version()
 	new_game_button.text = Loc.t("menu.new_game")
@@ -128,9 +124,8 @@ func _unhandled_input(event: InputEvent) -> void:
 		get_tree().change_scene_to_file("res://scenes/city.tscn")
 
 
-## Панель настроек старта (вопрос 11): число жителей и запас ресурсов.
+## Панель настроек старта (вопрос 11): запас ресурсов; жители всегда с одного.
 func _build_setup() -> void:
-	var start: Dictionary = _city_cfg.get("start", {})
 	_setup_box = VBoxContainer.new()
 	_setup_box.add_theme_constant_override("separation", 10)
 	($VBox as VBoxContainer).add_child(_setup_box)
@@ -141,18 +136,14 @@ func _build_setup() -> void:
 	title.add_theme_font_size_override("font_size", 24)
 	_setup_box.add_child(title)
 
-	var res_row := HBoxContainer.new()
-	_setup_box.add_child(res_row)
-	var res_label := Label.new()
-	res_label.text = Loc.t("menu.residents") + ": "
-	res_label.add_theme_font_size_override("font_size", 20)
-	res_row.add_child(res_label)
-	_residents_spin = SpinBox.new()
-	_residents_spin.min_value = int(start.get("residents_min", 1))
-	_residents_spin.max_value = int(start.get("residents_max", 12))
-	_residents_spin.value = int(start.get("residents_default", 5))
-	_residents_spin.custom_minimum_size = Vector2(90, 0)
-	res_row.add_child(_residents_spin)
+	# правки v1.12.0: герой начинает ОДИН, поселенцы приходят сами —
+	# выбор числа жителей убран, меню объясняет новый старт
+	var solo := Label.new()
+	solo.text = Loc.t("menu.solo_start")
+	solo.add_theme_font_size_override("font_size", 18)
+	solo.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	solo.custom_minimum_size = Vector2(460, 0)
+	_setup_box.add_child(solo)
 
 	var lvl_row := HBoxContainer.new()
 	_setup_box.add_child(lvl_row)
@@ -204,7 +195,7 @@ func _build_setup() -> void:
 
 
 func _on_begin_pressed() -> void:
-	Game.start_residents = int(_residents_spin.value)
+	Game.start_residents = 1   # правки v1.12.0: стартуем в одиночестве
 	Game.start_level = LEVELS[_level_option.selected]
 	Game.test_mode = _test_check.button_pressed
 	Game.conflicts_enabled = _conflicts_check.button_pressed

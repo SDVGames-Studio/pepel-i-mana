@@ -50,6 +50,8 @@ var chronicle: Array = []       # летопись (M4): [{day, key, a, b}] — 
 var base_pop := 0               # жители на старте — база лимита
 var conflicts := true           # ссоры и воровство включены (ответ №29, галочка в меню)
 var people: Dictionary = {}     # data/residents.json — черты, настроение, истории
+var autonomous := false         # автономная деревня (правки v1.12.0): с 10 жителей
+                                # деревня живёт сама — строит без старосты, зовёт поселенцев
 
 # --- M5: угрозы -----------------------------------------------------------
 var raiders: Array = []         # мутанты текущей волны
@@ -113,6 +115,7 @@ func setup(city_map, city_cfg: Dictionary, residents_count: int, level: String) 
 	residents = []
 	buildings = []
 	events = []
+	autonomous = false
 	time = 0.0
 	day = 1
 	speed = 1
@@ -3159,6 +3162,9 @@ func _mood_target(r: Dictionary) -> float:
 		target += float(law_param("taxes", "mood", 0.0))
 	if god == "home":
 		target += float(god_def().get("value", 0.0))   # благословение «Дома»
+	# автономная деревня (правки v1.12.0): гордость за самоуправление
+	if autonomous:
+		target += float(cfg.get("autonomy", {}).get("mood", 0.0))
 	# погода и сезоны (M14-J): дождь тоска, пепельная буря страшна,
 	# замёрзшую ночью зиму город помнит
 	if weather == "rain":
@@ -3333,6 +3339,30 @@ func elder_present() -> bool:
 	return false
 
 
+## Автономная деревня (правки v1.12.0): объявляется с порога жителей
+## (city.json -> autonomy.pop). Пока порог не взят — false.
+func can_autonomy() -> bool:
+	return not autonomous and residents.size() >= int(cfg.get("autonomy", {}).get("pop", 10))
+
+
+func autonomy_pop() -> int:
+	return int(cfg.get("autonomy", {}).get("pop", 10))
+
+
+## Объявить деревню автономной: она строит без старосты, строит сверх плана
+## (комфорт и торговля), притягивает поселенцев и гордится собой. "" — успех,
+## иначе ключ локализации с причиной отказа.
+func go_autonomous() -> String:
+	if autonomous:
+		return "city.autonomy_done"
+	if residents.size() < autonomy_pop():
+		return "city.autonomy_need"
+	autonomous = true
+	_chron("chron.autonomy", str(residents.size()))
+	events.append({"type": "autonomy"})
+	return ""
+
+
 ## Староста не сидит: обходит здания и следит за порядком.
 func _manage_walk(r: Dictionary, dt: float) -> void:
 	if r["target"] == Vector2i(-1, -1) or _arrived(r, r["target"]):
@@ -3360,7 +3390,8 @@ func _manage_target(r: Dictionary) -> Vector2i:
 ## идут вне очереди. Когда план выполнен и все здания достроены — обустройство
 ## защиты: крепостное кольцо стен с воротами. Игрок строит что хочет поверх.
 func _roll_autobuild() -> void:
-	if not elder_present():
+	# автономная деревня справляется и без старосты (правки v1.12.0)
+	if not elder_present() and not autonomous:
 		return
 	# кризис: еды меньше чем на день — ферма вне очереди (кучи у ферм тоже еда — M6)
 	var critical_food: float = float(residents.size()) * float(cfg["food_per_resident_day"])
@@ -3468,8 +3499,11 @@ func _tower_tile_near(gate_tile: Vector2i) -> Vector2i:
 
 
 ## Первое строение из плана города, которого ещё нет в нужном количестве.
+## Автономная деревня строит и сверх плана — комфорт и торговлю (autonomy.plan).
 func _next_plan_need() -> String:
 	var plan: Array = cfg.get("autobuild_plan", [])
+	if autonomous:
+		plan = plan + (cfg.get("autonomy", {}).get("plan", []) as Array)
 	var counts := {}
 	for b in buildings:
 		counts[String(b["type"])] = int(counts.get(String(b["type"]), 0)) + 1
@@ -3684,17 +3718,28 @@ func _roll_ailments() -> void:
 
 
 ## Дневной бросок: беженцы идут сами (ответ №27) — шанс выше при вышках со стражей.
+## Малый город растёт быстрее (early_bonus, правки v1.12.0: старт с одного жителя),
+## автономная деревня притягивает людей (autonomy -> refugee_mult).
+func _refugee_chance() -> float:
+	var rcfg: Dictionary = people.get("refugees", {})
+	var chance: float = float(rcfg.get("chance_per_day", 0.35)) \
+			+ minf(float(rcfg.get("tower_bonus", 0.1)) * _manned_towers(), float(rcfg.get("tower_bonus_max", 0.4)))
+	if residents.size() < int(rcfg.get("early_below", 8)):
+		chance += float(rcfg.get("early_bonus", 0.0))
+	if autonomous:
+		chance *= float(cfg.get("autonomy", {}).get("refugee_mult", 1.0))
+	if has_law("refuge_shelter"):
+		chance *= float(law_param("refuge_shelter", "refugee_mult", 1.0))   # приют (M14-H)
+	return chance
+
+
 func _roll_refugees() -> void:
 	var rcfg: Dictionary = people.get("refugees", {})
 	if rcfg.is_empty() or residents.size() >= pop_cap():
 		return
 	if not _food_reserve_ok() or _avg_mood() < float(rcfg.get("mood_gate", 45.0)):
 		return
-	var chance: float = float(rcfg.get("chance_per_day", 0.35)) \
-			+ minf(float(rcfg.get("tower_bonus", 0.1)) * _manned_towers(), float(rcfg.get("tower_bonus_max", 0.4)))
-	if has_law("refuge_shelter"):
-		chance *= float(law_param("refuge_shelter", "refugee_mult", 1.0))   # приют (M14-H)
-	if _event_rng.randf() >= chance:
+	if _event_rng.randf() >= _refugee_chance():
 		return
 	var wave := _event_rng.randi_range(1, maxi(1, int(rcfg.get("wave_max", 2))))
 	for i in wave:

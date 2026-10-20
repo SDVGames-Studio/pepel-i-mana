@@ -47,7 +47,7 @@ func _draw() -> void:
 			for i in FLAKES:
 				var x: float = fposmod(_flake_x[i] + sin(_time * 0.9 + float(i)) * 14.0, vp.x)
 				var y: float = fposmod(_time * 60.0 + float(i) * 53.0, vp.y + 20.0) - 10.0
-				draw_circle(Vector2(x, y), 1.6 + (float(i) % 3), Color(1, 1, 1, 0.55))
+				draw_circle(Vector2(x, y), 1.6 + float(i % 3), Color(1, 1, 1, 0.55))
 		"fog":
 			for i in 3:
 				draw_rect(Rect2(Vector2.ZERO, vp), Color(0.75, 0.78, 0.8, 0.10 + 0.04 * i + 0.02 * sin(_time + float(i))))

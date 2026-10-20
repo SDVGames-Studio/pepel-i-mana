@@ -215,6 +215,7 @@ static func _city_sim_block(sim) -> Dictionary:
 		"_forest_cooldown": float(sim._forest_cooldown),
 		"active_laws": sim.active_laws,
 		"god": String(sim.god),
+		"autonomous": bool(sim.autonomous),
 		"prayed_day": int(sim.prayed_day),
 		"weather": String(sim.weather),
 		"froze_last_night": bool(sim.froze_last_night),
@@ -298,7 +299,7 @@ static func _apply_game(game, gd: Variant, skd: Variant, hero_d: Variant) -> voi
 	game.dungeon_clears = int(g.get("dungeon_clears", 0))
 	game.dungeon_lock_day = int(g.get("dungeon_lock_day", 0))
 	game.hero_kits = int(g.get("hero_kits", 0))
-	game.start_residents = int(g.get("start_residents", 10))
+	game.start_residents = int(g.get("start_residents", 1))
 	game.start_level = String(g.get("start_level", "normal"))
 	game.conflicts_enabled = bool(g.get("conflicts_enabled", true))
 	game.world_active = bool(g.get("world_active", false))
@@ -443,6 +444,8 @@ static func _apply_city(game, cd: Variant) -> String:
 		sim.active_laws.append(String(l))
 	sim.god = String(sd.get("god", ""))
 	sim.prayed_day = int(sd.get("prayed_day", -1))
+	# автономная деревня (правки v1.12.0)
+	sim.autonomous = bool(sd.get("autonomous", false))
 	# погода (M14-J)
 	sim.weather = String(sd.get("weather", "clear"))
 	sim.froze_last_night = bool(sd.get("froze_last_night", false))

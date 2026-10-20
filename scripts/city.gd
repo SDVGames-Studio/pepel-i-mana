@@ -386,6 +386,9 @@ func _process_events() -> void:
 				hud.toast(Loc.t("city.autobuild_toast") % [String(ev["name"]), _bld_name(String(ev["bld"]))])
 			"promoted":
 				hud.toast(Loc.t("city.promoted_toast") % String(ev["name"]))
+			"autonomy":
+				hud.toast(Loc.t("city.autonomy_done"))
+				hud.refresh()
 			"gate":
 				hud.toast(Loc.t("city.gate_open" if bool(ev["open"]) else "city.gate_closed"))
 				_rebuild_collision()
@@ -963,6 +966,17 @@ func _try_enchant() -> void:
 func set_speed(value: int) -> void:
 	sim.speed = value
 	sim.paused = false
+
+
+## Кнопка «Автономия» (правки v1.12.0): с 10 поселенцев деревня живёт сама.
+## Отказ честно объясняется тостом (мало поселенцев или уже автономна).
+func go_autonomous() -> void:
+	var err_key: String = sim.go_autonomous()
+	if err_key == "city.autonomy_need":
+		hud.toast(Loc.t(err_key) % sim.autonomy_pop())
+	elif err_key != "":
+		hud.toast(Loc.t(err_key))
+	hud.refresh()
 
 
 ## Комплект героя из оружейки: металл из пула, бонусы урона/брони (M5.1).

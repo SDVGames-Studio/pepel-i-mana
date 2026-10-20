@@ -25,6 +25,12 @@
 	"tools_boost": 1.15,
 	"tools_wear_per_day": 0.1,
 	"autobuild_plan": ["sawmill", "farm", "farm", "house", "well", "quarry", "warehouse", "workshop", "house", "house", "healer_hut", "tavern", "altar"],
+	"autonomy": {
+		"pop": 10,
+		"plan": ["temple", "market", "garden", "house", "house", "statue"],
+		"refugee_mult": 1.5,
+		"mood": 5.0
+	},
 	"storage_base": 150,
 	"storage_per_warehouse": 200,
 	"altar_boost": 1.1,
@@ -176,7 +182,7 @@
 		"road": "#6e5f4a"
 	},
 	"start": {
-		"residents_default": 10,
+		"residents_default": 1,
 		"residents_min": 1,
 		"residents_max": 12,
 		"professions": ["farmer", "lumberjack", "builder", "guard", "acolyte", "crafter", "healer", "porter", "bartender", "miner", "smelter", "smith", "armorer", "hunter", "fisher", "trader"],

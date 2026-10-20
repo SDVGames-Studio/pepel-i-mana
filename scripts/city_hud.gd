@@ -18,6 +18,7 @@ var _toast_label: Label
 var _toast_time := 0.0
 var _pause_btn: Button
 var _speed_btns: Array = []
+var _autonomy_btn: Button = null   # автономная деревня (правки v1.12.0)
 var _bld_btns: Array = []
 var _cat_btns: Array = []          # [{btn, cat_id}] — категории построек (M11)
 var _cat_popup: PopupPanel = null  # выпадающий список мастерских/ресурсных и т.д.
@@ -98,6 +99,16 @@ func refresh() -> void:
 	_pause_btn.set_pressed_no_signal(bool(sim.paused))
 	for i in _speed_btns.size():
 		_speed_btns[i].set_pressed_no_signal(int(sim.speed) == int(cfg["speeds"][i]))
+	if _autonomy_btn != null:
+		if sim.autonomous:
+			_autonomy_btn.text = Loc.t("city.autonomy_done_btn")
+			_autonomy_btn.disabled = true
+			_autonomy_btn.tooltip_text = Loc.t("city.autonomy_tip")
+		else:
+			_autonomy_btn.text = Loc.t("city.autonomy_btn")
+			_autonomy_btn.disabled = false
+			_autonomy_btn.tooltip_text = "%s\n%s" % [Loc.t("city.autonomy_tip"),
+					Loc.t("city.autonomy_need") % sim.autonomy_pop()]
 	if _residents_panel.visible:
 		_residents_text.text = _residents_bbcode()
 	if _chron_panel.visible:
@@ -585,6 +596,15 @@ func _build() -> void:
 		var btn := _toggle_btn("x%d" % speed_value, func() -> void: city.set_speed(speed_value))
 		tr_box.add_child(btn)
 		_speed_btns.append(btn)
+	# автономная деревня (правки v1.12.0): кнопка справа от скоростей
+	_autonomy_btn = Button.new()
+	_autonomy_btn.text = Loc.t("city.autonomy_btn")
+	_autonomy_btn.tooltip_text = Loc.t("city.autonomy_tip")
+	_autonomy_btn.custom_minimum_size = Vector2(96, 40)
+	_autonomy_btn.add_theme_font_size_override("font_size", 15)
+	_autonomy_btn.focus_mode = Control.FOCUS_NONE
+	_autonomy_btn.pressed.connect(func() -> void: city.go_autonomous())
+	tr_box.add_child(_autonomy_btn)
 
 	# --- тост по центру сверху
 	_toast_label = _label(24)

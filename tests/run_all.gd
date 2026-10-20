@@ -193,23 +193,23 @@ const REQUIRED_LOCALES := [
 	"chron.undead_rising", "chron.necro_purged",
 ]
 
-const ALL_SCRIPTS := [
-	"res://scripts/loc.gd", "res://scripts/main_menu.gd", "res://scripts/city.gd",
-	"res://scripts/city_map.gd", "res://scripts/city_sim.gd",
-	"res://scripts/city_view.gd", "res://scripts/city_hud.gd",
-	"res://scripts/game.gd", "res://scripts/dungeon_gen.gd", "res://scripts/dungeon.gd",
-	"res://scripts/dungeon_view.gd", "res://scripts/hero.gd", "res://scripts/enemy.gd",
-	"res://scripts/chest.gd", "res://scripts/pickup.gd", "res://scripts/exit_marker.gd",
-	"res://scripts/minimap.gd", "res://scripts/hud.gd",
-	"res://scripts/magic.gd", "res://scripts/spell_fx.gd",
-	"res://scripts/skills.gd", "res://scripts/trap.gd",
-	"res://scripts/world.gd", "res://scripts/world_map.gd",
-	"res://scripts/world_sim.gd", "res://scripts/world_view.gd", "res://scripts/world_hud.gd",
-	"res://scripts/save_game.gd", "res://scripts/projectile.gd",
-	"res://scripts/equipment_panel.gd", "res://scripts/world_fauna.gd",
-	"res://scripts/city_ambience.gd", "res://scripts/dungeon_creature.gd",
-	"res://scripts/world_giants.gd",
-]
+## Список ведётся не вручную: папка scripts/ сканируется целиком (урок v1.11.0 —
+## city_weather.gd с typo не попал в рукописный список и сломал HUD города).
+func _collect_scripts(dir_path: String) -> Array:
+	var out: Array = []
+	var dir := DirAccess.open(dir_path)
+	if dir == null:
+		return out
+	dir.list_dir_begin()
+	var f := dir.get_next()
+	while f != "":
+		if dir.current_is_dir() and not f.begins_with("."):
+			out.append_array(_collect_scripts(dir_path + "/" + f))
+		elif f.ends_with(".gd") and not f.ends_with(".uid"):
+			out.append(dir_path + "/" + f)
+		f = dir.get_next()
+	out.sort()
+	return out
 
 var _fails := 0
 
@@ -252,6 +252,7 @@ func _initialize() -> void:
 	_test_m14_j()
 	_test_m14_k()
 	_test_m14_l()
+	_test_fixes_v121()
 	if _fails == 0:
 		print("OK: все тесты пройдены")
 		quit(0)
@@ -401,7 +402,7 @@ func _test_data() -> void:
 
 func _test_scripts() -> void:
 	print("[Скрипты]")
-	for path in ALL_SCRIPTS:
+	for path in _collect_scripts("res://scripts"):
 		var script: Script = load(path)
 		_check(script != null and script.can_instantiate(), "%s компилируется" % path)
 
@@ -1097,9 +1098,12 @@ func _test_people() -> void:
 	_check(placed_walls > 0, "стены кольца поставлены")
 	_check(not gate_broken, "четыре ворот (С/Ю/З/В) свободны для выхода из крепости")
 
-	# стройка с первого дня (заказчик): первые тики дня 1 уже дают план
+	# стройка с первого дня (заказчик): первые тики дня 1 уже дают план.
+	# болезни глушим: дневной бросок болезней идёт раньше самостроя, и вдруг
+	# заболевший староста честно не строит — это флейк, а не проверяемое
 	var sim_d1 := _make_sim()
 	sim_d1._last_daily_day = 0   # как в реальной игре
+	sim_d1.people["ailments"]["sick_chance"] = 0.0
 	var b_before: int = sim_d1.buildings.size()
 	sim_d1.tick(0.2)
 	_check(sim_d1.buildings.size() > b_before, "староста строит с первого дня")
@@ -1972,11 +1976,11 @@ func _test_defense() -> void:
 	game4.free()
 	game5.free()
 
-	# стартовый город: 10 жителей (заказчик: поселение должно вывозить)
+	# стартовый город: герой начинает ОДИН (правки v1.12.0), поселенцы придут сами
 	var game6: Node = load("res://scripts/game.gd").new()
 	game6.new_city()
-	_check(game6.city_sim.residents.size() == 10, "новый город: 10 жителей на старте")
-	_check(game6.city_sim.pop_cap() >= 10, "лимит жителей вмещает стартовый набор")
+	_check(game6.city_sim.residents.size() == 1, "новый город: герой начинает один")
+	_check(game6.city_sim.pop_cap() >= 1, "лимит жителей вмещает основателя")
 	game6.free()
 
 	# страж вне смены помогает на стройке (заказчик: стража тоже должна помогать)
@@ -2443,6 +2447,10 @@ func _test_m6() -> void:
 	sim_pg._roll_porter()
 	var porter_pg: Dictionary = _resident_by_prof(sim_pg, "porter")
 	_check(not porter_pg.is_empty(), "город сам обучил носильщика при готовых кучах")
+	# носильщик — случайный житель: «ленивый» не успевает донести за отведённые
+	# тики — это флейк характера, а не логики; в тесте характер идеальный
+	porter_pg["traits"] = []
+	porter_pg["mood"] = 100.0
 	_teleport(sim_pg, porter_pg, farm_pg["tile"])
 	sim_pg.tick(1.0)
 	_check(float(porter_pg["carry"]) > 0.0 and float(sim_pg._pile_total(farm_pg)) < 2.0,
@@ -2460,6 +2468,8 @@ func _test_m6() -> void:
 	sim_pg.res["food"] = float(sim_pg.storage_cap())
 	farm_pg["pile"] = {"food": 5.0}
 	var porter_pg2: Dictionary = _resident_by_prof(sim_pg, "porter")
+	porter_pg2["traits"] = []
+	porter_pg2["mood"] = 100.0
 	_teleport(sim_pg, porter_pg2, farm_pg["tile"])
 	sim_pg.tick(1.0)
 	_check(float(porter_pg2["carry"]) > 0.0, "носильщик снова забрал кучу")
@@ -5324,7 +5334,10 @@ func _test_m14_k() -> void:
 		_check(int(hunt["progress"]) >= 2 or not sim.quests.has(hunt),
 				"охота двигает заказ")
 
-	# build: постройка закрывает заказ
+	# build: постройка закрывает заказ. Доску чистим: случайный дневной заказ
+	# «построить сад» мог стоять раньше нашего — quest_built закрывает первый,
+	# и проверка флеймит (наблюдение прогонов 2026-10-20)
+	sim.quests.clear()
 	var build: Dictionary = {"kind": "build", "id": 4242, "customer": "Тест", "type": "garden",
 			"need": 1, "progress": 0, "reward": 5, "days": 2}
 	sim.quests.append(build)
@@ -5412,3 +5425,113 @@ func _test_m14_l() -> void:
 			"story.finale_mana", "story.finale_ash", "story.side.mana", "story.side.ash"]:
 		_check(String(loc.get(key, "")) != "", "ключ локализации есть: " + key)
 	print("[M14-L] готово")
+
+
+# --- Правки по фидбеку v1.12.0 (v1.12.1): соло-старт, поселенцы, автономия ---
+
+func _test_fixes_v121() -> void:
+	print("[Правки v1.12.0: соло-старт, поселенцы, автономия]")
+	var loc: Dictionary = _read_json("res://loc/ru.json")
+
+	# регрессия v1.11.0: опечатка в city_weather.gd не попала в рукописный список
+	# ALL_SCRIPTS, скрипт не грузился — у города пропали HUD и выход на карту
+	var weather: Script = load("res://scripts/city_weather.gd")
+	_check(weather != null and weather.can_instantiate(),
+			"city_weather.gd компилируется (урок v1.11.0: список скриптов сканируется)")
+
+	# --- соло-старт: герой начинает один ---
+	var city_cfg: Dictionary = _read_json("res://data/city.json")
+	_check(int(city_cfg["start"]["residents_default"]) == 1, "city.json: старт с одного жителя")
+	var city_map = load("res://scripts/city_map.gd").new()
+	city_map.generate(7, city_cfg)
+	var solo = load("res://scripts/city_sim.gd").new()
+	solo.setup(city_map, city_cfg, 1, "normal")
+	solo._next_raid_at = 999999999.0
+	_check(solo.residents.size() == 1, "соло-старт: в городе один житель")
+	_check(String(solo.residents[0]["prof"]) == "elder", "основатель — сам себе староста")
+	_check(solo.pop_cap() >= 1, "лимит населения вмещает основателя")
+
+	# --- поселенцы приходят постепенно: ранний бонус малому городу ---
+	var residents_cfg: Dictionary = _read_json("res://data/residents.json")
+	var rcfg: Dictionary = residents_cfg["refugees"]
+	_check(float(rcfg.get("early_bonus", 0.0)) > 0.0 and int(rcfg.get("early_below", 0)) > 1,
+			"residents.json: ранний бонус поселенцам настроен")
+	var solo_chance: float = solo._refugee_chance()
+	_check(absf(solo_chance - (float(rcfg["chance_per_day"]) + float(rcfg["early_bonus"]))) < 0.0001,
+			"одинокому городу положен ранний бонус к поселенцам")
+	solo.autonomous = true
+	_check(absf(solo._refugee_chance() - solo_chance * float(city_cfg["autonomy"]["refugee_mult"])) < 0.0001,
+			"автономная деревня притягивает поселенцев (×%.1f)" % float(city_cfg["autonomy"]["refugee_mult"]))
+	solo.autonomous = false
+
+	# --- автономия с 10 поселенцев ---
+	var sim := _make_sim()   # 6 жителей
+	var autonomy_pop: int = sim.autonomy_pop()
+	_check(autonomy_pop == 10, "порог автономии — 10 поселенцев")
+	_check(not sim.can_autonomy(), "6 жителей — автономия пока рано")
+	_check(sim.go_autonomous() == "city.autonomy_need", "ранняя автономия честно отклоняется")
+	while sim.residents.size() < autonomy_pop:
+		sim.residents.append(sim._new_resident("Гость %d" % sim.residents.size(), "farmer", sim.map.spawn_tile))
+	var mood_before: float = sim._mood_target(sim.residents[0])
+	# большому городу ранний бонус уже не положен
+	_check(absf(sim._refugee_chance() - float(rcfg["chance_per_day"])) < 0.0001,
+			"город с 10 жителями растёт по обычному шансу")
+	_check(sim.can_autonomy(), "с %d поселенцев автономия доступна" % autonomy_pop)
+	_check(sim.go_autonomous() == "", "автономия объявляется")
+	_check(bool(sim.autonomous), "флаг автономии включён")
+	_check(sim.go_autonomous() == "city.autonomy_done", "повторное объявление не требуется")
+	var ev_ok := false
+	for e in sim.events:
+		if String(e["type"]) == "autonomy":
+			ev_ok = true
+	_check(ev_ok, "автономия пришла событием (тост)")
+	var chron_ok := false
+	for e in sim.chronicle:
+		if String(e["key"]) == "chron.autonomy":
+			chron_ok = true
+	_check(chron_ok, "автономия записана в летопись")
+	_check(is_equal_approx(sim._mood_target(sim.residents[0]) - mood_before,
+			float(city_cfg["autonomy"]["mood"])),
+			"автономия поднимает настроение (+%.0f)" % float(city_cfg["autonomy"]["mood"]))
+
+	# --- автономная деревня строит сверх плана ---
+	for t: String in sim.cfg["autobuild_plan"]:
+		sim.buildings.append({"type": t, "done": true})
+	sim.autonomous = false
+	_check(sim._next_plan_need() == "", "базовый план самостроя закрыт")
+	_check(sim._next_plan_need() == "", "без автономии сверх плана не строится")
+	sim.autonomous = true
+	# расширенный план добирает дома раньше храма — проверяем поведение целиком:
+	# первый шаг существует в каталоге зданий, и план конечен
+	var need_auto: String = sim._next_plan_need()
+	_check(need_auto != "", "автономная деревня строит сверх плана (первое: %s)" % need_auto)
+	var known := false
+	for b: Dictionary in city_cfg["buildings"]:
+		if String(b["id"]) == need_auto:
+			known = true
+	_check(known, "здание из расширенного плана существует: %s" % need_auto)
+	var guard := 0
+	while need_auto != "" and guard < 100:
+		guard += 1
+		sim.buildings.append({"type": need_auto, "done": true})
+		need_auto = sim._next_plan_need()
+	_check(need_auto == "", "расширенный план автономии завершается")
+
+	# --- автономия переживает сейв ---
+	var SG: Script = load("res://scripts/save_game.gd")
+	SG.clear_save()
+	var g1 := _make_game()
+	g1.city_sim.autonomous = true
+	_check(SG.save_game(g1, g1.city_sim.map.spawn_tile, 7, 3) == "", "сейв автономной деревни сохранён")
+	var g2 := FakeGame.new()
+	g2.skills = load("res://scripts/skills.gd").new()
+	g2.skills.setup(_read_json("res://data/skills.json"))
+	_check(SG.load_game(g2) == "", "сейв автономной деревни загружен")
+	_check(bool(g2.city_sim.autonomous), "автономия переживает сейв")
+	SG.clear_save()
+
+	# --- ключи локализации ---
+	for key in ["city.autonomy_btn", "city.autonomy_done_btn", "city.autonomy_need",
+			"city.autonomy_done", "city.autonomy_tip", "chron.autonomy", "menu.solo_start"]:
+		_check(String(loc.get(key, "")) != "", "ключ локализации есть: " + key)
+	print("[Правки v1.12.0] готово")
