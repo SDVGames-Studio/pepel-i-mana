@@ -16,6 +16,7 @@ var events: Array = []          # [{"type": "siege_start"|...}] — читает
 var chronicle: Array = []       # мировая летопись [{day, key, a, b}] — сцена отдаст городу
 var sieges: Array = []          # активные осады: {settlement_id, camp_id, left}
 var tracks := {}                # Vector2i -> {dir: Vector2i, camp: int, age: int} — следы (M12)
+var giants = null               # world_giants.gd — грандиозные создания (M14-E)
 var _rng := RandomNumberGenerator.new()
 
 
@@ -27,6 +28,9 @@ func setup(world_map, world_cfg: Dictionary, seed_value := -1) -> void:
 	chronicle = []
 	sieges = []
 	tracks = {}
+	# гиганты (M14-E): состояние переживает сейв через блок "giants"
+	giants = load("res://scripts/world_giants.gd").new()
+	giants.setup(map, _read_json_file("res://data/giants.json"), seed_value)
 	if seed_value >= 0:
 		_rng.seed = seed_value
 	else:
@@ -45,6 +49,8 @@ func advance_day() -> Array:
 	today.append_array(_roll_resettlement())
 	today.append_array(_roll_dungeon_resets())
 	today.append_array(_roll_caravan())
+	if giants != null:
+		giants.tick_days(1)   # гнев и дружба гигантов остывают (M14-E)
 	events.append_array(today)
 	return today
 

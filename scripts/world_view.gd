@@ -85,6 +85,11 @@ func _draw() -> void:
 	if fauna != null and fauna.fauna != null:
 		for a in fauna.fauna:
 			_draw_animal(a, fauna.species_def(String(a["kind"])))
+	# гиганты (M14-E): крупные маркеры, видны издалека
+	var giants = get_parent().get("sim").giants if get_parent() != null and get_parent().get("sim") != null else null
+	if giants != null:
+		for g in giants.giants:
+			_draw_giant(g, giants.cfg.get("contact_px", 28.0))
 	# маршрут в пути
 	_draw_route(ts)
 	# герой (M9): спрайт воина с лёгким бобингом и тенью
@@ -182,6 +187,44 @@ func _draw_track(tile: Vector2i, dir: Vector2i, ts: float) -> void:
 	draw_line(tip - v * (ts * 0.22) - side * (ts * 0.16), tip, col, 2.0)
 	draw_circle(pos - v * (ts * 0.12) + side * (ts * 0.14), 1.8, col)
 	draw_circle(pos - v * (ts * 0.12) - side * (ts * 0.14), 1.8, col)
+
+
+## Гигант (M14-E/T19): крупный маркер с ореолом; кольцо — настроение
+## (красный — разгневан, зелёный — дружелюбен).
+func _draw_giant(g: Dictionary, contact_px: float) -> void:
+	var pos: Vector2 = g["px"]
+	var def: Dictionary = g["def"]
+	var col := Color(String(def.get("color", "#999999")))
+	var accent := Color(String(def.get("accent", "#ffffff")))
+	var size := float(def.get("size", 2.0))
+	var pulse := 0.85 + 0.15 * sin(_time * 1.6 + float(def.hash()))
+	match String(g.get("mood", "neutral")):
+		"angered":
+			draw_circle(pos, contact_px + 8.0, Color(0.9, 0.2, 0.2, 0.14))
+			draw_arc(pos, contact_px + 4.0, 0.0, TAU, 28, Color(1.0, 0.25, 0.25, 0.6), 2.0)
+		"friendly":
+			draw_circle(pos, contact_px + 8.0, Color(0.35, 0.9, 0.45, 0.13))
+			draw_arc(pos, contact_px + 4.0, 0.0, TAU, 28, Color(0.4, 0.95, 0.5, 0.55), 2.0)
+		_:
+			draw_circle(pos, contact_px * 0.7, Color(col.r, col.g, col.b, 0.10 * pulse))
+	# тень, тело, голова — «великан» крупнее героя втрое
+	draw_circle(pos + Vector2(0, 8.0 * size * 0.6), 8.0 * size * 0.6, Color(0, 0, 0, 0.25))
+	draw_circle(pos, 7.0 * size * 0.6, col)
+	draw_circle(pos + Vector2(0, -7.0 * size * 0.7), 3.6 * size * 0.6, col.lightened(0.15))
+	match String(def.get("id", "")):
+		"forest_warden":
+			# ветви-рога
+			draw_line(pos + Vector2(-2, -12), pos + Vector2(-6, -18), accent, 1.6)
+			draw_line(pos + Vector2(2, -12), pos + Vector2(6, -18), accent, 1.6)
+			draw_circle(pos + Vector2(-3, -6), 1.2, accent)
+		"ash_titan":
+			# пепельные швы на теле
+			draw_line(pos + Vector2(-3, -2), pos + Vector2(3, 3), accent, 1.2)
+			draw_line(pos + Vector2(2, -5), pos + Vector2(-1, 0), accent, 1.0)
+		"mammoth_spirit":
+			# бивни
+			draw_line(pos + Vector2(-3, -4), pos + Vector2(-6, 0), accent, 1.4)
+			draw_line(pos + Vector2(3, -4), pos + Vector2(6, 0), accent, 1.4)
 
 
 func _draw_route(ts: float) -> void:

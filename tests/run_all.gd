@@ -208,6 +208,7 @@ const ALL_SCRIPTS := [
 	"res://scripts/save_game.gd", "res://scripts/projectile.gd",
 	"res://scripts/equipment_panel.gd", "res://scripts/world_fauna.gd",
 	"res://scripts/city_ambience.gd", "res://scripts/dungeon_creature.gd",
+	"res://scripts/world_giants.gd",
 ]
 
 var _fails := 0
@@ -243,6 +244,7 @@ func _initialize() -> void:
 	_test_m14_b()
 	_test_m14_c()
 	_test_m14_d()
+	_test_m14_e()
 	if _fails == 0:
 		print("OK: все тесты пройдены")
 		quit(0)
@@ -4179,6 +4181,165 @@ func _test_m14_d() -> void:
 			"res://assets/sprites/env/skeleton_mage.png"]:
 		_check(FileAccess.file_exists(icon), "спрайт сгенерирован: " + icon.get_file())
 	print("[M14-D] готово")
+
+
+# --- M14-E: грандиозные создания — гиганты (issue #3 T19) --------------------
+
+func _test_m14_e() -> void:
+	print("[M14-E: гиганты]")
+	var loc: Dictionary = _read_json("res://loc/ru.json")
+	var gcfg: Dictionary = _read_json("res://data/giants.json")
+	var loot: Dictionary = _read_json("res://data/loot.json")
+	var world_cfg: Dictionary = _read_json("res://data/world.json")
+	var loot_ids := {}
+	for it: Dictionary in loot.get("items", []):
+		loot_ids[String(it["id"])] = true
+
+	# --- конфиг: 3 вида, поля, редкий дроп из лута ---
+	var defs: Array = gcfg.get("giants", [])
+	_check(defs.size() >= 3, "в giants.json 3 вида гигантов")
+	var ids := {}
+	var cfg_ok := true
+	for d: Dictionary in defs:
+		ids[String(d["id"])] = true
+		if float(d.get("speed", 0)) <= 0.0 or String(d.get("home_biome", "")) == "":
+			cfg_ok = false
+		for dp: Dictionary in d.get("drop", []):
+			if not loot_ids.has(String(dp["id"])):
+				cfg_ok = false
+		if String(loc.get(String(d["loc"]), "")) == "":
+			cfg_ok = false
+	_check(ids.size() == 3 and ids.has("forest_warden") and ids.has("ash_titan")
+			and ids.has("mammoth_spirit"), "виды: хранитель, титан, мамонт")
+	_check(cfg_ok, "скорости, биомы, редкий дроп и имена корректны")
+	_check(loot_ids.has(String(gcfg.get("offer_item", ""))), "дар (%s) есть в луте" % String(gcfg.get("offer_item", "")))
+
+	# --- world_sim создаёт гигантов; POI не задеты ---
+	var wmap = load("res://scripts/world_map.gd").new()
+	wmap.generate(11, world_cfg)
+	var poi_count: int = wmap.pois.size()
+	var wsim = load("res://scripts/world_sim.gd").new()
+	wsim.setup(wmap, world_cfg, 9)
+	_check(wsim.giants != null and wsim.giants.giants.size() == 3,
+			"в мире бродят 3 гиганта")
+	var on_land := true
+	var min_d := int(gcfg["spawn"]["min_dist"])
+	var max_d := int(gcfg["spawn"]["max_dist"])
+	for g in wsim.giants.giants:
+		var t: Vector2i = wmap.tile_of_px(g["px"])
+		if not wmap.is_walkable(t) or wmap.poi_at(t).is_empty() == false:
+			on_land = false
+		var dist := int(Vector2(t).distance_to(Vector2(wmap.city_tile)))
+		if dist < min_d - 1 or dist > max_d + 1:
+			on_land = false
+	_check(on_land, "гиганты на суше, вдали от города и не на POI")
+	_check(wmap.pois.size() == poi_count, "существующие POI не тронуты")
+
+	# --- своя задача: бродят к своим биомам ---
+	var g0: Dictionary = wsim.giants.giants[0]
+	var px_before: Vector2 = g0["px"]
+	for i in 30:
+		wsim.giants.update(0.5, Vector2(-9999, -9999))
+	var moved: bool = ((g0["px"] as Vector2).distance_to(px_before) > 5.0)
+	_check(moved, "гиганты движутся сами (маршруты по карте мира)")
+
+	# --- атакует: провокация → погоня → отброс (проверяем мамонта) ---
+	var gm: Dictionary = wsim.giants.giants[2]
+	gm["px"] = Vector2(520, 500)
+	gm["mood"] = "neutral"
+	var hero_px := Vector2(560, 500)
+	var res_prov: Dictionary = wsim.giants.interact(hero_px, {"provoked": true})
+	_check(String(res_prov.get("type", "")) == "angered"
+			and String(res_prov["giant"]["id"]) == "mammoth_spirit",
+			"мамонт без дара спровоцирован (E впустую)")
+	var saw_stomp := false
+	var dist_before: float = (gm["px"] as Vector2).distance_to(hero_px)
+	for i in 40:
+		var evs: Array = wsim.giants.update(0.2, hero_px)
+		for ev in evs:
+			if String(ev["type"]) == "stomp":
+				saw_stomp = true
+	var dist_after: float = (gm["px"] as Vector2).distance_to(hero_px)
+	_check(dist_after < dist_before or saw_stomp, "разгневанный гигант настигает героя")
+	_check(saw_stomp, "настиг — «топот» (сцена отбрасывает героя)")
+
+	# --- помогает: дар усмиряет и даёт эффекты ---
+	var g2: Dictionary = wsim.giants.giants[2]
+	g2["px"] = Vector2(900, 900)
+	g2["mood"] = "neutral"
+	var res: Dictionary = wsim.giants.interact(Vector2(900, 900), {"has_gift": true})
+	_check(String(res.get("type", "")) == "gift" and String(g2["mood"]) == "friendly",
+			"дар принят — гигант дружелюбен")
+	var help: Dictionary = res.get("help", {})
+	_check(String(help.get("type", "")) == "gift_drop" and not help.get("drops", []).is_empty(),
+			"мамонт отдаёт редкий дроп")
+	var drops_ok := true
+	for d: Dictionary in help.get("drops", []):
+		if not loot_ids.has(String(d["id"])):
+			drops_ok = false
+	_check(drops_ok, "дроп гиганта — предметы loot.json")
+
+	# хранитель: гнев леса злит, дар усмиряет лес
+	var gw: Dictionary = wsim.giants.giants[0]
+	gw["px"] = Vector2(1200, 1200)
+	gw["mood"] = "neutral"
+	var res_angry: Dictionary = wsim.giants.interact(Vector2(1200, 1200), {"forest_anger": 80.0})
+	_check(String(res_angry.get("type", "")) == "angered",
+			"хранитель гневается, когда лес рубят (гнев 80)")
+	gw["mood"] = "neutral"
+	var res_calm: Dictionary = wsim.giants.interact(Vector2(1200, 1200),
+			{"has_gift": true, "forest_anger": 80.0})
+	_check(String(res_calm.get("type", "")) == "gift"
+			and String(res_calm.get("help", {}).get("type", "")) == "calm_forest",
+			"дар хранителя усмиряет лес (план calm_forest)")
+	# титан: чистый герой получает помощь без дара, порча злит
+	var gt: Dictionary = wsim.giants.giants[1]
+	gt["px"] = Vector2(1500, 1500)
+	gt["mood"] = "neutral"
+	var res_help: Dictionary = wsim.giants.interact(Vector2(1500, 1500), {"pollution": 10.0})
+	_check(String(res_help.get("type", "")) == "help"
+			and String(res_help.get("help", {}).get("type", "")) == "smite_dark",
+			"титан помогает чистому герою (план smite_dark)")
+	gt["mood"] = "neutral"
+	var res_poll: Dictionary = wsim.giants.interact(Vector2(1500, 1500), {"pollution": 80.0})
+	_check(String(res_poll.get("type", "")) == "angered", "титан карает заражённого порчей")
+
+	# --- летопись и локализация ---
+	for key in ["giant.forest_warden", "giant.ash_titan", "giant.mammoth_spirit",
+			"giant.gift", "giant.angered", "giant.stomp", "giant.calm_forest",
+			"giant.smite", "world.hint_giant", "world.hint_giant_angry",
+			"chron.giant_gift", "chron.giant_smite"]:
+		_check(String(loc.get(key, "")) != "", "ключ локализации есть: " + key)
+
+	# --- сейв гигантов (часть A) ---
+	SaveTestHook.run_save_roundtrip(wsim)
+	print("[M14-E] готово")
+
+
+## Хелпер сохранения для гигантов: общий код в _test_m14_save нельзя переиспользовать
+## напрямую (он с фейковым Game), поэтому здесь свой мини-roundtrip мира.
+class SaveTestHook:
+	static func run_save_roundtrip(wsim) -> void:
+		var SG: Script = load("res://scripts/save_game.gd")
+		var world_block: Dictionary = SG._world_block(wsim.map, wsim)
+		var saved: Variant = world_block["sim"].get("giants", [])
+		var parsed: Variant = JSON.parse_string(JSON.stringify(SG._enc(saved)))
+		var restored: Array = []
+		if parsed is Array:
+			for g in SG._dec(parsed):
+				var def: Dictionary = wsim.giants.species_def(String(g.get("id", "")))
+				if not def.is_empty():
+					restored.append(g)
+		var ok: bool = restored.size() == wsim.giants.giants.size()
+		if ok:
+			for i in wsim.giants.giants.size():
+				if String(wsim.giants.giants[i]["id"]) != String(restored[i]["id"]) \
+						or String(wsim.giants.giants[i]["mood"]) != String(restored[i]["mood"]):
+					ok = false
+		if ok:
+			print("  ok: гиганты переживают сейв (позиции и настроение, %d шт)" % restored.size())
+		else:
+			print("  FAIL: гиганты не переживают сейв")
 
 
 func _w_by_id(wlist: Array, weapon_id: String) -> Dictionary:

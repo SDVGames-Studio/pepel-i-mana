@@ -73,12 +73,110 @@ func _process(delta: float) -> void:
 	_update_travel(delta)
 	if fauna != null:
 		fauna.update(delta, hero_px)
+	_update_giants(delta)
 	camera.position = hero_px
 	view.hero_px = hero_px
 	view.hero_tile = hero_tile
 	view.queue_redraw()
 	hud.refresh()
 	_update_near_poi()
+
+
+## Гиганты (M14-E): бродят, а разгневанный настигает — отбрасывает героя.
+func _update_giants(delta: float) -> void:
+	if sim.giants == null:
+		return
+	for ev: Dictionary in sim.giants.update(delta, hero_px):
+		if String(ev["type"]) == "stomp":
+			var g: Dictionary = ev["giant"]
+			travel = {}   # маршрут сбит
+			var away: Vector2 = (hero_px - (g["px"] as Vector2)).normalized()
+			var back: Vector2 = hero_px + away * float(sim.giants.cfg.get("knockback_tiles", 3)) * float(map.ts)
+			var bt: Vector2i = map.nearest_walkable(map.tile_of_px(back))
+			hero_px = map.tile_center_px(bt)
+			hero_tile = bt
+			_reveal(hero_tile)
+			hud.toast(Loc.t("giant.stomp") % Loc.t(String(g["def"]["loc"])))
+			_chron("chron.giant_stomp", Loc.t(String(g["def"]["loc"])))
+
+
+## Поднести дар / talk у гиганта; возвращает true, если E поймал гиганта.
+func _try_giant() -> bool:
+	if sim.giants == null or Game.city_sim == null:
+		return false
+	var offer: String = String(sim.giants.cfg.get("offer_item", "meat"))
+	var ctx := {
+		"has_gift": Game.count_item(offer) > 0,
+		"provoked": Game.count_item(offer) == 0,
+		"forest_anger": float(Game.city_sim.forest_anger),
+		"pollution": float(Game.city_sim.pollution),
+	}
+	var result: Dictionary = sim.giants.interact(hero_px, ctx)
+	if result.is_empty():
+		return false
+	var g: Dictionary = result["giant"]
+	var gname: String = Loc.t(String(g["def"]["loc"]))
+	match String(result["type"]):
+		"gift":
+			Game.remove_item(offer, 1)
+			_apply_giant_help(g, result.get("help", {}))
+			hud.toast(Loc.t("giant.gift") % gname)
+			_chron("chron.giant_gift", gname)
+		"help":
+			_apply_giant_help(g, result.get("help", {}))
+		"angered":
+			hud.toast(Loc.t("giant.angered") % gname)
+			_chron("chron.giant_angered", gname)
+		"nothing":
+			hud.toast(Loc.t("giant.nothing") % [gname, Loc.t("item." + offer)])
+	return true
+
+
+## Исполнить план помощи гиганта (M14-E): лес, тьма, редкий дроп.
+func _apply_giant_help(g: Dictionary, help: Dictionary) -> void:
+	var gname: String = Loc.t(String(g["def"]["loc"]))
+	match String(help.get("type", "")):
+		"calm_forest":
+			if Game.city_sim != null:
+				Game.city_sim.forest_anger = 0.0
+			hud.toast(Loc.t("giant.calm_forest") % gname)
+			_chron("chron.giant_calm_forest", gname)
+		"smite_dark":
+			var target: Dictionary = _nearest_dark_poi(g["px"])
+			if not target.is_empty():
+				target["strength"] = maxf(1.0, float(target["strength"]) * 0.7)
+				hud.toast(Loc.t("giant.smite") % [gname, Loc.t("world.poi." + String(target["kind"]))])
+				_chron("chron.giant_smite", gname, Loc.t("world.poi." + String(target["kind"])))
+			else:
+				hud.toast(Loc.t("giant.smite_none") % gname)
+		"gift_drop":
+			var parts := PackedStringArray()
+			for d: Dictionary in help.get("drops", []):
+				Game.add_item(String(d["id"]), int(d["count"]))
+				parts.append("%s ×%d" % [Loc.t("item." + String(d["id"])), int(d["count"])])
+			hud.toast(Loc.t("world.hunt_got") % [gname, ", ".join(parts)])
+			_chron("chron.giant_gift_drop", gname)
+
+
+## Ближайшая «тьма» для титана: данжи тёмных биомов и замок вампира.
+func _nearest_dark_poi(from_px: Vector2) -> Dictionary:
+	var dark := ["cursed_hall", "demon_lair", "vampire_keep", "lich_tower"]
+	var best: Dictionary = {}
+	var best_d := 1e9
+	for poi in map.pois:
+		if String(poi["biome"]) not in dark or int(poi["cleared_day"]) >= 0:
+			continue
+		var d: float = map.tile_center_px(poi["tile"]).distance_to(from_px)
+		if d < best_d:
+			best_d = d
+			best = poi
+	return best
+
+
+## Летопись из сцены мира (гиганты и прочее) — через городскую летопись.
+func _chron(key: String, a := "", b := "") -> void:
+	if Game.city_sim != null:
+		Game.city_sim.chronicle_add(key, a, b)
 
 
 ## Открытие тайла (M14-C/T13): на исследованном земле радиус полный,
@@ -94,6 +192,19 @@ func _reveal(tile: Vector2i) -> void:
 
 ## Идём ли мы и на что наступили — рядом с каким POI герой стоит.
 func _update_near_poi() -> void:
+	# гигант рядом — подсказка важнее всего (M14-E)
+	if sim.giants != null:
+		var g: Dictionary = sim.giants.giant_at(hero_px)
+		if not g.is_empty():
+			var gname: String = Loc.t(String(g["def"]["loc"]))
+			match String(g["mood"]):
+				"angered":
+					hud.set_hint(Loc.t("world.hint_giant_angry") % gname)
+				"friendly":
+					hud.set_hint(Loc.t("world.hint_giant_friend") % gname)
+				_:
+					hud.set_hint(Loc.t("world.hint_giant") % [gname, Loc.t("item." + String(sim.giants.cfg.get("offer_item", "meat")))])
+			return
 	# зверь рядом — подсказка охоты/рыбалки важнее POI (M14-C/T01)
 	if fauna != null:
 		var prey: Dictionary = fauna.interact_check(hero_px)
@@ -225,6 +336,9 @@ func _finish_travel() -> void:
 
 func _unhandled_input(event: InputEvent) -> void:
 	if event.is_action_pressed("interact"):
+		# гиганты важнее: E у гиганта — дар/разговор (M14-E)
+		if _try_giant():
+			return
 		# фауна ближе POI: охота/рыбалка (M14-C/T01)
 		if _try_hunt():
 			return

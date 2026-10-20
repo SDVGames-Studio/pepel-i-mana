@@ -1,0 +1,34 @@
+{
+	"_note": "Грандиозные создания карты мира (M14-E, issue #3 T19). Три роли у каждого: своя задача — бродит к тайлам своего биома; помогает — хранитель усмиряет гнев леса (дар), титан сокрушает ближайшую тьму (если герой чист от порчи), мамонт отдаёт редкий дроп (дар); атакует — провокация (E без дара у мамонта, высокий гнев леса у хранителя, высокая порча у титана): преследует героя и отбрасывает. Дар — offer_item из рюкзака по E. Дроп — редкие предметы loot.json.",
+	"spawn": { "count": 3, "min_dist": 14, "max_dist": 30 },
+	"offer_item": "meat",
+	"gift_days": 5,
+	"interact_dist_px": 56.0,
+	"chase_speed": 88.0,
+	"contact_px": 28.0,
+	"knockback_tiles": 3,
+	"anger": { "forest_anger_min": 60.0, "pollution_min": 50.0, "pollution_help_max": 30.0 },
+	"giants": [
+		{
+			"id": "forest_warden", "loc": "giant.forest_warden",
+			"desc": "giant.desc.forest_warden",
+			"color": "#4e7a3a", "accent": "#a5d68a", "size": 2.4, "speed": 20.0,
+			"home_biome": "forest", "role_help": "calm_forest",
+			"drop": [ { "id": "rune_growth", "count": [1, 1] } ]
+		},
+		{
+			"id": "ash_titan", "loc": "giant.ash_titan",
+			"desc": "giant.desc.ash_titan",
+			"color": "#8a6a52", "accent": "#e0b070", "size": 2.7, "speed": 15.0,
+			"home_biome": "waste", "role_help": "smite_dark",
+			"drop": [ { "id": "rune_ash", "count": [1, 1] } ]
+		},
+		{
+			"id": "mammoth_spirit", "loc": "giant.mammoth_spirit",
+			"desc": "giant.desc.mammoth_spirit",
+			"color": "#b8ccd8", "accent": "#eef4f8", "size": 2.3, "speed": 30.0,
+			"home_biome": "plains", "role_help": "gift_drop",
+			"drop": [ { "id": "hide", "count": [2, 4] }, { "id": "meat", "count": [3, 5] } ]
+		}
+	]
+}

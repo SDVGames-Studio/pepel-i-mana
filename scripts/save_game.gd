@@ -222,6 +222,7 @@ static func _world_block(wmap, wsim) -> Dictionary:
 			"chronicle": wsim.chronicle,
 			"sieges": wsim.sieges,
 			"tracks": wsim.tracks,
+			"giants": wsim.giants.giants if wsim.giants != null else [],
 		},
 	}
 
@@ -563,6 +564,23 @@ static func _apply_world(game, wd: Variant) -> String:
 		tr["dir"] = Vector2i(tr["dir"]) if tr["dir"] is Vector2i else Vector2i(int(tr["dir"][0]), int(tr["dir"][1]))
 		tr["camp"] = int(tr.get("camp", 0))
 		tr["age"] = int(tr.get("age", 0))
+	# гиганты (M14-E): позиции/настроение из сейва, описания — из конфига
+	if sim.giants != null:
+		var saved_giants: Array = _dec(wsd.get("giants", []))
+		var restored: Array = []
+		for g in saved_giants:
+			var def: Dictionary = sim.giants.species_def(String(g.get("id", "")))
+			if def.is_empty():
+				continue
+			restored.append({
+				"id": String(g["id"]), "def": def,
+				"px": g.get("px", Vector2.ZERO), "tx": g.get("tx", Vector2.ZERO),
+				"mood": String(g.get("mood", "neutral")),
+				"days": float(g.get("days", 0.0)),
+				"wait": float(g.get("wait", 1.0)),
+			})
+		if not restored.is_empty():
+			sim.giants.giants = restored
 	game.world_map = map
 	game.world_sim = sim
 	return ""
