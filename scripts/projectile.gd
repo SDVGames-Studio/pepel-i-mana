@@ -1,7 +1,7 @@
 extends Node2D
-## Снаряд героя (M14-B, issue #3 B.2): стрела лука / заряд посоха. Летит по
-## прямой, первый враг на пути получает урон; стена данжа гасит снаряд.
-## Урон считает герой (eff_damage на момент выстрела), врагам — take_damage.
+## Снаряд (M14-B герой / M14-D враги): стрела лука, заряд посоха, болт лича.
+## Летит по прямой, первая цель из target_group на пути получает урон;
+## стена (solid_check от сцены) гасит снаряд.
 
 var vel := Vector2.ZERO
 var damage := 1
@@ -9,6 +9,7 @@ var range_left := 200.0
 var col := Color(1.0, 0.9, 0.55)
 var solid_check := Callable()     # сцена передаёт func(pos: Vector2) -> bool (стена?)
 var hero_radius := 10.0
+var target_group := "enemies"     # чьих целей задеваем (враги → "enemies", герой → "hero")
 
 var _life := 3.0
 
@@ -34,9 +35,9 @@ func _physics_process(delta: float) -> void:
 	if solid_check.is_valid() and bool(solid_check.call(global_position)):
 		queue_free()
 		return
-	for enemy in get_tree().get_nodes_in_group("enemies"):
-		if global_position.distance_to(enemy.global_position) <= float(enemy.p["radius"]) + 6.0:
-			enemy.take_damage(damage)
+	for target in get_tree().get_nodes_in_group(target_group):
+		if global_position.distance_to(target.global_position) <= float(target.p["radius"]) + 6.0:
+			target.take_damage(damage)
 			queue_free()
 			return
 	queue_redraw()

@@ -246,12 +246,13 @@ func _roll_dungeon_resets() -> Array:
 	var reset_days := int(cfg.get("sim", {}).get("dungeon_reset_days", 10))
 	for poi in map.pois:
 		var kind := String(poi["kind"])
-		if kind != "dungeon" and kind != "ruins" and kind != "camp" and kind != "dragon_castle":
+		if kind != "dungeon" and kind != "ruins" and kind != "camp" and kind != "dragon_castle" \
+				and kind != "vampire_keep" and kind != "lich_tower":
 			continue
 		var cleared := int(poi["cleared_day"])
 		if cleared >= 0 and day - cleared >= reset_days:
 			poi["cleared_day"] = -1
-			var key := kind if kind in ["camp", "ruins", "dragon_castle"] else "dungeon"
+			var key := kind if kind in ["camp", "ruins", "dragon_castle", "vampire_keep", "lich_tower"] else "dungeon"
 			poi["strength"] = float(cfg.get("sim", {}).get("start_strength", {}).get(key, 5.0))
 			out.append({"type": "poi_reborn", "a": _poi_name(poi), "b": kind})
 	return out
@@ -327,7 +328,7 @@ func poi_enterable(poi: Dictionary) -> bool:
 	if poi.is_empty():
 		return false
 	match String(poi["kind"]):
-		"dungeon", "ruins", "camp", "dragon_castle":
+		"dungeon", "ruins", "camp", "dragon_castle", "vampire_keep", "lich_tower":
 			return int(poi["cleared_day"]) < 0
 		"settlement", "trade_camp":
 			return true
@@ -337,7 +338,7 @@ func poi_enterable(poi: Dictionary) -> bool:
 
 ## Локация боевого типа (входим в сцену данжа)?
 func is_combat_poi(poi: Dictionary) -> bool:
-	return String(poi["kind"]) in ["dungeon", "ruins", "camp", "dragon_castle"] \
+	return String(poi["kind"]) in ["dungeon", "ruins", "camp", "dragon_castle", "vampire_keep", "lich_tower"] \
 			or (String(poi["kind"]) == "settlement" and String(poi["state"]) == "fallen")
 
 
@@ -438,6 +439,12 @@ func coin_reward(poi: Dictionary) -> int:
 		"dragon_castle":
 			# сокровищница дракона (M13)
 			return _rng.randi_range(int(tcfg.get("dragon_coins_min", 30)), int(tcfg.get("dragon_coins_max", 60)))
+		"vampire_keep":
+			# гробница-замок (M14-D): 20–40 монет по issue
+			return _rng.randi_range(int(tcfg.get("vampire_coins_min", 20)), int(tcfg.get("vampire_coins_max", 40)))
+		"lich_tower":
+			# рунная башня (M14-D): скромнее монетами, руна босса гарантирована
+			return _rng.randi_range(int(tcfg.get("lich_coins_min", 12)), int(tcfg.get("lich_coins_max", 25)))
 	return 0
 
 

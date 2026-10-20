@@ -242,6 +242,7 @@ func _initialize() -> void:
 	_test_m14_save()
 	_test_m14_b()
 	_test_m14_c()
+	_test_m14_d()
 	if _fails == 0:
 		print("OK: все тесты пройдены")
 		quit(0)
@@ -288,8 +289,8 @@ func _test_data() -> void:
 		_check(hero is Dictionary and hero.has("speed") and hero.has("dash_cooldown"),
 				"dungeon.json: параметры героя полны")
 	var enemies: Variant = _read_json("res://data/enemies.json")
-	_check(enemies is Array and enemies.size() == 32,
-			"enemies.json — 32 врага (M11: 22 + M13: 9 + волк леса из правки M14-C)")
+	_check(enemies is Array and enemies.size() == 37,
+			"enemies.json — 37 врагов (M11: 22 + M13: 9 + волк + M14-D: вампиры и личи)")
 	if enemies is Array:
 		var fields_ok := true
 		for enemy in enemies:
@@ -304,7 +305,7 @@ func _test_data() -> void:
 				bosses += 1
 				if int(enemy.get("hp", 0)) < 20:
 					boss_hp_ok = false
-		_check(bosses == 9, "enemies.json — 9 боссов (6 биомов + атаман + Древень + серафим/демон/дракон)")
+		_check(bosses == 11, "enemies.json — 11 боссов (8 биомов + атаман + Древень + серафим/демон/дракон + M14-D)")
 		_check(boss_hp_ok, "у всех боссов HP >= 20")
 	var magic: Variant = _read_json("res://data/magic.json")
 	_check(magic is Dictionary, "magic.json — валидный JSON-словарь")
@@ -2545,8 +2546,8 @@ func _test_m7() -> void:
 	# --- 4 биома: цвета, веса врагов, босс существует ---
 	var biomes: Dictionary = dungeon_cfg.get("biomes", {})
 	var weights: Dictionary = dungeon_cfg.get("biome_weights", {})
-	_check(biomes.size() == 8 and weights.size() == 4,
-			"8 биомов данжа (M7: четыре + бандиты M10 + обитель/бездна/замок M13)")
+	_check(biomes.size() == 10 and weights.size() == 4,
+			"10 биомов данжа (M7/M10/M13 + M14-D: вампир/лич)")
 	var enemy_ids := {}
 	var bosses_by_id := {}
 	for e in enemies:
@@ -4027,6 +4028,157 @@ func _test_m14_c() -> void:
 			"fauna.deer", "fauna.boar", "fauna.bird", "fauna.wolf", "fauna.fish"]:
 		_check(String(loc.get(key, "")) != "", "ключ локализации есть: " + key)
 	print("[M14-C] готово")
+
+
+# --- M14-D: вампиры и личи (issue #3) ----------------------------------------
+
+func _test_m14_d() -> void:
+	print("[M14-D: вампиры и личи]")
+	var loc: Dictionary = _read_json("res://loc/ru.json")
+	var enemies_v: Variant = _read_json("res://data/enemies.json")
+	var enemies: Array = enemies_v if enemies_v is Array else []
+	var dungeon_cfg: Dictionary = _read_json("res://data/dungeon.json")
+	var world_cfg: Dictionary = _read_json("res://data/world.json")
+
+	# --- враги: конфиги ---
+	var rows := {}
+	for e: Dictionary in enemies:
+		rows[String(e["id"])] = e
+	for need in ["vampire", "archvampire", "lich", "archlich", "skeleton_mage"]:
+		_check(rows.has(need), "враг %s добавлен" % need)
+	_check(float(rows["vampire"]["lifesteal"]) > 0.0
+			and float(rows["archvampire"]["lifesteal"]) > 0.0
+			and String(rows["vampire"]["weak_school"]) == "light"
+			and String(rows["archvampire"]["weak_school"]) == "light",
+			"вампиры пьют жизнь и слабы к свету")
+	_check(bool(rows["lich"]["magic_immune"]) and bool(rows["archlich"]["magic_immune"])
+			and float(rows["lich"]["projectile_speed"]) > 0.0
+			and float(rows["archlich"]["projectile_speed"]) > 0.0,
+			"личи не боятся магии и бьют издалека")
+	_check(float(rows["skeleton_mage"]["projectile_speed"]) > 0.0,
+			"скелет-маг — стрелок")
+	_check(float(rows["vampire"]["radius"]) >= 10.0 and float(rows["lich"]["radius"]) >= 10.0,
+			"новые гуманоиды читаемы (>=10)")
+	for id in ["vampire", "archvampire", "lich", "archlich", "skeleton_mage"]:
+		_check(String(loc.get(String(rows[id]["loc"]), "")) != "",
+				"враг %s назван в локализации" % id)
+
+	# --- lifesteal: вампир лечится от своих ударов ---
+	var EnemyS: Script = load("res://scripts/enemy.gd")
+	var vamp = EnemyS.new()
+	vamp.setup(rows["vampire"])
+	var fh := FakeKiteHero.new()
+	vamp.hero = fh
+	vamp.hp = 4
+	vamp._attack_hero()
+	_check(fh.hits == 1, "вампир ударил героя")
+	_check(int(vamp.hp) == 6, "вампир выпил жизни (+2 от 4 урона × 0.5)")
+	_check(float(vamp._heal_flash) > 0.0, "лечение подсвечено игроку")
+	# полный здоровый вампир не лечится сверх максимума
+	vamp.hp = int(vamp.p["hp"])
+	vamp._attack_hero()
+	_check(int(vamp.hp) == int(vamp.p["hp"]), "полное здоровье не переливается через край")
+	# максимальная планка respected при большом уроне
+	# снаряд лича летит в героя (target_group = hero)
+	var lich = EnemyS.new()
+	lich.setup(rows["lich"])
+	lich.hero = fh
+	lich.position = Vector2.ZERO
+	fh.global_position = Vector2(100, 0)
+	var proj = lich._make_hero_projectile()
+	_check(proj != null and String(proj.target_group) == "hero",
+			"снаряд лича целится в героя")
+	_check((proj.vel as Vector2).length() > 0.0 and int(proj.damage) == int(rows["lich"]["damage"]),
+			"снаряд лича летит и несёт урон")
+
+	# --- биомы данжа ---
+	for biome_id in ["vampire_keep", "lich_tower"]:
+		_check(dungeon_cfg["biomes"].has(biome_id), "биом %s есть в dungeon.json" % biome_id)
+	var vkeep: Dictionary = dungeon_cfg["biomes"]["vampire_keep"]
+	var ltower: Dictionary = dungeon_cfg["biomes"]["lich_tower"]
+	_check(int(vkeep["loot_bonus"]) == 3 and int(ltower["loot_bonus"]) == 2,
+			"лут биомов: замок +3, башня +2")
+	_check(String(vkeep["boss"]) == "archvampire" and String(ltower["boss"]) == "archlich",
+			"боссы биомов — архивампир и архилич")
+	_check(Color(String(vkeep["ambient"])).get_luminance() < Color("#0f0b06").get_luminance(),
+			"замок вампира темнее логова дракона (ночь-ambient)")
+	var weights_ok := true
+	for biome_id in ["vampire_keep", "lich_tower"]:
+		for w in dungeon_cfg["biomes"][biome_id]["enemy_weights"]:
+			if not rows.has(String(w)):
+				weights_ok = false
+	_check(weights_ok, "веса биомов ссылаются на живых врагов")
+
+	# --- POI на карте мира ---
+	var wmap = load("res://scripts/world_map.gd").new()
+	wmap.generate(11, world_cfg)
+	var vpoi := 0
+	var lpoi := 0
+	var vpoi_dict: Dictionary = {}
+	var lpoi_dict: Dictionary = {}
+	for poi in wmap.pois:
+		if String(poi["kind"]) == "vampire_keep":
+			vpoi += 1
+			vpoi_dict = poi
+		if String(poi["kind"]) == "lich_tower":
+			lpoi += 1
+			lpoi_dict = poi
+	_check(vpoi == 1 and lpoi == 1, "на карте ровно один замок вампира и одна башня лича")
+	_check(not vpoi_dict.is_empty() and String(vpoi_dict["biome"]) == "vampire_keep",
+			"замок ведёт в биом vampire_keep")
+	_check(not lpoi_dict.is_empty() and String(lpoi_dict["biome"]) == "lich_tower",
+			"башня ведёт в биом lich_tower")
+	var wsim = load("res://scripts/world_sim.gd").new()
+	wsim.setup(wmap, world_cfg, 7)
+	_check(wsim.poi_enterable(vpoi_dict) and wsim.is_combat_poi(vpoi_dict),
+			"в замок можно войти (боевая точка)")
+	_check(wsim.poi_enterable(lpoi_dict) and wsim.is_combat_poi(lpoi_dict),
+			"в башню можно войти (боевая точка)")
+	wsim.day = 20
+	vpoi_dict["cleared_day"] = 10
+	lpoi_dict["cleared_day"] = 10
+	_check(not wsim.poi_enterable(vpoi_dict), "зачищенный замок закрыт до возрождения")
+	var evs: Array = wsim._roll_dungeon_resets()
+	var reborn := 0
+	for ev in evs:
+		if String(ev["b"]) in ["vampire_keep", "lich_tower"]:
+			reborn += 1
+	_check(reborn == 2, "замок и башня возрождаются как прочие данжи")
+	# монеты: замок 20–40, башня 12–25
+	var vcoins: int = wsim.coin_reward({"kind": "vampire_keep"})
+	var lcoins: int = wsim.coin_reward({"kind": "lich_tower"})
+	_check(vcoins >= 20 and vcoins <= 40, "замок даёт %d монет (20–40 по issue)" % vcoins)
+	_check(lcoins >= 12 and lcoins <= 25, "башня даёт %d монет (12–25)" % lcoins)
+
+	# --- уязвимости не дублируют M13 ---
+	var school_of := {}
+	for s: Dictionary in _read_json("res://data/magic.json").get("schools", []):
+		school_of[String(s["id"])] = true
+	_check(String(rows["vampire"]["weak_school"]) == "light"
+			and String(rows["lich"].get("weak_school", "")) == "",
+			"свет бьёт вампиров; лич — ниша физики (без магической уязвимости)")
+	_check(not bool(rows["vampire"].get("magic_immune", false))
+			and bool(rows["lich"]["magic_immune"]),
+			"вампир не антимаг; лич — антимаг")
+
+	# --- локализация POI ---
+	for key in ["world.poi.vampire_keep", "world.poi.lich_tower",
+			"world.hint_vampire_keep", "world.hint_lich_tower",
+			"biome.vampire_keep", "biome.lich_tower"]:
+		_check(String(loc.get(key, "")) != "", "ключ локализации есть: " + key)
+	var view = load("res://scripts/world_view.gd")
+	_check(view.KIND_COLORS.has("vampire_keep") and view.KIND_SPRITES.get("vampire_keep", "") == "b:vampire_keep"
+			and view.KIND_SPRITES.get("lich_tower", "") == "b:lich_tower",
+			"иконки POI подключены в world_view")
+	for icon in ["res://assets/sprites/buildings/vampire_keep.png",
+			"res://assets/sprites/buildings/lich_tower.png",
+			"res://assets/sprites/env/vampire.png",
+			"res://assets/sprites/env/archvampire.png",
+			"res://assets/sprites/env/lich.png",
+			"res://assets/sprites/env/archlich.png",
+			"res://assets/sprites/env/skeleton_mage.png"]:
+		_check(FileAccess.file_exists(icon), "спрайт сгенерирован: " + icon.get_file())
+	print("[M14-D] готово")
 
 
 func _w_by_id(wlist: Array, weapon_id: String) -> Dictionary:

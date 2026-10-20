@@ -35,6 +35,7 @@ var _telegraph_left := 0.0  # замер перед рывком (враг вс�
 var _dash_left := 0.0       # длительность рывка
 var _dash_cd := 0.0
 var _dash_dir := Vector2.ZERO
+var _heal_flash := 0.0      # вспышка лечения (вампир пьёт жизнь, M14-D)
 
 
 ## Вызвать до add_child: строка из data/enemies.json.
@@ -112,6 +113,7 @@ func _ready() -> void:
 
 func _physics_process(delta: float) -> void:
 	_hit_flash = maxf(0.0, _hit_flash - delta)
+	_heal_flash = maxf(0.0, _heal_flash - delta)
 	# вспышка урона (M9): спрайт светлеет и гаснет без перерисовки _draw
 	if _sprite != null:
 		var k := clampf(_hit_flash / 0.2, 0.0, 1.0)
@@ -174,11 +176,16 @@ func _physics_process(delta: float) -> void:
 		velocity = Vector2.ZERO
 		if _attack_timer <= 0.0:
 			_attack_timer = float(p["attack_cooldown"])
-			hero.take_damage(int(p["damage"]))
-			# враг ответил — счётчик безнаказанных ударов обнуляется (T06)
-			_unanswered = 0
+			_attack_hero()
 	elif dist <= float(p["aggro"]):
-		velocity = to_hero.normalized() * float(p["speed"])
+		if float(p.get("projectile_speed", 0.0)) > 0.0:
+			# стрелок (лич/скелет-маг, M14-D): стоит и стреляет
+			velocity = Vector2.ZERO
+			if _attack_timer <= 0.0:
+				_attack_timer = float(p["attack_cooldown"])
+				_shoot_hero()
+		else:
+			velocity = to_hero.normalized() * float(p["speed"])
 	elif not patrol.is_empty():
 		# стража гнезда патрулирует (M12): ходит по точкам, пока герой далеко
 		var goal: Vector2 = patrol[_patrol_i]
@@ -194,6 +201,43 @@ func _physics_process(delta: float) -> void:
 
 
 ## --- анти-кайт (M14-B, T06): телеграф и рывок с атакой ---------------------
+
+## Удар в упор (M14-D): урон герою; вампир лечится на долю урона (lifesteal).
+## Отдельный метод — для headless-тестов.
+func _attack_hero() -> void:
+	hero.take_damage(int(p["damage"]))
+	# враг ответил — счётчик безнаказанных ударов обнуляется (T06)
+	_unanswered = 0
+	var ls := float(p.get("lifesteal", 0.0))
+	if ls > 0.0 and hp > 0:
+		var max_hp := int(p["hp"])
+		if hp < max_hp:
+			hp = mini(max_hp, hp + maxi(1, int(round(float(p["damage"]) * ls))))
+			_heal_flash = 0.4
+			queue_redraw()
+
+
+## Выстрел по герою (лич/скелет-маг, M14-D): снаряд летит в текущую позицию.
+func _make_hero_projectile() -> Node:
+	var proj = load("res://scripts/projectile.gd").new()
+	proj.setup(global_position,
+			(hero.global_position - global_position).normalized(),
+			float(p.get("projectile_speed", 240.0)), float(p.get("projectile_range", 200.0)),
+			int(p["damage"]), Color(String(p.get("color", "#b39ddb"))), float(p["radius"]))
+	proj.target_group = "hero"
+	return proj
+
+
+func _shoot_hero() -> void:
+	if hero == null or not is_instance_valid(hero) or hero.dead:
+		return
+	var parent := get_parent()
+	if parent == null:
+		return
+	var proj := _make_hero_projectile()
+	if parent.has_method("_solid_at"):
+		proj.solid_check = Callable(parent, "_solid_at")
+	parent.add_child(proj)
 
 ## Тик состояния: замер (враг замирает и вспыхивает) → рывок по герою.
 ## Отделено от _physics_process для headless-тестов.
@@ -276,3 +320,7 @@ func _draw() -> void:
 		draw_arc(Vector2.ZERO, float(p["radius"]) + 7.0, 0.0, TAU, 24, Color(1.0, 0.2, 0.2, 0.9), 3.0)
 	elif _dash_left > 0.0:
 		draw_line(Vector2.ZERO, -_dash_dir * 18.0, Color(1.0, 0.85, 0.3, 0.7), 3.0)
+	# вампир пьёт жизнь (M14-D): зелёная дуга-вспышка
+	if _heal_flash > 0.0:
+		draw_arc(Vector2.ZERO, float(p["radius"]) + 5.0, 0.0, TAU, 20,
+				Color(0.35, 0.9, 0.4, clampf(_heal_flash * 2.0, 0.0, 0.9)), 2.0)

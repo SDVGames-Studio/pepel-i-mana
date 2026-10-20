@@ -26,6 +26,8 @@
 		"caravans": 1,
 		"trade_camps": 1,
 		"dragon_castles": 1,
+		"vampire_keeps": 1,
+		"lich_towers": 1,
 		"dungeon_biomes": ["ruins", "mutant_forest", "crystal_caves", "ash_wastes", "cursed_hall", "demon_lair"]
 	},
 	"distances": {
@@ -37,7 +39,9 @@
 		"ruins": [8, 26],
 		"camp": [8, 24],
 		"obelisk": [18, 34],
-		"dragon_castle": [20, 36]
+		"dragon_castle": [20, 36],
+		"vampire_keep": [20, 34],
+		"lich_tower": [16, 30]
 	},
 	"sim": {
 		"camp_growth_min": 0.0,
@@ -50,7 +54,7 @@
 		"resettle_chance": 0.35,
 		"dungeon_reset_days": 10,
 		"caravan_move_days": 4,
-		"start_strength": {"camp": 4, "dungeon": 6, "ruins": 5, "settlement": 8, "dragon_castle": 12}
+		"start_strength": {"camp": 4, "dungeon": 6, "ruins": 5, "settlement": 8, "dragon_castle": 12, "vampire_keep": 14, "lich_tower": 12}
 	},
 	"nests": {
 		"max_level": 3,
@@ -82,6 +86,10 @@
 		"ruins_coins_min": 3,
 		"ruins_coins_max": 8,
 		"dragon_coins_min": 30,
-		"dragon_coins_max": 60
+		"dragon_coins_max": 60,
+		"vampire_coins_min": 20,
+		"vampire_coins_max": 40,
+		"lich_coins_min": 12,
+		"lich_coins_max": 25
 	}
 }

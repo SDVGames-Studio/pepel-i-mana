@@ -177,6 +177,11 @@ func _place_pois(params: Dictionary) -> void:
 	# замок дракона (вишлист M13): один дальний, логово-биом и сокровищница
 	d = dist_cfg.get("dragon_castle", [20, 36])
 	_place_kind("dragon_castle", "dragon_lair", int(d[0]), int(d[1]), int(pconf.get("dragon_castles", 0)))
+	# замок вампира и башня лича (M14-D): уникальные тёмные POI
+	d = dist_cfg.get("vampire_keep", [20, 34])
+	_place_kind("vampire_keep", "vampire_keep", int(d[0]), int(d[1]), int(pconf.get("vampire_keeps", 1)))
+	d = dist_cfg.get("lich_tower", [16, 30])
+	_place_kind("lich_tower", "lich_tower", int(d[0]), int(d[1]), int(pconf.get("lich_towers", 1)))
 	# стартовые силы из конфига
 	var strengths: Dictionary = params.get("sim", {}).get("start_strength", {})
 	for poi in pois:
@@ -185,6 +190,8 @@ func _place_pois(params: Dictionary) -> void:
 				poi["strength"] = float(strengths.get("camp" if String(poi["kind"]) == "camp" else "settlement", 6.0))
 			"dragon_castle":
 				poi["strength"] = float(strengths.get("dragon_castle", 12.0))
+			"vampire_keep", "lich_tower":
+				poi["strength"] = float(strengths.get(String(poi["kind"]), 13.0))
 			"dungeon", "ruins":
 				poi["strength"] = float(strengths.get("dungeon" if String(poi["kind"]) == "dungeon" else "ruins", 5.0))
 
@@ -244,9 +251,11 @@ func _pois_ok() -> bool:
 	for poi in pois:
 		if not is_walkable(poi["tile"]):
 			return false
-	# город+аномалия+6 данжей+3 поселения+караван+гуляй-город+3 руины+4 лагеря+2 обелиска+замок дракона
-	var expected := 1 + 1 + 6 + 3 + 1 + 1 + 3 + 4 + 2 \
-			+ int(cfg.get("pois", {}).get("dragon_castles", 0))
+	# город+аномалия+данжи биомов+3 поселения+караван+гуляй-город+3 руины
+	# +4 лагеря+2 обелиска+замок дракона+замок вампира+башня лича
+	var expected := 1 + 1 + int(cfg.get("pois", {}).get("dungeon_biomes", []).size()) + 3 + 1 + 1 \
+			+ 3 + 4 + 2 + int(cfg.get("pois", {}).get("dragon_castles", 0)) \
+			+ int(cfg.get("pois", {}).get("vampire_keeps", 1)) + int(cfg.get("pois", {}).get("lich_towers", 1))
 	return pois.size() >= expected
 
 

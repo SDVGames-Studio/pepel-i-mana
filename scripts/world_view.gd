@@ -13,6 +13,8 @@ const KIND_COLORS := {
 	"trade_camp": "#ffca28",
 	"obelisk": "#4dd0e1",
 	"dragon_castle": "#ef5350",
+	"vampire_keep": "#b71c1c",
+	"lich_tower": "#9575cd",
 }
 
 # спрайты точек интереса (M9): Kenney + сгенерированные здания
@@ -26,6 +28,8 @@ const KIND_SPRITES := {
 	"trade_camp": "e:cart",
 	"obelisk": "b:statue",
 	"dragon_castle": "b:castle",
+	"vampire_keep": "b:vampire_keep",
+	"lich_tower": "b:lich_tower",
 }
 
 var map = null

@@ -159,6 +159,34 @@
 			"loot_bonus": 3,
 			"pollution_on_visit": 3.0,
 			"boss": "ancient_dragon"
+		},
+		"vampire_keep": {
+			"loc": "biome.vampire_keep",
+			"floor_color": "#3a3238",
+			"wall_color": "#1c1620",
+			"bg_color": "#0a070d",
+			"exit_color": "#c85a5a",
+			"floor_sprite": "k:28",
+			"wall_sprite": "k:40",
+			"ambient": "#050508",
+			"enemy_weights": { "vampire": 50, "ghoul": 30, "skeleton": 20 },
+			"loot_bonus": 3,
+			"pollution_on_visit": 1.0,
+			"boss": "archvampire"
+		},
+		"lich_tower": {
+			"loc": "biome.lich_tower",
+			"floor_color": "#3a3448",
+			"wall_color": "#221c30",
+			"bg_color": "#0b0814",
+			"exit_color": "#9575cd",
+			"floor_sprite": "k:28",
+			"wall_sprite": "k:40",
+			"ambient": "#080612",
+			"enemy_weights": { "lich": 30, "skeleton_mage": 30, "skeleton": 20, "wraith": 20 },
+			"loot_bonus": 2,
+			"pollution_on_visit": 2.0,
+			"boss": "archlich"
 		}
 	}
 }

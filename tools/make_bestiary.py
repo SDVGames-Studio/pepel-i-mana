@@ -444,6 +444,187 @@ SPITTER = [
 ]
 
 
+
+# ------------------------------------------------- M14-D: вампиры и личи -----
+
+PAL_VAMPIRE = {
+    "k": P(18, 16, 26),
+    "h": P(28, 22, 38),
+    "p": P(214, 206, 198),
+    "e": P(205, 30, 42),
+    "w": P(242, 240, 232),
+    "c": P(96, 18, 30),
+    "s": P(42, 36, 52),
+}
+
+VAMPIRE = [
+    "     kkkkk     ",
+    "    khhhhhk    ",
+    "    khppphk    ",
+    "    kpekpek    ",
+    "    kpppppk    ",
+    "    kpwkwpk    ",
+    "    kkpppkk    ",
+    "   kccpppcck   ",
+    "  kcccpccck    ",
+    " kcccccccccck  ",
+    " ksccccccccsck ",
+    " kskcccccccksk ",
+    " kkkccccccckkk ",
+    "    kck kck    ",
+    "    kkk kkk    ",
+]
+
+ARCHVAMPIRE = [
+    "      kkkkk      ",
+    "     kFhhhFk     ",
+    "     khppphk     ",
+    "     kpekpek     ",
+    "     kpppppk     ",
+    "     kpwkwpk     ",
+    "     kkpppkk     ",
+    "    kccpppcck    ",
+    "   kcccpccck     ",
+    "  kcccrcccrccck  ",
+    " kcccccccccccccck",
+    " ksrcrcrrrcrcrsck",
+    " kskccrrrrrccksk ",
+    " kkkcccrrrccckkk ",
+    "   kcccck kccck  ",
+    "   kck   k  kck  ",
+    "   kkk   kk  kkk ",
+]
+
+PAL_LICH = {
+    "k": P(16, 12, 24),
+    "F": P(232, 192, 84),
+    "w": P(232, 228, 214),
+    "v": P(84, 52, 120),
+    "r": P(118, 224, 238),
+    "s": P(50, 32, 74),
+}
+
+LICH = [
+    "    kFkFkFk    ",
+    "    kFFFFFFk   ",
+    "    kwwwwwwk   ",
+    "   kwwkwkwwk   ",
+    "   kwwwwwwwk   ",
+    "   kwkwkwkwk   ",
+    "    kwwwwwk    ",
+    "   kvvvvvvvk   ",
+    "  kvrvvvvrvk   ",
+    "  kvvvrvrvvvk  ",
+    "  kvvvvvvvvvk  ",
+    " kvvrvvvvrvvvk ",
+    " kvvvvvvvvvvvk ",
+    " ksvvvvvvvvvsk ",
+    " kskvvvvvvvksk ",
+    " kkcvk k kvck  ",
+    "   vk kkk kv   ",
+    "   kk     kk   ",
+]
+
+ARCHLICH = [
+    "     kFkFkFkFk     ",
+    "     kFFFFFFFFk    ",
+    "     kwwwwwwwwk    ",
+    "    kwwkwwkwwwk    ",
+    "    kwwrwwrwwwk    ",
+    "    kwwwwwwwwwk    ",
+    "    kwkwwwwkwk     ",
+    "     kwwwwwwk      ",
+    "    kvvvvvvvvk     ",
+    "   kvvrvvvvrvvk    ",
+    "  kvvvvrvrvvvvvk   ",
+    "  kvvvvvvvvvvvvk   ",
+    " kvvrvvvvrvvvvvvvk ",
+    " kvvvvvvrvvvvvvvvk ",
+    " ksvvvvvvvvvvvvvsk ",
+    " kskvvvrvvvvrvvksk ",
+    " kkcvvk kkk kvvck  ",
+    "   vvk  k k  kvv   ",
+    "   kk   kkk   kk   ",
+]
+
+PAL_SKMAGE = {
+    "k": P(16, 14, 22),
+    "h": P(44, 36, 66),
+    "w": P(230, 226, 212),
+    "r": P(72, 52, 104),
+    "o": P(140, 120, 220),
+}
+
+SKELETON_MAGE = [
+    "      kkk      ",
+    "     khhhhk    ",
+    "    khhhhhhk   ",
+    "   khhhhhhhhk  ",
+    "  khhhhhhhhhhk ",
+    " khhkkkkkkkkhhk",
+    "     kwwwwk    ",
+    "    kwwkwwwk   ",
+    "    kwwwwwwk   ",
+    "    kwkwwkwk   ",
+    "     kwwwwk    ",
+    "    kkrrrrkk   ",
+    "   krrrorrork  ",
+    "   krkrrrrkrk  ",
+    "   krk kkk krk ",
+    "   kk  k k  kk ",
+    "       k k     ",
+]
+
+PAL_VKEEP = {
+    "k": P(36, 32, 42),
+    "e": P(198, 32, 44),
+}
+
+VAMPIRE_KEEP = [
+    "  k     k     k  ",
+    "  kk   kkk   kk  ",
+    "  kek  kek  kek  ",
+    "  kek  kek  kek  ",
+    "  kekk kek kekk  ",
+    "  kkkkkkkkkkkkk  ",
+    "  kkkkkkkkkkkkk  ",
+    "  kekekekekekek  ",
+    "  kkkkkkkkkkkkk  ",
+    " kkkekekekekekkk ",
+    " kkkkkkkkkkkkkkk ",
+    " kkekkkekekkkekk ",
+    " kkkkkkkkkkkkkkk ",
+    "kkkkkkkkkkkkkkkkk",
+]
+
+PAL_LTOWER = {
+    "k": P(20, 16, 30),
+    "v": P(72, 52, 104),
+    "r": P(118, 226, 240),
+    "F": P(232, 192, 84),
+}
+
+LICH_TOWER = [
+    "       kFk       ",
+    "      kFkFk      ",
+    "       kvk       ",
+    "      kvvvk      ",
+    "      kvrvk      ",
+    "      kvvvk      ",
+    "     kvvrvvk     ",
+    "     kvvvvvk     ",
+    "     kvvrvvk     ",
+    "     kvvvvvk     ",
+    "    kvvvrvvvk    ",
+    "    kvvvvvvvk    ",
+    "    kvvvrvvvk    ",
+    "   kvvvvvvvvvk   ",
+    "   kvvvvvvvvvk   ",
+    "  kkvvkkkkkvvkk  ",
+    " kkvvk     kvvkk ",
+    "kkkkkkkkkkkkkkkkk",
+]
+
 # ------------------------------------------------------------- сборка --------
 
 # (имя, сетка, палитра, папка)
@@ -460,6 +641,13 @@ SPRITES = [
     ("mutant", MUTANT, PAL_MUTANT, ENV),
     ("brute", BRUTE, PAL_BRUTE, ENV),
     ("spitter", SPITTER, PAL_SPITTER, ENV),
+    ("vampire", VAMPIRE, PAL_VAMPIRE, ENV),
+    ("archvampire", ARCHVAMPIRE, PAL_VAMPIRE, ENV),
+    ("lich", LICH, PAL_LICH, ENV),
+    ("archlich", ARCHLICH, PAL_LICH, ENV),
+    ("skeleton_mage", SKELETON_MAGE, PAL_SKMAGE, ENV),
+    ("vampire_keep", VAMPIRE_KEEP, PAL_VKEEP, BLD),
+    ("lich_tower", LICH_TOWER, PAL_LTOWER, BLD),
 ]
 
 

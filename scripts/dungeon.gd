@@ -341,12 +341,7 @@ func _patrol_points(home: Vector2i) -> PackedVector2Array:
 ## Мирная фауна данжей (замечание 2026-10-20: звери живут не только на карте
 ## мира). Состав по биому; птица почти везде, в лесу — олени и кабан.
 func _build_fauna() -> void:
-	var biome_id := Game.forced_biome
-	if not params.get("biomes", {}).has(biome_id):
-		for key in params.get("biomes", {}):
-			if params["biomes"][key] == biome:
-				biome_id = String(key)
-				break
+	var biome_id := _biome_id()
 	var roster: Array = {
 		"mutant_forest": ["deer", "deer", "boar", "bird"],
 		"ruins": ["bird", "bird"],
@@ -381,6 +376,17 @@ func _build_fauna() -> void:
 		creature.add_to_group("dungeon_fauna")
 		add_child(creature)
 		placed += 1
+
+
+## Ключ текущего биома (forced от POI карты мира или поиск по словарю).
+func _biome_id() -> String:
+	var fb := String(Game.forced_biome)
+	if params.get("biomes", {}).has(fb):
+		return fb
+	for key in params.get("biomes", {}):
+		if params["biomes"][key] == biome:
+			return String(key)
+	return ""
 
 
 ## Зверь убит: дроп по fauna.json в рюкзак героя.
@@ -934,6 +940,9 @@ func _on_boss_died(enemy) -> void:
 	for item_id: String in loot_data.get("boss_guaranteed", []):
 		_spawn_pickup("item", item_id, enemy.position + Vector2(_loot_rng.randf_range(-14, 14), _loot_rng.randf_range(-10, 10)))
 	_spawn_pickup("item", _random_rune_id(), enemy.position + Vector2(0, 16))
+	# башня лича (M14-D): гарантированная вторая руна босса
+	if _biome_id() == "lich_tower":
+		_spawn_pickup("item", _random_rune_id(), enemy.position + Vector2(0, 32))
 	var boss_drop := _roll_equipment_boss(int(biome.get("loot_bonus", 0)) + 1)
 	if boss_drop != "":
 		_spawn_pickup("item", boss_drop, enemy.position + Vector2(0, -18))
