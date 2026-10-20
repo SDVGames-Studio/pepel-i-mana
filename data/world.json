@@ -65,8 +65,11 @@
 		"siege_boost_per_level": 0.15,
 		"big_raid_level": 3,
 		"track_chance": 0.3,
+		"track_chance_min": 0.25,
+		"track_hide_per_level": 0.15,
 		"track_len_min": 3,
 		"track_len_max": 6,
+		"track_len_shrink_per_level": 0.12,
 		"track_ttl": 5,
 		"spot_radius": 2
 	},

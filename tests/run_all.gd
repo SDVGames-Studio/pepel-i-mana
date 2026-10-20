@@ -246,6 +246,7 @@ func _initialize() -> void:
 	_test_m14_d()
 	_test_m14_e()
 	_test_m14_f()
+	_test_m14_g()
 	if _fails == 0:
 		print("OK: все тесты пройдены")
 		quit(0)
@@ -1826,6 +1827,11 @@ func _test_defense() -> void:
 	_check(not sim_h.animals.is_empty(), "зверь ходит по карте")
 	var hunter_r := _add_resident(sim_h, "Ярл", "hunter")
 	var prey: Dictionary = sim_h.animals[0]
+	# M14-C: волки в городе охотятся на зверей — убираем их, чтобы не съели добычу теста
+	sim_h.animals = sim_h.animals.filter(
+			func(a: Dictionary) -> bool: return String(a.get("kind", "deer")) != "wolf")
+	prey = sim_h.animals[0]
+	prey["kind"] = "deer"
 	_teleport(sim_h, hunter_r, sim_h.map.tile_of_px(prey["pos"]))
 	var food0: float = float(sim_h.res["food"])
 	var animals0: int = sim_h.animals.size()
@@ -2626,10 +2632,12 @@ func _test_m7() -> void:
 	var branches: Array = skills.cfg.get("branches", [])
 	_check(branches.size() == 3, "дерево навыков — 3 ветки")
 	var nodes_ok := branches.size() == 3
+	var node_total := 0
 	for branch in branches:
-		if (branch.get("nodes", []) as Array).size() != 3:
+		node_total += (branch.get("nodes", []) as Array).size()
+		if (branch.get("nodes", []) as Array).size() < 3:
 			nodes_ok = false
-	_check(nodes_ok, "в каждой ветке 3 узла (9 узлов всего)")
+	_check(nodes_ok and node_total >= 10, "узлы ветвей: минимум 3 на ветку, всего >= 10 (M14-G добавил s4)")
 	_check(int(skills.add_xp(11)) == 0 and int(skills.level) == 1, "11 XP — ещё 1 уровень")
 	_check(int(skills.add_xp(1)) == 1 and int(skills.level) == 2, "12 XP — уровень 2, выбор навыка")
 	_check(int(skills.pending) == 1, "очередь выбора навыка: 1")
@@ -4809,3 +4817,80 @@ class FakeInteractHero extends RefCounted:
 	var hits := 0
 	func take_damage(_n: int, _s: String = "") -> void:
 		hits += 1
+
+
+# --- M14-G: навыки следов (issue #3) -----------------------------------------
+
+func _test_m14_g() -> void:
+	print("[M14-G: навыки следов]")
+	var loc: Dictionary = _read_json("res://loc/ru.json")
+	var world_cfg: Dictionary = _read_json("res://data/world.json")
+	var nests: Dictionary = world_cfg.get("nests", {})
+	_check(nests.has("track_hide_per_level") and nests.has("track_len_shrink_per_level"),
+			"настройки прятания следов в world.json")
+
+	# длина цепочки падает с уровнем гнезда (3 уровня)
+	var wmap = load("res://scripts/world_map.gd").new()
+	wmap.generate(11, world_cfg)
+	var wsim = load("res://scripts/world_sim.gd").new()
+	wsim.setup(wmap, world_cfg, 5)
+	wsim._rng.seed = 77
+	var len0: int = wsim._track_length_for(nests, 0)
+	wsim._rng.seed = 77
+	var len3: int = wsim._track_length_for(nests, 3)
+	_check(len3 < len0, "следы гнезда 3 уровня короче (%d < %d)" % [len3, len0])
+
+	# шанс появления падает с уровнем: много бросков на фиксированном сиде
+	# (следы оставляют только гнёзда уровня >= 1; тайлы — проходимые)
+	var rolls := 600
+	var count1 := 0
+	var count3 := 0
+	var walk1: Vector2i = wmap.nearest_walkable(wmap.city_tile + Vector2i(10, 0))
+	var walk3: Vector2i = wmap.nearest_walkable(wmap.city_tile + Vector2i(20, 0))
+	var camp1: Dictionary = {"kind": "camp", "cleared_day": -1, "id": 900, "tile": walk1, "nest_level": 1}
+	var camp3: Dictionary = {"kind": "camp", "cleared_day": -1, "id": 901, "tile": walk3, "nest_level": 3}
+	for i in rolls:
+		wsim.tracks = {}
+		wsim._rng.seed = 3000 + i
+		wsim.map.pois.append(camp1)
+		wsim._roll_tracks()
+		count1 += wsim.tracks.size()
+		wsim.map.pois.erase(camp1)
+		wsim.tracks = {}
+		wsim._rng.seed = 3000 + i
+		wsim.map.pois.append(camp3)
+		wsim._roll_tracks()
+		count3 += wsim.tracks.size()
+		wsim.map.pois.erase(camp3)
+	_check(count3 < count1, "гнездо 3 уровня заметает следы (%d < %d следов)" % [count3, count1])
+
+	# узел «выжившего»: бонусы track_spot/track_wipe
+	var sk = load("res://scripts/skills.gd").new()
+	sk.setup(_read_json("res://data/skills.json"))
+	sk.add_xp(400)   # XP на 4 узла
+	for node_id in ["s1", "s2", "s3", "s4"]:
+		sk.choose(node_id)
+	var bonuses: Dictionary = sk.bonuses()
+	_check(int(bonuses.get("track_spot", 0)) == 2 and int(bonuses.get("track_wipe", 0)) == 1,
+			"узел выжившего даёт track_spot 2 и track_wipe 1")
+	# замечание: неоткрытое гнездо рядом, след в 3 тайлах — без бонуса не виден
+	var hero_tile: Vector2i = wmap.city_tile + Vector2i(5, 0)
+	var hidden_camp: Dictionary = {"id": 998, "kind": "camp", "cleared_day": -1,
+			"tile": hero_tile + Vector2i(4, 0), "discovered": false, "biome": "",
+			"faction": "bandits", "strength": 1.0, "state": "ok"}
+	wsim.map.pois.append(hidden_camp)
+	wsim.tracks = {hero_tile + Vector2i(3, 0): {"dir": Vector2i(1, 0), "camp": 998, "age": 0}}
+	var res_far: Dictionary = wsim.track_scout(hero_tile, 0, 0)
+	_check(not bool(res_far["found"]), "след в 3 тайлах без бонуса не замечен (радиус 2)")
+	var res_near: Dictionary = wsim.track_scout(hero_tile, 2, 0)
+	_check(bool(res_near["found"]), "с узлом выжившего след замечен")
+	wsim.map.pois.erase(hidden_camp)
+	# заметание шире: след в 1 тайле стирается только с бонусом
+	wsim.tracks = {hero_tile + Vector2i(1, 0): {"dir": Vector2i(1, 0), "camp": 999, "age": 0}}
+	var res_wipe0: Dictionary = wsim.track_scout(hero_tile, 0, 0)
+	_check(not bool(res_wipe0["wiped"]), "без бонуса след в 1 тайле не затёрт")
+	var res_wipe1: Dictionary = wsim.track_scout(hero_tile, 0, 1)
+	_check(bool(res_wipe1["wiped"]), "с бонусом след затёрт шире")
+	_check(String(loc.get("tree.s4", "")) != "" and String(loc.get("tree.desc.s4", "")) != "",
+			"узел s4 описан в локализации")
+	print("[M14-G] готово")

@@ -282,10 +282,16 @@ func _try_hunt() -> bool:
 	return true
 
 
-## Следы (M12): на каждом шаге герой затирает след под ногами и высматривает
-## чужие следы — возле цепочки неоткрытого гнезда открывается путь к нему.
+## Следы (M12→M14-G): герой затирает следы и выслеживает гнёзда; узел
+## «выжившего» (track_spot/track_wipe) расширяет радиусы замечания/заметания.
 func _scout_tracks() -> void:
-	var res: Dictionary = sim.track_scout(hero_tile)
+	var spot := 0
+	var wipe := 0
+	if Game.skills != null:
+		var bonuses: Dictionary = Game.skills.bonuses()
+		spot = int(bonuses.get("track_spot", 0))
+		wipe = int(bonuses.get("track_wipe", 0))
+	var res: Dictionary = sim.track_scout(hero_tile, spot, wipe)
 	if bool(res["found"]):
 		hud.toast(Loc.t("world.track_found"))
 		view.queue_redraw()

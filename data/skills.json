@@ -23,7 +23,8 @@
 			"nodes": [
 				{ "id": "s1", "loc": "tree.s1", "desc": "tree.desc.s1", "hp": 5 },
 				{ "id": "s2", "loc": "tree.s2", "desc": "tree.desc.s2", "armor": 1 },
-				{ "id": "s3", "loc": "tree.s3", "desc": "tree.desc.s3", "speed": 20, "dash_cd_mult": 0.8 }
+				{ "id": "s3", "loc": "tree.s3", "desc": "tree.desc.s3", "speed": 20, "dash_cd_mult": 0.8 },
+				{ "id": "s4", "loc": "tree.s4", "desc": "tree.desc.s4", "track_spot": 2, "track_wipe": 1 }
 			]
 		}
 	]

@@ -89,20 +89,32 @@ func _roll_tracks() -> void:
 	for poi in map.pois:
 		if String(poi["kind"]) != "camp" or int(poi["cleared_day"]) >= 0:
 			continue
-		if int(poi.get("nest_level", 0)) < 1:
+		var level := int(poi.get("nest_level", 0))
+		if level < 1:
 			continue
-		if _rng.randf() > float(ncfg.get("track_chance", 0.3)):
+		# M14-G: скауты высокого гнезда прячут следы — шанс и длина падают
+		var chance := float(ncfg.get("track_chance", 0.3)) * maxf(
+				float(ncfg.get("track_chance_min", 0.25)),
+				1.0 - float(ncfg.get("track_hide_per_level", 0.15)) * float(level))
+		if _rng.randf() > chance:
 			continue
 		var dirs := [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]
 		var dir: Vector2i = dirs[_rng.randi_range(0, 3)]
 		var tile: Vector2i = poi["tile"]
-		var length := _rng.randi_range(int(ncfg.get("track_len_min", 3)), int(ncfg.get("track_len_max", 6)))
+		var length := _track_length_for(ncfg, level)
 		for i in length:
 			tile += dir
 			if not map.in_bounds(tile) or not map.is_walkable(tile):
 				break
 			if not tracks.has(tile):
 				tracks[tile] = {"dir": dir, "camp": int(poi["id"]), "age": 0}
+
+
+## Длина цепочки следов с учётом уровня гнезда (отдельно — для тестов).
+func _track_length_for(ncfg: Dictionary, level: int) -> int:
+	var length := _rng.randi_range(int(ncfg.get("track_len_min", 3)), int(ncfg.get("track_len_max", 6)))
+	var shrink := float(ncfg.get("track_len_shrink_per_level", 0.12))
+	return maxi(2, roundi(float(length) * maxf(0.4, 1.0 - shrink * float(level))))
 
 
 func _update_tracks() -> void:
@@ -119,14 +131,20 @@ func _update_tracks() -> void:
 		tracks.erase(t)
 
 
-## Герой осматривается (M12): затирает след под ногами; рядом со следом
+## Герой осматривается (M12→M14-G): затирает след под ногами; рядом со следом
 ## неоткрытого гнезда — открывает следующий тайл цепочки (выслеживание).
-func track_scout(hero_tile: Vector2i) -> Dictionary:
+## Узел «выжившего» (skills.json -> track_spot/track_wipe) расширяет радиусы.
+func track_scout(hero_tile: Vector2i, spot_bonus := 0, wipe_bonus := 0) -> Dictionary:
 	var out := {"found": false, "wiped": false}
-	if tracks.has(hero_tile):
-		tracks.erase(hero_tile)
+	var wipe_radius := 0.8 + float(wipe_bonus)
+	var wiped: Array = []
+	for t in tracks:
+		if Vector2(t).distance_to(Vector2(hero_tile)) <= wipe_radius:
+			wiped.append(t)
+	for t in wiped:
+		tracks.erase(t)
 		out["wiped"] = true
-	var radius := float(cfg.get("nests", {}).get("spot_radius", 2))
+	var radius := float(cfg.get("nests", {}).get("spot_radius", 2)) + float(spot_bonus)
 	for t in tracks:
 		if Vector2(t).distance_to(Vector2(hero_tile)) > radius:
 			continue
