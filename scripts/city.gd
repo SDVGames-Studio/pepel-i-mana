@@ -614,6 +614,10 @@ func _unhandled_input(event: InputEvent) -> void:
 			hud.toggle_residents()
 		elif hud.chronicle_visible():
 			hud.toggle_chronicle()
+		elif hud.market_visible():
+			hud.toggle_market()
+		elif _equip_panel.is_open():
+			_equip_panel.close()
 		else:
 			_exit_to_menu()
 

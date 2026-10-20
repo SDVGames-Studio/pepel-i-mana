@@ -82,6 +82,10 @@ func toggle_inventory() -> void:
 	_inv_panel.visible = not _inv_panel.visible
 
 
+func inventory_visible() -> bool:
+	return _inv_panel.visible
+
+
 func _build() -> void:
 	var root := Control.new()
 	root.name = "Root"

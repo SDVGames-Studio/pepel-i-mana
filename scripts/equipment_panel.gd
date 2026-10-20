@@ -48,6 +48,10 @@ func toggle() -> void:
 		_rebuild()
 
 
+func is_open() -> bool:
+	return _panel.visible
+
+
 func close() -> void:
 	_panel.visible = false
 

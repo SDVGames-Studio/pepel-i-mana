@@ -38,9 +38,17 @@ var _equip_panel = null                # панель экипировки (M14-
 
 
 ## Пауза данжа (M9): Esc — вуаль + «Продолжить / В меню».
+## Сначала Esc закрывает открытые окна (фидбек заказчика): экипировка,
+## инвентарь; и только затем — пауза.
 func _toggle_pause() -> void:
 	if get_tree().paused:
 		return  # закрытие оверлея делает сам оверлей (ALWAYS)
+	if _equip_panel != null and _equip_panel.is_open():
+		_equip_panel.close()
+		return
+	if hud.inventory_visible():
+		hud.toggle_inventory()
+		return
 	_pause_overlay.open()
 
 

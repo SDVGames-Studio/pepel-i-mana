@@ -111,6 +111,23 @@ func _on_exit_pressed() -> void:
 	get_tree().quit()
 
 
+## Esc в меню (фидбек заказчика 2026-10-20): возвращаемся в игру — меню
+## работает как пауза. Без сессии Esc ничего не делает.
+func _unhandled_input(event: InputEvent) -> void:
+	if not event.is_action_pressed("ui_cancel"):
+		return
+	if Game.city_sim == null:
+		return
+	# панель настроек новой игры открыта — сначала закрываем её
+	if _setup_box != null and _setup_box.visible:
+		_setup_box.visible = false
+		return
+	if Game.world_active and Game.world_map != null:
+		get_tree().change_scene_to_file("res://scenes/world.tscn")
+	else:
+		get_tree().change_scene_to_file("res://scenes/city.tscn")
+
+
 ## Панель настроек старта (вопрос 11): число жителей и запас ресурсов.
 func _build_setup() -> void:
 	var start: Dictionary = _city_cfg.get("start", {})
