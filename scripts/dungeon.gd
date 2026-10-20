@@ -34,6 +34,7 @@ var _zones: Array = []            # зоны «Терновых шипов»: {p
 var _zone_time := 0.0
 var _pause_layer: CanvasLayer = null   # пауза данжа (M9, Esc)
 var _pause_overlay = null
+var _equip_panel = null                # панель экипировки (M14-B, клавиша I)
 
 
 ## Пауза данжа (M9): Esc — вуаль + «Продолжить / В меню».
@@ -90,6 +91,13 @@ func _ready() -> void:
 	add_child(hud)
 	hud.minimap.setup(gen)
 	_build_pause()
+	# панель экипировки (M14-B, клавиша I): слоты, рюкзак, свитки/зелья
+	_equip_panel = load("res://scripts/equipment_panel.gd").new()
+	_equip_panel.hero_cb = func(): return hero
+	_equip_panel.toast_cb = func(msg: String) -> void: hud.toast(msg)
+	_equip_panel.on_change = _apply_equipment
+	_equip_panel.cast_scroll_cb = _cast_scroll
+	add_child(_equip_panel)
 	# дикий регион: посещение леса-мутанта добавляет городу загрязнения (M5)
 	var pol := float(biome.get("pollution_on_visit", 0.0))
 	if pol > 0.0 and Game.city_sim != null:
@@ -132,6 +140,12 @@ func _process(delta: float) -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
+	# панель экипировки (M14-B): клавиша I
+	if event is InputEventKey and event.pressed and not event.echo \
+			and event.physical_keycode == KEY_I:
+		_equip_panel.toggle()
+		get_viewport().set_input_as_handled()
+		return
 	# слоты заклинаний 1–9 (спеллбук, порядок изучения; с M5 — 9 боевых школ-заклинаний)
 	if event is InputEventKey and event.pressed and not event.echo:
 		var idx := -1
@@ -245,9 +259,26 @@ func _build_hero() -> void:
 	hero.position = _tile_to_pos(gen.start_tile)
 	hero.died.connect(_on_hero_died)
 	add_child(hero)
+	# экипировка (M14-B): бонусы брони/аксессуара и мана-кап до фонаря
+	_apply_equipment()
+	hero.projectile_solid_check = _solid_at
 	hero.set_camera_limits(Rect2(0, 0, gen.w * float(ts), gen.h * float(ts)))
 	# радиус фонаря — отдельный параметр (меньше радиуса обзора-памяти миникарты)
 	hero.make_light(float(params["hero"]["light_radius_tiles"]) * float(ts))
+
+
+## Применить надетую экипировку к живому герою (спавн и любое изменение в панели).
+func _apply_equipment() -> void:
+	if hero == null:
+		return
+	hero.set_equipment_bonuses(Game.equipment_bonuses())
+	_apply_mana_params()
+	hero.mana = mini(hero.mana, hero.mana_max)
+
+
+## Стена ли тайл под точкой — снаряды гаснут об стены данжа.
+func _solid_at(pos: Vector2) -> bool:
+	return gen.tile_at(_pos_to_tile(pos)) == DungeonGenScript.TILE_WALL
 
 
 ## Мана героя (ответы №56 и №65): запас и регенерация; зачарованный алтарь
@@ -362,6 +393,12 @@ func _spawn_pickup(kind: String, item_id: String, pos: Vector2) -> void:
 			if String(it["id"]) == item_id:
 				ref = String(it.get("sprite", ""))
 				break
+		# предметы экипировки живут в items.json (M14-B)
+		if ref == "":
+			for it: Dictionary in Game.items_cfg.get("items", []):
+				if String(it["id"]) == item_id:
+					ref = String(it.get("sprite", ""))
+					break
 	pickup.setup(kind, item_id, ref)
 	pickup.position = pos
 	pickup.collected.connect(_on_pickup_collected)
@@ -371,7 +408,8 @@ func _spawn_pickup(kind: String, item_id: String, pos: Vector2) -> void:
 ## --- Магия (M3): каст боевых заклинаний ---------------------------------
 
 ## Каст по слоту спеллбука: мана, кулдаун, эффект, цвет школы.
-func _cast_spell(spell_id: String) -> void:
+## free_cast — свиток (M14-B): ману не тратим, кулдаун общий с заклинанием.
+func _cast_spell(spell_id: String, free_cast := false) -> void:
 	if hero.dead:
 		return
 	var def: Dictionary = Game.magic.spell(spell_id)
@@ -379,7 +417,7 @@ func _cast_spell(spell_id: String) -> void:
 		return
 	if hero.spell_cd_left(spell_id) > 0.0:
 		return
-	var cost := int(def.get("mana_cost", 0))
+	var cost := 0 if free_cast else int(def.get("mana_cost", 0))
 	if hero.mana < cost:
 		hud.toast(Loc.t("magic.no_mana"))
 		return
@@ -421,6 +459,24 @@ func _cast_spell(spell_id: String) -> void:
 	# дикая магия загрязняет регион (даже из данжа — город рядом)
 	if float(def.get("pollution", 0.0)) > 0.0 and Game.city_sim != null:
 		Game.city_sim.add_pollution(float(def["pollution"]))
+
+
+## Свиток (M14-B, B.3): разовое применение заклинания в бою, без затрат маны.
+## Вызывается панелью экипировки; свиток расходуется до каста.
+func _cast_scroll(item_id: String) -> String:
+	var item: Dictionary = Game.item_def(item_id)
+	var spell_id := String(item.get("spell_id", ""))
+	if spell_id == "" or Game.magic.spell(spell_id).is_empty():
+		return "eq.not_usable"
+	if Game.count_item(item_id) < 1:
+		return "eq.not_owned"
+	if hero.dead:
+		return "eq.not_usable"
+	if hero.spell_cd_left(spell_id) > 0.0:
+		return "magic.cooldown"
+	Game.remove_item(item_id, 1)
+	_cast_spell(spell_id, true)
+	return ""
 
 
 ## Точка каста: курсор, не дальше range_px от героя.
@@ -693,6 +749,11 @@ func _open_chest(chest: Node) -> void:
 		var item := _roll_item()
 		Game.add_item(String(item["id"]))
 		hud.toast(Loc.t("dungeon.got_item") % Loc.t(String(item["loc"])))
+	# экипировка (M14-B/T04): шанс растёт с жирностью биома (loot_bonus = ярус-1)
+	var drop_id := _roll_equipment(int(biome.get("loot_bonus", 0)) + 1)
+	if drop_id != "":
+		Game.add_item(drop_id)
+		hud.toast(Loc.t("dungeon.got_item") % Loc.t(String(Game.item_def(drop_id)["loc"])))
 	# тест-режим: гарантированная руна из сундука — для проверки крафта
 	if Game.test_mode and int(test_cfg.get("rune_per_chest", 0)) > 0:
 		for i in int(test_cfg["rune_per_chest"]):
@@ -734,6 +795,39 @@ func _roll_item() -> Dictionary:
 	return pool[_loot_rng.randi_range(0, pool.size() - 1)]
 
 
+## Ролл экипировки (M14-B/T04): вернуть id или "" (не выпал). tier — уровень
+## локации (1..3): доступны предметы с tier не выше. Вес — редкости loot.json.
+func _roll_equipment(tier: int) -> String:
+	var drops: Dictionary = Game.items_cfg.get("drops", {})
+	var chance := float(drops.get("chest_chance", 0.3)) \
+			+ float(tier - 1) * float(drops.get("bonus_per_tier", 0.06))
+	if _loot_rng.randf() >= chance:
+		return ""
+	var pool: Array = []
+	for item in Game.items_cfg.get("items", []):
+		if String(item.get("kind", "")) in ["weapon", "armor", "accessory"] \
+				and int(item.get("tier", 1)) <= tier:
+			pool.append(item)
+	if pool.is_empty():
+		return ""
+	var total := 0
+	for item: Dictionary in pool:
+		total += _rarity_weight(String(item["rarity"]))
+	var roll := _loot_rng.randi_range(1, maxi(1, total))
+	for item: Dictionary in pool:
+		roll -= _rarity_weight(String(item["rarity"]))
+		if roll <= 0:
+			return String(item["id"])
+	return String(pool[0]["id"])
+
+
+func _rarity_weight(rarity_id: String) -> int:
+	for rarity in loot_data.get("rarities", []):
+		if String(rarity["id"]) == rarity_id:
+			return int(rarity["weight"])
+	return 1
+
+
 func _on_pickup_collected(pickup) -> void:
 	if pickup.kind == "mana":
 		hero.add_mana(int(params["crystal_mana"]))
@@ -763,11 +857,30 @@ func _on_enemy_died(enemy) -> void:
 
 
 ## Босс повержен (M7): гарантированный жирный лут — трофей, кристалл эха, руна.
+## M14-B: плюс гарантированный предмет экипировки по ярусу биома (T04).
 func _on_boss_died(enemy) -> void:
 	for item_id: String in loot_data.get("boss_guaranteed", []):
 		_spawn_pickup("item", item_id, enemy.position + Vector2(_loot_rng.randf_range(-14, 14), _loot_rng.randf_range(-10, 10)))
 	_spawn_pickup("item", _random_rune_id(), enemy.position + Vector2(0, 16))
+	var boss_drop := _roll_equipment_boss(int(biome.get("loot_bonus", 0)) + 1)
+	if boss_drop != "":
+		_spawn_pickup("item", boss_drop, enemy.position + Vector2(0, -18))
 	hud.toast(Loc.t("dungeon.boss_down"))
+
+
+## Гарантированный предмет экипировки с босса (мимо шанса сундука).
+func _roll_equipment_boss(tier: int) -> String:
+	var count := int(Game.items_cfg.get("drops", {}).get("boss_guaranteed", 1))
+	if count <= 0:
+		return ""
+	var pool: Array = []
+	for item in Game.items_cfg.get("items", []):
+		if String(item.get("kind", "")) in ["weapon", "armor", "accessory"] \
+				and int(item.get("tier", 1)) <= tier:
+			pool.append(item)
+	if pool.is_empty():
+		return ""
+	return String(pool[_loot_rng.randi_range(0, pool.size() - 1)]["id"])
 
 
 ## Все враги мертвы — данж зачищен: 10 дней не работает, следующая версия сильнее (M5.1).

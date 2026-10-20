@@ -1,0 +1,16 @@
+{
+	"_note": "Типы оружия героя (M14-B, issue #3 B.2). Паттерны атаки: arc — дуга (меч/топор), thrust — узкий тычок (копьё), projectile — снаряд (лук/посох). Общий удар в enemy.gd не трогается: герой читает эти поля. Без оружия герой дерётся параметрами dungeon.json -> hero (эквивалент меча).",
+	"weapons": [
+		{ "id": "sword", "loc": "weapon.sword", "desc": "weapon.desc.sword", "pattern": "arc",
+			"damage": 2, "attack_cooldown": 0.4, "range": 30, "arc": 90 },
+		{ "id": "axe", "loc": "weapon.axe", "desc": "weapon.desc.axe", "pattern": "arc",
+			"damage": 4, "attack_cooldown": 0.85, "range": 32, "arc": 160 },
+		{ "id": "spear", "loc": "weapon.spear", "desc": "weapon.desc.spear", "pattern": "thrust",
+			"damage": 2, "attack_cooldown": 0.5, "range": 56, "arc": 24 },
+		{ "id": "bow", "loc": "weapon.bow", "desc": "weapon.desc.bow", "pattern": "projectile",
+			"damage": 2, "attack_cooldown": 0.55, "range": 260, "arc": 12, "projectile_speed": 430 },
+		{ "id": "staff", "loc": "weapon.staff", "desc": "weapon.desc.staff", "pattern": "projectile",
+			"damage": 3, "attack_cooldown": 0.7, "range": 230, "arc": 12, "projectile_speed": 330,
+			"mana_cost": 1 }
+	]
+}

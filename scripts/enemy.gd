@@ -3,9 +3,14 @@ const Assets := preload("res://scripts/assets.gd")
 ## Враг данжа (M1): преследует героя в радиусе агро, бьёт в упор по кулдауну.
 ## M3: магические уязвимости (weak_school — урон школы ×2), антимаги immune
 ## (magic_immune — магия не действует), стан от корней.
+## M14-B (анти-кайт, issue #3 T06): пока герой бьёт безнаказанно, копится
+## счётчик «удары без ответа»; на пороге — телеграф (враг вспыхивает красным,
+## замирает) и рывок с атакой. Порог/тайминги/кулдаун — balance.json.
 ## Параметры — из data/enemies.json, без цифр в коде.
 
 signal died(enemy: Node)
+
+static var _ak: Dictionary = {}   # кэш balance.json -> anti_kite (тесты подменяют)
 
 var p: Dictionary = {}
 var hp := 1
@@ -24,12 +29,29 @@ var _anim_time := 0.0      # кадры листа (M10)
 var _dir := "front"        # направление анимации листа (M10)
 var patrol: PackedVector2Array = PackedVector2Array()  # точки патруля стражи гнезда (M12)
 var _patrol_i := 0
+# --- анти-кайт (M14-B) ---
+var _unanswered := 0        # удары героя без ответа
+var _telegraph_left := 0.0  # замер перед рывком (враг вспыхивает)
+var _dash_left := 0.0       # длительность рывка
+var _dash_cd := 0.0
+var _dash_dir := Vector2.ZERO
 
 
 ## Вызвать до add_child: строка из data/enemies.json.
 func setup(data: Dictionary) -> void:
 	p = data
 	hp = int(p["hp"])
+
+
+## Конфиг анти-кайта (balance.json -> anti_kite); читается один раз.
+static func anti_kite_cfg() -> Dictionary:
+	if _ak.is_empty():
+		var f := FileAccess.open("res://data/balance.json", FileAccess.READ)
+		if f != null:
+			var parsed: Variant = JSON.parse_string(f.get_as_text())
+			if parsed is Dictionary:
+				_ak = parsed.get("anti_kite", {})
+	return _ak
 
 
 ## Расчёт магического урона: уязвимая школа ×2, антимаг — 0. Статика — для headless-тестов.
@@ -144,11 +166,17 @@ func _physics_process(delta: float) -> void:
 		queue_redraw()
 	var to_hero: Vector2 = hero.global_position - global_position
 	var dist: float = to_hero.length()
+	_tick_anti_kite(delta, dist)
+	if _telegraph_left > 0.0 or _dash_left > 0.0:
+		move_and_slide()
+		return
 	if dist <= float(p["attack_range"]) + float(hero.p["radius"]):
 		velocity = Vector2.ZERO
 		if _attack_timer <= 0.0:
 			_attack_timer = float(p["attack_cooldown"])
 			hero.take_damage(int(p["damage"]))
+			# враг ответил — счётчик безнаказанных ударов обнуляется (T06)
+			_unanswered = 0
 	elif dist <= float(p["aggro"]):
 		velocity = to_hero.normalized() * float(p["speed"])
 	elif not patrol.is_empty():
@@ -165,6 +193,54 @@ func _physics_process(delta: float) -> void:
 	move_and_slide()
 
 
+## --- анти-кайт (M14-B, T06): телеграф и рывок с атакой ---------------------
+
+## Тик состояния: замер (враг замирает и вспыхивает) → рывок по герою.
+## Отделено от _physics_process для headless-тестов.
+func _tick_anti_kite(delta: float, dist_to_hero: float) -> void:
+	_dash_cd = maxf(0.0, _dash_cd - delta)
+	var ak := anti_kite_cfg()
+	if _telegraph_left > 0.0:
+		_telegraph_left = maxf(0.0, _telegraph_left - delta)
+		velocity = Vector2.ZERO
+		if _sprite != null:
+			var pulse := 0.5 + 0.5 * sin(_telegraph_left * 40.0)
+			_sprite.modulate = _base_tint.lerp(Color(2.5, 0.3, 0.3), 0.4 + 0.5 * pulse)
+		if _telegraph_left <= 0.0:
+			if hero != null and is_instance_valid(hero) and not hero.dead:
+				_dash_left = float(ak.get("dash_time", 0.35))
+				_dash_dir = (hero.global_position - global_position).normalized()
+			_unanswered = 0
+			if _sprite != null:
+				_sprite.modulate = _base_tint
+			queue_redraw()
+		return
+	if _dash_left > 0.0:
+		_dash_left = maxf(0.0, _dash_left - delta)
+		velocity = _dash_dir * float(p["speed"]) * float(ak.get("dash_speed_mult", 3.0))
+		if hero != null and is_instance_valid(hero) and not hero.dead \
+				and dist_to_hero <= float(p["attack_range"]) + float(hero.p["radius"]) + 6.0:
+			hero.take_damage(maxi(1, int(round(float(p["damage"]) * float(ak.get("damage_mult", 1.0))))))
+			_dash_left = 0.0
+		if _dash_left <= 0.0:
+			_dash_cd = float(ak.get("cooldown", 4.0))
+			queue_redraw()
+		return
+	if _sprite != null:
+		_sprite.modulate = _base_tint
+
+
+## Герой ударил врага: копим безнаказанность, на пороге — телеграф.
+func note_player_hit() -> void:
+	_unanswered += 1
+	var ak := anti_kite_cfg()
+	if _unanswered >= int(ak.get("hits_threshold", 2)) and _dash_cd <= 0.0 \
+			and _telegraph_left <= 0.0 and _dash_left <= 0.0:
+		_telegraph_left = float(ak.get("telegraph_time", 0.45))
+		_unanswered = 0
+		queue_redraw()
+
+
 func take_damage(dmg: int, school := "") -> void:
 	if hp <= 0:
 		return
@@ -178,6 +254,7 @@ func take_damage(dmg: int, school := "") -> void:
 	hp -= dmg
 	_hit_flash = 0.2
 	queue_redraw()
+	note_player_hit()
 	if hp <= 0:
 		died.emit(self)
 		queue_free()
@@ -194,3 +271,8 @@ func _draw() -> void:
 		draw_arc(Vector2.ZERO, float(p["radius"]) + 4.0, 0.0, TAU, 20, Color(0.4, 0.85, 0.4, 0.8), 2.0)
 	elif _slow_left > 0.0:
 		draw_arc(Vector2.ZERO, float(p["radius"]) + 4.0, 0.0, TAU, 20, Color(1.0, 0.9, 0.4, 0.7), 2.0)
+	# анти-кайт (M14-B): телеграф рывка — красный «!»-кольцо, рывок — жёлтый след
+	if _telegraph_left > 0.0:
+		draw_arc(Vector2.ZERO, float(p["radius"]) + 7.0, 0.0, TAU, 24, Color(1.0, 0.2, 0.2, 0.9), 3.0)
+	elif _dash_left > 0.0:
+		draw_line(Vector2.ZERO, -_dash_dir * 18.0, Color(1.0, 0.85, 0.3, 0.7), 3.0)

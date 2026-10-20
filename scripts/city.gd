@@ -33,6 +33,7 @@ var _terrain: Node2D = null     # статический слой ландшаф
 var _near_anomaly := false
 var _near_armory: Dictionary = {}   # оружейка рядом с героем (E — комплект героя)
 var _pause = null               # оверлей паузы с сохранением (M14-A)
+var _equip_panel = null         # панель экипировки и крафта (M14-B, клавиша I)
 const SAVE_SCRIPT := "res://scripts/save_game.gd"
 
 
@@ -76,6 +77,34 @@ func _ready() -> void:
 	_pause.save_cb = save_now
 	_pause.on_quit = func() -> void: sim.paused = true
 	add_child(_pause)
+	# панель экипировки (M14-B, клавиша I): в городе ещё и крафт у мастеровых
+	_equip_panel = load("res://scripts/equipment_panel.gd").new()
+	_equip_panel.hero_cb = func(): return hero
+	_equip_panel.toast_cb = func(msg: String) -> void: hud.toast(msg)
+	_equip_panel.on_change = func() -> void:
+		hero.set_equipment_bonuses(Game.equipment_bonuses())
+	_equip_panel.craft_cb = _craft_item
+	add_child(_equip_panel)
+
+
+## Крафт предмета (M14-B/T05): оружейка куёт оружие и броню, мастерская —
+## аксессуары, свитки и зелья. "" — успех, иначе ключ локализации.
+func _craft_item(item_id: String) -> String:
+	var item: Dictionary = Game.item_def(item_id)
+	var where := String(item.get("craft", {}).get("where", "armory"))
+	var near_armory := _near_building_kind("armory")
+	var near_workshop := _near_building_kind("workshop")
+	return Game.craft_item(item_id, sim, where == "armory" and near_armory,
+			where == "workshop" and near_workshop)
+
+
+## Готовое здание типа type_id в двух тайлах от героя?
+func _near_building_kind(type_id: String) -> bool:
+	for b in sim.buildings:
+		if bool(b["done"]) and String(b["type"]) == type_id \
+				and hero.position.distance_to(map.tile_center_px(b["tile"])) < map.ts * 2.2:
+			return true
+	return false
 
 
 ## Сохранить игру из города: тайл и HP героя — из живой сцены. "" — успех.
@@ -116,6 +145,8 @@ func _spawn_hero() -> void:
 	if Game.hero_saved_hp >= 0:
 		hero.hp = mini(Game.hero_saved_hp, hero.hp_max())
 		Game.hero_saved_hp = -1
+	# экипировка (M14-B): бонусы брони/аксессуара применяются при спавне
+	hero.set_equipment_bonuses(Game.equipment_bonuses())
 	add_child(hero)
 	hero.set_camera_limits(Rect2(0, 0, map.w * map.ts, map.h * map.ts))
 
@@ -512,6 +543,8 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 	if event is InputEventKey and event.pressed and not event.echo:
 		match event.physical_keycode:
+			KEY_I:
+				_equip_panel.toggle()
 			KEY_P:
 				toggle_pause()
 			KEY_R:

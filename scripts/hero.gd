@@ -27,7 +27,9 @@ var _lantern: PointLight2D = null
 var _flicker_time := 0.0
 var _sprite: Sprite2D = null      # спрайт воина 32×32 (M9)
 var _bob_time := 0.0              # фаза бобинга ходьбы / дыхания в покое
+var projectile_solid_check := Callable()   # сцена передаёт проверку стены (M14-B)
 var _sk: Dictionary = {}          # постоянные бонусы дерева навыков (M7)
+var _eq: Dictionary = {}          # бонусы экипировки (M14-B): броня/аксессуар
 var _temp_dmg_left := 0.0         # временное усиление (заклинание «Перегрузка», M7)
 var _temp_dmg := 0
 var _temp_armor_left := 0.0       # каменная кожа (M7)
@@ -62,18 +64,41 @@ func skill_mult(key: String, fallback: float) -> float:
 	return fallback if not _sk.has(key) else float(_sk[key])
 
 
+## Бонусы экипировки (M14-B): полный словарь заменяется при каждом надевании.
+func set_equipment_bonuses(bonus: Dictionary) -> void:
+	_eq = bonus
+	hp = mini(hp, hp_max())
+	queue_redraw()
+
+
+func eq_bonus(key: String) -> int:
+	return int(_eq.get(key, 0.0))
+
+
+func eq_mult(key: String, fallback: float) -> float:
+	return fallback if not _eq.has(key) else float(_eq[key])
+
+
 func hp_max() -> int:
-	return int(p["hp"]) + skill_bonus("hp")
+	return int(p["hp"]) + skill_bonus("hp") + eq_bonus("hp")
 
 
-## Эффективный урон: база + комплекты + навыки + «Перегрузка».
+## Урон оружия: надетый предмет (паттерн × множитель) или кулаки из dungeon.json.
+func base_damage() -> int:
+	var wpn: Dictionary = Game.weapon_params()
+	if wpn.is_empty():
+		return int(p["damage"])
+	return int(wpn["damage"])
+
+
+## Эффективный урон: оружие + комплекты + навыки + экипировка + «Перегрузка».
 func eff_damage() -> int:
-	return int(p["damage"]) + bonus_damage + skill_bonus("damage") + _temp_dmg
+	return base_damage() + bonus_damage + skill_bonus("damage") + eq_bonus("damage") + _temp_dmg
 
 
-## Эффективная броня: комплекты + навыки + «Каменная кожа».
+## Эффективная броня: комплекты + навыки + экипировка + «Каменная кожа».
 func eff_armor() -> int:
-	return bonus_armor + skill_bonus("armor") + _temp_armor
+	return bonus_armor + skill_bonus("armor") + eq_bonus("armor") + _temp_armor
 
 
 ## Временное усиление урона (заклинание, M7).
@@ -205,14 +230,14 @@ func _physics_process(delta: float) -> void:
 		facing = dir.normalized()
 	if Input.is_action_just_pressed("dash") and _dash_cd <= 0.0 and dir != Vector2.ZERO:
 		_dash_left = float(p["dash_time"])
-		_dash_cd = float(p["dash_cooldown"]) * skill_mult("dash_cd_mult", 1.0)
+		_dash_cd = float(p["dash_cooldown"]) * skill_mult("dash_cd_mult", 1.0) * eq_mult("dash_cd_mult", 1.0)
 	if _dash_left > 0.0:
 		_dash_left -= delta
 		# отпрыг на фиксированную дистанцию от точки старта (об стену останавливается)
 		var dash_speed := float(p["dash_distance"]) / float(p["dash_time"])
 		velocity = facing * dash_speed
 	else:
-		velocity = dir * (float(p["speed"]) + float(_sk.get("speed", 0.0)))
+		velocity = dir * (float(p["speed"]) + float(_sk.get("speed", 0.0)) + float(_eq.get("speed", 0.0)))
 	move_and_slide()
 
 
@@ -224,37 +249,70 @@ func _unhandled_input(event: InputEvent) -> void:
 		try_attack()
 
 
-## Удар ближнего боя: дуга перед героем в сторону курсора мыши.
+## Удар ближнего боя: дуга/тычок/снаряд — паттерн надетого оружия (M14-B).
 func try_attack() -> void:
 	if _attack_cd > 0.0 or dead:
 		return
-	_attack_cd = float(p["attack_cooldown"]) * skill_mult("attack_cd_mult", 1.0)
+	var wpn: Dictionary = Game.weapon_params()
+	var cd := float(wpn.get("attack_cooldown", p["attack_cooldown"]))
+	_attack_cd = cd * skill_mult("attack_cd_mult", 1.0)
 	var to_mouse := get_global_mouse_position() - global_position
 	if to_mouse.length() > 4.0:
 		facing = to_mouse.normalized()
-	var reach := float(p["attack_range"]) * skill_mult("range_mult", 1.0)
+	var reach := float(wpn.get("range", p["attack_range"])) * skill_mult("range_mult", 1.0)
+	if String(wpn.get("pattern", "")) == "projectile":
+		_fire_projectile(wpn, reach)
+		queue_redraw()
+		get_tree().create_timer(0.15).timeout.connect(queue_redraw)
+		return
+	var arc := float(wpn.get("arc", p["attack_arc"]))
 	for enemy in get_tree().get_nodes_in_group("enemies"):
 		var to_enemy: Vector2 = enemy.global_position - global_position
 		if to_enemy.length() > reach + float(enemy.p["radius"]):
 			continue
-		if absf(facing.angle_to(to_enemy)) > deg_to_rad(float(p["attack_arc"])) / 2.0:
+		if absf(facing.angle_to(to_enemy)) > deg_to_rad(arc) / 2.0:
 			continue
 		enemy.take_damage(eff_damage())
 	queue_redraw()
 	get_tree().create_timer(0.15).timeout.connect(queue_redraw)
 
 
+## Выстрел (лук/посох, M14-B): снаряд летит в сторону курсора. Посоху нужна
+## мана — на пустой герой бьёт древком (короткий замах в упор).
+func _fire_projectile(wpn: Dictionary, reach: float) -> void:
+	var mana_cost := int(wpn.get("mana_cost", 0))
+	if mana_cost > 0:
+		if mana < mana_cost:
+			_attack_cd = 0.2
+			return
+		mana -= mana_cost
+	var proj = load("res://scripts/projectile.gd").new()
+	var col := Color(1.0, 0.9, 0.55) if mana_cost <= 0 else Color(0.5, 0.7, 1.0)
+	proj.setup(global_position + facing * float(p["radius"]), facing,
+			float(wpn.get("projectile_speed", 400.0)), reach, eff_damage(), col,
+			float(p["radius"]))
+	if projectile_solid_check.is_valid():
+		proj.solid_check = projectile_solid_check
+	get_parent().add_child(proj)
+
+
 ## Удар в городе (M5): урон мутантам считает симуляция — герой только целится
-## и показывает замах. Возвращает, скольких мутантов задел.
+## и показывает замах. Оружие (M14-B) меняет дугу/дальность: снарядное — выстрел.
 func city_attack(sim) -> int:
 	if _attack_cd > 0.0 or dead:
 		return 0
-	_attack_cd = float(p["attack_cooldown"])
+	var wpn: Dictionary = Game.weapon_params()
+	_attack_cd = float(wpn.get("attack_cooldown", p["attack_cooldown"]))
 	var to_mouse := get_global_mouse_position() - global_position
 	if to_mouse.length() > 4.0:
 		facing = to_mouse.normalized()
-	var hits: int = sim.hero_slash(global_position, facing,
-			float(p["attack_range"]), float(p["attack_arc"]), eff_damage())
+	var reach := float(wpn.get("range", p["attack_range"]))
+	var hits: int
+	if String(wpn.get("pattern", "")) == "projectile":
+		hits = sim.hero_shoot(global_position, facing, reach, eff_damage())
+	else:
+		hits = sim.hero_slash(global_position, facing, reach,
+				float(wpn.get("arc", p["attack_arc"])), eff_damage())
 	queue_redraw()
 	get_tree().create_timer(0.15).timeout.connect(queue_redraw)
 	return hits
@@ -332,7 +390,8 @@ func add_mana(v: int) -> void:
 func dash_ready_fraction() -> float:
 	if _dash_cd <= 0.0:
 		return 1.0
-	return 1.0 - _dash_cd / (float(p["dash_cooldown"]) * skill_mult("dash_cd_mult", 1.0))
+	var full := float(p["dash_cooldown"]) * skill_mult("dash_cd_mult", 1.0) * eq_mult("dash_cd_mult", 1.0)
+	return 1.0 - _dash_cd / maxf(0.01, full)
 
 
 func _draw() -> void:

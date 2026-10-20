@@ -13,6 +13,9 @@ const SKILLS_CFG_PATH := "res://data/skills.json"
 const WORLD_CFG_PATH := "res://data/world.json"
 const WORLD_MAP_SCRIPT := "res://scripts/world_map.gd"
 const WORLD_SIM_SCRIPT := "res://scripts/world_sim.gd"
+const ITEMS_CFG_PATH := "res://data/items.json"
+const WEAPONS_CFG_PATH := "res://data/weapons.json"
+const LOOT_CFG_PATH := "res://data/loot.json"
 
 var inventory: Array = []        # [{id: String, count: int}]
 var last_run_death := false      # true, если последний забег закончился гибелью
@@ -39,6 +42,12 @@ var poi_coins := 0               # монеты за зачистку лагер
 var world_hero_tile := Vector2i(-1, -1)   # тайл героя на карте мира
 var city_return_tile := Vector2i(-1, -1)  # тайл героя при возврате в город
 var world_active := false        # игрок сейчас на карте мира («Продолжить» вернёт туда, M8)
+# --- экипировка героя (M14-B, issue #3 B.1) ---------------------------------
+var items_cfg: Dictionary = {}   # data/items.json — каталог предметов
+var weapons_cfg: Dictionary = {} # data/weapons.json — паттерны атаки
+var loot_cfg: Dictionary = {}    # data/loot.json — редкости (цвета/веса)
+var equipment := {"weapon": "", "armor": "", "accessory": "", "mount": ""}
+const EQUIP_SLOTS := ["weapon", "armor", "accessory", "mount"]
 # --- сейв/загрузка (M14-A, issue #3) ----------------------------------------
 var in_dungeon := false          # герой в данже — сейв недоступен (данжи транзитны)
 var hero_saved_hp := -1          # HP героя из сейва (применится при спавне в городе)
@@ -61,6 +70,12 @@ func _init() -> void:
 		skills.setup(sk)
 	else:
 		push_error("Не читается data/skills.json")
+	for pair in [[ITEMS_CFG_PATH, "items_cfg"], [WEAPONS_CFG_PATH, "weapons_cfg"], [LOOT_CFG_PATH, "loot_cfg"]]:
+		var data2: Variant = _read_json(String(pair[0]))
+		if data2 is Dictionary:
+			set(String(pair[1]), data2)
+		else:
+			push_error("Не читается %s" % String(pair[0]))
 
 
 func _process(delta: float) -> void:
@@ -161,6 +176,7 @@ func new_city() -> void:
 	world_hero_tile = Vector2i(-1, -1)
 	city_return_tile = Vector2i(-1, -1)
 	world_active = false
+	equipment = {"weapon": "", "armor": "", "accessory": "", "mount": ""}
 	in_dungeon = false
 	hero_saved_hp = -1
 	hero_saved_mana = -1
@@ -322,3 +338,143 @@ func hero_kit_bonus(city_cfg: Dictionary) -> Dictionary:
 		"damage": hero_kits * int(kcfg.get("damage", 2)),
 		"armor": hero_kits * int(kcfg.get("armor", 1)),
 	}
+
+
+## --- экипировка, свитки и зелья (M14-B, issue #3 B.1–B.3) ------------------
+
+## Определение предмета из data/items.json ({} — неизвестен).
+func item_def(item_id: String) -> Dictionary:
+	for item in items_cfg.get("items", []):
+		if String(item["id"]) == item_id:
+			return item
+	return {}
+
+
+## Паттерн оружия из data/weapons.json ({} — неизвестен).
+func weapon_def(weapon_id: String) -> Dictionary:
+	for w in weapons_cfg.get("weapons", []):
+		if String(w["id"]) == weapon_id:
+			return w
+	return {}
+
+
+## Цвет редкости из data/loot.json (белый — неизвестная).
+func rarity_color(rarity_id: String) -> Color:
+	for r in loot_cfg.get("rarities", []):
+		if String(r["id"]) == rarity_id:
+			return Color(String(r["color"]))
+	return Color.WHITE
+
+
+## Параметры атаки с надетым оружием ({} — без оружия, герой бьёт как мечом
+## по параметрам dungeon.json -> hero). Урон предмета = паттерн × damage_mult.
+func weapon_params() -> Dictionary:
+	var item: Dictionary = item_def(String(equipment.get("weapon", "")))
+	if item.is_empty():
+		return {}
+	var w: Dictionary = weapon_def(String(item.get("weapon", "")))
+	if w.is_empty():
+		return {}
+	var mult := float(item.get("damage_mult", 1.0))
+	return {
+		"id": String(w["id"]),
+		"pattern": String(w.get("pattern", "arc")),
+		"damage": int(round(float(w.get("damage", 2)) * mult)),
+		"attack_cooldown": float(w.get("attack_cooldown", 0.4)),
+		"range": float(w.get("range", 30)),
+		"arc": float(w.get("arc", 90)),
+		"projectile_speed": float(w.get("projectile_speed", 0.0)),
+		"mana_cost": int(w.get("mana_cost", 0)),
+	}
+
+
+## Суммарные бонусы надетых брони и аксессуара: {armor, hp, mana, ...}.
+func equipment_bonuses() -> Dictionary:
+	var out := {}
+	for slot in ["armor", "accessory"]:
+		var item: Dictionary = item_def(String(equipment.get(slot, "")))
+		var bonuses: Dictionary = item.get("bonuses", {})
+		for key in bonuses:
+			out[key] = float(out.get(key, 0.0)) + float(bonuses[key])
+	return out
+
+
+## Надеть предмет из рюкзака (предыдущий из слота возвращается в рюкзак).
+## "" — успех, иначе ключ локализации ошибки.
+func equip_item(item_id: String) -> String:
+	var item: Dictionary = item_def(item_id)
+	if item.is_empty():
+		return "eq.bad_item"
+	var kind := String(item["kind"])
+	if kind not in EQUIP_SLOTS:
+		return "eq.not_equippable"
+	if count_item(item_id) < 1:
+		return "eq.not_owned"
+	var prev := String(equipment.get(kind, ""))
+	remove_item(item_id, 1)
+	if prev != "":
+		add_item(prev, 1)
+	equipment[kind] = item_id
+	return ""
+
+
+## Снять предмет со слота в рюкзак. "" — успех.
+func unequip_slot(slot: String) -> String:
+	if slot not in EQUIP_SLOTS:
+		return "eq.bad_item"
+	var cur := String(equipment.get(slot, ""))
+	if cur == "":
+		return "eq.empty_slot"
+	equipment[slot] = ""
+	add_item(cur, 1)
+	return ""
+
+
+## Выпить зелье (герой передаётся сценой — эффекты идут в живой объект).
+## "" — успех, иначе ключ локализации ошибки.
+func use_potion(item_id: String, hero) -> String:
+	var item: Dictionary = item_def(item_id)
+	if item.is_empty() or String(item["kind"]) != "potion":
+		return "eq.not_usable"
+	if count_item(item_id) < 1:
+		return "eq.not_owned"
+	if hero == null:
+		return "eq.only_dungeon"
+	var fx: Dictionary = item.get("use", {})
+	match String(fx.get("effect", "")):
+		"heal":
+			hero.heal(int(fx.get("amount", 8)))
+		"mana":
+			hero.add_mana(int(fx.get("amount", 5)))
+		"temp_damage":
+			hero.temp_damage_bonus(float(fx.get("duration", 10.0)), int(fx.get("amount", 2)))
+		"temp_armor":
+			hero.temp_armor_bonus(float(fx.get("duration", 10.0)), int(fx.get("amount", 2)))
+		_:
+			return "eq.not_usable"
+	remove_item(item_id, 1)
+	return ""
+
+
+## Скрафтить предмет (T05: второй источник — мастерские города). Симуляция
+## города даёт пул ресурсов; near_armory/near_workshop — герой у здания.
+## "" — успех, иначе ключ локализации ошибки.
+func craft_item(item_id: String, sim, near_armory: bool, near_workshop: bool) -> String:
+	var item: Dictionary = item_def(item_id)
+	var craft: Dictionary = item.get("craft", {})
+	if craft.is_empty():
+		return "eq.not_craftable"
+	var where := String(craft.get("where", "armory"))
+	if where == "armory" and not near_armory:
+		return "eq.need_armory"
+	if where == "workshop" and not near_workshop:
+		return "eq.need_workshop"
+	if sim == null:
+		return "eq.need_armory"
+	var cost: Dictionary = craft.get("cost", {})
+	if not sim.can_afford(cost):
+		return "eq.no_resources"
+	for key in cost:
+		sim.res[key] = float(sim.res.get(key, 0.0)) - float(cost[key])
+	add_item(item_id, 1)
+	return ""

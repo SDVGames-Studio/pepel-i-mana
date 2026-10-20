@@ -205,7 +205,8 @@ const ALL_SCRIPTS := [
 	"res://scripts/skills.gd", "res://scripts/trap.gd",
 	"res://scripts/world.gd", "res://scripts/world_map.gd",
 	"res://scripts/world_sim.gd", "res://scripts/world_view.gd", "res://scripts/world_hud.gd",
-	"res://scripts/save_game.gd",
+	"res://scripts/save_game.gd", "res://scripts/projectile.gd",
+	"res://scripts/equipment_panel.gd",
 ]
 
 var _fails := 0
@@ -238,6 +239,7 @@ func _initialize() -> void:
 	_test_m12()
 	_test_m13()
 	_test_m14_save()
+	_test_m14_b()
 	if _fails == 0:
 		print("OK: все тесты пройдены")
 		quit(0)
@@ -3023,8 +3025,8 @@ func _test_m9() -> void:
 		var s: Variant = load(path)
 		_check(s != null and (s as Script).can_instantiate(), path.get_file() + " компилируется")
 	# версия этапа
-	_check(String(_read_json("res://data/version.json")["version"]).begins_with("1.3"),
-			"версия проекта 1.3.x (M13 — вишлист 2)")
+	_check(String(_read_json("res://data/version.json")["version"]).begins_with("1.4"),
+			"версия проекта 1.4.x (M14 — issue #3)")
 
 
 # --- M10: релиз v1.0 — craftpix-ассеты, бандиты, скот, поля, рынок, гуляй-город
@@ -3415,6 +3417,7 @@ class FakeGame extends RefCounted:
 	var hero_saved_hp := -1
 	var hero_saved_mana := -1
 	var _autosave_day := 0
+	var equipment := {"weapon": "", "armor": "", "accessory": "", "mount": ""}
 	var city_sim = null
 	var world_map = null
 	var world_sim = null
@@ -3483,6 +3486,7 @@ func _test_m14_save() -> void:
 	g1.coins = 42
 	g1.inventory.append({"id": "rune_light", "count": 3})
 	g1.spellbook.append("heal")
+	g1.equipment = {"weapon": "iron_sword", "armor": "", "accessory": "mana_pendant", "mount": ""}
 	# мир: зачистим один данж и откроем туман рядом с городом
 	var dungeon_poi: Dictionary = {}
 	for poi in g1.world_map.pois:
@@ -3551,6 +3555,8 @@ func _test_m14_save() -> void:
 	_check(g2.skills.level == g1.skills.level and g2.skills.taken == ["w1"],
 			"навыки героя восстановлены (уровень %d, узел w1)" % g2.skills.level)
 	_check(g2.hero_saved_hp == 7 and g2.hero_saved_mana == 3, "HP/мана героя из сейва")
+	_check(String(g2.equipment["weapon"]) == "iron_sword"
+			and String(g2.equipment["accessory"]) == "mana_pendant", "экипировка восстановлена из сейва")
 	_check(int(g2.world_sim.day) == int(g1.world_sim.day), "день мира совпадает")
 	if not dungeon_poi.is_empty():
 		var d2: Dictionary = g2.world_map.poi_by_id(int(dungeon_poi["id"]))
@@ -3594,6 +3600,236 @@ func _test_m14_save() -> void:
 		_check(String(loc.get(key, "")) != "", "ключ локализации есть: " + key)
 	SG.clear_save()
 	print("[M14-A] готово")
+
+
+# --- M14-B: экипировка, оружие, анти-кайт (issue #3) -------------------------
+
+## Фейковый герой для зелий: эффекты записывает, рюкзака не имеет.
+class FakePotionHero extends RefCounted:
+	var healed: Array = []
+	var mana: Array = []
+	var temp_dmg: Array = []
+	var temp_armor: Array = []
+	func heal(n: int) -> void: healed.append(n)
+	func add_mana(n: int) -> void: mana.append(n)
+	func temp_damage_bonus(dur: float, n: int) -> void: temp_dmg.append([dur, n])
+	func temp_armor_bonus(dur: float, n: int) -> void: temp_armor.append([dur, n])
+
+
+## Фейковый герой для анти-кайта: позиция/флаг смерти/приём урона (duck typing).
+class FakeKiteHero extends RefCounted:
+	var global_position := Vector2(50, 0)
+	var dead := false
+	var p := {"radius": 10}
+	var hits := 0
+	func take_damage(n: int) -> void: hits += 1
+
+
+func _test_m14_b() -> void:
+	print("[M14-B: экипировка, оружие, анти-кайт]")
+	var loc: Dictionary = _read_json("res://loc/ru.json")
+	var weapons: Dictionary = _read_json("res://data/weapons.json")
+	var items: Dictionary = _read_json("res://data/items.json")
+	var magic: Dictionary = _read_json("res://data/magic.json")
+	var balance: Dictionary = _read_json("res://data/balance.json")
+
+	# --- конфиг оружия: 5 типов, разные паттерны ---
+	var wlist: Array = weapons.get("weapons", [])
+	_check(wlist.size() == 5, "в weapons.json 5 типов оружия")
+	var ids := {}
+	var patterns := {}
+	for w: Dictionary in wlist:
+		ids[String(w["id"])] = true
+		patterns[String(w["id"])] = String(w["pattern"])
+		_check(String(loc.get(String(w["loc"]), "")) != "" and String(loc.get(String(w["desc"]), "")) != "",
+				"оружие %s описано в локализации" % String(w["id"]))
+	_check(ids.size() == 5, "id оружия уникальны")
+	_check(String(patterns["sword"]) == "arc" and String(patterns["axe"]) == "arc",
+			"меч и топор — дуга")
+	_check(String(patterns["spear"]) == "thrust" and float(_w_by_id(wlist, "spear")["range"]) > float(_w_by_id(wlist, "sword")["range"]),
+			"копьё — тычок и бьёт дальше меча")
+	_check(String(patterns["bow"]) == "projectile" and String(patterns["staff"]) == "projectile",
+			"лук и посох — снаряды")
+	_check(float(_w_by_id(wlist, "axe")["attack_cooldown"]) > float(_w_by_id(wlist, "sword")["attack_cooldown"]),
+			"топор медленнее меча")
+	_check(int(_w_by_id(wlist, "axe")["damage"]) > int(_w_by_id(wlist, "sword")["damage"]),
+			"топор бьёт больше меча")
+	_check(float(_w_by_id(wlist, "bow")["projectile_speed"]) > 0.0
+			and int(_w_by_id(wlist, "staff")["mana_cost"]) >= 1,
+			"у лука есть скорость снаряда, посох тратит ману")
+	var axe_arc: float = float(_w_by_id(wlist, "axe")["arc"])
+	_check(axe_arc > float(_w_by_id(wlist, "sword")["arc"]), "топор шире меча")
+
+	# --- каталог предметов: >=30, 4 редкости, ссылки целы ---
+	var ilist: Array = items.get("items", [])
+	_check(ilist.size() >= 30, "в items.json %d предметов (нужно >=30)" % ilist.size())
+	var rarities := {}
+	var kinds_ok := true
+	var refs_ok := true
+	var loc_ok := true
+	var item_ids := {}
+	for it: Dictionary in ilist:
+		item_ids[String(it["id"])] = true
+		rarities[String(it["rarity"])] = true
+		if String(it["kind"]) not in ["weapon", "armor", "accessory", "scroll", "potion"]:
+			kinds_ok = false
+		if String(it["kind"]) == "weapon" and not ids.has(String(it.get("weapon", ""))):
+			refs_ok = false
+		if String(it["kind"]) == "scroll" and not _spell_exists(magic, String(it.get("spell_id", ""))):
+			refs_ok = false
+		if String(loc.get(String(it["loc"]), "")) == "" or String(loc.get(String(it["desc"]), "")) == "":
+			loc_ok = false
+	_check(rarities.has("common") and rarities.has("uncommon") and rarities.has("rare") and rarities.has("legendary"),
+			"использованы все 4 редкости")
+	_check(kinds_ok, "все kind допустимы")
+	_check(refs_ok, "ссылки на оружие и заклинания целы")
+	_check(loc_ok, "у всех предметов есть имя и описание в loc")
+	for w: Dictionary in wlist:
+		item_ids[String(w["id"])] = true
+	# руны — предметы loot.json (стоимости свитков ссылаются на них)
+	var loot_v: Variant = _read_json("res://data/loot.json")
+	if loot_v is Dictionary:
+		for it: Dictionary in loot_v.get("items", []):
+			item_ids[String(it["id"])] = true
+	var craft_ok := true
+	for it: Dictionary in ilist:
+		if not it.has("craft"):
+			continue
+		var where := String(it["craft"].get("where", ""))
+		if where != "armory" and where != "workshop":
+			craft_ok = false
+		for key in it["craft"].get("cost", {}):
+			if not item_ids.has(String(key)) and String(key) not in \
+					["wood", "stone", "food", "crystal", "tools", "iron", "metal", "kits", "seeds"]:
+				craft_ok = false
+	_check(craft_ok, "стоимости крафта — из известных ресурсов и рун")
+
+	# --- Game: надеть/снять/поменять, бонусы, параметры оружия ---
+	var g = load("res://scripts/game.gd").new()
+	_check(not g.items_cfg.is_empty() and not g.weapons_cfg.is_empty(), "Game загрузил каталоги")
+	g.add_item("iron_sword", 1)
+	g.add_item("knight_sword", 1)
+	g.add_item("chainmail", 1)
+	g.add_item("mana_pendant", 1)
+	_check(g.equip_item("iron_sword") == "", "железный меч надет")
+	_check(String(g.equipment["weapon"]) == "iron_sword" and g.count_item("iron_sword") == 0,
+			"меч ушёл из рюкзака в слот")
+	var wp: Dictionary = g.weapon_params()
+	_check(not wp.is_empty() and String(wp["pattern"]) == "arc" and int(wp["damage"]) == 2,
+			"паттерн меча: дуга, урон 2")
+	_check(g.equip_item("knight_sword") == "", "рыцарский меч надет поверх")
+	_check(String(g.equipment["weapon"]) == "knight_sword" and g.count_item("iron_sword") == 1,
+			"старый меч вернулся в рюкзак")
+	_check(int(g.weapon_params()["damage"]) == 3, "рыцарский меч: урон 3 (2 × 1.3)")
+	_check(g.unequip_slot("weapon") == "" and String(g.equipment["weapon"]) == ""
+			and g.count_item("knight_sword") == 1, "снятие возвращает предмет в рюкзак")
+	_check(g.equip_item("chainmail") == "" and g.equip_item("mana_pendant") == "",
+			"броня и аксессуар надеты")
+	var bon: Dictionary = g.equipment_bonuses()
+	_check(int(bon.get("armor", 0)) == 3 and int(bon.get("mana", 0)) == 4,
+			"бонусы экипировки суммируются (броня 3, мана 4)")
+	_check(g.equip_item("blast_unknown") == "eq.bad_item", "неизвестный предмет отклонён")
+	_check(g.equip_item("scroll_fire") == "eq.not_equippable", "свиток нельзя надеть")
+	_check(g.unequip_slot("mount") == "eq.empty_slot", "пустой слот не снимается")
+	g.unequip_slot("armor")
+	g.unequip_slot("accessory")
+
+	# --- посох: снаряд с маной; крафт; зелья ---
+	g.add_item("apprentice_staff", 1)
+	_check(g.equip_item("apprentice_staff") == "", "посох надет")
+	var sp: Dictionary = g.weapon_params()
+	_check(String(sp["pattern"]) == "projectile" and int(sp["mana_cost"]) == 1,
+			"посох стреляет снарядом за 1 ману")
+	g.unequip_slot("weapon")
+
+	var sim := _make_sim()
+	sim.res["metal"] = 10.0
+	sim.res["wood"] = 5.0
+	_check(g.craft_item("iron_sword", sim, false, true) == "eq.need_armory",
+			"крафт меча требует оружейку")
+	_check(g.craft_item("iron_sword", sim, true, false) == "", "меч выкован в оружейке")
+	_check(g.count_item("iron_sword") == 2, "выкованный меч в рюкзаке (и возвращённый со слота)")
+	_check(float(sim.res["metal"]) < 10.0, "металл списан за крафт")
+	sim.res["iron"] = 0.0
+	sim.res["wood"] = 0.0
+	_check(g.craft_item("woodsman_axe", sim, true, false) == "eq.no_resources",
+			"без ресурсов крафт отказывает")
+	var potio := FakePotionHero.new()
+	g.add_item("potion_heal", 1)
+	g.add_item("potion_rage", 1)
+	_check(g.use_potion("potion_heal", potio) == "" and potio.healed == [10],
+			"зелье лечения выпито (+10 hp)")
+	_check(g.count_item("potion_heal") == 0, "зелье израсходовано")
+	_check(g.use_potion("potion_rage", potio) == "" and potio.temp_dmg.size() == 1,
+			"эликсир ярости дал временный урон")
+	_check(g.use_potion("potion_heal", potio) == "eq.not_owned", "пустой рюкзак — отказ")
+
+	# --- анти-кайт (T06): счётчик, телеграф, рывок, кулдаун ---
+	var ak: Dictionary = balance.get("anti_kite", {})
+	_check(int(ak.get("hits_threshold", 0)) == 2 and float(ak.get("cooldown", 0)) > 0.0,
+			"анти-кайт настроен в balance.json")
+	var enemies_v: Variant = _read_json("res://data/enemies.json")
+	var enemies_data: Array = enemies_v if enemies_v is Array else []
+	var EnemyS: Script = load("res://scripts/enemy.gd")
+	EnemyS._ak = ak
+	var tested_types := 0
+	for enemy_id in ["rat", "skeleton", "bandit"]:
+		var row := _enemy_row_by_id(enemies_data, enemy_id)
+		if row.is_empty():
+			continue
+		tested_types += 1
+		var e = EnemyS.new()
+		e.setup(row)
+		e.hp = 100
+		var fh := FakeKiteHero.new()
+		e.hero = fh
+		e.position = Vector2.ZERO
+		fh.global_position = Vector2(60, 0)
+		e.take_damage(1)
+		_check(float(e._telegraph_left) <= 0.0, "%s: один удар — рывка нет" % enemy_id)
+		e.take_damage(1)
+		_check(float(e._telegraph_left) > 0.0, "%s: два удара без ответа — телеграф" % enemy_id)
+		e._tick_anti_kite(10.0, 60.0)
+		_check(float(e._dash_left) > 0.0, "%s: после замера — рывок" % enemy_id)
+		e._tick_anti_kite(0.05, 12.0)
+		_check(fh.hits >= 1, "%s: рывок достал героя (кайт не работает)" % enemy_id)
+		_check(float(e._dash_left) <= 0.0 and float(e._dash_cd) > 0.0,
+				"%s: рывок погашен, кулдаун включён" % enemy_id)
+		e.take_damage(1)
+		e.take_damage(1)
+		_check(float(e._telegraph_left) <= 0.0, "%s: на кулдауне рывка телеграфа нет" % enemy_id)
+	_check(tested_types >= 3, "анти-кайт проверен на %d типах монстров" % tested_types)
+
+	# --- локализация панели ---
+	for key in ["eq.title", "eq.bag", "eq.craft_title", "eq.craft_hint", "eq.comparison",
+			"eq.only_dungeon", "eq.scroll_used", "eq.no_resources", "eq.need_armory",
+			"eq.need_workshop", "eq.stat.damage", "eq.stat.cd", "eq.stat.range",
+			"eq.bonus.armor", "eq.bonus.hp", "eq.bonus.mana", "eq.potion.heal"]:
+		_check(String(loc.get(key, "")) != "", "ключ локализации есть: " + key)
+	print("[M14-B] готово")
+
+
+func _w_by_id(wlist: Array, weapon_id: String) -> Dictionary:
+	for w: Dictionary in wlist:
+		if String(w["id"]) == weapon_id:
+			return w
+	return {}
+
+
+func _spell_exists(magic: Dictionary, spell_id: String) -> bool:
+	if spell_id == "":
+		return false
+	for s in magic.get("spells", []):
+		if String(s["id"]) == spell_id:
+			return String(s.get("where", "")) == "dungeon"
+	return false
+
+
+func _enemy_row_by_id(enemies: Array, enemy_id: String) -> Dictionary:
+	for e in enemies:
+		if String(e["id"]) == enemy_id:
+			return e
+	return {}
 
 
 # --- M12: живой город — досуг, разговоры, похороны, сбор у костра ------------

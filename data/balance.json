@@ -46,5 +46,18 @@
 		"xp_per_level_base": 12,
 		"xp_growth": 6,
 		"skill_tree_total_nodes": 9
+	},
+	"anti_kite": {
+		"hits_threshold": 2,
+		"telegraph_time": 0.45,
+		"dash_time": 0.35,
+		"dash_speed_mult": 3.2,
+		"cooldown": 4.0,
+		"damage_mult": 1.0
+	},
+	"equipment": {
+		"chest_chance": 0.3,
+		"bonus_per_tier": 0.06,
+		"boss_guaranteed": 1
 	}
 }

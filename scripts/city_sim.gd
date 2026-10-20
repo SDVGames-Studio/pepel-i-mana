@@ -3847,6 +3847,20 @@ func hero_slash(origin_px: Vector2, facing: Vector2, range_px: float, arc_deg: f
 	return hits
 
 
+## Выстрел героя (M14-B, лук/посох в городе): ближайший рейдер в узком конусе.
+func hero_shoot(origin_px: Vector2, facing: Vector2, range_px: float, dmg: int) -> int:
+	var target: Dictionary = _nearest_raider(origin_px, range_px)
+	if target.is_empty():
+		return 0
+	var to: Vector2 = (target["pos"] as Vector2) - origin_px
+	if absf(facing.angle_to(to)) > 0.3:
+		return 0
+	_hit_raider(target, dmg)
+	if raid_active and raiders.is_empty():
+		_raid_end(true)
+	return 1
+
+
 ## Конец волны: true — отбита (награда), false — осада удалась (город понёс потери).
 ## M11: награда и переналадка мутантских волн — только для волн мутантов;
 ## лес и неспокойные духи не трогают расписание угроз.

@@ -117,6 +117,7 @@ static func _game_block(game, city_tile: Vector2i, world_tile: Vector2i) -> Dict
 		"start_level": String(game.start_level),
 		"conflicts_enabled": bool(game.conflicts_enabled),
 		"world_active": bool(game.world_active),
+		"equipment": game.equipment,
 		"city_return_tile": [city_tile.x, city_tile.y],
 		"world_hero_tile": [world_tile.x, world_tile.y],
 	}
@@ -283,6 +284,13 @@ static func _apply_game(game, gd: Variant, skd: Variant, hero_d: Variant) -> voi
 	game.start_level = String(g.get("start_level", "normal"))
 	game.conflicts_enabled = bool(g.get("conflicts_enabled", true))
 	game.world_active = bool(g.get("world_active", false))
+	var eq: Dictionary = g.get("equipment", {})
+	game.equipment = {
+		"weapon": String(eq.get("weapon", "")),
+		"armor": String(eq.get("armor", "")),
+		"accessory": String(eq.get("accessory", "")),
+		"mount": String(eq.get("mount", "")),
+	}
 	var ct: Array = g.get("city_return_tile", [-1, -1])
 	game.city_return_tile = Vector2i(int(ct[0]), int(ct[1]))
 	var wt: Array = g.get("world_hero_tile", [-1, -1])
