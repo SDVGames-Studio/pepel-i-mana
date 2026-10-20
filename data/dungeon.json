@@ -71,7 +71,7 @@
 			"floor_sprite": "k:28",
 			"wall_sprite": "k:40",
 			"ambient": "#070d07",
-			"enemy_weights": { "mutant": 40, "brute": 25, "spitter": 20, "rat": 15 },
+			"enemy_weights": { "mutant": 40, "brute": 25, "spitter": 20, "rat": 10, "wolf": 20 },
 			"loot_bonus": 1,
 			"pollution_on_visit": 2.0,
 			"boss": "broodmother"

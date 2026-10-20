@@ -255,12 +255,14 @@ func _cancel() -> void:
 		view.selected_tile = Vector2i(-1, -1)
 		hud.close_poi_panel()
 		return
-	# Esc (фидбек заказчика 2026-10-20): как раньше — сразу в меню
+	# Esc (фидбек заказчика 2026-10-20): как раньше — сразу в меню; герой
+	# остаётся на своём тайле («Продолжить» вернёт сюда же, не в город)
 	if Game.city_sim != null:
 		Game.city_sim.paused = true
 	Game.menu_hero_tile = hero_tile
 	Game.menu_hero_hp = -1
 	Game.menu_hero_mana = -1
+	Game.world_hero_tile = hero_tile
 	get_tree().change_scene_to_file(MENU_SCENE)
 
 

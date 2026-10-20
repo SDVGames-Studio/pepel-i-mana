@@ -187,6 +187,23 @@
 		"xp": 4
 	},
 	{
+		"id": "wolf",
+		"loc": "fauna.wolf",
+		"hp": 7,
+		"damage": 3,
+		"speed": 105,
+		"aggro": 200,
+		"attack_range": 20,
+		"attack_cooldown": 0.85,
+		"radius": 10,
+		"color": "#8a96a4",
+		"sprite": "k:124",
+		"weak_school": "",
+		"drop_chance": 0.5,
+		"mana_chance": 0.15,
+		"xp": 4
+	},
+	{
 		"id": "dust_stalker",
 		"loc": "enemy.dust_stalker",
 		"hp": 7,
@@ -425,7 +442,7 @@
 		"aggro": 180,
 		"attack_range": 18,
 		"attack_cooldown": 0.7,
-		"radius": 9,
+		"radius": 10,
 		"color": "#d05a44",
 		"sprite": "e:imp",
 		"weak_school": "light",

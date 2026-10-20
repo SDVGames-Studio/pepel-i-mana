@@ -196,6 +196,9 @@ func new_city() -> void:
 	world_hero_tile = Vector2i(-1, -1)
 	city_return_tile = Vector2i(-1, -1)
 	world_active = false
+	menu_hero_tile = Vector2i(-1, -1)
+	menu_hero_hp = -1
+	menu_hero_mana = -1
 	equipment = {"weapon": "", "armor": "", "accessory": "", "mount": ""}
 	in_dungeon = false
 	hero_saved_hp = -1

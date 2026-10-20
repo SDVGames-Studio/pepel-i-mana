@@ -494,7 +494,7 @@ func _update_daylight() -> void:
 		amount = (t - (night_start - fade)) / fade
 	elif t <= fade:
 		amount = 1.0 - t / fade
-	var night_color := Color(0.45, 0.5, 0.72)
+	var night_color := Color(0.30, 0.33, 0.52)   # ночь темнее (замечание 2026-10-20)
 	_modulate.color = Color.WHITE.lerp(night_color, amount)
 	if _ambience != null:
 		_ambience.night = amount   # светлячки и огоньки разгораются к ночи
@@ -587,6 +587,18 @@ func _unhandled_input(event: InputEvent) -> void:
 			set_build_mode("")
 		elif event.button_index == MOUSE_BUTTON_LEFT and zone_mode == "" and not road_mode and not plant_mode:
 			hero.city_attack(sim)   # ЛКМ без режима — удар героя в городе (M5)
+			# охота в городе (замечание 2026-10-20): удар снимает зверя в дуге
+			var wpn: Dictionary = Game.weapon_params()
+			var kill: Dictionary = sim.hero_hit_animal(hero.global_position, hero.facing,
+					float(wpn.get("range", hero.p["attack_range"])),
+					float(wpn.get("arc", hero.p["attack_arc"])))
+			if not kill.is_empty():
+				var parts := PackedStringArray()
+				for d: Dictionary in kill["drops"]:
+					Game.add_item(String(d["id"]), int(d["count"]))
+					parts.append("%s ×%d" % [Loc.t("item." + String(d["id"])), int(d["count"])])
+				hud.toast(Loc.t("world.hunt_got") % [Loc.t("fauna." + String(kill["kind"])), ", ".join(parts)])
+				sim.chronicle_add("chron.hunt", Loc.t("fauna." + String(kill["kind"])))
 			# удар героя по кладбищу (M11): выкорчёвывание нечистого места
 			if sim.hero_hit_building(hero.global_position, hero.facing,
 					float(hero.p["attack_range"]), float(hero.p["attack_arc"]), hero.eff_damage()) == "necro_hit":
@@ -630,12 +642,14 @@ func _unhandled_input(event: InputEvent) -> void:
 
 
 ## Esc (фидбек заказчика 2026-10-20): как раньше — сразу в меню; перед выходом
-## запоминаем героя, чтобы «Сохранить игру» в меню сохранила актуальное состояние.
+## запоминаем героя, чтобы «Продолжить» и «Сохранить» в меню вернули его
+## на то же место (замечание 2026-10-20: герой не должен сбегаться в центр).
 func _exit_to_menu() -> void:
 	sim.paused = true
 	Game.menu_hero_tile = map.tile_of_px(hero.global_position)
 	Game.menu_hero_hp = hero.hp
 	Game.menu_hero_mana = hero.mana
+	Game.city_return_tile = Game.menu_hero_tile
 	get_tree().change_scene_to_file(MENU_SCENE)
 
 

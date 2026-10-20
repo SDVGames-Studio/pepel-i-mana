@@ -273,6 +273,16 @@ func try_attack() -> void:
 		if absf(facing.angle_to(to_enemy)) > deg_to_rad(arc) / 2.0:
 			continue
 		enemy.take_damage(eff_damage())
+	# мирная фауна данжа (замечание 2026-10-20): попадает той же дугой
+	for creature in get_tree().get_nodes_in_group("dungeon_fauna"):
+		if not is_instance_valid(creature) or bool(creature.dead):
+			continue
+		var to_c: Vector2 = creature.global_position - global_position
+		if to_c.length() > reach + float(creature.p["radius"]):
+			continue
+		if absf(facing.angle_to(to_c)) > deg_to_rad(arc) / 2.0:
+			continue
+		creature.take_damage(1)
 	queue_redraw()
 	get_tree().create_timer(0.15).timeout.connect(queue_redraw)
 

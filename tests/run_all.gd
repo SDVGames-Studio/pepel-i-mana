@@ -207,7 +207,7 @@ const ALL_SCRIPTS := [
 	"res://scripts/world_sim.gd", "res://scripts/world_view.gd", "res://scripts/world_hud.gd",
 	"res://scripts/save_game.gd", "res://scripts/projectile.gd",
 	"res://scripts/equipment_panel.gd", "res://scripts/world_fauna.gd",
-	"res://scripts/city_ambience.gd",
+	"res://scripts/city_ambience.gd", "res://scripts/dungeon_creature.gd",
 ]
 
 var _fails := 0
@@ -288,8 +288,8 @@ func _test_data() -> void:
 		_check(hero is Dictionary and hero.has("speed") and hero.has("dash_cooldown"),
 				"dungeon.json: параметры героя полны")
 	var enemies: Variant = _read_json("res://data/enemies.json")
-	_check(enemies is Array and enemies.size() == 31,
-			"enemies.json — 31 враг (M11: 22 + M13: 9 — нежить, демоны, драконы)")
+	_check(enemies is Array and enemies.size() == 32,
+			"enemies.json — 32 врага (M11: 22 + M13: 9 + волк леса из правки M14-C)")
 	if enemies is Array:
 		var fields_ok := true
 		for enemy in enemies:
@@ -3950,9 +3950,18 @@ func _test_m14_c() -> void:
 		radius_of[String(e["id"])] = float(e["radius"])
 	for humanoid in ["skeleton", "antimage", "mutant", "bandit_archer", "ghoul", "wraith", "hellcaller", "dragon_whelp"]:
 		_check(float(radius_of.get(humanoid, 0.0)) >= 10.0, "гуманоид %s подрос (>=10)" % humanoid)
-	_check(float(radius_of.get("imp", 0.0)) >= 9.0, "бесёнок читаем (>=9)")
+	_check(float(radius_of.get("imp", 0.0)) >= 10.0, "бесёнок — тот самый «очень маленький»: теперь 10")
 	_check(float(radius_of.get("rat", 0.0)) == 8.0 and float(radius_of.get("wisp", 0.0)) == 7.0,
 			"звери и духи не тронуты (крыса 8, огонёк 7)")
+	# волк — враг лесного данжа (замечание 2026-10-20: звери и в данжах)
+	var wolf_ok := false
+	for e: Dictionary in enemies:
+		if String(e["id"]) == "wolf":
+			wolf_ok = float(e["radius"]) >= 10.0
+	_check(wolf_ok, "волк есть в enemies.json и читаем")
+	var dungeon_cfg: Dictionary = _read_json("res://data/dungeon.json")
+	var forest_weights: Dictionary = dungeon_cfg["biomes"]["mutant_forest"]["enemy_weights"]
+	_check(int(forest_weights.get("wolf", 0)) > 0, "волк водится в лесном данже")
 
 	# --- T21/T23: городская атмосфера ---
 	var sim := _make_sim()
@@ -3961,6 +3970,43 @@ func _test_m14_c() -> void:
 	_check(amb._flies.size() > 0, "светлячки заселены (%d)" % amb._flies.size())
 	_check(amb._wisps.size() > 0, "болотные огоньки заселены (%d)" % amb._wisps.size())
 	_check(amb.night == 0.0, "днём VFX погашены")
+
+	# --- фауна города (замечание 2026-10-20): виды, волки, охота героя ---
+	var kinds := {}
+	for a in sim.animals:
+		kinds[String(a.get("kind", "?"))] = true
+	var kinds_ok := true
+	for k in kinds:
+		if k not in ["deer", "boar", "bird", "wolf"]:
+			kinds_ok = false
+	_check(sim.animals.size() > 0 and kinds_ok,
+			"в городе живут виды из fauna.json (%s)" % ", ".join(kinds.keys()))
+	# волк догоняет мирного в городе
+	var deer1 := {"id": 5001, "kind": "deer", "pos": Vector2(500, 500), "target": Vector2i(-1, -1),
+			"path": PackedVector2Array(), "idle": 99.0}
+	var wolf1 := {"id": 5002, "kind": "wolf", "pos": Vector2(540, 500), "target": Vector2i(-1, -1),
+			"path": PackedVector2Array(), "idle": 99.0}
+	sim.animals.append(deer1)
+	sim.animals.append(wolf1)
+	for i in 20:
+		sim._update_animals(0.2)
+	_check(not sim.animals.has(deer1), "городской волк догнал мирного зверя")
+	sim.animals.erase(wolf1)
+	# охота героя в городе: зверь в дуге умирает, дроп — предметы лута
+	var deer2 := {"id": 5003, "kind": "boar", "pos": Vector2(300, 300), "target": Vector2i(-1, -1),
+			"path": PackedVector2Array(), "idle": 99.0}
+	sim.animals.append(deer2)
+	var kill: Dictionary = sim.hero_hit_animal(Vector2(280, 300), Vector2(1, 0), 60.0, 90.0)
+	_check(String(kill.get("kind", "")) == "boar" and not kill.get("drops", []).is_empty(),
+			"удар героя в городе добывает зверя (%s)" % String(kill.get("kind", "")))
+	_check(not sim.animals.has(deer2), "добытый зверь исчез из мира")
+	_check(sim.hero_hit_animal(Vector2(280, 300), Vector2(1, 0), 60.0, 90.0).is_empty(),
+			"промах по пустому месту не даёт добычи")
+
+	# --- пни под каждый тип дерева (замечание 2026-10-20) ---
+	var city_view = load("res://scripts/city_view.gd")
+	_check(city_view.STUMP_PALS.size() == city_view.TREE_REFS.size(),
+			"вариантов пней столько же, сколько типов деревьев (%d)" % city_view.STUMP_PALS.size())
 
 	# --- T13: туман — радиус открытия меньше и клик разрешён ---
 	_check(int(world_cfg.get("fog_reveal_radius", 99)) < int(world_cfg.get("reveal_radius", 0)),

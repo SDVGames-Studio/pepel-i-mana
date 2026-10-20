@@ -3968,10 +3968,25 @@ func _storm_strike_target() -> Dictionary:
 
 # --- охота, животные, стражи (M5.1) ------------------------------------------
 
+## Дикое животное (M5.1 → M14-C правка): виды из data/fauna.json — олени,
+## кабаны, птицы и волки («не мирные»: охотятся на прочих зверей).
 func _new_animal() -> Dictionary:
 	_next_id += 1
-	return {"id": _next_id, "pos": _random_walkable_px(), "target": Vector2i(-1, -1),
+	return {"id": _next_id, "kind": _roll_animal_kind(), "pos": _random_walkable_px(),
+			"target": Vector2i(-1, -1),
 			"path": PackedVector2Array(), "idle": _event_rng.randf_range(0.0, 4.0)}
+
+
+## Виды диких животных города: мирные чаще, волк — реже.
+func _roll_animal_kind() -> String:
+	var roll := _event_rng.randf()
+	if roll < 0.38:
+		return "deer"
+	if roll < 0.60:
+		return "boar"
+	if roll < 0.80:
+		return "bird"
+	return "wolf"
 
 
 func _random_walkable_px() -> Vector2:
@@ -3984,6 +3999,25 @@ func _random_walkable_px() -> Vector2:
 
 ## Животные бродят по карте (чистая симуляция — без графики, для оптимизации).
 func _update_animals(dt: float) -> void:
+	# волки («не мирные», замечание 2026-10-20): гонятся за ближайшим мирным
+	# зверем; догнали — добыча исчезает
+	var eaten: Array = []
+	for a in animals:
+		if String(a.get("kind", "deer")) != "wolf":
+			continue
+		var prey := _nearest_prey_animal(a)
+		if prey.is_empty():
+			continue
+		var to_prey: Vector2 = (prey["pos"] as Vector2) - (a["pos"] as Vector2)
+		if to_prey.length() > 10.0:
+			a["pos"] = (a["pos"] as Vector2) + to_prey.normalized() * 48.0 * dt
+			a["path"] = PackedVector2Array()
+			a["idle"] = 0.5
+		else:
+			eaten.append(prey)
+	for prey in eaten:
+		if animals.has(prey):
+			animals.erase(prey)
 	for a in animals:
 		a["idle"] = float(a["idle"]) - dt
 		if float(a["idle"]) > 0.0:
@@ -4013,6 +4047,51 @@ func _update_animals(dt: float) -> void:
 				step = 0.0
 		a["pos"] = pos
 		a["path"] = path
+
+
+## Ближайший к хищнику мирный зверь в радиусе погони.
+func _nearest_prey_animal(wolf: Dictionary) -> Dictionary:
+	var best: Dictionary = {}
+	var best_d := 140.0
+	for a in animals:
+		if a == wolf or String(a.get("kind", "deer")) == "wolf":
+			continue
+		var d: float = (a["pos"] as Vector2).distance_to(wolf["pos"])
+		if d < best_d:
+			best_d = d
+			best = a
+	return best
+
+
+## Охота героя в городе (замечание 2026-10-20): удар ЛКМ снимает зверя в
+## дуге; дроп — по data/fauna.json, стандартные предметы. {} — промах.
+func hero_hit_animal(origin_px: Vector2, facing: Vector2, range_px: float, arc_deg: float) -> Dictionary:
+	var best: Dictionary = {}
+	var best_d := range_px + 8.0
+	for a in animals:
+		var to: Vector2 = (a["pos"] as Vector2) - origin_px
+		var d := to.length()
+		if d > best_d:
+			continue
+		if absf(facing.angle_to(to)) > deg_to_rad(arc_deg) / 2.0:
+			continue
+		best_d = d
+		best = a
+	if best.is_empty():
+		return {}
+	var kind := String(best.get("kind", "deer"))
+	var drops: Array = []
+	var fcfg: Variant = _read_json_file("res://data/fauna.json")
+	if fcfg is Dictionary:
+		for s in fcfg.get("species", []):
+			if String(s["id"]) != kind:
+				continue
+			for d in s.get("drop", []):
+				var n := _event_rng.randi_range(int((d["count"] as Array)[0]), int((d["count"] as Array)[1]))
+				if n > 0:
+					drops.append({"id": String(d["id"]), "count": n})
+	animals.erase(best)
+	return {"kind": kind, "drops": drops}
 
 
 func _nearest_animal(from_px: Vector2, radius_px: float) -> Dictionary:

@@ -93,6 +93,7 @@ func _ready() -> void:
 	_build_enemies()
 	_build_traps()
 	_build_boss()
+	_build_fauna()
 
 	hud = HudScript.new()
 	hud.init(hero, gen, loot_data)
@@ -335,6 +336,69 @@ func _patrol_points(home: Vector2i) -> PackedVector2Array:
 		if points.size() >= 3:
 			break
 	return points
+
+
+## Мирная фауна данжей (замечание 2026-10-20: звери живут не только на карте
+## мира). Состав по биому; птица почти везде, в лесу — олени и кабан.
+func _build_fauna() -> void:
+	var biome_id := Game.forced_biome
+	if not params.get("biomes", {}).has(biome_id):
+		for key in params.get("biomes", {}):
+			if params["biomes"][key] == biome:
+				biome_id = String(key)
+				break
+	var roster: Array = {
+		"mutant_forest": ["deer", "deer", "boar", "bird"],
+		"ruins": ["bird", "bird"],
+		"crystal_caves": ["bird", "bird"],
+		"ash_wastes": ["bird"],
+		"cursed_hall": ["bird", "bird"],
+		"demon_lair": ["bird"],
+	}.get(biome_id, ["bird", "bird"])
+	var fcfg: Dictionary = _read_json("res://data/fauna.json")
+	var creature_script: Script = load("res://scripts/dungeon_creature.gd")
+	var placed := 0
+	var guard := 0
+	while placed < roster.size() and guard < 300:
+		guard += 1
+		var tile := Vector2i(_rng.randi_range(1, gen.w - 2), _rng.randi_range(1, gen.h - 2))
+		if not gen.is_floor(tile):
+			continue
+		if tile.distance_to(gen.start_tile) < 6:
+			continue
+		var kind: String = roster[placed]
+		var def: Dictionary = {}
+		for s in fcfg.get("species", []):
+			if String(s["id"]) == kind:
+				def = s
+				break
+		if def.is_empty():
+			continue
+		var creature = creature_script.new()
+		creature.setup(kind, def, hero, gen, float(ts))
+		creature.position = _tile_to_pos(tile)
+		creature.slain.connect(_on_fauna_slain)
+		creature.add_to_group("dungeon_fauna")
+		add_child(creature)
+		placed += 1
+
+
+## Зверь убит: дроп по fauna.json в рюкзак героя.
+func _on_fauna_slain(creature) -> void:
+	var kind := String(creature.kind)
+	var fcfg: Dictionary = _read_json("res://data/fauna.json")
+	var def: Dictionary = {}
+	for s in fcfg.get("species", []):
+		if String(s["id"]) == kind:
+			def = s
+			break
+	var parts := PackedStringArray()
+	for d in def.get("drop", []):
+		var n := _loot_rng.randi_range(int((d["count"] as Array)[0]), int((d["count"] as Array)[1]))
+		if n > 0:
+			Game.add_item(String(d["id"]), n)
+			parts.append("%s ×%d" % [Loc.t("item." + String(d["id"])), n])
+	hud.toast(Loc.t("world.hunt_got") % [Loc.t("fauna." + kind), ", ".join(parts)])
 
 
 ## Ловушки биома (M7): типы и числа — dungeon.json -> "traps".

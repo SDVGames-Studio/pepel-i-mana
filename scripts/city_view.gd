@@ -7,6 +7,7 @@ const Assets := preload("res://scripts/assets.gd")
 
 var map = null
 var sim = null
+var fauna_cfg: Dictionary = {}   # data/fauna.json — виды дикой фауны города
 var colors: Dictionary = {}
 var build_mode := ""            # выбранный тип здания (призрак под мышью)
 var enchant_mode := ""          # выбранное зачарование (подсветка здания)
@@ -42,6 +43,11 @@ const PILE_SPRITES := {
 func setup(city_map, city_sim, city_cfg: Dictionary) -> void:
 	map = city_map
 	sim = city_sim
+	# виды дикой фауны (M14-C правка): цвета и размеры из data/fauna.json
+	var f := FileAccess.open("res://data/fauna.json", FileAccess.READ)
+	if f != null:
+		var parsed: Variant = JSON.parse_string(f.get_as_text())
+		fauna_cfg = parsed if parsed is Dictionary else {}
 	var c: Dictionary = city_cfg["colors"]
 	for key in c:
 		colors[key] = Color(String(c[key]))
@@ -179,6 +185,8 @@ func _draw_graves(anchor: Vector2) -> void:
 
 
 ## Дерево/пень/саженец в тайле (переехали из статического слоя в M12).
+## Пень подбирается под тип дерева (замечание 2026-10-20): тот же хеш,
+## что выбрал спрайт дерева, выбирает вариант пня.
 func _draw_tree_at(tile: Vector2i) -> void:
 	var ts := float(map.ts)
 	var bottom := Vector2(tile.x * ts + ts / 2.0, tile.y * ts + ts * 0.92)
@@ -190,8 +198,45 @@ func _draw_tree_at(tile: Vector2i) -> void:
 		Assets.draw_ref(self, TREE_REFS[_hash(tile.x, tile.y, TREE_REFS.size())],
 				bottom + Vector2(0, -2), ts * 2.6)
 	else:
-		_draw_shadow(bottom, ts * 0.3)
-		Assets.draw_ref(self, "e:stump", bottom, ts * 0.8)
+		_draw_stump(bottom, ts, _hash(tile.x, tile.y, STUMP_PALS.size()))
+
+
+## Пень: срез с годовыми кольцами и кора в палитре своего дерева.
+const STUMP_PALS := [
+	{"side": Color("#6d4c33"), "top": Color("#a1887f"), "ring": Color("#7d6045")},   # дуб
+	{"side": Color("#5a4030"), "top": Color("#8d6e63"), "ring": Color("#6b5140")},   # сосна
+	{"side": Color("#d7ccc8"), "top": Color("#efebe9"), "ring": Color("#a1887f")},   # берёза
+	{"side": Color("#7a5a3a"), "top": Color("#bcaaa4"), "ring": Color("#8d6e63")},   # осеннее
+	{"side": Color("#6d4c33"), "top": Color("#a1887f"), "ring": Color("#7d6045")},   # дуб 2
+	{"side": Color("#5a4030"), "top": Color("#8d6e63"), "ring": Color("#6b5140")},   # сосна 2
+	{"side": Color("#77503a"), "top": Color("#c9b0a5"), "ring": Color("#9a7462")},   # плодовое
+	{"side": Color("#d7ccc8"), "top": Color("#efebe9"), "ring": Color("#a1887f")},   # берёза 2
+]
+
+
+func _draw_stump(bottom: Vector2, ts: float, variant: int) -> void:
+	var pal: Dictionary = STUMP_PALS[variant % STUMP_PALS.size()]
+	_draw_shadow(bottom, ts * 0.3)
+	var w := ts * 0.46
+	var h := ts * 0.26
+	# кора (боковина) и светлый срез сверху
+	draw_rect(Rect2(bottom + Vector2(-w / 2.0, -h), Vector2(w, h)), pal["side"])
+	draw_rect(Rect2(bottom + Vector2(-w / 2.0, -h * 1.7), Vector2(w, h * 0.9)), pal["top"])
+	draw_arc(bottom + Vector2(0, -h * 1.25), w * 0.26, 0.0, TAU, 14, pal["ring"], 1.2)
+	draw_circle(bottom + Vector2(0, -h * 1.25), w * 0.08, pal["ring"])
+	# детали по типу: у берёзы — тёмные чёрточки, у плодового — живой побег,
+	# у старого/осеннего — трещина
+	var birch := variant == 2 or variant == 7
+	var fruit := variant == 6
+	var autumn := variant == 3
+	if birch:
+		draw_rect(Rect2(bottom + Vector2(-w * 0.36, -h * 0.75), Vector2(w * 0.18, h * 0.22)), Color("#424242"))
+		draw_rect(Rect2(bottom + Vector2(w * 0.14, -h * 0.4), Vector2(w * 0.16, h * 0.2)), Color("#424242"))
+	elif fruit:
+		draw_line(bottom + Vector2(0, -h * 1.6), bottom + Vector2(3, -h * 2.4), Color("#7cb342"), 1.4)
+		draw_circle(bottom + Vector2(3.6, -h * 2.5), 1.4, Color("#8bc34a"))
+	elif autumn:
+		draw_line(bottom + Vector2(-w * 0.2, -h * 1.6), bottom + Vector2(w * 0.1, -h * 0.3), Color("#4e342e"), 1.1)
 
 
 const TREE_REFS := ["e:tree_oak", "e:tree_pine", "e:tree_birch", "e:tree_autumn",
@@ -243,15 +288,56 @@ func _draw_pile(b: Dictionary) -> void:
 	Assets.draw_ref(self, PILE_SPRITES.get(key, "k:73"), corner, size, false, tint)
 
 
-## Дикие животные (M5.1): цель охотника — индюк (M10, craftpix, 4 направления).
+## Дикие животные (M5.1 → M14-C правка): виды из data/fauna.json — индюк
+## остался, добавились олени, кабаны, птицы и волки (векторные, в стиле мира).
 func _draw_animal(a: Dictionary) -> void:
 	var pos: Vector2 = a["pos"]
 	var vel := Vector2.ZERO
 	var pth: PackedVector2Array = a.get("path", PackedVector2Array())
 	if not pth.is_empty():
 		vel = pth[0] - pos
+	var kind := String(a.get("kind", "turkey"))
+	if kind == "deer" or kind == "boar" or kind == "wolf" or kind == "bird":
+		_draw_fauna_animal(a, kind, pos, vel)
+		return
 	Assets.draw_animal(self, "turkey", Assets.dir_of(vel), not pth.is_empty(),
 			pos + Vector2(0, -4), 20.0, _anim_time + float(a["id"]) * 0.37)
+
+
+## Зверь из fauna.json: тело/голова/детали вида, цвет и размер из данных.
+func _draw_fauna_animal(a: Dictionary, kind: String, pos: Vector2, vel: Vector2) -> void:
+	var def: Dictionary = {}
+	for s in fauna_cfg.get("species", []):
+		if String(s["id"]) == kind:
+			def = s
+			break
+	if def.is_empty():
+		Assets.draw_animal(self, "turkey", Assets.dir_of(vel), not vel.is_zero_approx(),
+				pos + Vector2(0, -4), 20.0, _anim_time + float(a["id"]) * 0.37)
+		return
+	var col := Color(String(def.get("color", "#cccccc")))
+	var size := float(def.get("size", 1.0))
+	var moving := not vel.is_zero_approx()
+	var bob := absf(sin(_anim_time * 4.0 + float(a["id"]))) * (1.5 if moving else 0.4)
+	draw_circle(pos + Vector2(0, 2), 5.0 * size, Color(0, 0, 0, 0.2))
+	draw_circle(pos + Vector2(0, -2.0 * size - bob * 0.2), 4.6 * size, col)
+	draw_circle(pos + Vector2(4.0 * size, -4.5 * size - bob * 0.3), 2.6 * size, col.lightened(0.12))
+	match kind:
+		"deer":
+			draw_line(pos + Vector2(3.5 * size, -6.5 * size), pos + Vector2(2.2 * size, -10.5 * size), Color("#6d4c33"), 1.2)
+			draw_line(pos + Vector2(4.8 * size, -6.2 * size), pos + Vector2(5.8 * size, -10.0 * size), Color("#6d4c33"), 1.2)
+			draw_circle(pos + Vector2(5.6 * size, -4.0 * size), 0.9 * size, Color.WHITE)
+		"boar":
+			draw_circle(pos + Vector2(6.2 * size, -3.6 * size), 1.1 * size, Color("#e8b0a0"))
+			draw_line(pos + Vector2(-4.5 * size, -2.0 * size), pos + Vector2(-6.5 * size, -2.8 * size), col.darkened(0.3), 1.5)
+		"wolf":
+			draw_colored_polygon(PackedVector2Array([
+				pos + Vector2(3.0 * size, -6.2 * size), pos + Vector2(3.8 * size, -8.8 * size),
+				pos + Vector2(4.9 * size, -6.4 * size)]), col.darkened(0.15))
+			draw_line(pos + Vector2(-4.5 * size, -3.0 * size), pos + Vector2(-7.2 * size, -4.6 * size), col.darkened(0.25), 1.6)
+		"bird":
+			draw_circle(pos + Vector2(4.2 * size, -5.2 * size), 1.7 * size, Color("#3a3a3a"))
+			draw_line(pos + Vector2(-3.0 * size, -2.4 * size), pos + Vector2(-6.0 * size, -4.4 * size), col.darkened(0.2), 1.2)
 
 
 ## Скот на пастбищах (M10): коровы/овцы/свиньи/куры, детёныши мельче.
