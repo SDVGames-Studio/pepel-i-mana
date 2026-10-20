@@ -249,6 +249,7 @@ func _initialize() -> void:
 	_test_m14_g()
 	_test_m14_h()
 	_test_m14_i()
+	_test_m14_j()
 	if _fails == 0:
 		print("OK: все тесты пройдены")
 		quit(0)
@@ -5165,3 +5166,99 @@ func _test_m14_i() -> void:
 			and String(loc.get("bld.bridge", "")) != "" and String(loc.get("biome.swamp_mire", "")) != ""
 	_check(loc_ok, "лодка/лошадь/мост/биом названы в локализации")
 	print("[M14-I] готово")
+
+
+# --- M14-J: погода и сезоны (issue #3) ---------------------------------------
+
+func _test_m14_j() -> void:
+	print("[M14-J: погода и сезоны]")
+	var loc: Dictionary = _read_json("res://loc/ru.json")
+	var wcfg: Dictionary = _read_json("res://data/weather.json")
+	var sim := _make_sim()
+
+	# --- сезоны циклятся по 12 дней ---
+	sim.day = 1
+	_check(sim.season() == "spring", "день 1 — весна")
+	sim.day = 13
+	_check(sim.season() == "summer", "день 13 — лето")
+	sim.day = 25
+	_check(sim.season() == "autumn", "день 25 — осень")
+	sim.day = 37
+	_check(sim.season() == "winter", "день 37 — зима")
+	sim.day = 49
+	_check(sim.season() == "spring", "день 49 — снова весна (цикл)")
+
+	# --- погода бросается по весам сезона ---
+	sim.day = 1
+	var seen := {}
+	for i in 400:
+		sim._event_rng.seed = 900 + i
+		sim._roll_weather()
+		seen[sim.weather] = true
+	var pool: Dictionary = wcfg["weather_by_season"]["spring"]
+	var in_pool := true
+	for w in seen:
+		if not pool.has(w):
+			in_pool = false
+	_check(in_pool and seen.size() >= 2, "весенняя погода только из пула сезона (%s)" % ", ".join(seen.keys()))
+
+	# --- эффекты: мультипликаторы урожая ---
+	sim.weather = "clear"
+	sim.day = 1
+	var crop_base: float = sim.crop_mult()
+	sim.weather = "rain"
+	_check(sim.crop_mult() > crop_base, "дождь поливает поля")
+	sim.day = 37   # зима
+	sim.weather = "snow"
+	_check(sim.crop_mult() < crop_base, "зимний снег глушит поля")
+	sim.day = 25   # осень
+	sim.weather = "clear"
+	_check(sim.crop_mult() > 1.0, "осень жирнее")
+	# лето: яблони
+	sim.day = 13
+	sim.weather = "clear"
+	var orch_summer: float = sim.orchard_mult()
+	sim.day = 37
+	sim.weather = "ash_storm"
+	var orch_ash_winter: float = sim.orchard_mult()
+	_check(orch_summer > 1.0 and orch_ash_winter < 1.0,
+			"лето яблони ×%.1f, буря ×%.1f" % [orch_summer, orch_ash_winter])
+
+	# --- зима: отопление дровами ---
+	sim.day = 37
+	sim.weather = "snow"
+	sim.res["wood"] = 10.0
+	var wood_before: float = float(sim.res["wood"])
+	var mood_before: float = float(sim.residents[0]["mood"])
+	sim._roll_weather()
+	_check(float(sim.res["wood"]) < wood_before, "зимой топят печи (дрова уходят)")
+	_check(not sim.froze_last_night, "с дровами город не мёрзнет")
+	sim.res["wood"] = 0.0
+	sim._roll_weather()
+	_check(sim.froze_last_night, "без дров город мёрзнет")
+	var mood_frozen: float = float(sim.residents[0]["mood"])
+	var target_frozen: float = sim._mood_target(sim.residents[0])
+	_check(target_frozen <= 60.0, "мёрзлая зима давит настроение")
+	# зимняя еда: тратится быстрее
+	sim.res["food"] = 100.0
+	var food0: float = float(sim.res["food"])
+	sim.tick(float(sim.cfg["day_length"]) * 0.5)
+	_check(sim.res["food"] < food0, "зимой едят больше")
+
+	# --- туман прячет от рейдов: следующий налёт отложен ---
+	sim._next_raid_at = 5000.0
+	var got_fog := false
+	for i in 200:
+		sim._event_rng.seed = 7000 + i
+		sim._roll_weather()
+		if sim.weather == "fog":
+			got_fog = true
+			break
+	_check(got_fog and sim._next_raid_at > 5000.0, "туман откладывает рейд")
+
+	# --- локализация ---
+	for season in ["spring", "summer", "autumn", "winter"]:
+		_check(String(loc.get("season." + season, "")) != "", "сезон %s назван" % season)
+	for w in ["clear", "rain", "snow", "fog", "ash_storm"]:
+		_check(String(loc.get("weather." + w, "")) != "", "погода %s названа" % w)
+	print("[M14-J] готово")

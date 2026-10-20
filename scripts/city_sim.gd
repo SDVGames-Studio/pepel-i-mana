@@ -216,9 +216,86 @@ var god: String = ""            # избранное божество (data/reli
 var prayed_day: int = -1        # день последней молитвы (раз в день)
 const LAWS_CFG_PATH := "res://data/laws.json"
 const RELIGION_CFG_PATH := "res://data/religion.json"
+# --- M14-J: погода и сезоны --------------------------------------------------
+var weather: String = "clear"   # clear | rain | snow | fog | ash_storm
+var froze_last_night := false   # зима без дров — город мёрз (для настроения)
+const WEATHER_CFG_PATH := "res://data/weather.json"
 
 func _v3() -> Dictionary:
 	return people.get("v3", {})
+
+
+## --- погода и сезоны (M14-J) -------------------------------------------------
+
+func _weather_cfg() -> Dictionary:
+	var parsed: Variant = _read_json_file(WEATHER_CFG_PATH)
+	return parsed if parsed is Dictionary else {}
+
+
+## Сезон по дню: весна → лето → осень → зима → весна…
+func season() -> String:
+	var wcfg: Dictionary = _weather_cfg()
+	var days := maxi(1, int(wcfg.get("season_days", 12)))
+	var seasons: Array = wcfg.get("seasons", ["spring", "summer", "autumn", "winter"])
+	return String(seasons[int((day - 1) / days) % seasons.size()])
+
+
+## Множитель полей: осень жирнее, зима глухая; дождь поливает, снег глушит.
+func crop_mult() -> float:
+	var wcfg: Dictionary = _weather_cfg()
+	var effects: Dictionary = wcfg.get("effects", {})
+	var mult := 1.0
+	match season():
+		"autumn":
+			mult *= float(effects.get("autumn_field_mult", 1.2))
+		"winter":
+			mult *= float(effects.get("snow_field_mult", 0.3))
+	if weather == "rain":
+		mult *= float(effects.get("rain_field_mult", 1.1))
+	elif weather == "snow":
+		mult *= float(effects.get("snow_field_mult", 0.3))
+	elif weather == "ash_storm":
+		mult *= float(effects.get("ash_orchard_mult", 0.5))
+	return mult
+
+
+## Множитель яблонь: лето жирнее; пепельная буря бьёт по урожаю.
+func orchard_mult() -> float:
+	var effects: Dictionary = _weather_cfg().get("effects", {})
+	var mult := 1.0
+	if season() == "summer":
+		mult *= float(effects.get("summer_orchard_mult", 1.3))
+	if weather == "ash_storm":
+		mult *= float(effects.get("ash_orchard_mult", 0.5))
+	return mult
+
+
+## Ежедневный бросок погоды по весам сезона + эффекты дня (M14-J).
+func _roll_weather() -> void:
+	var wcfg: Dictionary = _weather_cfg()
+	var effects: Dictionary = wcfg.get("effects", {})
+	var pool: Dictionary = wcfg.get("weather_by_season", {}).get(season(), {"clear": 1})
+	var total := 0
+	for w in pool:
+		total += int(pool[w])
+	var roll := _event_rng.randi_range(1, maxi(1, total))
+	for w in pool:
+		roll -= int(pool[w])
+		if roll <= 0:
+			weather = String(w)
+			break
+	# зима: отопление — дрова на жителей; нет дров — город мёрз
+	froze_last_night = false
+	if season() == "winter":
+		var need := float(residents.size()) * float(effects.get("heating_wood_per_resident", 0.15))
+		if float(res["wood"]) >= need:
+			res["wood"] = float(res["wood"]) - need
+		else:
+			res["wood"] = 0.0
+			froze_last_night = true
+	# туман: рейды видят город хуже — следующий налёт откладывается
+	if weather == "fog":
+		_next_raid_at += float(cfg["day_length"]) * float(effects.get("fog_raid_days", 0.5))
 
 
 ## --- законы и совет (M14-H) -------------------------------------------------
@@ -1299,6 +1376,8 @@ func tick(dt_raw: float) -> void:
 	var eat: float = float(cfg["food_per_resident_day"]) * dt / day_len * eaters
 	if has_law("refuge_shelter"):
 		eat *= float(law_param("refuge_shelter", "food_mult", 1.0))   # приют кормит лишние рты (M14-H)
+	if season() == "winter":
+		eat *= float(_weather_cfg().get("effects", {}).get("winter_food_mult", 1.1))   # зима (M14-J)
 	res["food"] = maxf(0.0, float(res["food"]) - eat)
 	_tavern_beer(dt, day_len)
 	# инструменты изнашиваются у работающих (мастерская обновляет запас)
@@ -1351,6 +1430,7 @@ func tick(dt_raw: float) -> void:
 		_tick_orchards()
 		_roll_necro()
 		_roll_v3()   # жизнь v3 (M14-F): память, отношения, личные цели
+		_roll_weather()   # погода и сезоны (M14-J)
 	_update_gates()   # достроенные за тик вышки/ворота сразу меняют проходимость
 
 
@@ -2463,7 +2543,8 @@ func _update_zones(dt: float, day_len: float) -> void:
 						crop["ripe"] = true
 			else:
 				# спелое: сбор (сами жители «снимают» — упрощённо автосбор)
-				_add_resource_capped("food", harvest_food)
+				# M14-J: погода и сезон поливают/глушат урожай
+				_add_resource_capped("food", harvest_food * crop_mult())
 				_add_resource_capped("seeds", float(seed_return))
 				if _event_rng.randf() < seed_bonus:
 					_add_resource_capped("seeds", 1.0)
@@ -2731,9 +2812,10 @@ func _tick_orchards() -> void:
 		if int(b["apple_stage"]) < int(ocfg.get("stages", 3)):
 			b["apple_stage"] = int(b["apple_stage"]) + 1
 		elif _event_rng.randf() < float(ocfg.get("harvest_chance", 0.7)):
-			_add_resource_capped("food", float(ocfg.get("food", 14.0)))
+			var harvest: float = float(ocfg.get("food", 14.0)) * orchard_mult()   # M14-J: лето/буря
+			_add_resource_capped("food", harvest)
 			b["apple_stage"] = 0
-			events.append({"type": "orchard_harvest", "food": int(float(ocfg.get("food", 14.0)))})
+			events.append({"type": "orchard_harvest", "food": int(harvest)})
 
 
 # --- ворота в стене ---------------------------------------------------------
@@ -2892,6 +2974,14 @@ func _mood_target(r: Dictionary) -> float:
 		target += float(law_param("taxes", "mood", 0.0))
 	if god == "home":
 		target += float(god_def().get("value", 0.0))   # благословение «Дома»
+	# погода и сезоны (M14-J): дождь тоска, пепельная буря страшна,
+	# замёрзшую ночью зиму город помнит
+	if weather == "rain":
+		target += float(_weather_cfg().get("effects", {}).get("rain_mood", -2.0))
+	elif weather == "ash_storm":
+		target += float(_weather_cfg().get("effects", {}).get("ash_mood", -5.0))
+	if froze_last_night:
+		target += float(_weather_cfg().get("effects", {}).get("cold_mood", -10.0))
 	# память v3 (M14-F): свежие события качают настроение, старые тлеют в хвосте
 	target += _memory_mood(r)
 	return clampf(target, 0.0, 100.0)

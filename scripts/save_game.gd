@@ -209,6 +209,8 @@ static func _city_sim_block(sim) -> Dictionary:
 		"active_laws": sim.active_laws,
 		"god": String(sim.god),
 		"prayed_day": int(sim.prayed_day),
+		"weather": String(sim.weather),
+		"froze_last_night": bool(sim.froze_last_night),
 	}
 
 
@@ -431,6 +433,9 @@ static func _apply_city(game, cd: Variant) -> String:
 		sim.active_laws.append(String(l))
 	sim.god = String(sd.get("god", ""))
 	sim.prayed_day = int(sd.get("prayed_day", -1))
+	# погода (M14-J)
+	sim.weather = String(sd.get("weather", "clear"))
+	sim.froze_last_night = bool(sd.get("froze_last_night", false))
 	# жители после зданий: ссылки bld/site/home восстанавливаются по id
 	sim.residents = _dec(cd.get("residents", []))
 	for r in sim.residents:

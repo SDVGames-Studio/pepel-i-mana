@@ -35,6 +35,7 @@ var _near_armory: Dictionary = {}   # оружейка рядом с герое�
 var _equip_panel = null         # панель экипировки и крафта (M14-B, клавиша I)
 var _gov_panel = null           # панель управления: законы/вера/дипломатия (M14-H, L)
 var _ambience = null            # светлячки и огоньки (M14-C, T21/T23)
+var _weather_fx = null          # погода: дождь/снег/туман/буря (M14-J)
 var _near_temple := false       # храм рядом — E: молитва (M14-H)
 
 
@@ -70,6 +71,9 @@ func _ready() -> void:
 	_ambience = load("res://scripts/city_ambience.gd").new()
 	_ambience.setup(map)
 	add_child(_ambience)
+	# погода (M14-J): дождь/снег/туман/пепельная буря поверх мира
+	_weather_fx = load("res://scripts/city_weather.gd").new()
+	add_child(_weather_fx)
 	hud = load(HUD_SCRIPT).new()
 	hud.init(sim, self, cfg)
 	add_child(hud)
@@ -235,6 +239,9 @@ func _process(_delta: float) -> void:
 	view.queue_redraw()
 	hud.refresh()
 	_update_daylight()
+	if _weather_fx != null:
+		_weather_fx.weather = sim.weather
+		_weather_fx.season = sim.season()
 	_process_events()
 	_update_hover()
 	# герой не проваливается за край: позиция зажата в границах карты,

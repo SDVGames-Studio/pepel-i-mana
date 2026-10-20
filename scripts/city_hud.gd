@@ -9,6 +9,7 @@ var cfg: Dictionary = {}
 var _res_label: Label
 var _pop_label: Label
 var _day_label: Label
+var _weather_label: Label
 var _hungry_label: Label
 var _pollution_label: Label
 var _threat_label: Label
@@ -86,6 +87,10 @@ func refresh() -> void:
 	else:
 		_day_label.text = day_text
 		_day_label.add_theme_color_override("font_color", Color("#ffe9b0"))
+	# погода и сезон (M14-J)
+	if _weather_label != null:
+		_weather_label.text = "%s · %s" % [Loc.t("weather." + String(sim.weather)),
+				Loc.t("season." + String(sim.season()))]
 	_hungry_label.visible = float(sim.res["food"]) <= 0.0
 	_refresh_pollution()
 	_refresh_threat()
@@ -547,6 +552,9 @@ func _build() -> void:
 	tl_box.add_child(_pop_label)
 	_day_label = _label(20)
 	tl_box.add_child(_day_label)
+	_weather_label = _label(16)
+	_weather_label.add_theme_color_override("font_color", Color("#90caf9"))
+	tl_box.add_child(_weather_label)
 	_hungry_label = _label(20)
 	_hungry_label.add_theme_color_override("font_color", Color("#ff6b57"))
 	tl_box.add_child(_hungry_label)
