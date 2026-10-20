@@ -32,6 +32,8 @@ var _static_body: StaticBody2D
 var _terrain: Node2D = null     # статический слой ландшафта (перерисовка по dirty, M11)
 var _near_anomaly := false
 var _near_armory: Dictionary = {}   # оружейка рядом с героем (E — комплект героя)
+var _pause = null               # оверлей паузы с сохранением (M14-A)
+const SAVE_SCRIPT := "res://scripts/save_game.gd"
 
 
 func _ready() -> void:
@@ -39,6 +41,7 @@ func _ready() -> void:
 		Game.new_city()
 	sim = Game.city_sim
 	sim.paused = false
+	Game.in_dungeon = false   # герой в городе — автосейв и «Сохранить» доступны
 	# монеты общие с героем (M10): симуляция кладёт/берёт через колбэки
 	sim.coins_sink = func(n: int) -> void: Game.coins += n
 	sim.coins_source = func() -> int: return Game.coins
@@ -68,6 +71,18 @@ func _ready() -> void:
 	hud.set_hint(_default_hint())
 	hero.died.connect(_on_hero_down)
 	_deposit_loot()
+	# пауза с сохранением (M14-A): Esc открывает оверлей вместо мгновенного меню
+	_pause = load("res://scripts/pause_overlay.gd").new()
+	_pause.save_cb = save_now
+	_pause.on_quit = func() -> void: sim.paused = true
+	add_child(_pause)
+
+
+## Сохранить игру из города: тайл и HP героя — из живой сцены. "" — успех.
+func save_now() -> String:
+	var sg: Script = load(SAVE_SCRIPT)
+	var tile: Vector2i = map.tile_of_px(hero.global_position)
+	return sg.save_game(Game, tile, hero.hp, hero.mana)
 
 
 func _exit_tree() -> void:
@@ -97,6 +112,10 @@ func _spawn_hero() -> void:
 	# вернулись из мира (M8): герой появляется у края, откуда выходил
 	if Game.city_return_tile.x >= 0 and map.in_bounds(Game.city_return_tile):
 		hero.position = map.tile_center_px(Game.city_return_tile)
+	# HP из сейва (M14-A): город лечит только до начала игры, сейв честнее
+	if Game.hero_saved_hp >= 0:
+		hero.hp = mini(Game.hero_saved_hp, hero.hp_max())
+		Game.hero_saved_hp = -1
 	add_child(hero)
 	hero.set_camera_limits(Rect2(0, 0, map.w * map.ts, map.h * map.ts))
 
@@ -420,6 +439,9 @@ func _process_events() -> void:
 				hud.toast(Loc.t("city.found_day_toast"))
 			"found_skip":
 				hud.toast(Loc.t("city.found_skip_toast"))
+			# --- сейв (M14-A) ---
+			"autosaved":
+				hud.toast(Loc.t("menu.autosaved"))
 	sim.events.clear()
 
 
@@ -574,8 +596,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		elif hud.chronicle_visible():
 			hud.toggle_chronicle()
 		else:
-			sim.paused = true
-			get_tree().change_scene_to_file(MENU_SCENE)
+			_pause.open()
 
 
 ## Зеркалим состояние инструментов зоны/дороги в отрисовку.

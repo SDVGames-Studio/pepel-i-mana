@@ -23,6 +23,8 @@ var hero_px := Vector2.ZERO
 var selected: Dictionary = {}   # выбранный POI (панель справа)
 var travel := {}                # {path, days, px_done, px_total, day_mark}
 var _near_poi: Dictionary = {}  # POI у ног героя (действие E)
+var _pause = null               # оверлей паузы с сохранением (M14-A)
+const SAVE_SCRIPT := "res://scripts/save_game.gd"
 
 
 func _ready() -> void:
@@ -60,6 +62,19 @@ func _ready() -> void:
 	hud.init(self)
 	add_child(hud)
 	hud.set_hint(Loc.t("world.hint"))
+	# пауза с сохранением (M14-A): Esc открывает оверлей вместо мгновенного меню
+	_pause = load("res://scripts/pause_overlay.gd").new()
+	_pause.save_cb = save_now
+	_pause.on_quit = func() -> void:
+		if Game.city_sim != null:
+			Game.city_sim.paused = true
+	add_child(_pause)
+
+
+## Сохранить игру с карты мира (M14-A): герой стоит на hero_tile.
+func save_now() -> String:
+	var sg: Script = load(SAVE_SCRIPT)
+	return sg.save_game(Game, hero_tile, -1, -1)
 
 
 func _process(delta: float) -> void:
@@ -207,8 +222,7 @@ func _cancel() -> void:
 		view.selected_tile = Vector2i(-1, -1)
 		hud.close_poi_panel()
 		return
-	Game.city_sim.paused = true
-	get_tree().change_scene_to_file(MENU_SCENE)
+	_pause.open()
 
 
 func _click_map(tile: Vector2i) -> void:

@@ -205,6 +205,7 @@ const ALL_SCRIPTS := [
 	"res://scripts/skills.gd", "res://scripts/trap.gd",
 	"res://scripts/world.gd", "res://scripts/world_map.gd",
 	"res://scripts/world_sim.gd", "res://scripts/world_view.gd", "res://scripts/world_hud.gd",
+	"res://scripts/save_game.gd",
 ]
 
 var _fails := 0
@@ -236,6 +237,7 @@ func _initialize() -> void:
 	_test_wishlist()
 	_test_m12()
 	_test_m13()
+	_test_m14_save()
 	if _fails == 0:
 		print("OK: все тесты пройдены")
 		quit(0)
@@ -3385,6 +3387,213 @@ func _test_wishlist() -> void:
 	_check(hit == "necro_purged", "герой выкорчевал кладбище")
 	_check(int(sim_n.necro_army) == 0, "тайная армия рассыпалась")
 	_check(sim_n.building_at(cem_tile).is_empty(), "кладбище разрушено ударом героя")
+
+
+# --- M14-A: сейв/загрузка (issue #3) -----------------------------------------
+
+## Фейковый Game для сейва: только поля, которые читает save_game.gd.
+class FakeGame extends RefCounted:
+	var inventory: Array = []
+	var spellbook: Array = []
+	var coins := 15
+	var last_run_death := false
+	var dungeon_clears := 0
+	var dungeon_lock_day := 0
+	var hero_kits := 0
+	var start_residents := 10
+	var start_level := "normal"
+	var conflicts_enabled := true
+	var world_active := false
+	var city_return_tile := Vector2i(-1, -1)
+	var world_hero_tile := Vector2i(-1, -1)
+	var return_scene := ""
+	var forced_biome := ""
+	var dungeon_scale := 1.0
+	var poi_id := 0
+	var poi_coins := 0
+	var in_dungeon := false
+	var hero_saved_hp := -1
+	var hero_saved_mana := -1
+	var _autosave_day := 0
+	var city_sim = null
+	var world_map = null
+	var world_sim = null
+	var skills = null
+
+
+func _make_game() -> FakeGame:
+	var g := FakeGame.new()
+	g.skills = load("res://scripts/skills.gd").new()
+	g.skills.setup(_read_json("res://data/skills.json"))
+	g.skills.add_xp(50)
+	g.skills.choose("w1")
+	g.city_sim = _make_sim()
+	g.world_map = load("res://scripts/world_map.gd").new()
+	g.world_map.generate(11, _read_json("res://data/world.json"))
+	g.world_sim = load("res://scripts/world_sim.gd").new()
+	g.world_sim.setup(g.world_map, _read_json("res://data/world.json"), 7)
+	g.world_sim.advance_day()
+	return g
+
+
+func _count_runes(g: FakeGame, rune_id: String) -> int:
+	var n := 0
+	for stack in g.inventory:
+		if String(stack["id"]) == rune_id:
+			n += int(stack["count"])
+	return n
+
+
+func _test_m14_save() -> void:
+	print("[M14-A: сейв/загрузка — roundtrip город+мир, битый сейв]")
+	var SG: Script = load("res://scripts/save_game.gd")
+	SG.clear_save()
+	_check(not SG.has_save(), "до сохранения файла нет")
+
+	var g1 := _make_game()
+	var sim1: Object = g1.city_sim
+	# живой город: стройка (tick списывает ресурсы и двигает день), дорога, пень
+	var bld: Dictionary = _build_now(sim1, "farm")
+	_check(not bld.is_empty(), "ферма построена до сейва")
+	sim1.chronicle.append({"day": 4, "key": "chron.refugee", "a": "Мира", "b": ""})
+	var grass := _grass_tiles(sim1, sim1.map.spawn_tile, 3)
+	_check(sim1.place_road(grass[0]) == "", "дорога проложена до сейва")
+	var tree_tile := Vector2i(-1, -1)
+	for y in sim1.map.h:
+		for x in sim1.map.w:
+			if sim1.map.grid[y][x] == sim1.map.TILE_TREE:
+				tree_tile = Vector2i(x, y)
+				break
+		if tree_tile.x >= 0:
+			break
+	if tree_tile.x >= 0:
+		sim1.map.grid[tree_tile.y][tree_tile.x] = sim1.map.TILE_GRASS
+		sim1.map.stumps[tree_tile] = true
+	# контрольные значения ставим ПОСЛЕ всех мутаций, прямо перед сейвом
+	sim1.res["wood"] = 234.0
+	sim1.res["crystal"] = 17.0
+	sim1.time = float(sim1.cfg["day_length"]) * 6.35
+	sim1.residents[0]["mood"] = 73.5
+	sim1.residents[0]["partner"] = int(sim1.residents[1]["id"])
+	sim1.residents[1]["partner"] = int(sim1.residents[0]["id"])
+	var g1_residents: int = sim1.residents.size()
+	var g1_day: int = sim1.day_number()
+	var g1_wood: int = int(sim1.res["wood"])
+	var g1_crystal: int = int(sim1.res["crystal"])
+	g1.coins = 42
+	g1.inventory.append({"id": "rune_light", "count": 3})
+	g1.spellbook.append("heal")
+	# мир: зачистим один данж и откроем туман рядом с городом
+	var dungeon_poi: Dictionary = {}
+	for poi in g1.world_map.pois:
+		if String(poi["kind"]) == "dungeon" and dungeon_poi.is_empty():
+			dungeon_poi = poi
+	if not dungeon_poi.is_empty():
+		g1.world_sim.mark_cleared(int(dungeon_poi["id"]))
+	g1.world_map.reveal_around(g1.world_map.city_tile + Vector2i(6, 0), 3)
+
+	var err: String = SG.save_game(g1, sim1.map.spawn_tile, 7, 3)
+	_check(err == "", "сохранение прошло без ошибки")
+	_check(SG.has_save(), "файл сейва появился")
+
+	# свежий Game: загружаем и сверяем
+	var g2 := FakeGame.new()
+	g2.skills = load("res://scripts/skills.gd").new()
+	g2.skills.setup(_read_json("res://data/skills.json"))
+	var lerr: String = SG.load_game(g2)
+	_check(lerr == "", "загрузка прошла без ошибки")
+	var sim2: Object = g2.city_sim
+	_check(sim2 != null and g2.world_map != null and g2.world_sim != null, "город и мир восстановлены")
+	_check(int(sim2.map.w) == int(sim1.map.w) and int(sim2.map.h) == int(sim1.map.h),
+			"размеры карты города совпадают")
+	var grid_ok := true
+	for y in sim1.map.h:
+		for x in sim1.map.w:
+			if int(sim1.map.grid[y][x]) != int(sim2.map.grid[y][x]):
+				grid_ok = false
+				break
+		if not grid_ok:
+			break
+	_check(grid_ok, "сетка ландшафта совпадает бит-в-бит")
+	_check(sim2.map.road.has(grass[0]), "дорога восстановлена")
+	if tree_tile.x >= 0:
+		_check(sim2.map.stumps.has(tree_tile), "пень на месте спиленного дерева")
+	_check(sim2.map.spawn_tile == sim1.map.spawn_tile
+			and sim2.map.anomaly_tile == sim1.map.anomaly_tile,
+			"ключевые тайлы (старт/аномалия) совпадают")
+	_check(int(sim2.res["wood"]) == g1_wood and int(sim2.res["crystal"]) == g1_crystal,
+			"ресурсы совпадают (дерево/кристаллы)")
+	_check(absf(float(sim2.time) - float(sim1.time)) < 0.001, "время города совпадает")
+	_check(sim2.day_number() == g1_day, "день города совпадает (%d)" % sim2.day_number())
+	_check(sim2.residents.size() == g1_residents, "все жители на месте (%d)" % g1_residents)
+	var r0: Dictionary = sim2.residents[0]
+	_check(absf(float(r0["mood"]) - 73.5) < 0.001, "настроение жителя совпадает")
+	_check(int(r0["partner"]) == int(sim1.residents[0]["partner"]), "пара восстановлена по id")
+	_check(sim2.buildings.size() == sim1.buildings.size(), "число зданий совпадает")
+	var farm2: Dictionary = sim2.building_at(bld["tile"])
+	_check(not farm2.is_empty() and bool(farm2["done"]), "ферма восстановлена и готова")
+	var chron_same: bool = sim2.chronicle.size() == sim1.chronicle.size()
+	if chron_same:
+		for i in sim1.chronicle.size():
+			if int(sim2.chronicle[i]["day"]) != int(sim1.chronicle[i]["day"]) \
+					or String(sim2.chronicle[i]["key"]) != String(sim1.chronicle[i]["key"]):
+				chron_same = false
+	_check(chron_same, "летопись совпадает")
+	var ref_ok := true
+	for r in sim2.residents:
+		var b = r.get("bld")
+		if b != null and not (b is Dictionary):
+			ref_ok = false
+	_check(ref_ok, "ссылки жителей на здания — словари")
+	_check(_count_runes(g2, "rune_light") == 3, "рюкзак героя восстановлен")
+	_check(g2.spellbook.has("heal"), "гримуар восстановлен")
+	_check(g2.coins == 42, "монеты восстановлены")
+	_check(g2.skills.level == g1.skills.level and g2.skills.taken == ["w1"],
+			"навыки героя восстановлены (уровень %d, узел w1)" % g2.skills.level)
+	_check(g2.hero_saved_hp == 7 and g2.hero_saved_mana == 3, "HP/мана героя из сейва")
+	_check(int(g2.world_sim.day) == int(g1.world_sim.day), "день мира совпадает")
+	if not dungeon_poi.is_empty():
+		var d2: Dictionary = g2.world_map.poi_by_id(int(dungeon_poi["id"]))
+		_check(int(d2["cleared_day"]) == int(g1.world_sim.day), "зачистка данжа помнится миром")
+	_check(g2.world_map.fog.size() > 20, "туман войны восстановлен (%d тайлов)" % g2.world_map.fog.size())
+	_check(g2.world_map.tile_path(g2.world_map.city_tile + Vector2i(1, 0),
+			g2.world_map.city_tile + Vector2i(5, 0)).size() > 0,
+			"поиск пути мира работает после загрузки")
+
+	# обновление сейва из загруженного состояния — день продолжает расти
+	sim2.time += float(sim2.cfg["day_length"]) * 2.0
+	_check(SG.save_game(g2, sim2.map.spawn_tile, -1, -1) == "",
+			"повторное сохранение из загруженного состояния")
+	var g3 := FakeGame.new()
+	g3.skills = load("res://scripts/skills.gd").new()
+	g3.skills.setup(_read_json("res://data/skills.json"))
+	_check(SG.load_game(g3) == "", "повторная загрузка")
+	_check(g3.city_sim.day_number() == sim2.day_number(),
+			"день вырос и сохранился (%d)" % g3.city_sim.day_number())
+
+	# битый сейв: мусор вместо JSON
+	var f := FileAccess.open(SG.SAVE_PATH, FileAccess.WRITE)
+	f.store_string("не JSON вовсе")
+	f.close()
+	var g4 := FakeGame.new()
+	g4.skills = load("res://scripts/skills.gd").new()
+	_check(SG.load_game(g4) == "save.load_failed", "битый файл отклонён")
+	# чужая версия формата
+	var fd := FileAccess.open(SG.SAVE_PATH, FileAccess.WRITE)
+	fd.store_string('{"v": 999, "city": {}, "world": {}, "game": {}}')
+	fd.close()
+	_check(SG.load_game(g4) == "save.bad_version", "чужая версия формата отклонена")
+	# отсутствие файла
+	SG.clear_save()
+	_check(SG.load_game(g4) == "save.no_save", "отсутствие файла отклонено")
+	# ключи локализации ошибок существуют
+	var loc: Dictionary = _read_json("res://loc/ru.json")
+	for key in ["save.no_game", "save.no_save", "save.load_failed", "save.bad_version",
+			"save.write_failed", "save.dungeon_hint", "menu.save_game", "menu.save_done",
+			"menu.autosaved"]:
+		_check(String(loc.get(key, "")) != "", "ключ локализации есть: " + key)
+	SG.clear_save()
+	print("[M14-A] готово")
 
 
 # --- M12: живой город — досуг, разговоры, похороны, сбор у костра ------------

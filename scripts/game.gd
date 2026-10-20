@@ -39,6 +39,12 @@ var poi_coins := 0               # монеты за зачистку лагер
 var world_hero_tile := Vector2i(-1, -1)   # тайл героя на карте мира
 var city_return_tile := Vector2i(-1, -1)  # тайл героя при возврате в город
 var world_active := false        # игрок сейчас на карте мира («Продолжить» вернёт туда, M8)
+# --- сейв/загрузка (M14-A, issue #3) ----------------------------------------
+var in_dungeon := false          # герой в данже — сейв недоступен (данжи транзитны)
+var hero_saved_hp := -1          # HP героя из сейва (применится при спавне в городе)
+var hero_saved_mana := -1        # мана из сейва (в городе всегда стартует с нуля)
+var _autosave_day := 0           # последний день автосейва
+const SAVE_SCRIPT := "res://scripts/save_game.gd"
 
 
 func _init() -> void:
@@ -60,6 +66,42 @@ func _init() -> void:
 func _process(delta: float) -> void:
 	if city_sim != null:
 		city_sim.tick(delta)
+		_autosave_tick()
+
+
+## Автосейв каждое утро города (M14-A): герой в городе (не в данже и не в пути
+## по карте мира), начиная со 2-го дня. Тост «сохранено» — через события sim.
+func _autosave_tick() -> void:
+	if city_sim == null or in_dungeon or world_active:
+		return
+	var day := int(city_sim.day)
+	if day <= 1 or day <= _autosave_day:
+		return
+	_autosave_day = day
+	var sg: Script = load(SAVE_SCRIPT)
+	var err: String = sg.save_game(self, sg.city_hero_tile(self), -1, -1)
+	if err == "":
+		city_sim.events.append({"type": "autosaved"})
+
+
+## Сохранить игру (обёртка для сцен). hero_tile — текущий тайл героя.
+func save_game(hero_tile: Vector2i, hero_hp: int, hero_mana: int) -> String:
+	var sg: Script = load(SAVE_SCRIPT)
+	var err: String = sg.save_game(self, hero_tile, hero_hp, hero_mana)
+	if err == "":
+		_autosave_day = int(city_sim.day) if city_sim != null else _autosave_day
+	return err
+
+
+## Загрузить игру из файла в этот инстанс. "" — успех, иначе ключ локализации.
+func load_game() -> String:
+	var sg: Script = load(SAVE_SCRIPT)
+	return sg.load_game(self)
+
+
+func has_save() -> bool:
+	var sg: Script = load(SAVE_SCRIPT)
+	return sg.has_save()
 
 
 ## --- Платформенные мелочи (M9): полноэкранный режим с запоминанием ---------
@@ -119,6 +161,10 @@ func new_city() -> void:
 	world_hero_tile = Vector2i(-1, -1)
 	city_return_tile = Vector2i(-1, -1)
 	world_active = false
+	in_dungeon = false
+	hero_saved_hp = -1
+	hero_saved_mana = -1
+	_autosave_day = 1   # автосейв — с утра 2-го дня
 	if skills != null:
 		skills.reset()
 	new_world()

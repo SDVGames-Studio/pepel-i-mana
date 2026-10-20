@@ -27,7 +27,8 @@ func _ready() -> void:
 	new_game_button.text = Loc.t("menu.new_game")
 	continue_button.text = Loc.t("menu.continue_city")
 	exit_button.text = Loc.t("menu.exit")
-	continue_button.visible = Game.city_sim != null
+	# «Продолжить» виден, если игра идёт ИЛИ есть файл сейва (M14-A)
+	continue_button.visible = Game.city_sim != null or Game.has_save()
 	new_game_button.pressed.connect(_on_new_game_pressed)
 	continue_button.pressed.connect(_on_continue_pressed)
 	exit_button.pressed.connect(_on_exit_pressed)
@@ -60,6 +61,18 @@ func _read_json(path: String) -> Variant:
 
 
 func _on_continue_pressed() -> void:
+	# M14-A: сессии нет — пробуем файл сейва (город и мир целиком из user://)
+	if Game.city_sim == null:
+		var err: String = Game.load_game()
+		if err != "":
+			# честный отказ: битый/чужой сейв не грузим, игра не начата
+			continue_button.disabled = true
+			var warn := Label.new()
+			warn.text = Loc.t(err)
+			warn.add_theme_font_size_override("font_size", 16)
+			warn.add_theme_color_override("font_color", Color("#ff8a80"))
+			($VBox as VBoxContainer).add_child(warn)
+			return
 	# возвращаем туда, где игрок был: карта мира или город (M8)
 	if Game.world_active and Game.world_map != null:
 		get_tree().change_scene_to_file("res://scenes/world.tscn")

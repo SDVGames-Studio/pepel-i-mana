@@ -48,10 +48,14 @@ func _build_pause() -> void:
 	_pause_layer.layer = 50
 	add_child(_pause_layer)
 	_pause_overlay = load("res://scripts/pause_overlay.gd").new()
+	# данжи транзитны (M14-A): середина данжа не сохраняется — честно говорим
+	_pause_overlay.allow_save = false
+	_pause_overlay.hint = Loc.t("save.dungeon_hint")
 	_pause_layer.add_child(_pause_overlay)
 
 
 func _ready() -> void:
+	Game.in_dungeon = true   # в данже автосейва нет (транзитность, M14-A)
 	params = _read_json("res://data/dungeon.json")
 	enemies_data = _read_json("res://data/enemies.json")
 	loot_data = _read_json(LOOT_CFG_PATH)
