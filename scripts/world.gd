@@ -23,8 +23,6 @@ var hero_px := Vector2.ZERO
 var selected: Dictionary = {}   # выбранный POI (панель справа)
 var travel := {}                # {path, days, px_done, px_total, day_mark}
 var _near_poi: Dictionary = {}  # POI у ног героя (действие E)
-var _pause = null               # оверлей паузы с сохранением (M14-A)
-const SAVE_SCRIPT := "res://scripts/save_game.gd"
 
 
 func _ready() -> void:
@@ -34,6 +32,7 @@ func _ready() -> void:
 	map = Game.world_map
 	sim = Game.world_sim
 	Game.world_active = true   # «Продолжить» из меню вернёт на карту мира
+	Game.in_dungeon = false    # вышли из данжа на карту — автосейв снова работает
 	if Game.city_sim != null:
 		Game.city_sim.paused = false   # город живёт, пока герой на большой карте
 	# вернулись из локации — герой там, где вошёл; иначе у города
@@ -62,19 +61,6 @@ func _ready() -> void:
 	hud.init(self)
 	add_child(hud)
 	hud.set_hint(Loc.t("world.hint"))
-	# пауза с сохранением (M14-A): Esc открывает оверлей вместо мгновенного меню
-	_pause = load("res://scripts/pause_overlay.gd").new()
-	_pause.save_cb = save_now
-	_pause.on_quit = func() -> void:
-		if Game.city_sim != null:
-			Game.city_sim.paused = true
-	add_child(_pause)
-
-
-## Сохранить игру с карты мира (M14-A): герой стоит на hero_tile.
-func save_now() -> String:
-	var sg: Script = load(SAVE_SCRIPT)
-	return sg.save_game(Game, hero_tile, -1, -1)
 
 
 func _process(delta: float) -> void:
@@ -222,7 +208,13 @@ func _cancel() -> void:
 		view.selected_tile = Vector2i(-1, -1)
 		hud.close_poi_panel()
 		return
-	_pause.open()
+	# Esc (фидбек заказчика 2026-10-20): как раньше — сразу в меню
+	if Game.city_sim != null:
+		Game.city_sim.paused = true
+	Game.menu_hero_tile = hero_tile
+	Game.menu_hero_hp = -1
+	Game.menu_hero_mana = -1
+	get_tree().change_scene_to_file(MENU_SCENE)
 
 
 func _click_map(tile: Vector2i) -> void:

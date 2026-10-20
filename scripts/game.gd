@@ -53,6 +53,10 @@ var in_dungeon := false          # герой в данже — сейв нед�
 var hero_saved_hp := -1          # HP героя из сейва (применится при спавне в городе)
 var hero_saved_mana := -1        # мана из сейва (в городе всегда стартует с нуля)
 var _autosave_day := 0           # последний день автосейва
+# снимок героя на момент выхода в меню (Esc) — для «Сохранить игру» в меню
+var menu_hero_tile := Vector2i(-1, -1)
+var menu_hero_hp := -1
+var menu_hero_mana := -1
 const SAVE_SCRIPT := "res://scripts/save_game.gd"
 
 
@@ -112,6 +116,22 @@ func save_game(hero_tile: Vector2i, hero_hp: int, hero_mana: int) -> String:
 func load_game() -> String:
 	var sg: Script = load(SAVE_SCRIPT)
 	return sg.load_game(self)
+
+
+## Сохранить из главного меню (фидбек заказчика 2026-10-20: Esc снова ведёт
+## в меню, «Сохранить» теперь здесь). Состояние героя — снимок на момент Esc.
+func menu_save() -> String:
+	if city_sim == null:
+		return "save.no_game"
+	if in_dungeon:
+		return "save.dungeon_hint"
+	var tile := menu_hero_tile
+	if tile.x < 0:
+		tile = city_return_tile if city_return_tile.x >= 0 else city_sim.map.spawn_tile
+	var err: String = save_game(tile, menu_hero_hp, menu_hero_mana)
+	if err == "":
+		menu_hero_tile = tile   # повторное сохранение в меню — тот же тайл
+	return err
 
 
 func has_save() -> bool:

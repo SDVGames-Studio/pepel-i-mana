@@ -32,6 +32,7 @@ func _ready() -> void:
 	new_game_button.pressed.connect(_on_new_game_pressed)
 	continue_button.pressed.connect(_on_continue_pressed)
 	exit_button.pressed.connect(_on_exit_pressed)
+	_build_save_button()
 	_build_fullscreen_check()
 
 
@@ -78,6 +79,24 @@ func _on_continue_pressed() -> void:
 		get_tree().change_scene_to_file("res://scenes/world.tscn")
 	else:
 		get_tree().change_scene_to_file("res://scenes/city.tscn")
+
+
+## Кнопка «Сохранить игру» в меню (фидбек заказчика 2026-10-20: Esc снова
+## выходит в меню, сохранение переехало сюда). Видна, пока идёт сессия.
+func _build_save_button() -> void:
+	if Game.city_sim == null:
+		return
+	var save := Button.new()
+	save.text = Loc.t("menu.save_game")
+	save.add_theme_font_size_override("font_size", 22)
+	save.focus_mode = Control.FOCUS_NONE
+	save.pressed.connect(func() -> void: _on_save_pressed(save))
+	($VBox as VBoxContainer).add_child(save)
+
+
+func _on_save_pressed(save: Button) -> void:
+	var err: String = Game.menu_save()
+	save.text = Loc.t("menu.save_done") if err == "" else Loc.t(err)
 
 
 func _on_new_game_pressed() -> void:

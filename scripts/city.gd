@@ -32,9 +32,7 @@ var _static_body: StaticBody2D
 var _terrain: Node2D = null     # статический слой ландшафта (перерисовка по dirty, M11)
 var _near_anomaly := false
 var _near_armory: Dictionary = {}   # оружейка рядом с героем (E — комплект героя)
-var _pause = null               # оверлей паузы с сохранением (M14-A)
 var _equip_panel = null         # панель экипировки и крафта (M14-B, клавиша I)
-const SAVE_SCRIPT := "res://scripts/save_game.gd"
 
 
 func _ready() -> void:
@@ -72,11 +70,6 @@ func _ready() -> void:
 	hud.set_hint(_default_hint())
 	hero.died.connect(_on_hero_down)
 	_deposit_loot()
-	# пауза с сохранением (M14-A): Esc открывает оверлей вместо мгновенного меню
-	_pause = load("res://scripts/pause_overlay.gd").new()
-	_pause.save_cb = save_now
-	_pause.on_quit = func() -> void: sim.paused = true
-	add_child(_pause)
 	# панель экипировки (M14-B, клавиша I): в городе ещё и крафт у мастеровых
 	_equip_panel = load("res://scripts/equipment_panel.gd").new()
 	_equip_panel.hero_cb = func(): return hero
@@ -105,13 +98,6 @@ func _near_building_kind(type_id: String) -> bool:
 				and hero.position.distance_to(map.tile_center_px(b["tile"])) < map.ts * 2.2:
 			return true
 	return false
-
-
-## Сохранить игру из города: тайл и HP героя — из живой сцены. "" — успех.
-func save_now() -> String:
-	var sg: Script = load(SAVE_SCRIPT)
-	var tile: Vector2i = map.tile_of_px(hero.global_position)
-	return sg.save_game(Game, tile, hero.hp, hero.mana)
 
 
 func _exit_tree() -> void:
@@ -629,7 +615,17 @@ func _unhandled_input(event: InputEvent) -> void:
 		elif hud.chronicle_visible():
 			hud.toggle_chronicle()
 		else:
-			_pause.open()
+			_exit_to_menu()
+
+
+## Esc (фидбек заказчика 2026-10-20): как раньше — сразу в меню; перед выходом
+## запоминаем героя, чтобы «Сохранить игру» в меню сохранила актуальное состояние.
+func _exit_to_menu() -> void:
+	sim.paused = true
+	Game.menu_hero_tile = map.tile_of_px(hero.global_position)
+	Game.menu_hero_hp = hero.hp
+	Game.menu_hero_mana = hero.mana
+	get_tree().change_scene_to_file(MENU_SCENE)
 
 
 ## Зеркалим состояние инструментов зоны/дороги в отрисовку.

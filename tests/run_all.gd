@@ -3024,9 +3024,10 @@ func _test_m9() -> void:
 			"res://scripts/pause_overlay.gd", "res://scripts/game.gd", "res://scripts/main_menu.gd"]:
 		var s: Variant = load(path)
 		_check(s != null and (s as Script).can_instantiate(), path.get_file() + " компилируется")
-	# версия этапа
-	_check(String(_read_json("res://data/version.json")["version"]).begins_with("1.4"),
-			"версия проекта 1.4.x (M14 — issue #3)")
+	# версия этапа (стабильнее номера: номер растёт с каждой частью)
+	var vdata: Variant = _read_json("res://data/version.json")
+	_check(vdata is Dictionary and String(vdata.get("stage", "")) == "M14",
+			"проект на этапе M14 (версия %s)" % (String(vdata.get("version", "?")) if vdata is Dictionary else "?"))
 
 
 # --- M10: релиз v1.0 — craftpix-ассеты, бандиты, скот, поля, рынок, гуляй-город
@@ -3763,6 +3764,9 @@ func _test_m14_b() -> void:
 	_check(g.use_potion("potion_rage", potio) == "" and potio.temp_dmg.size() == 1,
 			"эликсир ярости дал временный урон")
 	_check(g.use_potion("potion_heal", potio) == "eq.not_owned", "пустой рюкзак — отказ")
+
+	# меню-сейв (фидбек 2026-10-20): без сессии сохранять нечего
+	_check(g.menu_save() == "save.no_game", "menu_save без сессии отказывает")
 
 	# --- анти-кайт (T06): счётчик, телеграф, рывок, кулдаун ---
 	var ak: Dictionary = balance.get("anti_kite", {})
