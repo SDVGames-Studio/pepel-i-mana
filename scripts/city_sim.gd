@@ -297,7 +297,7 @@ func _story_trigger_met(when: String, ch: Dictionary, scfg: Dictionary) -> bool:
 			var ash: Dictionary = scfg.get("side_ash", {})
 			var altar_ok := false
 			for b in buildings:
-				if String(b["type"]) == "altar" and bool(b["done"]):
+				if String(b["type"]) == "altar" and _active(b):
 					altar_ok = true
 			if float(res["crystal"]) >= float(mana.get("crystals", 20)) \
 					and pollution <= float(mana.get("max_pollution", 30)) and altar_ok:
@@ -833,7 +833,7 @@ func can_afford(cost: Dictionary) -> bool:
 func storage_cap() -> int:
 	var extra := 0
 	for b in buildings:
-		if b["done"] and _def(b).get("effect", "") == "storage":
+		if _active(b) and _def(b).get("effect", "") == "storage":
 			extra += int(cfg["storage_per_warehouse"])
 	return int(cfg["storage_base"]) + extra
 
@@ -841,7 +841,7 @@ func storage_cap() -> int:
 func pop_cap() -> int:
 	var houses := 0
 	for b in buildings:
-		if b["done"] and _def(b).get("effect", "") == "pop":
+		if _active(b) and _def(b).get("effect", "") == "pop":
 			houses += 1
 	# обустроенные клетки жилой зоны — шалаши, каждый даёт место (M6)
 	var tents := 0
@@ -888,7 +888,7 @@ func has_blessing() -> bool:
 ## Алтарь готов и на нём работает маг-ученик (крафт, зачарование, городские заклинания).
 func altar_ready() -> bool:
 	for b in buildings:
-		if b["done"] and _def(b).get("effect", "") == "altar" and int(b["worker"]) > 0:
+		if _active(b) and _def(b).get("effect", "") == "altar" and int(b["worker"]) > 0:
 			return true
 	return false
 
@@ -896,7 +896,7 @@ func altar_ready() -> bool:
 ## На алтаре зачарование «Мана» (больше запас и быстрее регенерация у героя).
 func altar_enchanted() -> bool:
 	for b in buildings:
-		if b["done"] and String(b["type"]) == "altar" and String(b.get("enchant", "")) == "mana":
+		if _active(b) and String(b["type"]) == "altar" and String(b.get("enchant", "")) == "mana":
 			return true
 	return false
 
@@ -950,7 +950,7 @@ func layout_mult(bld: Dictionary) -> float:
 		return 1.0
 	var radius := float(lcfg.get("warehouse_radius", 4))
 	for b in buildings:
-		if bool(b["done"]) and _def(b).get("effect", "") == "storage" \
+		if _active(b) and _def(b).get("effect", "") == "storage" \
 				and Vector2(b["tile"]).distance_to(Vector2(bld["tile"])) <= radius:
 			return float(lcfg.get("warehouse_mult", 1.25))
 	return 1.0
@@ -960,7 +960,7 @@ func layout_mult(bld: Dictionary) -> float:
 func decor_mood() -> float:
 	var total := 0.0
 	for b in buildings:
-		if bool(b["done"]) and _def(b).get("effect", "") == "decor":
+		if _active(b) and _def(b).get("effect", "") == "decor":
 			total += float(_def(b).get("mood", 0.0))
 	return minf(total, float(cfg.get("decor_mood_max", 20.0)))
 
@@ -1019,7 +1019,7 @@ func _add_resource_capped(key: String, amount: float) -> void:
 ## Зачаровать готовое здание (ответ №60): руна из рюкзака + кристаллы из пула.
 ## def — строка "enchantments" из data/magic.json. Возвращает "" или ключ ошибки.
 func enchant_building(bld: Dictionary, def: Dictionary, inventory: Array) -> String:
-	if bld.is_empty() or not bool(bld["done"]):
+	if bld.is_empty() or not _active(bld):
 		return "enchant_not_done"
 	var target := String(def.get("target", "any"))
 	if target != "any" and String(bld["type"]) != target:
@@ -1292,11 +1292,13 @@ func rects_gap(a: Dictionary, b: Dictionary) -> int:
 ## зазор минимум build_gap (клетка под дорогу); стена/ворота строятся
 ## сплошным кольцом (между собой зазора не держат), но держат wall_house_gap
 ## минимум до ближайшего дома.
-func placement_gap_ok(type_id: String, tile: Vector2i) -> bool:
+func placement_gap_ok(type_id: String, tile: Vector2i, skip_id := -1) -> bool:
 	var pcfg: Dictionary = cfg.get("placement", {})
 	var new_b := {"type": type_id, "tile": tile}
 	var wall_class := type_id == "wall" or type_id == "gate"
 	for b in buildings:
+		if int(b["id"]) == skip_id:
+			continue   # перенос здания: собственные клетки не мешают (этап 2, аспект 5)
 		var other_type := String(b["type"])
 		var gap := rects_gap(new_b, b)
 		if wall_class:
@@ -1521,7 +1523,8 @@ func _drop_zone_cell(tile: Vector2i) -> void:
 
 
 ## Почему здание нельзя поставить здесь: ключ локализации или "" (для тоста сцены).
-func placement_block(type_id: String, tile: Vector2i) -> String:
+## skip_count — перенос своего здания: лимит числа построек не проверяется.
+func placement_block(type_id: String, tile: Vector2i, skip_count := false) -> String:
 	var place := ""
 	var max_count := 0
 	for d in cfg["buildings"]:
@@ -1529,7 +1532,7 @@ func placement_block(type_id: String, tile: Vector2i) -> String:
 			place = String(d.get("place", ""))
 			max_count = int(d.get("max_count", 0))
 			break
-	if max_count > 0 and _count_type(type_id) >= max_count:
+	if not skip_count and max_count > 0 and _count_type(type_id) >= max_count:
 		return "city.tent_limit"   # лимит построек типа (этап 2, аспект 4)
 	match place:
 		"ore":
@@ -1539,10 +1542,11 @@ func placement_block(type_id: String, tile: Vector2i) -> String:
 			if not _water_near(tile):
 				return "city.placement_water"
 		"near_forge":
-			# этап 2: кузня «в 1–2 клетках зазора» (здания 2×2 не касаются)
+			# этап 2: кузня «в 1–2 клетках зазора» (здания 2×2 не касаются);
+			# руины кузни оружейной не годятся (этап 2, аспект 5)
 			var near_f := false
 			for b in buildings:
-				if not bool(b["done"]) or String(b["type"]) != "forge":
+				if not _active(b) or String(b["type"]) != "forge":
 					continue
 				var g := rects_gap({"type": type_id, "tile": tile}, b)
 				if g >= 1 and g <= 2:
@@ -1594,7 +1598,7 @@ func _nearest_building_type(tile: Vector2i, types: Array, radius: float) -> Dict
 	var best: Dictionary = {}
 	var best_d := radius
 	for b in buildings:
-		if not bool(b["done"]) or not (String(b["type"]) in types):
+		if not _active(b) or not (String(b["type"]) in types):
 			continue
 		var d: float = Vector2(b["tile"]).distance_to(Vector2(tile))
 		if d <= best_d:
@@ -1617,10 +1621,14 @@ func _bld_max_hp(type_id: String) -> int:
 
 
 ## Урон зданию от мутантов и бури; на нуле прочности здание разрушается.
-func _damage_building(b: Dictionary, amount: float) -> void:
+## Разрушение (этап 2, аспект 5, ответ №17 «ремонт, не снос»): готовое здание
+## НЕ исчезает — остаётся руинами на карте (клетки проходимы как обломки,
+## но место занято и строить нельзя), чинится за 40% стоимости.
+## Стройплощадка сносится совсем. true — здание только что разрушено.
+func _damage_building(b: Dictionary, amount: float) -> bool:
 	b["hp"] = float(b.get("hp", float(_bld_max_hp(String(b["type"]))))) - amount
 	if float(b["hp"]) > 0.0:
-		return
+		return false
 	# разрушено: рабочее место освобождается, стена перестаёт быть преградой
 	if int(b["worker"]) > 0:
 		for r in residents:
@@ -1630,19 +1638,176 @@ func _damage_building(b: Dictionary, amount: float) -> void:
 				r["sub_prof"] = ""
 				break
 		b["worker"] = -1
+	# дом разрушен — живущие в нём остаются без дома (этап 2, аспект 5)
+	for r in residents:
+		var home: Variant = r.get("home", null)
+		if home is Dictionary and not (home as Dictionary).is_empty() \
+				and int((home as Dictionary).get("id", -1)) == int(b["id"]):
+			r["home"] = null
 	if _def(b).get("effect", "") in ["wall", "gate"]:
 		map.set_solid(b["tile"], false)
 	elif bool(b.get("done", false)):
-		# разрушенное капитальное здание освобождает весь прямоугольник
+		# руины не преграждают путь (обломки), но клетки остаются за зданием
 		for cell in bld_cells(b):
 			map.set_solid(cell, false)
 		_spots_dirty()
-	buildings.erase(b)
+	if not bool(b.get("done", false)):
+		buildings.erase(b)   # стройплощадка — просто снос
+		return true
+	b["razed"] = true
+	b["hp"] = 0.0
+	b["enchant"] = ""   # руины не удерживают зачарование
+	b["stun_left"] = 0.0
 	# кладбище разрушено (мутантами, бурей) — тайная армия рассыпается (M11)
 	if String(b["type"]) == "cemetery":
 		_necro_purge()
 	events.append({"type": "razed", "bld": String(b["type"])})
 	_chron("chron.razed", String(b["type"]))
+	return true
+
+
+## Готовое и НЕ разрушенное здание — «действующее» (даёт эффект, работу,
+## считается в лимитах). Руины и стройплощадки эффектов не дают (этап 2, аспект 5).
+func _active(b: Dictionary) -> bool:
+	return bool(b["done"]) and not bool(b.get("razed", false))
+
+
+## Цена мгновенного ремонта (этап 2, аспект 5): cost_frac от стоимости
+## постройки, каждый ресурс округляется вверх (минимум 1, если был в цене).
+func repair_cost(type_id: String) -> Dictionary:
+	var frac: float = float(cfg.get("repair", {}).get("cost_frac", 0.4))
+	var out: Dictionary = {}
+	for d in cfg["buildings"]:
+		if String(d["id"]) == type_id:
+			for key in d.get("cost", {}):
+				out[key] = maxi(1, int(ceil(float(d["cost"][key]) * frac)))
+			break
+	return out
+
+
+## Мгновенный ремонт за 40% стоимости (этап 2, аспект 5): чинит и повреждённое
+## здание, и руины (поднимает, клетки снова преграждают путь).
+## "" — успех | "bad" | "full" | "no_res".
+func repair_building(b: Dictionary) -> String:
+	if b.is_empty() or not bool(b.get("done", false)):
+		return "bad"
+	var max_hp := float(_bld_max_hp(String(b["type"])))
+	var was_razed := bool(b.get("razed", false))
+	if not was_razed and float(b.get("hp", max_hp)) >= max_hp:
+		return "full"   # чинить нечего
+	var cost := repair_cost(String(b["type"]))
+	if not can_afford(cost):
+		return "no_res"
+	for key in cost:
+		res[key] = int(res[key]) - int(cost[key])
+	b["hp"] = max_hp
+	if was_razed:
+		b["razed"] = false
+		if String(_def(b).get("effect", "")) == "gate":
+			_gate_state.erase(str(int(b["id"])))   # состояние пересчитается на новом месте
+			_update_gates()
+		else:
+			_set_bld_solid(b, true)   # стены (1×1) и капитальные — одинаково
+			_step_off_bld(b)
+		_spots_dirty()
+	events.append({"type": "bld_repaired", "bld": String(b["type"]), "cost": cost,
+			"razed": was_razed})
+	_chron("chron.repaired", String(b["type"]))
+	_assign_jobs()
+	return ""
+
+
+## Ближайшее к герою готовое здание, которое можно чинить (повреждено или руины).
+func hero_repair_near(px: Vector2) -> Dictionary:
+	var best: Dictionary = {}
+	var best_d := 1.6 * float(map.ts) + float(map.ts) * 0.5   # как у стройплощадки
+	for b in buildings:
+		if not bool(b["done"]):
+			continue
+		var max_hp := float(_bld_max_hp(String(b["type"])))
+		if not bool(b.get("razed", false)) and float(b.get("hp", max_hp)) >= max_hp:
+			continue
+		var d: float = bld_dist_px(px, b)
+		if d <= best_d:
+			best_d = d
+			best = b
+	return best
+
+
+## E у повреждённого здания или руин: мгновенный ремонт за 40% стоимости.
+## "" — рядом нечего чинить, иначе результат repair_building.
+func hero_repair(px: Vector2) -> String:
+	var b := hero_repair_near(px)
+	if b.is_empty():
+		return ""
+	return repair_building(b)
+
+
+## Годно ли новое место для переноса здания (правила — как при стройке;
+## собственные клетки не мешают: здание их освободит) (этап 2, аспект 5).
+func move_spot_ok(b: Dictionary, tile: Vector2i) -> bool:
+	if b.is_empty() or not bool(b["done"]) or bool(b.get("razed", false)):
+		return false
+	if tile == Vector2i(b["tile"]):
+		return true
+	var type_id := String(b["type"])
+	var w := bld_w(b)
+	for dy in w:
+		for dx in w:
+			var cell := tile + Vector2i(dx, dy)
+			if not map.in_bounds(cell) or cell == map.anomaly_tile:
+				return false
+			var ok_nature: bool = map.is_nature_walkable(cell) \
+					or (type_id == "mine" and map.grid[cell.y][cell.x] == map.TILE_ORE)
+			if not ok_nature:
+				return false
+			var other := building_at(cell)
+			if not other.is_empty() and int(other["id"]) != int(b["id"]):
+				return false
+			if map.bridges.has(cell):
+				return false
+			for g in graves:
+				if Vector2i(g["tile"]) == cell:
+					return false
+	if placement_block(type_id, tile, true) != "":
+		return false
+	return placement_gap_ok(type_id, tile, int(b["id"]))
+
+
+## Бесплатный перенос готового здания (этап 2, аспект 5): правила места те же,
+## что при стройке; ресурсы не тратятся. "" — успех | "bad_bld" | "bad_spot".
+func move_building(b: Dictionary, tile: Vector2i) -> String:
+	if b.is_empty() or not bool(b["done"]) or bool(b.get("razed", false)):
+		return "bad_bld"
+	if tile == Vector2i(b["tile"]):
+		return ""   # перенос на своё место — ничего не делаем
+	if not move_spot_ok(b, tile):
+		return "bad_spot"
+	var effect := String(_def(b).get("effect", ""))
+	var gate := effect == "gate"
+	# старое место освобождается
+	if gate:
+		map.set_solid(Vector2i(b["tile"]), false)
+		_gate_state.erase(str(int(b["id"])))   # применится к новому месту
+	else:
+		_set_bld_solid(b, false)
+	# новое место: дороги и клетки зон уступают, клетки становятся сплошными
+	var w := bld_w(b)
+	for dy in w:
+		for dx in w:
+			var cell := tile + Vector2i(dx, dy)
+			map.remove_road(cell)
+			_drop_zone_cell(cell)
+	b["tile"] = tile
+	if gate:
+		_update_gates()
+	else:
+		_set_bld_solid(b, true)
+		_step_off_bld(b)
+	_spots_dirty()
+	events.append({"type": "bld_moved", "bld": String(b["type"])})
+	_chron("chron.moved", String(b["type"]))
+	return ""
 
 
 ## Цель достигнута (стройка готова): декор закрывает цель «построить сад».
@@ -1741,7 +1906,7 @@ func _assign_jobs() -> void:
 				continue
 			if pass_n == 1 and not is_tent:
 				continue
-			if not b["done"] or not def_has_worker(b):
+			if not _active(b) or not def_has_worker(b):
 				continue
 			if int(b["worker"]) > 0 and taken.has(int(b["worker"])):
 				continue
@@ -1763,14 +1928,14 @@ func _assign_jobs() -> void:
 			var is_tent := String(b["type"]) == "tent"
 			if (pass_n == 0) == is_tent:
 				continue
-			if not b["done"] or not def_has_worker(b):
+			if not _active(b) or not def_has_worker(b):
 				continue
 			if int(b["worker"]) > 0 and taken.has(int(b["worker"])):
 				continue
 			_substitute_into(String(_def(b)["worker"]), taken, b, false)
 	# 5. всё ещё некому — сообщаем игроку
 	for b in buildings:
-		if not b["done"] or not def_has_worker(b):
+		if not _active(b) or not def_has_worker(b):
 			continue
 		if int(b["worker"]) <= 0:
 			events.append({"type": "no_worker", "bld": String(b["type"])})
@@ -1790,7 +1955,7 @@ func _substitutes_to_primary(taken: Dictionary) -> void:
 					break
 		if target.is_empty():
 			for b in buildings:
-				if not b["done"] or not def_has_worker(b):
+				if not _active(b) or not def_has_worker(b):
 					continue
 				if String(_def(b)["worker"]) != want or int(b["worker"]) > 0:
 					continue
@@ -1995,7 +2160,7 @@ func _wild_surge(pol_cfg: Dictionary) -> void:
 func _wild_flash_target() -> Dictionary:
 	var candidates: Array = []
 	for b in buildings:
-		if bool(b["done"]) and String(b.get("enchant", "")) != "ward":
+		if _active(b) and String(b.get("enchant", "")) != "ward":
 			candidates.append(b)
 	if candidates.is_empty():
 		return {}
@@ -2172,7 +2337,7 @@ func _is_evening() -> bool:
 ## Точка городского костра (M12): у входа колодца, если он есть, иначе в центре.
 func fire_tile() -> Vector2i:
 	for b in buildings:
-		if bool(b["done"]) and String(b["type"]) == "well":
+		if _active(b) and String(b["type"]) == "well":
 			return bld_spot(b)
 	return map.spawn_tile
 
@@ -2377,7 +2542,7 @@ func _funeral_update(r: Dictionary, dt: float) -> void:
 func _start_funeral(dead: Dictionary, dead_pos: Vector2) -> void:
 	var cemetery: Dictionary = {}
 	for b in buildings:
-		if bool(b["done"]) and String(b["type"]) == "cemetery":
+		if _active(b) and String(b["type"]) == "cemetery":
 			cemetery = b
 			break
 	if cemetery.is_empty():
@@ -2427,7 +2592,7 @@ func _next_grave_tile(center: Vector2i) -> Vector2i:
 func _guard_patrol(r: Dictionary, dt: float) -> bool:
 	var gates: Array = []
 	for b in buildings:
-		if bool(b["done"]) and String(_def(b).get("effect", "")) == "gate":
+		if _active(b) and String(_def(b).get("effect", "")) == "gate":
 			gates.append(Vector2i(b["tile"]))
 	if gates.is_empty():
 		return false
@@ -2468,7 +2633,7 @@ func _free_home(r: Dictionary) -> Dictionary:
 			var hb: Dictionary = other["home"]
 			counts[int(hb["id"])] = int(counts.get(int(hb["id"]), 0)) + 1
 	for b in buildings:
-		if not b["done"] or _def(b).get("effect", "") != "pop":
+		if not _active(b) or _def(b).get("effect", "") != "pop":
 			continue
 		if int(counts.get(int(b["id"]), 0)) >= int(cfg["pop_per_house"]):
 			continue
@@ -2486,7 +2651,7 @@ func _restore_rate(r: Dictionary, sleeping: bool) -> float:
 	if not sleeping:
 		base *= float(cfg["rest_fraction"])
 	for b in buildings:
-		if b["done"] and _def(b).get("effect", "") == "sleep":
+		if _active(b) and _def(b).get("effect", "") == "sleep":
 			base *= 1.0 + float(cfg["well_bonus"])
 			break
 	return base
@@ -2535,7 +2700,7 @@ func _defender_update(r: Dictionary, dt: float, dmg: float, cd: float) -> void:
 
 func _done_building_of_type(type_id: String) -> Dictionary:
 	for b in buildings:
-		if bool(b["done"]) and String(b["type"]) == type_id:
+		if _active(b) and String(b["type"]) == type_id:
 			return b
 	return {}
 
@@ -2682,12 +2847,13 @@ func _workshop_work(r: Dictionary, bld: Dictionary, dt: float) -> void:
 		_move_towards(r, bld_spot(broken), dt)
 
 
-## Повреждённое готовое здание ближе прочих (для мастерской).
+## Повреждённое готовое здание ближе прочих (для мастерской). Руины мастерская
+## не поднимает — только стоящие повреждённые (этап 2, аспект 5).
 func _damaged_building(near: Dictionary) -> Dictionary:
 	var best: Dictionary = {}
 	var best_d := INF
 	for b in buildings:
-		if not bool(b["done"]):
+		if not _active(b):
 			continue
 		var max_hp := float(_bld_max_hp(String(b["type"])))
 		if float(b.get("hp", max_hp)) >= max_hp:
@@ -3691,7 +3857,7 @@ func _tick_orchards() -> void:
 	if ocfg.is_empty():
 		return
 	for b in buildings:
-		if String(b["type"]) != "orchard" or not bool(b["done"]):
+		if String(b["type"]) != "orchard" or not _active(b):
 			continue
 		b["apple_stage"] = int(b.get("apple_stage", 0))
 		if int(b["apple_stage"]) < int(ocfg.get("stages", 3)):
@@ -3718,7 +3884,7 @@ func _gate_open(gate: Dictionary) -> bool:
 
 
 func is_gate_open(gate: Dictionary) -> bool:
-	if not bool(gate["done"]):
+	if not _active(gate):
 		return false
 	return bool(_gate_state.get(str(gate["id"]), false))
 
@@ -3726,7 +3892,7 @@ func is_gate_open(gate: Dictionary) -> bool:
 ## При смене состояния — тайл ворот становится проходимым или стеной.
 func _update_gates() -> void:
 	for b in buildings:
-		if not bool(b["done"]) or _def(b).get("effect", "") != "gate":
+		if not _active(b) or _def(b).get("effect", "") != "gate":
 			continue
 		var open := _gate_open(b)
 		var key := str(b["id"])
@@ -4159,7 +4325,7 @@ func _roll_autobuild() -> void:
 	for off in _gate_offsets():
 		var gt2: Vector2i = map.spawn_tile + (off as Vector2i)
 		var gate_b: Dictionary = building_at(gt2)
-		if gate_b.is_empty() or not bool(gate_b["done"]):
+		if gate_b.is_empty() or not _active(gate_b):
 			continue   # проём без ворот или ворота ещё строятся
 		if not _manned_tower_near(gt2):
 			var tt := _tower_tile_near(gt2)
@@ -4259,7 +4425,7 @@ func _next_wall_tile() -> Vector2i:
 func _food_deficit() -> bool:
 	var production := 0.0
 	for b in buildings:
-		if bool(b["done"]) and String(b["type"]) == "farm":
+		if _active(b) and String(b["type"]) == "farm":
 			production += float(_def(b)["produce"]["per_day"]) * float(b.get("ench_mult", 1.0))
 	return production < float(residents.size()) * float(cfg["food_per_resident_day"])
 
@@ -4267,7 +4433,7 @@ func _food_deficit() -> bool:
 ## Готовая ферма без работника: строить новую бессмысленно — сперва некому работать.
 func _idle_farm_exists() -> bool:
 	for b in buildings:
-		if b["done"] and String(b["type"]) == "farm" and int(b["worker"]) <= 0:
+		if _active(b) and String(b["type"]) == "farm" and int(b["worker"]) <= 0:
 			return true
 	return false
 
@@ -4975,7 +5141,7 @@ func threat_value() -> float:
 	var tcfg: Dictionary = cfg.get("threat", {})
 	var city_value := 0
 	for b in buildings:
-		if bool(b["done"]):
+		if _active(b):
 			city_value += 1
 	city_value += residents.size()
 	return maxf(0.0, float(day - int(tcfg.get("start_day", 3.0)))) * float(tcfg.get("day_growth", 0.35)) \
@@ -5190,8 +5356,7 @@ func _raider_update(r: Dictionary, dt: float, tcfg: Dictionary) -> bool:
 		if float(r["atk_cd"]) <= 0.0:
 			r["atk_cd"] = float(p["attack_cooldown"])
 			var mult := float(tcfg.get("brute_bld_mult", 3.0)) if String(r["type"]) == "brute" else 1.0
-			_damage_building(near, float(p["damage"]) * mult)
-			if not buildings.has(near):
+			if _damage_building(near, float(p["damage"]) * mult):
 				razed_this_raid += 1
 		return true
 	# путь к центру открыт — идём
@@ -5241,8 +5406,8 @@ func _nearest_building_of(r: Dictionary, wanted: Array) -> Dictionary:
 	var best: Dictionary = {}
 	var best_d := INF
 	for b in buildings:
-		if not bool(b["done"]):
-			continue
+		if not _active(b):
+			continue   # руины мутанты не бьют (этап 2, аспект 5)
 		if not wanted.is_empty() and not (String(_def(b).get("effect", b.get("type", ""))) in wanted):
 			continue
 		var d: float = bld_dist_px(r["pos"], b)
@@ -5394,7 +5559,7 @@ func _update_storm(dt: float, day_len: float) -> void:
 func _storm_strike_target() -> Dictionary:
 	var candidates: Array = []
 	for b in buildings:
-		if bool(b["done"]) and String(b.get("enchant", "")) != "ward":
+		if _active(b) and String(b.get("enchant", "")) != "ward":
 			candidates.append(b)
 	if candidates.is_empty():
 		return {}
@@ -6184,7 +6349,7 @@ func _necro_purge() -> void:
 ## Возвращает "" | "necro_hit" | "necro_purged".
 func hero_hit_building(origin_px: Vector2, facing: Vector2, range_px: float, arc_deg: float, dmg: int) -> String:
 	for b in buildings:
-		if String(b["type"]) != "cemetery" or not bool(b["done"]):
+		if String(b["type"]) != "cemetery" or not _active(b):
 			continue
 		var to: Vector2 = map.tile_center_px(b["tile"]) - origin_px
 		if to.length() > range_px + float(map.ts) * 0.6:
@@ -6192,5 +6357,5 @@ func hero_hit_building(origin_px: Vector2, facing: Vector2, range_px: float, arc
 		if absf(facing.angle_to(to)) > deg_to_rad(arc_deg) / 2.0:
 			continue
 		_damage_building(b, float(dmg))
-		return "necro_purged" if not buildings.has(b) else "necro_hit"
+		return "necro_purged" if bool(b.get("razed", false)) else "necro_hit"
 	return ""

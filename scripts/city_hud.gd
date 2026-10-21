@@ -796,6 +796,15 @@ func _build() -> void:
 	plant_btn.focus_mode = Control.FOCUS_NONE
 	plant_btn.pressed.connect(func() -> void: city.set_plant_mode(not city.plant_mode))
 	row.add_child(plant_btn)
+	# перенос зданий (этап 2, аспект 5): бесплатно, клик по зданию и месту
+	var move_btn := Button.new()
+	move_btn.text = Loc.t("city.move")
+	move_btn.tooltip_text = Loc.t("city.move_tooltip")
+	move_btn.custom_minimum_size = Vector2(104, 52)
+	move_btn.add_theme_font_size_override("font_size", 17)
+	move_btn.focus_mode = Control.FOCUS_NONE
+	move_btn.pressed.connect(func() -> void: city.set_move_mode(not city.move_mode))
+	row.add_child(move_btn)
 
 	_build_magic_panel(root)
 	_build_research_panel(root)

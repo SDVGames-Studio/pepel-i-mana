@@ -15,6 +15,8 @@ var enchant_colors: Dictionary = {}
 var zone_mode := ""             # инструмент зоны (M6): выделение областью
 var road_mode := false          # инструмент дороги (M6): рисование мышью
 var plant_mode := false         # инструмент посадки леса (M11)
+var move_mode := false          # инструмент переноса зданий (этап 2, аспект 5)
+var move_bld_id := -1           # здание, снятое для переноса (id), -1 — не выбрано
 var dragging := false           # ЛКМ зажата — идёт выделение/рисование
 var drag_from := Vector2i(-1, -1)
 var drag_to := Vector2i(-1, -1)
@@ -185,7 +187,7 @@ func _draw_campfire() -> void:
 ## Точка костра: у колодца, если он есть, иначе в центре (как в симуляции).
 func _fire_tile() -> Vector2i:
 	for b in sim.buildings:
-		if bool(b["done"]) and String(b["type"]) == "well":
+		if sim._active(b) and String(b["type"]) == "well":
 			return Vector2i(b["tile"]) + Vector2i(1, 0)
 	return map.spawn_tile
 
@@ -509,6 +511,25 @@ func _draw_building(b: Dictionary) -> void:
 		draw_rect(Rect2(rect.position + Vector2(4, rect.size.y - 9),
 				Vector2((rect.size.x - 8) * frac, 5)), Color("#ffe082"))
 		_draw_bld_label(b, rect)
+	elif bool(b.get("razed", false)):
+		# руины (этап 2, аспект 5): тёмные обломки цвета категории, трещины
+		# и метка «разрушено» — чинится героем за 40% стоимости (E)
+		var ruin := col.darkened(0.62)
+		draw_rect(rect, ruin)
+		draw_rect(rect.grow(-2), col.darkened(0.78), false, 2.0)
+		draw_line(rect.position + Vector2(ts * 0.25, ts * 0.2),
+				rect.position + Vector2(ts * 0.45, ts * 0.55), Color(0.05, 0.04, 0.03), 2.0)
+		draw_line(rect.position + Vector2(ts * 0.7, ts * 0.15),
+				rect.position + Vector2(ts * 0.5, ts * 0.6), Color(0.05, 0.04, 0.03), 2.0)
+		_draw_bld_label(b, rect)
+		var font := ThemeDB.fallback_font
+		var tag := Loc.t("city.razed_tag")
+		var tag_pos := rect.position + Vector2(
+				(rect.size.x - font.get_string_size(tag, HORIZONTAL_ALIGNMENT_LEFT, -1, 9).x) * 0.5, -3.0)
+		draw_string_outline(font, tag_pos, tag, HORIZONTAL_ALIGNMENT_LEFT, -1, 9, 3,
+				Color(0.2, 0.03, 0.03, 0.9))
+		draw_string(font, tag_pos, tag, HORIZONTAL_ALIGNMENT_LEFT, -1, 9,
+				Color(1.0, 0.45, 0.4, 0.95))
 	else:
 		# схематичное здание: заливка категории, тёмная кайма по контуру
 		draw_rect(rect, col)
@@ -528,7 +549,7 @@ func _draw_building(b: Dictionary) -> void:
 					Color("#8bc34a") if stage >= 1.0 else Color("#ffe082"))
 		_draw_bld_label(b, rect)
 	# окно: кто-то спит/лежит внутри — тёплый свет у входа (ночью особенно видно)
-	if bool(b["done"]) and _inside_homes.has(int(b["id"])):
+	if sim._active(b) and _inside_homes.has(int(b["id"])):
 		var door: Vector2 = _bld_door_pos(b, rect)
 		var glow := 0.5 + 0.2 * sin(Time.get_ticks_msec() / 350.0)
 		draw_circle(door + Vector2(0, -ts * 0.2), ts * 0.28, Color(1.0, 0.85, 0.45, 0.55 + 0.25 * glow))
@@ -566,8 +587,8 @@ func _draw_building(b: Dictionary) -> void:
 		var flash := 0.5 + 0.5 * sin(Time.get_ticks_msec() / 120.0)
 		draw_arc(rect.get_center(), ts * 0.4, 0.0, TAU, 20,
 				Color(0.9, 0.4, 1.0, 0.4 + 0.4 * flash), 2.0)
-	# прочность (M5): повреждённое здание показывает полоску
-	if bool(b["done"]) and float(b.get("hp", 999.0)) < float(_bld_max_hp(String(b["type"]))):
+	# прочность (M5): повреждённое здание показывает полоску (руины — без неё)
+	if sim._active(b) and float(b.get("hp", 999.0)) < float(_bld_max_hp(String(b["type"]))):
 		var frac2 := clampf(float(b["hp"]) / float(_bld_max_hp(String(b["type"]))), 0.0, 1.0)
 		draw_rect(Rect2(rect.position + Vector2(4, -7), Vector2(ts - 8, 4)), Color(0.15, 0.1, 0.1))
 		draw_rect(Rect2(rect.position + Vector2(4, -7), Vector2((ts - 8) * frac2, 4)), Color("#8bc34a"))
@@ -788,6 +809,9 @@ func _draw_ghost() -> void:
 			col = Color(1.0, 0.3, 0.3, 0.4)
 		draw_rect(Rect2(Vector2(tile) * map.ts, Vector2(map.ts, map.ts)), col)
 		return
+	if move_mode:
+		_draw_move_ghost()
+		return
 	if build_mode == "":
 		return
 	var tile: Vector2i = map.tile_of_px(get_global_mouse_position())
@@ -799,6 +823,44 @@ func _draw_ghost() -> void:
 	var w := float(sim.bld_w_of_type(build_mode))
 	draw_rect(Rect2(Vector2(tile) * map.ts, Vector2(map.ts * w, map.ts * w)), col)
 	draw_rect(Rect2(Vector2(tile) * map.ts, Vector2(map.ts * w, map.ts * w)).grow(-2),
+			Color(col.r, col.g, col.b, 0.9), false, 2.0)
+
+
+## Призрак переноса (этап 2, аспект 5): пока здание не выбрано — подсветка
+## здания под курсором (зелёная — годное); после выбора — рамка снимка
+## и прямоугольник под мышью (зелёный/красный по правилам места).
+func _draw_move_ghost() -> void:
+	var ts := float(map.ts)
+	var tile: Vector2i = map.tile_of_px(get_global_mouse_position())
+	if not map.in_bounds(tile):
+		return
+	if move_bld_id < 0:
+		var b: Dictionary = sim.building_at(tile)
+		var ok_b: bool = sim._active(b)
+		var hb := Rect2(Vector2(b["tile"]) * ts,
+				Vector2(ts * float(sim.bld_w(b)), ts * float(sim.bld_w(b)))) if ok_b \
+				else Rect2(Vector2(tile) * ts, Vector2(ts, ts))
+		draw_rect(hb.grow(-1), Color(0.5, 1.0, 0.5, 0.8) if ok_b else Color(1.0, 0.3, 0.3, 0.5),
+				false, 2.0)
+		return
+	var picked: Dictionary = {}
+	for b2 in sim.buildings:
+		if int(b2["id"]) == move_bld_id:
+			picked = b2
+			break
+	if picked.is_empty():
+		return
+	# рамка выбранного здания пульсирует
+	var pw := float(sim.bld_w(picked))
+	var pr := Rect2(Vector2(picked["tile"]) * ts, Vector2(ts * pw, ts * pw))
+	var pulse := 0.6 + 0.4 * sin(Time.get_ticks_msec() / 220.0)
+	draw_rect(pr.grow(-1), Color(1.0, 0.85, 0.3, pulse), false, 2.5)
+	# прямоугольник под курсором — годен ли (собственные клетки не мешают)
+	var w := float(sim.bld_w_of_type(String(picked["type"])))
+	var ok: bool = sim.move_spot_ok(picked, tile)
+	var col := Color(0.5, 1.0, 0.5, 0.4) if ok else Color(1.0, 0.3, 0.3, 0.4)
+	draw_rect(Rect2(Vector2(tile) * ts, Vector2(ts * w, ts * w)), col)
+	draw_rect(Rect2(Vector2(tile) * ts, Vector2(ts * w, ts * w)).grow(-2),
 			Color(col.r, col.g, col.b, 0.9), false, 2.0)
 
 

@@ -23,6 +23,8 @@ var enchant_mode := ""          # выбранное зачарование (M3)
 var zone_mode := ""             # инструмент зоны (M6): "field" | "pasture" | "living"
 var road_mode := false          # инструмент дороги (M6)
 var plant_mode := false         # инструмент посадки леса (M11)
+var move_mode := false          # инструмент переноса зданий (этап 2, аспект 5)
+var _move_bld: Dictionary = {}  # здание, снятое для переноса; {} — не выбрано
 var _dragging := false          # ЛКМ зажата — выделение зоны или рисование дороги
 var _drag_from := Vector2i(-1, -1)
 var _drag_to := Vector2i(-1, -1)
@@ -45,6 +47,7 @@ var _hero_crop: Dictionary = {} # спелая грядка рядом (E — с
 var _pending_field: Array = []  # клетки нарисованного поля — ждут выбора культуры
 var _pick_zone_id := -1         # id поля, в котором меняем культуру
 var _hero_site: Dictionary = {} # недострой рядом (E — помочь)
+var _hero_repair_bld: Dictionary = {}   # повреждённое здание/руины рядом (E — ремонт, этап 2, аспект 5)
 var _hero_work_cd := 0.0        # кулдаун удара героя по природе/стройке
 
 
@@ -127,7 +130,7 @@ func _craft_item(item_id: String) -> String:
 ## Готовое здание типа type_id в двух тайлах от героя (до прямоугольника 2×2)?
 func _near_building_kind(type_id: String) -> bool:
 	for b in sim.buildings:
-		if bool(b["done"]) and String(b["type"]) == type_id \
+		if sim._active(b) and String(b["type"]) == type_id \
 				and sim.bld_dist_px(hero.position, b) < map.ts * 2.2:
 			return true
 	return false
@@ -170,7 +173,8 @@ func _spawn_hero() -> void:
 	hero.set_camera_limits(Rect2(0, 0, map.w * map.ts, map.h * map.ts))
 
 
-## Коллизии героя: вода, скалы и все готовые здания (открытые ворота проходимы).
+## Коллизии героя: вода, скалы и все готовые здания (открытые ворота проходимы;
+## руины — обломки, герой проходит сквозь них; этап 2, аспект 5).
 func _rebuild_collision() -> void:
 	for child in _static_body.get_children():
 		child.queue_free()
@@ -182,7 +186,7 @@ func _rebuild_collision() -> void:
 				if not map.bridges.has(Vector2i(x, y)):
 					blocked[Vector2i(x, y)] = true
 	for b in sim.buildings:
-		if b["done"]:
+		if sim._active(b):
 			if _bld_effect(b) == "gate" and sim.is_gate_open(b):
 				continue
 			if _bld_effect(b) == "bridge":
@@ -284,6 +288,7 @@ func _process(delta: float) -> void:
 	_hero_tree = sim.hero_tree_near(hero.position)
 	_hero_rock = sim.hero_rock_near(hero.position)
 	_hero_crop = sim.hero_harvest_near(hero.position)
+	_hero_repair_bld = sim.hero_repair_near(hero.position)
 	if _near_map_border():
 		hud.set_hint(Loc.t("city.exit_world"))
 	elif _near_anomaly:
@@ -298,6 +303,9 @@ func _process(delta: float) -> void:
 	elif not _hero_site.is_empty():
 		var site_work: float = maxf(1.0, float(sim._def(_hero_site)["build_work"]))
 		hud.set_hint(Loc.t("city.hint_build") % int(100.0 * clampf(float(_hero_site["progress"]) / site_work, 0.0, 1.0)))
+	elif not _hero_repair_bld.is_empty():
+		hud.set_hint(Loc.t("city.repair_hint") % [_bld_name(String(_hero_repair_bld["type"])),
+				_cost_str(sim.repair_cost(String(_hero_repair_bld["type"])))])
 	elif not _hero_tree.is_empty():
 		hud.set_hint(Loc.t("city.hint_chop") % [int(_hero_tree["hits"]), int(_hero_tree["need"])])
 	elif not _hero_rock.is_empty():
@@ -322,7 +330,7 @@ func _near_water(pos: Vector2) -> bool:
 ## Оружейка рядом с героем (M5.1): за металл герой надевает боевой комплект.
 func _armory_near_hero() -> Dictionary:
 	for b in sim.buildings:
-		if bool(b["done"]) and String(b["type"]) == "armory" \
+		if sim._active(b) and String(b["type"]) == "armory" \
 				and sim.bld_dist_px(hero.position, b) < map.ts * 1.7:
 			return b
 	return {}
@@ -330,7 +338,8 @@ func _armory_near_hero() -> Dictionary:
 
 ## Название здания под курсором — тултип у мыши (просьба заказчика).
 func _update_hover() -> void:
-	if build_mode != "" or enchant_mode != "" or zone_mode != "" or road_mode or plant_mode:
+	if build_mode != "" or enchant_mode != "" or zone_mode != "" or road_mode or plant_mode \
+			or move_mode:
 		hud.set_hover_info("", Vector2.ZERO)
 		return
 	var b: Dictionary = sim.building_at(map.tile_of_px(get_global_mouse_position()))
@@ -367,6 +376,9 @@ func _hover_base(b: Dictionary) -> String:
 				work = float(d["build_work"])
 		var pct := int(clampf(float(b["progress"]) / work * 100.0, 0.0, 100.0))
 		return Loc.t("city.hover_site") % [bld_name, pct]
+	# руины (этап 2, аспект 5): чинятся героем за 40% стоимости
+	if bool(b.get("razed", false)):
+		return Loc.t("city.hover_razed") % bld_name
 	if float(b.get("stun_left", 0.0)) > 0.0:
 		return Loc.t("city.hover_stun") % bld_name
 	if _bld_effect(b) == "gate":
@@ -377,6 +389,11 @@ func _hover_base(b: Dictionary) -> String:
 	if String(b["type"]) == "cemetery" and sim.necro_known:
 		return "%s • %s" % [bld_name, Loc.t("city.hover_necro")
 				% [int(round(float(sim.necro_dark) * 100.0)), int(sim.necro_army)]]
+	# повреждённое здание показывает прочность (E — ремонт за 40%)
+	var max_hp := float(sim._bld_max_hp(String(b["type"])))
+	if float(b.get("hp", max_hp)) < max_hp:
+		return Loc.t("city.hover_damaged") % [bld_name,
+				int(round(100.0 * float(b.get("hp", max_hp)) / max_hp))]
 	return bld_name
 
 
@@ -447,6 +464,14 @@ func _process_events() -> void:
 				hud.toast(Loc.t("city.raid_breached_toast") % int(ev["razed"]))
 			"razed":
 				hud.toast(Loc.t("city.razed_toast") % bld_name)
+				_rebuild_collision()
+			# --- ремонт и перенос (этап 2, аспект 5) ---
+			"bld_repaired":
+				hud.toast(Loc.t("city.restored_toast" if bool(ev.get("razed", false))
+						else "city.repaired_toast") % [bld_name, _cost_str(ev.get("cost", {}))])
+				_rebuild_collision()
+			"bld_moved":
+				hud.toast(Loc.t("city.moved_toast") % bld_name)
 				_rebuild_collision()
 			"storm_warn":
 				hud.toast(Loc.t("city.storm_warn_toast"))
@@ -677,6 +702,15 @@ func _unhandled_input(event: InputEvent) -> void:
 		if event.button_index == MOUSE_BUTTON_RIGHT and enchant_mode != "":
 			set_enchant_mode("")
 			return
+		if event.button_index == MOUSE_BUTTON_LEFT and move_mode:
+			_try_move_click()
+			return
+		if event.button_index == MOUSE_BUTTON_RIGHT and move_mode:
+			if not _move_bld.is_empty():
+				_pick_move_bld({})   # сперва снимаем здание, режим живёт
+			else:
+				set_move_mode(false)
+			return
 		if event.button_index == MOUSE_BUTTON_LEFT and zone_mode != "":
 			# этап 2, аспект 3: клик по готовой грядке — сменить культуру поля
 			if zone_mode == "field" and not hud.crop_pick_visible():
@@ -755,6 +789,11 @@ func _unhandled_input(event: InputEvent) -> void:
 			set_build_mode("")
 		elif enchant_mode != "":
 			set_enchant_mode("")
+		elif move_mode:
+			if not _move_bld.is_empty():
+				_pick_move_bld({})
+			else:
+				set_move_mode(false)
 		elif hud.crop_pick_visible():
 			_cancel_crop_pick()   # пикер закрыт — остаёмся в режиме поля
 		elif zone_mode != "":
@@ -804,6 +843,8 @@ func _sync_view_tools() -> void:
 	view.dragging = _dragging
 	view.drag_from = _drag_from
 	view.drag_to = _drag_to
+	view.move_mode = move_mode
+	view.move_bld_id = int(_move_bld.get("id", -1))
 
 
 ## Выделение зоны применено: все клетки прямоугольника уходят в симуляцию.
@@ -872,6 +913,61 @@ func _paint_road(tile: Vector2i) -> void:
 				hud.toast(Loc.t("city.road_no_stone"))
 
 
+## Инструмент переноса зданий (этап 2, аспект 5): клик по готовому зданию —
+## снять, клик по новому месту — поставить (бесплатно). ПКМ/Esc — отмена.
+func set_move_mode(on: bool) -> void:
+	move_mode = on
+	if move_mode:
+		zone_mode = ""
+		road_mode = false
+		plant_mode = false
+		view.plant_mode = false
+		if build_mode != "":
+			set_build_mode("")
+		if enchant_mode != "":
+			set_enchant_mode("")
+		hud.set_hint(Loc.t("city.move_pick"))
+	elif build_mode == "" and zone_mode == "" and not road_mode and not plant_mode:
+		hud.set_hint(_default_hint())
+	_pick_move_bld({})
+	_sync_view_tools()
+
+
+## Клик в режиме переноса: выбор здания или перенос на место под курсором.
+func _try_move_click() -> void:
+	var tile: Vector2i = map.tile_of_px(get_global_mouse_position())
+	if _move_bld.is_empty():
+		var b: Dictionary = sim.building_at(tile)
+		if b.is_empty() or not sim._active(b):
+			hud.toast(Loc.t("city.move_bad_bld"))
+			return
+		_pick_move_bld(b)
+		hud.set_hint(Loc.t("city.move_place") % _bld_name(String(b["type"])))
+		return
+	var err: String = sim.move_building(_move_bld, tile)
+	if err == "bad_spot":
+		hud.toast(Loc.t("city.move_bad_spot"))
+		return
+	if err != "":
+		hud.toast(Loc.t("city.move_bad_bld"))
+		return
+	set_move_mode(false)   # перенесли — инструмент своё отработал
+
+
+## Запомнить снимаемое здание ({} — сбросить) и обновить призрак.
+func _pick_move_bld(b: Dictionary) -> void:
+	_move_bld = b
+	_sync_view_tools()
+
+
+## Цена ремонта одной строкой: «4 дерево, 2 камень».
+func _cost_str(cost: Dictionary) -> String:
+	var parts := PackedStringArray()
+	for key in cost:
+		parts.append("%d %s" % [int(cost[key]), Loc.t("res." + key)])
+	return ", ".join(parts)
+
+
 ## Инструмент зоны: повторное нажатие / ПКМ / Esc отменяет.
 func set_zone_mode(type_id: String) -> void:
 	zone_mode = "" if zone_mode == type_id else type_id
@@ -880,6 +976,8 @@ func set_zone_mode(type_id: String) -> void:
 		road_mode = false
 		plant_mode = false
 		view.plant_mode = false
+		if move_mode:
+			set_move_mode(false)
 		if build_mode != "":
 			set_build_mode("")
 		hud.set_hint(Loc.t("city.zone_hint") % Loc.t("zone." + zone_mode))
@@ -893,10 +991,12 @@ func set_road_mode(on: bool) -> void:
 	road_mode = on
 	if road_mode:
 		zone_mode = ""
+		if move_mode:
+			set_move_mode(false)
 		if build_mode != "":
 			set_build_mode("")
 		hud.set_hint(Loc.t("city.road_hint") % int(cfg.get("roads", {}).get("cost_stone", 1)))
-	elif build_mode == "" and zone_mode == "" and not plant_mode:
+	elif build_mode == "" and zone_mode == "" and not plant_mode and not move_mode:
 		hud.set_hint(_default_hint())
 	_sync_view_tools()
 
@@ -908,10 +1008,12 @@ func set_plant_mode(on: bool) -> void:
 	if plant_mode:
 		zone_mode = ""
 		road_mode = false
+		if move_mode:
+			set_move_mode(false)
 		if build_mode != "":
 			set_build_mode("")
 		hud.set_hint(Loc.t("city.plant_hint") % int(cfg.get("forest", {}).get("seed_cost", 1)))
-	elif build_mode == "" and zone_mode == "" and not road_mode:
+	elif build_mode == "" and zone_mode == "" and not road_mode and not move_mode:
 		hud.set_hint(_default_hint())
 	_sync_view_tools()
 
@@ -954,6 +1056,8 @@ func set_build_mode(type_id: String) -> void:
 		plant_mode = false
 		view.plant_mode = false
 		_sync_view_tools()
+	if type_id != "" and move_mode:
+		set_move_mode(false)
 	if type_id == "":
 		hud.set_hint(_default_hint())
 		return
@@ -1080,12 +1184,22 @@ func go_autonomous() -> void:
 
 
 ## E у природы или стройки: герой работает сам (правки v1.12.2).
-## Порядок: стройка → дерево → скала/руда. true — удар нашёл применение.
+## Порядок: стройка → ремонт (этап 2, аспект 5) → дерево → скала/руда → сбор.
 func _hero_act() -> bool:
 	if _hero_work_cd > 0.0:
 		return false   # кулдаун: молча, тосты не спамим
 	var hw: Dictionary = cfg.get("hero_work", {})
 	var res: String = sim.hero_build(hero.position)
+	if res == "" and not _hero_repair_bld.is_empty():
+		var err: String = sim.repair_building(_hero_repair_bld)
+		if err == "":
+			_hero_work_cd = float(hw.get("cooldown", 0.35))
+			return true   # тост покажет событие bld_repaired
+		if err == "no_res":
+			hud.toast(Loc.t("city.repair_no_res") % _cost_str(sim.repair_cost(String(_hero_repair_bld["type"]))))
+			_hero_work_cd = float(hw.get("cooldown", 0.35))
+			return true
+		# "full" между кадрами починила мастерская — идём дальше
 	if res == "":
 		res = sim.hero_chop(hero.position)
 	if res == "":
@@ -1168,7 +1282,7 @@ func _default_hint() -> String:
 func enchant_target_valid(tile: Vector2i) -> bool:
 	var def: Dictionary = Game.magic.enchantment(enchant_mode)
 	var bld: Dictionary = sim.building_at(tile)
-	if def.is_empty() or bld.is_empty() or not bool(bld["done"]):
+	if def.is_empty() or bld.is_empty() or not sim._active(bld):
 		return false
 	var target := String(def.get("target", "any"))
 	return target == "any" or String(bld["type"]) == target

@@ -259,6 +259,7 @@ func _initialize() -> void:
 	_test_stage2_aspect3()
 	_test_stage2_entrance_recalc()
 	_test_stage2_aspect4()
+	_test_stage2_aspect5()
 	if _fails == 0:
 		print("OK: все тесты пройдены")
 		quit(0)
@@ -1682,7 +1683,9 @@ func _test_threat() -> void:
 	var razed_seen := false
 	for i in 2600:   # этап 2: рельеф сплошной в A* — обходы длиннее
 		sim2.tick(0.2)
-		if sim2.building_at(wall_tile).is_empty():
+		# этап 2, аспект 5: разрушенное здание остаётся руинами
+		var wall_now: Dictionary = sim2.building_at(wall_tile)
+		if wall_now.is_empty() or bool(wall_now.get("razed", false)):
 			razed_seen = true
 			break
 	_check(razed_seen, "осадный мутант разрушил стену")
@@ -1767,7 +1770,10 @@ func _test_threat() -> void:
 	var farm_ever_struck := false
 	for i in 80:
 		sim6.tick(0.5)
-		if sim6.building_at(_ward_test_farm_tile(sim6)).is_empty():
+		# этап 2, аспект 5: удар может и разрушить — здание остаётся руинами
+		var farm_now: Dictionary = sim6.building_at(_ward_test_farm_tile(sim6))
+		if farm_now.is_empty() or bool(farm_now.get("razed", false)) \
+				or float(farm_now["hp"]) < float(sim6._bld_max_hp("farm")):
 			farm_ever_struck = true
 	_check(farm_ever_struck, "удары бури уходят в незаищищённые здания")
 	var warded_now: Dictionary = sim6.building_at(warded["tile"])
@@ -3515,7 +3521,8 @@ func _test_wishlist() -> void:
 			sim_n.map.tile_center_px(cem_tile) + Vector2(64, 0), Vector2(-1, 0), 96.0, 360.0, 100))
 	_check(hit == "necro_purged", "герой выкорчевал кладбище")
 	_check(int(sim_n.necro_army) == 0, "тайная армия рассыпалась")
-	_check(sim_n.building_at(cem_tile).is_empty(), "кладбище разрушено ударом героя")
+	_check(bool(sim_n.building_at(cem_tile).get("razed", false)),
+			"кладбище разрушено ударом героя (руины на месте, этап 2, аспект 5)")
 
 
 # --- M14-A: сейв/загрузка (issue #3) -----------------------------------------
@@ -6144,3 +6151,136 @@ func _test_stage2_aspect4() -> void:
 	_check((shopper.get("shop", {}) as Dictionary).is_empty() and float(shopper.get("shop_cd_left", 0.0)) > 0.0,
 			"после покупки — кулдаун, визит закрыт")
 	print("[Этап 2, аспект 4] готово")
+
+
+## Этап 2, аспект 5 — ремонт за 40% стоимости и бесплатный перенос зданий:
+## руины вместо исчезновения, E-ремонт героя, инструмент переноса.
+func _test_stage2_aspect5() -> void:
+	print("[Этап 2, аспект 5: ремонт за 40% и перенос зданий]")
+	var city: Variant = _read_json("res://data/city.json")
+	var loc: Variant = _read_json("res://loc/ru.json")
+	_check(city is Dictionary and loc is Dictionary, "конфиги читаются")
+	if not (city is Dictionary and loc is Dictionary):
+		return
+	var frac: float = float((city.get("repair", {}) as Dictionary).get("cost_frac", 0.4))
+	_check(is_equal_approx(frac, 0.4), "ремонт — 40% стоимости (конфиг)")
+	for key in ["city.repair_hint", "city.repaired_toast", "city.restored_toast",
+			"city.repair_no_res", "city.move", "city.move_pick", "city.move_place",
+			"city.moved_toast", "city.move_bad_spot", "city.move_bad_bld",
+			"city.razed_tag", "city.hover_razed", "city.hover_damaged",
+			"chron.repaired", "chron.moved"]:
+		_check(String(loc.get(key, "")) != "", "ключ локализации есть: " + key)
+	var sim := _make_sim()
+	sim.res["wood"] = 200.0
+	sim.res["stone"] = 200.0
+	var house := _build_now(sim, "house")
+	var house_cost: Dictionary = {}
+	var house_hp: float = float(sim._bld_max_hp("house"))
+	for d in city.get("buildings", []):
+		if String(d["id"]) == "house":
+			house_cost = d.get("cost", {})
+	# --- цена ремонта: 40% стоимости, каждый ресурс вверх ---
+	var rc: Dictionary = sim.repair_cost("house")
+	var cost_ok := not rc.is_empty()
+	for key in house_cost:
+		if int(rc.get(key, -1)) != maxi(1, int(ceil(float(house_cost[key]) * 0.4))):
+			cost_ok = false
+	_check(cost_ok, "цена ремонта = ceil(40% стоимости) по каждому ресурсу")
+	# --- повреждённое здание: E-ремонт восстанавливает за 40% ---
+	sim._damage_building(house, house_hp * 0.6)
+	_check(not bool(house.get("razed", false)) and float(house["hp"]) > 0.0,
+			"повреждённое здание стоит (hp > 0)")
+	var wood_before: int = int(sim.res["wood"])
+	_check(sim.repair_building(house) == "", "ремонт повреждённого проходит")
+	_check(is_equal_approx(float(house["hp"]), house_hp), "после ремонта hp = максимум")
+	_check(int(sim.res["wood"]) == wood_before - int(rc.get("wood", 0)),
+			"ресурсы за ремонт списаны (по цене 40%)")
+	_check(sim.repair_building(house) == "full", "целое здание чинить не нужно")
+	# --- руины: разрушение не удаляет здание (ответ №17 «ремонт, не снос») ---
+	var razed_ev := false
+	sim.events.clear()
+	_check(sim._damage_building(house, house_hp * 10.0), "добивание возвращает «разрушено»")
+	for ev in sim.events:
+		if String(ev["type"]) == "razed":
+			razed_ev = true
+	_check(razed_ev, "разрушение — событие razed для тоста")
+	_check(sim.buildings.has(house) and bool(house.get("razed", false)), "здание осталось руинами")
+	_check(int(house["worker"]) == -1, "работник руин освобождён")
+	var cell_in: Vector2i = sim.bld_cells(house)[0]
+	_check(sim.map.is_walkable(cell_in), "клетки руин проходимы (обломки)")
+	_check(not sim._active(house), "руины — не действующее здание")
+	var probe: Dictionary = {"pos": sim.map.tile_center_px(Vector2i(house["tile"]))}
+	var target: Dictionary = sim._nearest_building_of(probe, [])
+	_check(target.is_empty() or not bool(target.get("razed", false)),
+			"мутанты руины не бьют (цель — только целые)")
+	# --- дом руин не считается жильём ---
+	var pop_razed: int = sim.pop_cap()
+	_check(sim.repair_building(house) == "", "руины восстанавливаются за те же 40%")
+	_check(not bool(house.get("razed", false)) and is_equal_approx(float(house["hp"]), house_hp),
+			"после восстановления руин здание целое")
+	_check(not sim.map.is_walkable(cell_in), "клетки восстановленного здания снова сплошные")
+	_check(sim.pop_cap() > pop_razed, "восстановленный дом снова даёт места")
+	# --- стена: разрушена = проход, отремонтирована = преграда ---
+	var wall_tile := _find_free_tile(sim, sim.map.spawn_tile + Vector2i(0, 4), "wall")
+	_check(not wall_tile == Vector2i(-1, -1), "место под стену нашлось")
+	var wall: Dictionary = {}
+	if not wall_tile == Vector2i(-1, -1):
+		sim.res["stone"] = 50.0
+		if sim.place_building("wall", wall_tile):
+			wall = sim.building_at(wall_tile)
+			wall["done"] = true
+			sim._complete_site(wall)
+	if not wall.is_empty():
+		var wall_hp := float(sim._bld_max_hp("wall"))
+		_check(sim._damage_building(wall, wall_hp * 10.0), "стена разрушена")
+		_check(sim.map.is_walkable(wall_tile), "пролом в стене проходим")
+		_check(sim.repair_building(wall) == "", "стена отремонтирована")
+		_check(not sim.map.is_walkable(wall_tile), "отремонтированная стена снова преграда")
+	# --- перенос: бесплатно, правила места те же ---
+	# кузню достраиваем мгновенно (как стену выше): строитель после мутаций
+	# теста мог быть занят — проверяем перенос, а не стройку
+	sim.res["wood"] = 200.0
+	sim.res["stone"] = 200.0
+	var forge: Dictionary = {}
+	var forge_tile := _find_free_tile(sim, sim.map.spawn_tile + Vector2i(-6, 6), "forge")
+	_check(not forge_tile == Vector2i(-1, -1), "forge: место под переносимую постройку")
+	if not forge_tile == Vector2i(-1, -1) and sim.place_building("forge", forge_tile):
+		forge = sim.building_at(forge_tile)
+		forge["done"] = true
+		sim._complete_site(forge)
+	_check(not forge.is_empty() and bool(forge.get("done", false)), "forge готова (достройка мгновенно)")
+	var res_before := {}
+	for key in sim.res:
+		res_before[key] = sim.res[key]
+	var new_tile := _find_free_tile(sim, sim.map.spawn_tile + Vector2i(8, 8), "forge")
+	_check(not new_tile == Vector2i(-1, -1), "новое место под перенос нашлось")
+	if not forge.is_empty() and not new_tile == Vector2i(-1, -1):
+		var old_tile: Vector2i = Vector2i(forge["tile"])
+		_check(sim.move_spot_ok(forge, new_tile), "годное место проходит проверку")
+		_check(sim.move_building(forge, new_tile) == "", "перенос проходит")
+		_check(Vector2i(forge["tile"]) == new_tile, "здание стоит на новом месте")
+		_check(sim.building_at(old_tile).is_empty(), "старое место свободно")
+		_check(not sim.map.is_walkable(new_tile), "новые клетки сплошные")
+		_check(sim.map.is_walkable(old_tile), "старые клетки проходимы")
+		var same_res := true
+		for key in res_before:
+			if float(sim.res[key]) != float(res_before[key]):
+				same_res = false
+		_check(same_res, "перенос бесплатный (ресурсы не тронуты)")
+		# на занятое место — отказ, здание остаётся где стояло
+		var occupied := Vector2i(house["tile"])
+		_check(not sim.move_spot_ok(forge, occupied), "на место другого здания нельзя")
+		_check(sim.move_building(forge, occupied) == "bad_spot", "перенос на занятое отклонён")
+		_check(Vector2i(forge["tile"]) == new_tile, "здание осталось на месте после отказа")
+	# --- перенос руины и стройплощадки запрещён ---
+	sim._damage_building(house, house_hp * 10.0)
+	_check(sim.move_building(house, new_tile) == "bad_bld", "руину переносить нельзя — сперва ремонт")
+	sim.res["wood"] = 200.0
+	sim.res["stone"] = 200.0
+	var site_tile := _find_free_tile(sim, sim.map.spawn_tile + Vector2i(-4, -6), "house")
+	if not site_tile == Vector2i(-1, -1):
+		_check(sim.place_building("house", site_tile), "стройплощадка заложена")
+		var site: Dictionary = sim.building_at(site_tile)
+		_check(sim.move_building(site, site_tile + Vector2i(4, 4)) == "bad_bld",
+				"стройплощадку переносить нельзя")
+	print("[Этап 2, аспект 5] готово")

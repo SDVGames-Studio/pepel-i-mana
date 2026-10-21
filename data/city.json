@@ -67,7 +67,8 @@
 		"rise_at": 8, "wave_max": 8, "mood_hit": -8.0
 	},
 	"layout": { "warehouse_radius": 4, "warehouse_mult": 1.25 },
-	"repair": { "per_day": 15.0 },
+	"repair": { "_comment": "per_day — медленный ремонт мастерской (hp/день); cost_frac — цена мгновенного ремонта героем за 40% стоимости здания (этап 2, аспект 5)",
+		"per_day": 15.0, "cost_frac": 0.4 },
 	"decor_mood_max": 20.0,
 	"pollution": {
 		"max": 100.0,
