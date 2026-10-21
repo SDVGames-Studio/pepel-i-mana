@@ -130,6 +130,8 @@ func _draw_world_sorted() -> void:
 		entries.append([Vector2(a["pos"]).y, "animal", a])
 	for a in sim.livestock:
 		entries.append([Vector2(a["pos"]).y, "stock", a])
+	for w in sim.wanderers:
+		entries.append([Vector2(w["pos"]).y, "wanderer", w])
 	for r in sim.raiders:
 		entries.append([Vector2(r["pos"]).y, "raider", r])
 	for r in sim.residents:
@@ -152,6 +154,8 @@ func _draw_world_sorted() -> void:
 				_draw_animal(e[2])
 			"stock":
 				_draw_stock(e[2])
+			"wanderer":
+				_draw_wanderer(e[2])
 			"raider":
 				_draw_raider(e[2])
 			"res":
@@ -369,6 +373,24 @@ func _draw_stock(a: Dictionary) -> void:
 			size, _anim_time + float(a["id"]) * 0.53)
 
 
+## Бродячий торговец (этап 2, аспект 4): гражданин с тюком и жёлтой одеждой;
+## у палатки периодически выкрикивает зазывку-облачко.
+func _draw_wanderer(w: Dictionary) -> void:
+	var pos: Vector2 = w["pos"]
+	var pth: PackedVector2Array = w.get("path", PackedVector2Array())
+	var moving := not pth.is_empty() and pos.distance_to(pth[pth.size() - 1]) > 2.0
+	var dir := String(w.get("dir", "front"))
+	var tint := Color("#ffd54f").lerp(Color.WHITE, 0.35)
+	Assets.draw_citizen(self, 1 + int(w["id"]) % 4, dir, moving, pos, 50.0,
+			_anim_time + float(w["id"]) * 0.47, tint)
+	# тюк с товаром за спиной
+	draw_circle(pos + Vector2(-11.0, -8.0), 5.0, Color("#8d6e63"))
+	draw_circle(pos + Vector2(-10.0, -10.0), 2.5, Color("#a1887f"))
+	if String(w.get("mode", "")) == "trade" and fmod(sim.time, 14.0) < 3.0:
+		var key := "wshop.%d" % (int(w["id"]) % 4 + 1)
+		_draw_speech_bubble(pos, Loc.t(key))
+
+
 ## Зоны (M6): заливка по типу, прогресс обустройства в незаполненных клетках.
 func _draw_zones() -> void:
 	var fill_work: float = float(sim.cfg.get("zones", {}).get("fill_work", 4.0))
@@ -491,6 +513,8 @@ func _draw_building(b: Dictionary) -> void:
 		# схематичное здание: заливка категории, тёмная кайма по контуру
 		draw_rect(rect, col)
 		draw_rect(rect.grow(-2), col.darkened(0.3), false, 2.0)
+		if type_id == "tent":
+			_draw_tent_awning(rect)   # полосатый навес — торговая читаемость (этап 2)
 		_draw_bld_door(b, rect)
 		# точка-работник: занятое здание подсвечено
 		if int(b["worker"]) > 0:
@@ -553,6 +577,17 @@ func _draw_building(b: Dictionary) -> void:
 ## поверх заливки, обводка для читаемости на любом цвете. Стена —
 ## сплошное кольцо, её тайлы подписями не метятся (шум); ворота подписаны.
 const BLD_NO_LABEL := {"wall": true}
+
+
+## Полосатый навес палатки (этап 2, аспект 4): жёлто-светлые полосы
+## поверх заливки категории — «торговое место» читается с одного взгляда.
+func _draw_tent_awning(rect: Rect2) -> void:
+	var stripe := rect.size.y * 0.28
+	var h := rect.size.y * 0.16
+	for i in 2:
+		var col := Color("#ffd54f") if i % 2 == 0 else Color("#fff3c4")
+		draw_rect(Rect2(rect.position.x + 2.0, rect.position.y + stripe * float(i),
+				rect.size.x - 4.0, h), col)
 
 
 func _draw_bld_label(b: Dictionary, rect: Rect2) -> void:

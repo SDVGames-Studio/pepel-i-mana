@@ -169,6 +169,14 @@
 		"caravan_buy": { "seeds": 4, "food": 2, "wood": 2, "stone": 3, "tools": 6, "crystal": 9 },
 		"caravan_sell_mult": 0.5
 	},
+	"tent": {
+		"need_days_food": 2.0,
+		"need": { "wood": 20, "stone": 15, "tools": 4, "crystal": 3, "metal": 4, "iron": 4, "seeds": 8, "kits": 2 },
+		"coin_per_unit": { "wood": 0.10, "stone": 0.12, "food": 0.08, "tools": 0.5, "crystal": 0.9, "metal": 0.4, "iron": 0.3, "seeds": 0.12, "kits": 0.4 },
+		"max_coins_per_day": 8,
+		"wander": { "every_days": 3, "stay_days": 0.6, "income_mult": 2.0 },
+		"scene": { "visit_chance_per_day": 6.0, "visit_cd": 30.0, "buy_seconds": 3.0, "buy_lines": 6, "wander_visit_mult": 2.5 }
+	},
 	"hero_kit": { "cost_metal": 3, "damage": 2, "armor": 1, "max": 3 },
 	"storm": {
 		"base_chance": 0.02,
@@ -260,7 +268,8 @@
 		{"id": "market", "w": 2, "sprite": "e:tent", "short": "bld.short.market", "loc": "bld.market", "desc": "bld.desc.market", "color": "#ffd54f", "cost": {"wood": 25, "stone": 15}, "build_work": 35, "worker": "trader", "effect": "market", "district": "work", "cat": "special"},
 		{"id": "cemetery", "w": 2, "sprite": "e:cemetery", "short": "bld.short.cemetery", "loc": "bld.cemetery", "desc": "bld.desc.cemetery", "color": "#6b7a5a", "cost": {"stone": 12, "wood": 6}, "build_work": 25, "effect": "cemetery", "district": "living", "cat": "special"},
 		{"id": "temple", "w": 2, "sprite": "b:temple", "short": "bld.short.temple", "loc": "bld.temple", "desc": "bld.desc.temple", "color": "#ffb74d", "cost": {"wood": 20, "stone": 15, "crystal": 3}, "build_work": 35, "worker": "acolyte", "effect": "temple", "district": "living", "cat": "special"},
-		{"id": "bridge", "w": 1, "sprite": "b:bridge", "short": "bld.short.bridge", "loc": "bld.bridge", "desc": "bld.desc.bridge", "color": "#a1662f", "cost": {"wood": 4}, "build_work": 6, "effect": "bridge", "district": "living", "cat": "special"}
+		{"id": "bridge", "w": 1, "sprite": "b:bridge", "short": "bld.short.bridge", "loc": "bld.bridge", "desc": "bld.desc.bridge", "color": "#a1662f", "cost": {"wood": 4}, "build_work": 6, "effect": "bridge", "district": "living", "cat": "special"},
+		{"id": "tent", "w": 1, "sprite": "e:tent", "short": "bld.short.tent", "loc": "bld.tent", "desc": "bld.desc.tent", "color": "#ffd54f", "cost": {"wood": 6}, "build_work": 12, "worker": "trader", "max_count": 3, "district": "work", "cat": "special"}
 	],
 	"placement": { "build_gap": 1, "wall_house_gap": 3 },
 	"loot_to_pool": {

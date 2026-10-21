@@ -258,6 +258,7 @@ func _initialize() -> void:
 	_test_stage2_aspect2()
 	_test_stage2_aspect3()
 	_test_stage2_entrance_recalc()
+	_test_stage2_aspect4()
 	if _fails == 0:
 		print("OK: все тесты пройдены")
 		quit(0)
@@ -343,7 +344,7 @@ func _test_data() -> void:
 			"zones", "roads", "piles", "layout", "repair", "decor_mood_max"]:
 		_check(city.has(key), "city.json содержит %s" % key)
 	var blds: Variant = city.get("buildings", [])
-	_check(blds is Array and blds.size() == 25, "city.json — 25 типов зданий (M11: +кладбище, M14-H: +храм, M14-I: +мост)")
+	_check(blds is Array and blds.size() == 26, "city.json — 26 типов зданий (M14-I: +мост; этап 2, аспект 4: +палатка)")
 	var bld_ok := true
 	if blds is Array:
 		for b in blds:
@@ -3114,8 +3115,8 @@ func _test_m9() -> void:
 			continue
 		if ref == "" or assets.sprite(ref) == null:
 			missing += 1
-	_check(missing == 0 and cfg["buildings"].size() == 25,
-			"у всех 24 зданий есть PNG-спрайт (недостающих: %d)" % missing)
+	_check(missing == 0 and cfg["buildings"].size() == 26,
+			"у всех 25 зданий есть PNG-спрайт (недостающих: %d)" % missing)
 	missing = 0
 	for it: Dictionary in _read_json("res://data/loot.json")["items"]:
 		if String(it.get("sprite", "")) == "" or assets.sprite(String(it["sprite"])) == null:
@@ -5794,8 +5795,9 @@ func _test_stage2_aspect2() -> void:
 	_check(city is Dictionary, "city.json читается")
 	if not (city is Dictionary):
 		return
-	# конфиг: размер w у каждого здания; инфраструктура — 1×1, остальное — 2×2
-	var infra := {"wall": true, "gate": true, "bridge": true}
+	# конфиг: размер w у каждого здания; инфраструктура — 1×1, остальное — 2×2;
+	# палатка — дешёвая 1×1 по решению заказчика (этап 2, аспект 4)
+	var infra := {"wall": true, "gate": true, "bridge": true, "tent": true}
 	for b in city.get("buildings", []):
 		var w := int(b.get("w", 0))
 		var bid := String(b["id"])
@@ -5976,3 +5978,169 @@ func _test_stage2_entrance_recalc() -> void:
 		sim_e.tick(2.0)
 	_check(sim_e._pile_total(farm_e) > pile0, "фермер вернулся к работе через новый вход")
 	print("[Этап 2: перекрытый вход] готово")
+
+
+## Этап 2, аспект 4 — торговые палатки: постройка 1×1 с лимитом, торговец,
+## доход монетами от излишков пула, живая сцена, бродячие торговцы.
+func _test_stage2_aspect4() -> void:
+	print("[Этап 2, аспект 4: торговые палатки]")
+	var city: Variant = _read_json("res://data/city.json")
+	var loc: Variant = _read_json("res://loc/ru.json")
+	_check(city is Dictionary and loc is Dictionary, "конфиги читаются")
+	if not (city is Dictionary and loc is Dictionary):
+		return
+	var tdef: Dictionary = {}
+	for d in city.get("buildings", []):
+		if String(d["id"]) == "tent":
+			tdef = d
+	_check(not tdef.is_empty(), "палатка есть в списке зданий")
+	_check(int(tdef.get("w", 2)) == 1, "палатка — постройка 1×1")
+	_check(int(tdef.get("max_count", 0)) == 3, "лимит палаток — 3")
+	_check(String(tdef.get("worker", "")) == "trader", "палатке нужен торговец")
+	_check(int((tdef.get("cost", {}) as Dictionary).get("wood", 99)) <= 8,
+			"палатка дешёвая (дерево ≤ 8)")
+	for key in ["bld.tent", "bld.desc.tent", "bld.short.tent", "city.tent_limit",
+			"city.tent_income_toast", "city.wanderer_toast", "shop.1", "wshop.1"]:
+		_check(String(loc.get(key, "")) != "", "ключ локализации есть: " + key)
+	_check(not (city.get("tent", {}) as Dictionary).is_empty(), "баланс палаток в city.json")
+	var sim := _make_sim()
+	sim.res["wood"] = 200.0
+	sim.res["stone"] = 200.0
+	# --- торговец и приоритет рынка ---
+	# рынок строим ПЕРВЫМ, пока жители свободны (стройплощадки палаток ниже
+	# разберут всех, и рынок останется без строителя); если профессионального
+	# строителя нет — назначаем свободного, чтобы не зависеть от подмены
+	var builder_r: Dictionary = _resident_by_prof(sim, "builder")
+	if builder_r.is_empty() or builder_r["bld"] != null or builder_r["site"] != null:
+		for r in sim.residents:
+			if r["bld"] == null and r["site"] == null and String(r["prof"]) != "" \
+					and String(r["prof"]) != "elder" and String(r.get("ail", "")) == "":
+				r["prof"] = "builder"
+				break
+	var market := _build_now(sim, "market")
+	# --- лимит и стройка ---
+	var placed := 0
+	for i in 4:
+		var tile := _find_free_tile(sim, sim.map.spawn_tile + Vector2i(i * 3, 5), "tent")
+		if tile == Vector2i(-1, -1):
+			break
+		if sim.place_building("tent", tile):
+			placed += 1
+	_check(placed == 3, "три палатки ставятся, четвёртая — нет (поставилось %d)" % placed)
+	_check(sim.placement_block("tent", _find_free_tile(sim, sim.map.spawn_tile, "tent"))
+			== "city.tent_limit", "placement_block объясняет лимит палаток")
+	var free1: Dictionary = {}
+	for r in sim.residents:
+		if r["bld"] == null and r["site"] == null and String(r["prof"]) != "" \
+				and String(r["prof"]) != "elder" and String(r.get("ail", "")) == "":
+			free1 = r
+			break
+	_check(not free1.is_empty(), "есть свободный житель под торговца")
+	free1["prof"] = "trader"
+	var tents: Array = []
+	for b in sim.buildings:
+		if String(b["type"]) == "tent":
+			b["done"] = true   # достроим мгновенно: проверяем назначение, не стройку
+			tents.append(b)
+	for r in sim.residents:
+		if r != free1 and String(r["prof"]) != "":
+			r["prof_saved"] = String(r["prof"])
+			r["prof"] = ""   # дети не подменяют (механика подмены M4)
+	# чистый слэш: места, разобранные ещё на стройплощадках, сбрасываем —
+	# проверяем именно раздачу готовых палаток с одним торговцем
+	for b in sim.buildings:
+		b["worker"] = -1
+	for r in sim.residents:
+		r["bld"] = null
+		r["site"] = null
+		r["sub_prof"] = ""
+	sim._assign_jobs()
+	var market_worker := int(market["worker"])
+	_check(market_worker > 0, "торговый двор (M10) забирает торговца первым")
+	var idle_tents := 0
+	for b in tents:
+		if int(b["worker"]) <= 0:
+			idle_tents += 1
+	_check(idle_tents == 3, "без второго торговца палатки стоят (%d пустых)" % idle_tents)
+	for r in sim.residents:   # возвращаем профессии (подмена больше не помешает)
+		if String(r.get("prof_saved", "")) != "":
+			r["prof"] = String(r["prof_saved"])
+			r.erase("prof_saved")
+	# --- доход от излишков ---
+	# палатка №1 работает (торговец вручную): проверяем именно экономику
+	tents[0]["worker"] = int(free1["id"])
+	free1["bld"] = tents[0]
+	for key in sim.res:
+		sim.res[key] = 0.0
+	sim.res["food"] = 0.0
+	_check(sim._tent_income(tents[0]) == 0, "пустой пул — палатка стоит (доход 0)")
+	sim.res["wood"] = 300.0
+	sim.res["stone"] = 200.0
+	sim.res["food"] = 60.0
+	var inc: int = sim._tent_income(tents[0])
+	_check(inc > 0, "излишки пула приносят монеты (%d)" % inc)
+	var maxc := int(city.get("tent", {}).get("max_coins_per_day", 8))
+	_check(inc <= maxc, "доход палатки ограничен потолком (%d ≤ %d)" % [inc, maxc])
+	sim.res["food"] = 60.0
+	sim.events.clear()
+	sim._tick_tents()
+	var got_event := false
+	for ev in sim.events:
+		if String(ev["type"]) == "tent_income" and int(ev["coins"]) > 0:
+			got_event = true
+	_check(got_event, "дневной тик даёт событие дохода палаток")
+	# --- бродячий торговец ---
+	var spot: Vector2i = sim.bld_spot(tents[0])
+	sim._last_wanderer_day = -99
+	sim.wanderers = []
+	sim._roll_wanderer()
+	_check(sim.wanderers.size() == 1, "к работающей палатке заходит бродячий торговец")
+	var w: Dictionary = sim.wanderers[0]
+	w["pos"] = sim.map.tile_center_px(spot)
+	w["target"] = Vector2i(-1, -1)
+	sim.events.clear()
+	sim._update_wanderers(0.05)
+	_check(String(w["mode"]) == "trade", "бродячий пришёл и торгует")
+	_check(sim._wanderer_at(tents[0]), "бродячий стоит именно у палатки")
+	var ev_arrived := false
+	for ev in sim.events:
+		if String(ev["type"]) == "wanderer_arrived":
+			ev_arrived = true
+	_check(ev_arrived, "приход бродячего — событие для тоста")
+	var inc2: int = sim._tent_income(tents[0])
+	_check(inc2 > inc, "бродячий скупает оптом: доход палатки вырос (%d > %d)" % [inc2, inc])
+	w["left"] = 0.01
+	sim._update_wanderers(0.05)
+	_check(String(w["mode"]) == "leave", "отторговал — уходит")
+	w["pos"] = sim.map.tile_center_px(Vector2i(w["edge"]))
+	w["target"] = Vector2i(-1, -1)
+	sim._update_wanderers(0.05)
+	_check(sim.wanderers.is_empty(), "дошёл до края — ушёл из города")
+	# --- живая сцена: покупатель ---
+	free1["bld"] = null
+	var shopper: Dictionary = {}
+	for r in sim.residents:
+		if r["bld"] == null and r["site"] == null and String(r["prof"]) != "" \
+				and String(r["prof"]) != "trader" and String(r.get("ail", "")) == "":
+			shopper = r
+			break
+	_check(not shopper.is_empty(), "есть житель-покупатель")
+	shopper["shop_cd_left"] = 0.0
+	var started := false
+	for i in 400:   # шанс визита за тик мал — гоняем до срабатывания
+		if sim._tent_visit(shopper, 2.0):
+			started = true
+			if not (shopper.get("shop", {}) as Dictionary).is_empty():
+				break
+	_check(started and not (shopper.get("shop", {}) as Dictionary).is_empty(),
+			"свободный житель собирается к палатке")
+	var shop_tent: Dictionary = sim._building_by_id(int((shopper.get("shop", {}) as Dictionary).get("bld", -1)))
+	_teleport(sim, shopper, sim.bld_spot(shop_tent))
+	sim._tent_visit(shopper, 2.0)
+	_check(String(shopper["state"]) == "chat" and String(shopper.get("chat_key", "")).begins_with("shop."),
+			"у палатки житель «покупает» с репликой-облачком")
+	shopper["chat_left"] = 0.001
+	sim._tent_visit(shopper, 2.0)
+	_check((shopper.get("shop", {}) as Dictionary).is_empty() and float(shopper.get("shop_cd_left", 0.0)) > 0.0,
+			"после покупки — кулдаун, визит закрыт")
+	print("[Этап 2, аспект 4] готово")

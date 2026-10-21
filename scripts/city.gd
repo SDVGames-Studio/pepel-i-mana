@@ -494,6 +494,11 @@ func _process_events() -> void:
 				hud.toast(Loc.t("city.caravan_returned_toast") % int(ev["coins"]))
 			"caravan_lost":
 				hud.toast(Loc.t("city.caravan_lost_toast") % Loc.t("res." + String(ev["res"])))
+			# --- торговые палатки (этап 2, аспект 4) ---
+			"tent_income":
+				hud.toast(Loc.t("city.tent_income_toast") % int(ev["coins"]))
+			"wanderer_arrived":
+				hud.toast(Loc.t("city.wanderer_toast"))
 			# --- вишлист M11: лес, скала, некромант ---
 			"tree_felled":
 				pass   # тихо: летопись знает, спиливать — работа

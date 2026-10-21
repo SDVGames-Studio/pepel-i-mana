@@ -69,6 +69,10 @@ var livestock: Array = []       # скот на пастбищах (M10): {id, k
 var caravans_out: Array = []    # отправленные караваны (M10): {res, amount, left, coins, dest}
 var caravan_here := false       # пришёл торговый караван в город (M10, рынок)
 var _last_caravan_day := -99
+# торговые палатки (этап 2, аспект 4): бродячие торговцы-нейтралы у палаток
+var wanderers: Array = []       # {id, pos, path, mode: come|trade|leave, tent(id здания), left}
+var _wanderer_id := 1
+var _last_wanderer_day := -99
 var zones: Array = []           # зоны (M6): {id, type, cells, progress, crops: [{stage, t, fallow}]}
 var _zone_id := 1
 var _livestock_id := 1
@@ -142,6 +146,9 @@ func setup(city_map, city_cfg: Dictionary, residents_count: int, level: String) 
 	caravans_out = []
 	caravan_here = false
 	_last_caravan_day = -99
+	wanderers = []
+	_wanderer_id = 1
+	_last_wanderer_day = -99
 	zones = []
 	_zone_id = 1
 	_livestock_id = 1
@@ -1408,6 +1415,8 @@ func place_building(type_id: String, tile: Vector2i) -> bool:
 	var def := _def({"type": type_id})
 	if def.is_empty() or not is_buildable_rect(type_id, tile) or not can_afford(def["cost"]):
 		return false
+	if int(def.get("max_count", 0)) > 0 and _count_type(type_id) >= int(def["max_count"]):
+		return false   # лимит числа построек (этап 2: палатки — не больше трёх)
 	if placement_block(type_id, tile) != "":
 		return false
 	if not placement_gap_ok(type_id, tile):
@@ -1514,10 +1523,14 @@ func _drop_zone_cell(tile: Vector2i) -> void:
 ## Почему здание нельзя поставить здесь: ключ локализации или "" (для тоста сцены).
 func placement_block(type_id: String, tile: Vector2i) -> String:
 	var place := ""
+	var max_count := 0
 	for d in cfg["buildings"]:
 		if String(d["id"]) == type_id:
 			place = String(d.get("place", ""))
+			max_count = int(d.get("max_count", 0))
 			break
+	if max_count > 0 and _count_type(type_id) >= max_count:
+		return "city.tent_limit"   # лимит построек типа (этап 2, аспект 4)
 	match place:
 		"ore":
 			if map.in_bounds(tile) and map.grid[tile.y][tile.x] != map.TILE_ORE:
@@ -1546,6 +1559,15 @@ func placement_block(type_id: String, tile: Vector2i) -> String:
 			if _nature_near(tile, [map.TILE_ROCK, map.TILE_ORE], 2.0) == Vector2i(-1, -1):
 				return "city.placement_rock"
 	return ""
+
+
+## Сколько построек этого типа стоит (включая стройплощадки).
+func _count_type(type_id: String) -> int:
+	var n := 0
+	for b in buildings:
+		if String(b["type"]) == type_id:
+			n += 1
+	return n
 
 
 ## Есть ли рядом (в радиусе, тайлах) тайл природы одного из видов. Возвращает его.
@@ -1710,31 +1732,42 @@ func _assign_jobs() -> void:
 		worker["site"] = b
 		worker["bld"] = null
 		taken[int(worker["id"])] = true
-	# 2. готовые здания — по основной профессии
-	for b in buildings:
-		if not b["done"] or not def_has_worker(b):
-			continue
-		if int(b["worker"]) > 0 and taken.has(int(b["worker"])):
-			continue
-		var worker := _free_resident(String(_def(b)["worker"]), taken)
-		if worker.is_empty():
-			continue   # попробуют замещающие ниже
-		b["worker"] = int(worker["id"])
-		worker["bld"] = b
-		worker["site"] = null
-		taken[int(worker["id"])] = true
+	# 2. готовые здания — по основной профессии; торговый двор (M10) забирает
+	# торговца раньше палаток (этап 2, аспект 4: палатки дополняют рынок, не конкурируют)
+	for pass_n in 2:
+		for b in buildings:
+			var is_tent := String(b["type"]) == "tent"
+			if pass_n == 0 and is_tent:
+				continue
+			if pass_n == 1 and not is_tent:
+				continue
+			if not b["done"] or not def_has_worker(b):
+				continue
+			if int(b["worker"]) > 0 and taken.has(int(b["worker"])):
+				continue
+			var worker := _free_resident(String(_def(b)["worker"]), taken)
+			if worker.is_empty():
+				continue   # попробуют замещающие ниже
+			b["worker"] = int(worker["id"])
+			worker["bld"] = b
+			worker["site"] = null
+			taken[int(worker["id"])] = true
 	# 3. держатели подмен возвращаются на основную профессию, если она нужна
 	_substitutes_to_primary(taken)
 	# 4. подмена строек и зданий свободными жителями (с обучением)
 	for b in buildings:
 		if not bool(b["done"]) and (int(b["worker"]) <= 0 or not taken.has(int(b["worker"]))):
 			_substitute_into("builder", taken, b, true)
-	for b in buildings:
-		if not b["done"] or not def_has_worker(b):
-			continue
-		if int(b["worker"]) > 0 and taken.has(int(b["worker"])):
-			continue
-		_substitute_into(String(_def(b)["worker"]), taken, b, false)
+	for pass_n in 2:   # рынок раньше палаток и в подмене (этап 2, аспект 4)
+		for b in buildings:
+			var is_tent := String(b["type"]) == "tent"
+			if (pass_n == 0) == is_tent:
+				continue
+			if not b["done"] or not def_has_worker(b):
+				continue
+			if int(b["worker"]) > 0 and taken.has(int(b["worker"])):
+				continue
+			_substitute_into(String(_def(b)["worker"]), taken, b, false)
 	# 5. всё ещё некому — сообщаем игроку
 	for b in buildings:
 		if not b["done"] or not def_has_worker(b):
@@ -1878,6 +1911,7 @@ func tick(dt_raw: float) -> void:
 	_update_threat(dt, day_len)
 	_update_animals(dt)
 	_update_livestock(dt)
+	_update_wanderers(dt)
 	_update_zones(dt, day_len)
 	_update_forest(dt, day_len)
 	for r in residents:
@@ -1901,7 +1935,9 @@ func tick(dt_raw: float) -> void:
 		_roll_storm()
 		_roll_livestock()
 		_roll_market()
+		_roll_wanderer()
 		_tick_caravans()
+		_tick_tents()
 		_tick_orchards()
 		_roll_necro()
 		_roll_v3()   # жизнь v3 (M14-F): память, отношения, личные цели
@@ -2042,6 +2078,9 @@ func _update_resident(r: Dictionary, dt: float) -> void:
 		return
 	if r["bld"] != null:
 		var bld_type := String(r["bld"]["type"])
+		if bld_type == "tent":
+			_tent_tend(r, r["bld"], dt)   # торговец за прилавком (этап 2, аспект 4)
+			return
 		if _def(r["bld"]).has("produce"):
 			# добытчики работают у источника: лесоруб — у дерева, каменотёс — у скалы (заказчик)
 			if bld_type == "workshop":
@@ -2075,6 +2114,10 @@ func _update_resident(r: Dictionary, dt: float) -> void:
 		return
 	if _tame_work(r, dt):
 		return   # ловчий тащит дикого зверя на пастбище (этап 2)
+	if _tent_visit(r, dt):
+		return   # зашёл «купить» к работающей палатке (этап 2, аспект 4);
+	          # короткое отвлечение — раньше стройки-помощи, иначе в живом
+	          # городе свободных жителей перехватят площадки
 	if _zone_fill_work(r, dt):
 		return   # свободный житель обустраивает зоны (M6: город заполняет их сам)
 	if _help_build(r, dt):
@@ -2182,6 +2225,10 @@ func _pick_leisure(r: Dictionary) -> Dictionary:
 			plan = {"tile": map.nearest_walkable(map.tile_of_px(partner["pos"]))}
 		elif not tavern.is_empty() and randf() < 0.5:
 			plan = {"tile": bld_spot(tavern), "tavern": true}
+		elif not working_tents().is_empty() and randf() < 0.25:
+			# вечерняя торговая палатка (этап 2, аспект 4): зайти «купить» по пути
+			var tents := working_tents()
+			plan = {"tile": bld_spot(tents[randi() % tents.size()])}
 		else:
 			var friend := _friend_of(r)
 			if not friend.is_empty() and randf() < 0.4:
@@ -3436,6 +3483,204 @@ func market_sell(key: String, count: int) -> String:
 	res[key] = have - take
 	Game_coins_add(int(floorf(price * take)))
 	return ""
+
+
+# --- торговые палатки (этап 2, аспект 4) --------------------------------------
+# Отдельная дешёвая постройка 1×1 (лимит 3) с назначенным торговцем; доход —
+# монеты от излишков общего пула; живая сцена: покупатели-жители и бродячие
+# торговцы у палаток. Рынок/караваны мэра (M10) не заменяет — дополняет.
+
+func _tent_cfg() -> Dictionary:
+	return cfg.get("tent", {})
+
+
+## Работающие палатки: готовые и с назначенным торговцем.
+func working_tents() -> Array:
+	var out: Array = []
+	for b in buildings:
+		if String(b["type"]) == "tent" and bool(b["done"]) and int(b["worker"]) > 0:
+			out.append(b)
+	return out
+
+
+## Потребность города в ресурсе (порог излишков): еда — запас на несколько
+## дней по ртам жителей, прочее — фиксированные пороги tent.need.
+func _tent_need(key: String) -> float:
+	if key == "food":
+		var eaters := 0.0
+		for r in residents:
+			var portion := _trait_prod(r, "food_mult")
+			if String(r["prof"]) == "":
+				portion *= float(people.get("child_food", 0.5))
+			eaters += portion
+		return eaters * float(cfg["food_per_resident_day"]) \
+				* float(_tent_cfg().get("need_days_food", 2.0))
+	return float(_tent_cfg().get("need", {}).get(key, 0.0))
+
+
+## Доход палатки за день в монетах: продаются излишки пула — всё сверх
+## потребностей города. Пустой пул (голодающий город) — палатка стоит.
+## Бродячий торговец у палатки скупает оптом (income_mult).
+func _tent_income(b: Dictionary) -> int:
+	var rates: Dictionary = _tent_cfg().get("coin_per_unit", {})
+	if rates.is_empty():
+		return 0
+	var coins := 0.0
+	for key in rates:
+		var surplus := float(res.get(String(key), 0.0)) - _tent_need(String(key))
+		if surplus > 0.0:
+			coins += surplus * float(rates[key])
+	coins = minf(coins, float(_tent_cfg().get("max_coins_per_day", 8)))
+	if _wanderer_at(b):
+		coins *= float(_tent_cfg().get("wander", {}).get("income_mult", 2.0))
+	return int(coins)
+
+
+## Ежедневный доход всех палаток: монеты в казну (общую с героем), один тост.
+func _tick_tents() -> void:
+	var total := 0
+	for b in working_tents():
+		total += _tent_income(b)
+	if total <= 0:
+		return
+	Game_coins_add(total)
+	events.append({"type": "tent_income", "coins": total})
+
+
+## Бродячий торговец стоит у этой палатки?
+func _wanderer_at(b: Dictionary) -> bool:
+	for w in wanderers:
+		if String(w["mode"]) == "trade" and int(w["tent"]) == int(b["id"]):
+			return true
+	return false
+
+
+## Здание по id (для бродячих торговцев, палатка могла переехать).
+func _building_by_id(bid: int) -> Dictionary:
+	for b in buildings:
+		if int(b["id"]) == bid:
+			return b
+	return {}
+
+
+## Раз в wander.every_days дней к работающей палатке заходит бродячий
+## торговец-нейтрал (в городе не больше одного за раз).
+func _roll_wanderer() -> void:
+	var wcfg: Dictionary = _tent_cfg().get("wander", {})
+	if wcfg.is_empty() or not wanderers.is_empty():
+		return
+	if day - _last_wanderer_day < int(wcfg.get("every_days", 3)):
+		return
+	var tents := working_tents()
+	if tents.is_empty():
+		return
+	_last_wanderer_day = day
+	var from := _edge_tile()
+	wanderers.append({
+		"id": _wanderer_id, "pos": map.tile_center_px(from), "path": PackedVector2Array(),
+		"target": Vector2i(-1, -1), "mode": "come", "tent": int(tents[0]["id"]),
+		"left": 0.0, "come": 0.0, "edge": from,
+		"prof": "", "dir": "front", "state": "", "moving": false,
+	})
+	_wanderer_id += 1
+
+
+## Тик бродячих торговцев: дойти до палатки, поторговать, уйти к краю карты
+## (уходит через тот же край, откуда пришёл).
+func _update_wanderers(dt: float) -> void:
+	var wcfg: Dictionary = _tent_cfg().get("wander", {})
+	var day_len := float(cfg["day_length"])
+	var still: Array = []
+	for w: Dictionary in wanderers:
+		var tent := _building_by_id(int(w["tent"]))
+		if tent.is_empty() or not bool(tent["done"]) or int(tent["worker"]) <= 0:
+			w["mode"] = "leave"   # палатку снесли или торговец ушёл — делать нечего
+		var mode := String(w["mode"])
+		if mode == "come":
+			w["come"] = float(w.get("come", 0.0)) + dt
+			var spot := bld_spot(tent)
+			_move_towards(w, spot, dt)
+			if map.tile_of_px(w["pos"]) == spot:
+				w["mode"] = "trade"
+				w["left"] = float(wcfg.get("stay_days", 0.6)) * day_len
+				events.append({"type": "wanderer_arrived"})
+			elif float(w["come"]) > 2.0 * day_len:
+				w["mode"] = "leave"   # застрял по пути — разворачивается
+				w["target"] = Vector2i(-1, -1)
+		elif mode == "trade":
+			w["left"] = float(w["left"]) - dt
+			if float(w["left"]) <= 0.0:
+				w["mode"] = "leave"
+				w["target"] = Vector2i(-1, -1)
+		else:   # leave: дошёл до своего края — ушёл из города
+			var edge: Vector2i = w.get("edge", _edge_tile())
+			_move_towards(w, edge, dt)
+			if map.tile_of_px(w["pos"]) == edge:
+				continue
+		still.append(w)
+	wanderers = still
+
+
+## Живая сцена (этап 2, аспект 4): свободный житель изредка подходит
+## «покупать» к работающей палатке — реплика-облачко, кулдаун.
+func _tent_visit(r: Dictionary, dt: float) -> bool:
+	var scfg: Dictionary = _tent_cfg().get("scene", {})
+	if scfg.is_empty():
+		return false
+	r["shop_cd_left"] = maxf(0.0, float(r.get("shop_cd_left", 0.0)) - dt)
+	var visit: Dictionary = r.get("shop", {})
+	if not visit.is_empty():
+		var tent := _building_by_id(int(visit.get("bld", -1)))
+		if tent.is_empty() or not bool(tent["done"]) or int(tent["worker"]) <= 0:
+			r["shop"] = {}   # палатка пропала — визит отменяется
+			return false
+		var target: Vector2i = bld_spot(tent)
+		if float(r.get("chat_left", 0.0)) > 0.0:
+			r["chat_left"] = float(r["chat_left"]) - dt
+			if float(r["chat_left"]) <= 0.0:
+				r["chat_key"] = ""
+				r["shop"] = {}
+				r["shop_cd_left"] = float(scfg.get("visit_cd", 30.0))
+			else:
+				r["state"] = "chat"
+				r["path"] = PackedVector2Array()
+			return true
+		if not _arrived(r, target):
+			_move_towards(r, target, dt)
+		else:
+			r["state"] = "chat"
+			r["path"] = PackedVector2Array()
+			r["chat_key"] = String(visit["key"])
+			r["chat_left"] = float(scfg.get("buy_seconds", 3.0))
+		return true
+	if float(r.get("shop_cd_left", 0.0)) > 0.0:
+		return false
+	var tents := working_tents()
+	if tents.is_empty():
+		return false
+	var day_len := float(cfg["day_length"])
+	var chance := float(scfg.get("visit_chance_per_day", 6.0)) * dt / day_len
+	for w in wanderers:   # бродячий у палатки — очередь длиннее, сцена живее
+		if String(w["mode"]) == "trade":
+			chance *= float(scfg.get("wander_visit_mult", 2.5))
+			break
+	if randf() >= chance:
+		return false
+	var tent: Dictionary = tents[randi() % tents.size()]
+	var lines := maxi(1, int(scfg.get("buy_lines", 6)))
+	r["shop"] = {"bld": int(tent["id"]), "key": "shop.%d" % (randi() % lines + 1)}
+	return true
+
+
+## Торговец за палаткой: подходит ко входу и стоит за прилавком (state=work).
+func _tent_tend(r: Dictionary, b: Dictionary, dt: float) -> void:
+	if at_bld(r, b):
+		r["state"] = "work"
+		r["path"] = PackedVector2Array()
+		r["fatigue"] = minf(1.0, float(r["fatigue"]) + dt / float(cfg["day_length"]) * 0.5)
+		_grow_skill(r, dt)
+	else:
+		_move_towards(r, bld_spot(b), dt)
 
 
 # --- яблоневые сады (M10) -----------------------------------------------------

@@ -184,6 +184,9 @@ static func _city_sim_block(sim) -> Dictionary:
 		"caravans_out": sim.caravans_out,
 		"caravan_here": bool(sim.caravan_here),
 		"_last_caravan_day": int(sim._last_caravan_day),
+		"wanderers": sim.wanderers,
+		"_wanderer_id": int(sim._wanderer_id),
+		"_last_wanderer_day": int(sim._last_wanderer_day),
 		"raiders": sim.raiders,
 		"raid_active": bool(sim.raid_active),
 		"raid_siege": bool(sim.raid_siege),
@@ -399,6 +402,12 @@ static func _apply_city(game, cd: Variant) -> String:
 	sim.caravans_out = _dec(sd.get("caravans_out", []))
 	sim.caravan_here = bool(sd.get("caravan_here", false))
 	sim._last_caravan_day = int(sd.get("_last_caravan_day", -99))
+	# бродячие торговцы у палаток (этап 2, аспект 4): путь и поле edge — векторы
+	sim.wanderers = _dec(sd.get("wanderers", []))
+	for w in sim.wanderers:
+		w["tent"] = int(w.get("tent", -1))
+	sim._wanderer_id = int(sd.get("_wanderer_id", 1))
+	sim._last_wanderer_day = int(sd.get("_last_wanderer_day", -99))
 	sim.raiders = _dec(sd.get("raiders", []))
 	sim.raid_active = bool(sd.get("raid_active", false))
 	sim.raid_siege = bool(sd.get("raid_siege", false))
