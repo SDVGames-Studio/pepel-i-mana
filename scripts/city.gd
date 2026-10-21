@@ -692,10 +692,21 @@ func _unhandled_input(event: InputEvent) -> void:
 					float(wpn.get("range", hero.p["attack_range"])),
 					float(wpn.get("arc", hero.p["attack_arc"])))
 			if not kill.is_empty():
+				# еда (мясо/рыба) сразу в общий пул города — охота кормит город
+				# (замечание приёмки этапа 2: герой не мог добыть еду);
+				# остальное (шкура, перо) — в рюкзак
 				var parts := PackedStringArray()
+				var food_got := 0
 				for d: Dictionary in kill["drops"]:
-					Game.add_item(String(d["id"]), int(d["count"]))
-					parts.append("%s ×%d" % [Loc.t("item." + String(d["id"])), int(d["count"])])
+					var iid := String(d["id"])
+					if iid == "meat" or iid == "fish_raw":
+						food_got += int(d["count"])
+					else:
+						Game.add_item(iid, int(d["count"]))
+						parts.append("%s ×%d" % [Loc.t("item." + iid), int(d["count"])])
+				if food_got > 0:
+					sim._add_resource_capped("food", float(food_got))
+					parts.insert(0, "%s ×%d" % [Loc.t("res.food"), food_got])
 				hud.toast(Loc.t("world.hunt_got") % [Loc.t("fauna." + String(kill["kind"])), ", ".join(parts)])
 				sim.chronicle_add("chron.hunt", Loc.t("fauna." + String(kill["kind"])))
 				sim.quest_hunted()   # доска объявлений (M14-K)

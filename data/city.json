@@ -256,7 +256,9 @@
 	],
 	"loot_to_pool": {
 		"stone_chip": "stone",
-		"echo_crystal": "crystal"
+		"echo_crystal": "crystal",
+		"meat": "food",
+		"fish_raw": "food"
 	},
 	"names": ["Мира", "Том", "Лана", "Борн", "Кира", "Ярл", "Нива", "Герд", "Ада", "Радан", "Ева", "Тар"]
 }

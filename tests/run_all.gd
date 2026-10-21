@@ -1674,7 +1674,7 @@ func _test_threat() -> void:
 	var brute_tile: Vector2i = sim2.map.nearest_walkable(wall_tile + Vector2i(2, 0))
 	_spawn_one_raider(sim2, "brute", brute_tile)
 	var razed_seen := false
-	for i in 1200:
+	for i in 2600:   # этап 2: рельеф сплошной в A* — обходы длиннее
 		sim2.tick(0.2)
 		if sim2.building_at(wall_tile).is_empty():
 			razed_seen = true
@@ -4660,8 +4660,14 @@ func _test_m12() -> void:
 	sim2.time = 10.0
 	var c := _add_resident(sim2, "Вера", "farmer")
 	c["traits"] = []   # не трусливая: трус вместо сбора прячется домой
-	_teleport(sim2, c, Vector2i(20, 20))
-	sim2.tick(30.0)
+	# этап 2 (рельеф сплошной в A*): точка сбора в шаге от костра, чтобы
+	# маршрут не зависел от дальнего обхода озёр
+	var fire_t: Vector2i = sim2.fire_tile()
+	_teleport(sim2, c, sim2.map.nearest_walkable(fire_t + Vector2i(-6, 0)))
+	for i in 6:
+		sim2.tick(5.0)
+		if String(c["state"]) == "gather":
+			break
 	_check(String(c["state"]) == "gather"
 			or float((sim2.map.tile_of_px(c["pos"]) - sim2.fire_tile()).length()) <= 2.5,
 			"на тревогу жители собираются у костра")
@@ -5832,4 +5838,35 @@ func _test_stage2_aspect2() -> void:
 			covered += 1
 	_check(covered == 4, "мигрированный сад занимает 4 клетки")
 	_check(String(sim._def(legacy).get("effect", "")) == "decor", "мигрированный сад работает как декор")
+	# этап 2, правка приёмки: вода/скалы/руда сплошные для A* — никто не срезает
+	var m: Object = sim.map
+	var solid_ok := true
+	var walk_sample: Vector2i = Vector2i(-1, -1)
+	for y in m.h:
+		for x in m.w:
+			var t := Vector2i(x, y)
+			var nw: bool = m.is_nature_walkable(t)
+			# клетки под зданиями сплошные по правилу зданий (аспект 2) — не рельеф
+			if sim.building_at(t).is_empty() and m.astar.is_point_solid(t) == nw:
+				solid_ok = false
+			if nw and walk_sample == Vector2i(-1, -1):
+				walk_sample = t
+	_check(solid_ok, "A*: сплошность клетки совпадает с проходимостью рельефа")
+	var path_clean := true
+	if not walk_sample == Vector2i(-1, -1):
+		var goal: Vector2i = m.nearest_walkable(m.spawn_tile)
+		for cell in m.path_px(m.tile_center_px(walk_sample), goal):
+			if not m.is_walkable(Vector2i(int(cell.x / m.ts), int(cell.y / m.ts))):
+				path_clean = false
+				break
+	_check(path_clean, "путь A* не содержит непроходимых клеток")
+	# этап 2, правка приёмки: мясо/рыба кормят город (сдать лут — еда в пул)
+	var sim_food := _make_sim()
+	var food0: float = float(sim_food.res["food"])
+	var food_inv: Array = [{"id": "meat", "count": 3}, {"id": "hide", "count": 1}]
+	var added_food: Dictionary = sim_food.deposit_loot(food_inv)
+	_check(int(added_food.get("food", 0)) == 3, "мясо из лута ушло в пул еды")
+	_check(float(sim_food.res["food"]) == food0 + 3.0, "пул еды вырос от мяса")
+	_check(food_inv.size() == 1 and String(food_inv[0]["id"]) == "hide",
+			"шкура осталась в рюкзаке (не еда)")
 	print("[Этап 2, аспект 2] готово")

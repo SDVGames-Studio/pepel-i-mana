@@ -40,6 +40,26 @@ func generate(seed_value: int, params: Dictionary) -> void:
 		if _connected():
 			break
 	_setup_astar()
+	mark_terrain_solid()
+
+
+## Природные препятствия (вода, скалы, руда) — сплошные для A* (этап 2:
+## мутанты и жители больше не срезают через озёра и скалы). Мосты открывают
+## воду (is_nature_walkable учитывает их), деревья проходимы по дизайну —
+## на них стоят лесорубы и герой при рубке.
+func mark_terrain_solid() -> void:
+	if astar == null:
+		return
+	for y in h:
+		for x in w:
+			astar.set_point_solid(Vector2i(x, y), not is_nature_walkable(Vector2i(x, y)))
+
+
+## Пересчитать сплошность одной клетки после изменения рельефа
+## (мост построен, скала выработана, вскрыта руда).
+func refresh_tile_solid(p: Vector2i) -> void:
+	if astar != null and in_bounds(p):
+		astar.set_point_solid(p, not is_nature_walkable(p))
 
 
 func _generate_once(seed_value: int, params: Dictionary) -> void:

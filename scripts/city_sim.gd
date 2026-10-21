@@ -1403,6 +1403,7 @@ func _place_bridge(tile: Vector2i) -> bool:
 	for key in _def({"type": "bridge"})["cost"]:
 		res[key] = float(res[key]) - float(_def({"type": "bridge"})["cost"][key])
 	map.bridges[tile] = true
+	map.refresh_tile_solid(tile)   # мост открывает воду для путей (этап 2)
 	_chron("chron.bridge")
 	events.append({"type": "bridge"})
 	return true
@@ -5381,6 +5382,7 @@ func _deplete_rock(r: Dictionary, bld: Dictionary, portion: float) -> void:
 	map.rock_hp.erase(tile)
 	if kind == map.TILE_ROCK and roll < float(mcfg.get("ore_reveal", 0.35)):
 		map.grid[tile.y][tile.x] = map.TILE_ORE
+		map.refresh_tile_solid(tile)   # вскрытая руда непроходима (этап 2)
 		map.rock_hp[tile] = float(mcfg.get("hp", 80.0)) * 1.3
 		events.append({"type": "ore_revealed"})
 		_chron("chron.ore_revealed")
@@ -5391,6 +5393,7 @@ func _deplete_rock(r: Dictionary, bld: Dictionary, portion: float) -> void:
 	else:
 		_add_pile(bld, "stone", float(mcfg.get("bonus_stone", 6)))
 		map.grid[tile.y][tile.x] = map.TILE_GRASS
+		map.refresh_tile_solid(tile)   # скала выработана — клетка открылась
 		events.append({"type": "rock_gone"})
 		_chron("chron.rock_gone")
 	terrain_dirty = true
@@ -5486,6 +5489,7 @@ func hero_mine(px: Vector2) -> String:
 	terrain_dirty = true
 	if int(map.grid[tile.y][tile.x]) == map.TILE_ROCK and roll < float(mcfg.get("ore_reveal", 0.35)):
 		map.grid[tile.y][tile.x] = map.TILE_ORE
+		map.refresh_tile_solid(tile)   # вскрытая руда непроходима (этап 2)
 		map.rock_hp[tile] = max_hp * 1.3
 		events.append({"type": "ore_revealed"})
 		_chron("chron.ore_revealed")
@@ -5497,6 +5501,7 @@ func hero_mine(px: Vector2) -> String:
 		return "gem"
 	_add_resource_capped("stone", float(mcfg.get("bonus_stone", 6)))
 	map.grid[tile.y][tile.x] = map.TILE_GRASS
+	map.refresh_tile_solid(tile)   # скала выработана — клетка открылась
 	events.append({"type": "rock_gone"})
 	_chron("chron.rock_gone")
 	return "stone"

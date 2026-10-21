@@ -537,6 +537,7 @@ static func _apply_city_map(map, md: Variant, cfg: Dictionary) -> String:
 	for e in md.get("saplings", []):
 		map.saplings[Vector2i(int(e[0]), int(e[1]))] = {"t": float(e[2].get("t", 0.0))}
 	map._setup_astar()
+	map.mark_terrain_solid()   # вода/скалы/руда сплошные (этап 2); мосты учтены выше
 	var weight := float(cfg.get("roads", {}).get("astar_weight", 0.4))
 	for p in map.road:
 		map.astar.set_point_weight_scale(p, weight)
