@@ -73,8 +73,9 @@ var _last_caravan_day := -99
 var wanderers: Array = []       # {id, pos, path, mode: come|trade|leave, tent(id здания), left}
 var _wanderer_id := 1
 var _last_wanderer_day := -99
-var zones: Array = []           # зоны (M6): {id, type, cells, progress, crops: [{stage, t, fallow}]}
+var zones: Array = []           # зоны (M6): {id, type, cells, progress, crops: [{stage, t, fallow}]}; зоны-слои (этап 2, аспект 6) без progress
 var _zone_id := 1
+var _quarter_formed: Dictionary = {}   # спек квартала -> уже отмечен летописью (этап 2, аспект 6)
 var _livestock_id := 1
 
 var _next_id := 1
@@ -151,6 +152,7 @@ func setup(city_map, city_cfg: Dictionary, residents_count: int, level: String) 
 	_last_wanderer_day = -99
 	zones = []
 	_zone_id = 1
+	_quarter_formed = {}
 	_livestock_id = 1
 	forest_anger = 0.0
 	necro_dark = 0.0
@@ -216,6 +218,7 @@ func _new_resident(res_name: String, prof: String, tile: Vector2i) -> Dictionary
 		"ail": "", "ail_days": 0.0, "friend": -1, "work_bonus": 0.0,
 		"prof_extra": [], "sub_prof": "", "atk_cd": 0.0, "partner": -1,
 		"rel": {}, "mem": [], "goal": "", "goal_prev": "", "tavern_visited": false,
+		"leisure_day": 0,   # день последнего вечера в зоне отдыха (этап 2, аспект 6)
 	}
 	return r
 
@@ -928,6 +931,10 @@ func production_mult(bld: Dictionary) -> float:
 		mult *= resonance_mult
 	mult *= float(bld.get("ench_mult", 1.0))
 	mult *= layout_mult(bld)
+	# этап 2, аспект 6: промышленная зона и квартал ускоряют производство
+	if bld_in_zone(bld, "industrial"):
+		mult *= float(cfg.get("zones", {}).get("industrial", {}).get("prod_mult", 1.0))
+	mult *= quarter_mult(bld)
 	mult *= research_mult("prod_all", 1.0)
 	if not bld.is_empty() and bld.has("type") \
 			and String(_def(bld).get("produce", {}).get("res", "")) == "food":
@@ -941,19 +948,28 @@ func production_mult(bld: Dictionary) -> float:
 
 
 ## Бонус планировки (M6): склад рядом со зданием ускоряет производство
-## («склад рядом с фермами = +скорость», пункт плана M6).
+## («склад рядом с фермами = +скорость», пункт плана M6). Этап 2, аспект 6:
+## склад в складской зоне даёт более сильный и широкий бонус соседям.
 func layout_mult(bld: Dictionary) -> float:
 	if bld.is_empty() or not bld.has("type") or not _def(bld).has("produce"):
 		return 1.0
 	var lcfg: Dictionary = cfg.get("layout", {})
 	if lcfg.is_empty():
 		return 1.0
+	var scfg: Dictionary = cfg.get("zones", {}).get("storage", {})
 	var radius := float(lcfg.get("warehouse_radius", 4))
+	var best := 1.0
 	for b in buildings:
-		if _active(b) and _def(b).get("effect", "") == "storage" \
-				and Vector2(b["tile"]).distance_to(Vector2(bld["tile"])) <= radius:
-			return float(lcfg.get("warehouse_mult", 1.25))
-	return 1.0
+		if not _active(b) or _def(b).get("effect", "") != "storage":
+			continue
+		var r := radius
+		var m := float(lcfg.get("warehouse_mult", 1.25))
+		if not scfg.is_empty() and bld_in_zone(b, "storage"):
+			r = maxf(r, float(scfg.get("warehouse_radius", radius)))
+			m = maxf(m, float(scfg.get("warehouse_mult", m)))
+		if Vector2(b["tile"]).distance_to(Vector2(bld["tile"])) <= r:
+			best = maxf(best, m)
+	return best
 
 
 ## Комфорт от готового декора (сад, статуя — ответ №18) с потолком.
@@ -989,21 +1005,21 @@ func cast_city_spell(def: Dictionary) -> String:
 		"wild_resonance":
 			resonance_left = float(params.get("duration", 120.0))
 			resonance_mult = float(params.get("prod_mult", 1.5))
-			add_pollution(float(def.get("pollution", 0.0)))
+			add_pollution(float(def.get("pollution", 0.0)) * _magic_pollution_mult())
 		"cleanse":
 			pollution = maxf(0.0, pollution - float(params.get("amount", 25.0)))
 		"forest_gift":
 			_add_resource_capped("food", float(params.get("food", 15.0)))
-			add_pollution(float(def.get("pollution", 0.0)))
+			add_pollution(float(def.get("pollution", 0.0)) * _magic_pollution_mult())
 		"meteor_shard":
 			_add_resource_capped("stone", float(params.get("stone", 30.0)))
-			add_pollution(float(def.get("pollution", 0.0)))
+			add_pollution(float(def.get("pollution", 0.0)) * _magic_pollution_mult())
 		"bless":
 			for r in residents:
 				r["mood"] = clampf(float(r["mood"]) + float(params.get("mood", 12.0)), 0.0, 100.0)
 		"harvest_blessing":
 			_add_resource_capped("food", float(params.get("food", 25.0)))
-			add_pollution(float(def.get("pollution", 0.0)))
+			add_pollution(float(def.get("pollution", 0.0)) * _magic_pollution_mult())
 	return ""
 
 
@@ -1043,6 +1059,8 @@ func hero_mana_params() -> Dictionary:
 	var regen: float = float(mana_cfg.get("regen_period", 8.0))
 	if altar_enchanted():
 		regen = float(mana_cfg.get("altar_regen_period", 5.0))
+	# этап 2, аспект 6: магическая зона и магический квартал усиливают алтарь
+	regen /= _altar_work_mult()
 	# дисциплина «Тайное» (M7): регенерация маны героя быстрее
 	regen *= research_mult("mana_regen_mult", 1.0)
 	var cap_extra := int(mana_cfg.get("altar_cap_extra", 4)) if altar_enchanted() else 0
@@ -1460,9 +1478,10 @@ func _place_bridge(tile: Vector2i) -> bool:
 
 
 ## Проложить дорогу (M6): трава без зданий и зон, камень за тайл. "" — успех.
+## Через зоны-слои дорога проходит (этап 2, аспект 6).
 func place_road(tile: Vector2i) -> String:
 	if not map.in_bounds(tile) or not map.is_nature_walkable(tile) \
-			or not building_at(tile).is_empty() or _tile_in_zone(tile):
+			or not building_at(tile).is_empty() or _tile_in_fill_zone(tile):
 		return "bad"
 	if map.has_road(tile):
 		return ""
@@ -1478,6 +1497,17 @@ func place_road(tile: Vector2i) -> String:
 ## Клетка занята зоной?
 func _tile_in_zone(tile: Vector2i) -> bool:
 	for z in zones:
+		if (z["cells"] as Array).has(tile):
+			return true
+	return false
+
+
+## Клетка занята «обустраиваемой» зоной (поле/пастбище/жилая): дороги и
+## посадка леса туда не идут, зоны-слои не мешают (этап 2, аспект 6).
+func _tile_in_fill_zone(tile: Vector2i) -> bool:
+	for z in zones:
+		if _zone_type_overlay(String(z["type"])):
+			continue
 		if (z["cells"] as Array).has(tile):
 			return true
 	return false
@@ -1512,9 +1542,12 @@ func _roll_auto_roads() -> void:
 		_chron("chron.road_built", str(laid))
 
 
-## Убрать тайл из его зоны (здание заняло клетку).
+## Убрать тайл из его зоны (здание заняло клетку). Зоны-слои не изымаются:
+## здание стоит В зоне и получает её бонус (этап 2, аспект 6).
 func _drop_zone_cell(tile: Vector2i) -> void:
 	for z in zones:
+		if _zone_type_overlay(String(z["type"])):
+			continue
 		var idx: int = (z["cells"] as Array).find(tile)
 		if idx >= 0:
 			z["cells"].remove_at(idx)
@@ -1658,6 +1691,7 @@ func _damage_building(b: Dictionary, amount: float) -> bool:
 	b["hp"] = 0.0
 	b["enchant"] = ""   # руины не удерживают зачарование
 	b["stun_left"] = 0.0
+	recompute_quarters()   # руины выбывают из квартала (этап 2, аспект 6)
 	# кладбище разрушено (мутантами, бурей) — тайная армия рассыпается (M11)
 	if String(b["type"]) == "cemetery":
 		_necro_purge()
@@ -1805,6 +1839,7 @@ func move_building(b: Dictionary, tile: Vector2i) -> String:
 		_set_bld_solid(b, true)
 		_step_off_bld(b)
 	_spots_dirty()
+	recompute_quarters()   # после переезда связи квартала могли измениться
 	events.append({"type": "bld_moved", "bld": String(b["type"])})
 	_chron("chron.moved", String(b["type"]))
 	return ""
@@ -1829,6 +1864,7 @@ func _complete_site(site: Dictionary) -> void:
 		_step_off_bld(site)
 	if _def(site).get("effect", "") == "gate":
 		_update_gates()   # ворота при достройке сразу закрываются/открываются
+	recompute_quarters()   # достройка может завершить квартал (этап 2, аспект 6)
 	events.append({"type": "built", "bld": String(site["type"])})
 	_assign_jobs()
 
@@ -2109,6 +2145,7 @@ func tick(dt_raw: float) -> void:
 		_roll_weather()   # погода и сезоны (M14-J)
 		_roll_quests()   # доска объявлений (M14-K)
 		_roll_story()   # сюжетная рамка (M14-L)
+		recompute_quarters()   # кварталы: снос/руины могли развалить связность (аспект 6)
 	_update_gates()   # достроенные за тик вышки/ворота сразу меняют проходимость
 
 
@@ -2371,11 +2408,21 @@ func _leisure(r: Dictionary, dt: float) -> void:
 		# личная цель «пировать в таверне» (M14-F): вечер в таверне засчитан
 		if bool(plan.get("tavern", false)):
 			r["tavern_visited"] = true
+		# вечер в зоне отдыха (этап 2, аспект 6): настроение раз в день;
+		# таверна/сад/статуя внутри зоны делают вечер приятнее
+		if bool(plan.get("leisure", false)) and int(r.get("leisure_day", 0)) != day:
+			r["leisure_day"] = day
+			var lcfg2: Dictionary = cfg.get("zones", {}).get("leisure", {})
+			var mood := float(lcfg2.get("mood", 3.0))
+			if _leisure_zone_has_venue(target):
+				mood += float(lcfg2.get("mood_venue", 2.0))
+			r["mood"] = clampf(float(r["mood"]) + mood, 0.0, 100.0)
 		_try_chat(r)
 
 
 ## Выбор вечернего занятия: в День основания — весь город гуляет (M13),
 ## иначе таверна 50%, любимый 60% / друг 40%, костёр — остальное.
+## Этап 2, аспект 6: зона отдыха — вечером город гуляет там (с шансом pick_chance).
 func _pick_leisure(r: Dictionary) -> Dictionary:
 	var tavern := _nearest_done_of_type(r["pos"], "tavern")
 	var plan: Dictionary
@@ -2385,21 +2432,26 @@ func _pick_leisure(r: Dictionary) -> Dictionary:
 		else:
 			plan = {"tile": map.nearest_walkable(fire_tile())}
 	else:
-		var partner := _partner_of(r)
-		if not partner.is_empty() and randf() < 0.6:
-			plan = {"tile": map.nearest_walkable(map.tile_of_px(partner["pos"]))}
-		elif not tavern.is_empty() and randf() < 0.5:
-			plan = {"tile": bld_spot(tavern), "tavern": true}
-		elif not working_tents().is_empty() and randf() < 0.25:
-			# вечерняя торговая палатка (этап 2, аспект 4): зайти «купить» по пути
-			var tents := working_tents()
-			plan = {"tile": bld_spot(tents[randi() % tents.size()])}
+		var leisure_tile := _nearest_leisure_tile(map.tile_of_px(r["pos"]))
+		if not leisure_tile == Vector2i(-1, -1) \
+				and randf() < float(cfg.get("zones", {}).get("leisure", {}).get("pick_chance", 0.5)):
+			plan = {"tile": leisure_tile, "leisure": true}
 		else:
-			var friend := _friend_of(r)
-			if not friend.is_empty() and randf() < 0.4:
-				plan = {"tile": map.nearest_walkable(map.tile_of_px(friend["pos"]))}
+			var partner := _partner_of(r)
+			if not partner.is_empty() and randf() < 0.6:
+				plan = {"tile": map.nearest_walkable(map.tile_of_px(partner["pos"]))}
+			elif not tavern.is_empty() and randf() < 0.5:
+				plan = {"tile": bld_spot(tavern), "tavern": true}
+			elif not working_tents().is_empty() and randf() < 0.25:
+				# вечерняя торговая палатка (этап 2, аспект 4): зайти «купить» по пути
+				var tents := working_tents()
+				plan = {"tile": bld_spot(tents[randi() % tents.size()])}
 			else:
-				plan = {"tile": map.nearest_walkable(fire_tile())}
+				var friend := _friend_of(r)
+				if not friend.is_empty() and randf() < 0.4:
+					plan = {"tile": map.nearest_walkable(map.tile_of_px(friend["pos"]))}
+				else:
+					plan = {"tile": map.nearest_walkable(fire_tile())}
 	# ссорящиеся (M14-F) избегают друг друга вечером: цель рядом с врагом — к костру
 	var foe: Dictionary = rel_worst(r)
 	if not foe.is_empty():
@@ -2883,7 +2935,7 @@ func _produce_tick(r: Dictionary, bld: Dictionary, dt: float) -> void:
 			return
 	for key in inputs:
 		res[String(key)] = maxf(0.0, float(res[key]) - float(inputs[key]) * portion)
-	var boost: float = float(cfg["altar_boost"]) if has_blessing() else 1.0
+	var boost: float = blessing_boost()
 	var amount: float = float(prod["per_day"]) * portion * boost * production_mult(bld) * work_mult(r)
 	_add_pile(bld, String(prod["res"]), amount)
 	# шахта даёт и камень вместе с рудой (заказчик)
@@ -3109,14 +3161,18 @@ func add_zone(type_id: String, cells: Array, crop := "turnip") -> int:
 	var types: Dictionary = cfg.get("zones", {}).get("types", {})
 	if not types.has(type_id):
 		return 0
+	var overlay := _zone_type_overlay(type_id)
 	var zone := {"id": _zone_id, "type": type_id, "cells": [], "progress": []}
 	if type_id == "field":
 		zone["crop"] = field_crop_id(crop)   # грядка засеивается целиком одной культурой
 	var added := 0
 	for c in cells:
-		if _zone_cell_ok(c):
+		# зоны-слои (этап 2, аспект 6) ложатся поверх зданий и дорог
+		var ok := _overlay_zone_cell_ok(c) if overlay else _zone_cell_ok(c)
+		if ok:
 			zone["cells"].append(c)
-			zone["progress"].append(0.0)
+			if not overlay:
+				zone["progress"].append(0.0)
 			added += 1
 	if added == 0:
 		return 0
@@ -3198,6 +3254,206 @@ func _cell_filled(z: Dictionary, i: int) -> bool:
 	return float(z["progress"][i]) >= float(cfg.get("zones", {}).get("fill_work", 4.0))
 
 
+# --- этап 2, аспект 6: зоны-слои и кварталы ----------------------------------
+
+## Зона этого типа — «слой» (промышленная/магическая/складская/отдыха):
+## рисуется поверх зданий и дорог, клетки не изымаются при стройке.
+func _zone_type_overlay(type_id: String) -> bool:
+	return bool(cfg.get("zones", {}).get("types", {}).get(type_id, {}).get("overlay", false))
+
+
+## Клетка годна под зону-слой: суша без аномалии, без чужих зон;
+## здания и дороги не мешают — слой ложится поверх.
+func _overlay_zone_cell_ok(t: Vector2i) -> bool:
+	if not map.in_bounds(t) or t == map.anomaly_tile:
+		return false
+	if map.grid[t.y][t.x] in [map.TILE_WATER, map.TILE_ROCK, map.TILE_ORE]:
+		return false
+	for z in zones:
+		if (z["cells"] as Array).has(t):
+			return false
+	return true
+
+
+## Стоит ли здание хоть одной клеткой в зоне этого типа.
+func bld_in_zone(bld: Dictionary, zone_type: String) -> bool:
+	if bld.is_empty() or not bld.has("tile"):
+		return false
+	var cells := bld_cells(bld)
+	for z in zones:
+		if String(z["type"]) != zone_type:
+			continue
+		for c in z["cells"]:
+			for cell in cells:
+				if Vector2i(c) == cell:
+					return true
+	return false
+
+
+## Специализация квартала для типа здания ("" — здание не квартальное).
+func quarter_spec_of(type_id: String) -> String:
+	var specs: Dictionary = cfg.get("zones", {}).get("quarters", {}).get("specs", {})
+	for spec in specs:
+		if type_id in (specs[spec] as Dictionary).get("types", []):
+			return String(spec)
+	return ""
+
+
+## Бонус квартала зданию (1.0 — здания нет или не в квартале).
+func quarter_mult(bld: Dictionary) -> float:
+	if bld.is_empty() or String(bld.get("quarter", "")) == "":
+		return 1.0
+	return float(cfg.get("zones", {}).get("quarters", {}).get("mult", 1.0))
+
+
+## Пересчитать кварталы: здания одной специализации рядом (кластер связностью
+## по link_dist) образуют квартал, каждому зданию ставится пометка quarter.
+## Летопись — один раз на «жизнь» кластера (пере-образование после распада — снова).
+func recompute_quarters() -> void:
+	var qcfg: Dictionary = cfg.get("zones", {}).get("quarters", {})
+	if qcfg.is_empty():
+		return
+	var link := float(qcfg.get("link_dist", 6.0))
+	for spec_key in qcfg.get("specs", {}):
+		var spec := String(spec_key)
+		var need := int(qcfg["specs"][spec_key].get("need", 3))
+		var list: Array = []
+		for b in buildings:
+			if quarter_spec_of(String(b["type"])) != spec:
+				continue
+			b["quarter"] = ""
+			if _active(b):
+				list.append(b)
+		var seen := {}
+		for b in list:
+			if seen.has(int(b["id"])):
+				continue
+			var cluster: Array = [b]
+			seen[int(b["id"])] = true
+			var queue: Array = [b]
+			while not queue.is_empty():
+				var cur: Dictionary = queue.pop_back()
+				for other in list:
+					if seen.has(int(other["id"])):
+						continue
+					if Vector2(cur["tile"]).distance_to(Vector2(other["tile"])) <= link:
+						seen[int(other["id"])] = true
+						cluster.append(other)
+						queue.append(other)
+			if cluster.size() >= need:
+				for m in cluster:
+					m["quarter"] = spec
+		var any_quarter := false
+		for b in list:
+			if String(b.get("quarter", "")) == spec:
+				any_quarter = true
+				break
+		if any_quarter and not bool(_quarter_formed.get(spec, false)):
+			_quarter_formed[spec] = true
+			_chron("chron.quarter_formed", spec)
+			events.append({"type": "quarter_formed", "spec": spec})
+		elif not any_quarter:
+			_quarter_formed[spec] = false
+
+
+## Усиление храма: магическая зона и магический квартал (благословение сильнее).
+func _temple_work_mult() -> float:
+	var mult := 1.0
+	for b in buildings:
+		if not _active(b) or String(b["type"]) != "temple":
+			continue
+		if bld_in_zone(b, "magic"):
+			mult *= float(cfg.get("zones", {}).get("magic", {}).get("work_mult", 1.0))
+		if String(b.get("quarter", "")) == "magic":
+			mult *= float(cfg.get("zones", {}).get("quarters", {}).get("mult", 1.0))
+		break
+	return mult
+
+
+## Благословение храма (M14-H), усиленное магической зоной/кварталом.
+func blessing_boost() -> float:
+	if not has_blessing():
+		return 1.0
+	return float(cfg.get("altar_boost", 1.0)) * _temple_work_mult()
+
+
+## Усиление алтаря: магическая зона и магический квартал (реген маны героя).
+func _altar_work_mult() -> float:
+	var mult := 1.0
+	for b in buildings:
+		if not _active(b) or String(b["type"]) != "altar":
+			continue
+		if bld_in_zone(b, "magic"):
+			mult *= float(cfg.get("zones", {}).get("magic", {}).get("work_mult", 1.0))
+		if String(b.get("quarter", "")) == "magic":
+			mult *= float(cfg.get("zones", {}).get("quarters", {}).get("mult", 1.0))
+		break
+	return mult
+
+
+## Порча городской магии: алтарь в магической зоне «чистит» половину порчи
+## своих заклинаний (этап 2, аспект 6).
+func _magic_pollution_mult() -> float:
+	for b in buildings:
+		if not _active(b) or String(b["type"]) != "altar":
+			continue
+		if bld_in_zone(b, "magic"):
+			return float(cfg.get("zones", {}).get("magic", {}).get("pollution_mult", 1.0))
+		break
+	return 1.0
+
+
+## Ближайшая проходимая клетка зоны отдыха ({} — зон нет) для вечернего досуга.
+func _nearest_leisure_tile(from: Vector2i) -> Vector2i:
+	var best := Vector2i(-1, -1)
+	var best_d := INF
+	for z in zones:
+		if String(z["type"]) != "leisure":
+			continue
+		for c in z["cells"]:
+			var t: Vector2i = c
+			if not map.is_walkable(t):
+				continue
+			var d := Vector2(t).distance_to(Vector2(from))
+			if d < best_d:
+				best_d = d
+				best = t
+	return best
+
+
+## Есть ли в зоне отдыха (где эта клетка) «место притяжения»: таверна,
+## сад или статуя — вечер там приятнее.
+func _leisure_zone_has_venue(tile: Vector2i) -> bool:
+	for z in zones:
+		if String(z["type"]) != "leisure" or not (z["cells"] as Array).has(tile):
+			continue
+		for c in z["cells"]:
+			var b: Dictionary = building_at(Vector2i(c))
+			if not b.is_empty() and String(b["type"]) in ["tavern", "garden", "statue"]:
+				return true
+	return false
+
+
+## Место самостроя внутри зоны-слоя: ближайшая к центру города свободная
+## клетка зоны, годная под прямоугольник здания (этап 2, аспект 6).
+func _tile_in_zone_for_build(zone_type: String, type_id: String) -> Vector2i:
+	var best := Vector2i(-1, -1)
+	var best_d := INF
+	for z in zones:
+		if String(z["type"]) != zone_type:
+			continue
+		for c in z["cells"]:
+			var t: Vector2i = c
+			if not is_buildable_rect(type_id, t) or placement_block(type_id, t) != "" \
+					or not placement_gap_ok(type_id, t):
+				continue
+			var d := Vector2(t).distance_to(Vector2(map.spawn_tile))
+			if d < best_d:
+				best_d = d
+				best = t
+	return best
+
+
 ## Свободный житель обустраивает ближайшую незаполненную клетку зоны;
 ## спелые грядки полей собирает (этап 2, аспект 3). False — зон нет.
 func _zone_fill_work(r: Dictionary, dt: float) -> bool:
@@ -3237,6 +3493,8 @@ func _nearest_zone_cell(r: Dictionary) -> Dictionary:
 	var best: Dictionary = {}
 	var best_d := INF
 	for z in zones:
+		if _zone_type_overlay(String(z["type"])):
+			continue   # зоны-слои не обустраиваются (этап 2, аспект 6)
 		for i in (z["cells"] as Array).size():
 			if _cell_filled(z, i) or not building_at(z["cells"][i]).is_empty():
 				continue
@@ -3545,6 +3803,15 @@ func market_ready() -> bool:
 	return false
 
 
+## Есть ли действующий рынок в торговом квартале (этап 2, аспект 6).
+func _market_in_trade_quarter() -> bool:
+	for b in buildings:
+		if _active(b) and String(b["type"]) == "market" \
+				and String(b.get("quarter", "")) == "trade":
+			return true
+	return false
+
+
 ## Ежедневный бросок: раз в N дней караван приходит в город (рынок активен).
 func _roll_market() -> void:
 	var mcfg: Dictionary = cfg.get("market", {})
@@ -3599,9 +3866,14 @@ func _tick_caravans() -> void:
 			events.append({"type": "caravan_lost", "res": String(c["res"])})
 			_chron("chron.caravan_lost", Loc_res(String(c["res"])), str(int(float(c["amount"]))))
 		else:
-			Game_coins_add(int(c["coins"]))
-			events.append({"type": "caravan_returned", "coins": int(c["coins"])})
-			_chron("chron.caravan_returned", str(int(c["coins"])))
+			# этап 2, аспект 6: рынок в торговом квартале — караваны выгоднее
+			var coins := int(c["coins"])
+			if _market_in_trade_quarter():
+				coins = int(floor(float(coins) * float(cfg.get("zones", {}) \
+						.get("quarters", {}).get("mult", 1.0))))
+			Game_coins_add(coins)
+			events.append({"type": "caravan_returned", "coins": coins})
+			_chron("chron.caravan_returned", str(coins))
 	caravans_out = still
 
 
@@ -3699,6 +3971,9 @@ func _tent_income(b: Dictionary) -> int:
 	coins = minf(coins, float(_tent_cfg().get("max_coins_per_day", 8)))
 	if _wanderer_at(b):
 		coins *= float(_tent_cfg().get("wander", {}).get("income_mult", 2.0))
+	# этап 2, аспект 6: торговый квартал оживляет палатку
+	if String(b.get("quarter", "")) == "trade":
+		coins *= float(cfg.get("zones", {}).get("quarters", {}).get("mult", 1.0))
 	return int(coins)
 
 
@@ -4465,6 +4740,25 @@ func _find_autobuild_tile(type_id: String) -> Vector2i:
 		var rock_t := _find_gather_tile(type_id, [map.TILE_ROCK, map.TILE_ORE], false)
 		if not rock_t == Vector2i(-1, -1):
 			return rock_t
+	# этап 2, аспект 6: самострой идёт по зонам-слоям — магические здания
+	# в магическую зону, склад в складскую, прочие рабочие в промышленную
+	var zone_type := ""
+	if type_id in ["altar", "temple"]:
+		zone_type = "magic"
+	elif type_id == "warehouse":
+		zone_type = "storage"
+	else:
+		var d0 := ""
+		for d in cfg["buildings"]:
+			if String(d["id"]) == type_id:
+				d0 = String(d.get("district", "work"))
+				break
+		if d0 == "work":
+			zone_type = "industrial"
+	if zone_type != "":
+		var zone_t := _tile_in_zone_for_build(zone_type, type_id)
+		if not zone_t == Vector2i(-1, -1):
+			return zone_t
 	var district := "work"
 	for d in cfg["buildings"]:
 		if String(d["id"]) == type_id:
@@ -5952,7 +6246,7 @@ func can_plant_at(tile: Vector2i) -> bool:
 		return false
 	if map.stumps.has(tile) or map.saplings.has(tile):
 		return false
-	if not building_at(tile).is_empty() or _tile_in_zone(tile):
+	if not building_at(tile).is_empty() or _tile_in_fill_zone(tile):
 		return false
 	return true
 

@@ -260,6 +260,7 @@ func _initialize() -> void:
 	_test_stage2_entrance_recalc()
 	_test_stage2_aspect4()
 	_test_stage2_aspect5()
+	_test_stage2_aspect6()
 	if _fails == 0:
 		print("OK: все тесты пройдены")
 		quit(0)
@@ -6284,3 +6285,315 @@ func _test_stage2_aspect5() -> void:
 		_check(sim.move_building(site, site_tile + Vector2i(4, 4)) == "bad_bld",
 				"стройплощадку переносить нельзя")
 	print("[Этап 2, аспект 5] готово")
+
+
+## Этап 2, аспект 6 — новые зоны (промышленная/магическая/складская/отдыха)
+## и кварталы (ремесленный/торговый/магический). Зоны-слои ложатся поверх
+## зданий и дорог и дают скромные бонусы; кварталы образуются сами (кластер
+## зданий специализации); самострой строит по зонам.
+func _test_stage2_aspect6() -> void:
+	print("[Этап 2, аспект 6: новые зоны и кварталы]")
+	var city: Variant = _read_json("res://data/city.json")
+	var loc: Variant = _read_json("res://loc/ru.json")
+	_check(city is Dictionary and loc is Dictionary, "конфиги читаются")
+	if not (city is Dictionary and loc is Dictionary):
+		return
+	var zcfg: Dictionary = city.get("zones", {})
+	var ztypes: Dictionary = zcfg.get("types", {})
+	for zid in ["industrial", "magic", "storage", "leisure"]:
+		_check(bool(ztypes.get(zid, {}).get("overlay", false))
+				and String(ztypes.get(zid, {}).get("color", "")) != "",
+				"тип зоны-слоя в конфиге: " + zid)
+	var qcfg: Dictionary = zcfg.get("quarters", {})
+	_check(not qcfg.is_empty()
+			and not (qcfg.get("specs", {}) as Dictionary).get("craft", {}).is_empty(),
+			"кварталы описаны в конфиге (специализации)")
+	_check(int((qcfg.get("specs", {}) as Dictionary).get("magic", {}) \
+			.get("need", 0)) == 2, "магический квартал: алтаря и храма хватает (need 2)")
+	for key in ["zone.industrial", "zone.magic", "zone.storage", "zone.leisure",
+			"city.zones_more", "city.zones_more_tooltip", "city.quarter_toast",
+			"quarter.craft", "quarter.trade", "quarter.magic", "chron.quarter_formed",
+			"city.zone_overlay_hint", "city.zone_overlay_bad"]:
+		_check(String(loc.get(key, "")) != "", "ключ локализации есть: " + key)
+
+	var sim := _make_sim()
+	sim.res["wood"] = 500.0
+	sim.res["stone"] = 500.0
+	sim.res["crystal"] = 50.0
+
+	# --- зоны-слои ложатся поверх зданий; обустройства не требуют ---
+	var farm_a := _build_now(sim, "farm")
+	_check(not farm_a.is_empty(), "ферма А построена")
+	var farm_b := _build_now(sim, "farm", sim.map.spawn_tile + Vector2i(16, 12))
+	_check(not farm_b.is_empty(), "ферма Б построена (вдали от А)")
+	var ind_cells: Array = sim.bld_cells(farm_a)
+	var added: int = sim.add_zone("industrial", ind_cells)
+	_check(added == ind_cells.size(), "промзона легла прямо на клетки здания")
+	var zone_a: Dictionary = sim.zone_by_id(int(sim.zones[sim.zones.size() - 1]["id"]))
+	_check((zone_a["progress"] as Array).is_empty(), "зона-слой не требует обустройства")
+	_check(sim.bld_in_zone(farm_a, "industrial"), "ферма А стоит в промзоне")
+	_check(not sim.bld_in_zone(farm_b, "industrial"), "ферма Б вне промзоны")
+	var ratio: float = sim.production_mult(farm_a) / sim.production_mult(farm_b)
+	_check(is_equal_approx(ratio, float(zcfg.get("industrial", {}).get("prod_mult", 1.15))),
+			"промзона: производство +15%")
+	var wall_tile: Vector2i = Vector2i(farm_a["tile"]) + Vector2i(0, -2)
+	if sim.placement_block("wall", wall_tile) == "" and sim.placement_gap_ok("wall", wall_tile):
+		_check(sim.place_building("wall", wall_tile), "стена заложена в промзоне")
+		_check((zone_a["cells"] as Array).size() == added,
+				"стройка в зоне-слое не изымает клетки")
+	var grass5: Array = _grass_tiles(sim, sim.map.spawn_tile + Vector2i(-8, 8), 5)
+	_check(grass5.size() >= 5 and sim.add_zone("living", grass5) == 5, "жилая зона разбита")
+	var living_zone: Dictionary = sim.zones[sim.zones.size() - 1]
+	var lt: Vector2i = grass5[0]
+	if sim.placement_block("wall", lt) == "" and sim.placement_gap_ok("wall", lt):
+		sim.place_building("wall", lt)
+		_check((living_zone["cells"] as Array).size() == 4,
+				"стройка на клетке старой зоны изымает клетку (как раньше)")
+
+	# --- расчистка площадок: детерминированные места под кварталы ---
+	var clear := func(base: Vector2i) -> void:
+		for dy in range(-7, 8):
+			for dx in range(-7, 8):
+				var t: Vector2i = base + Vector2i(dx, dy)
+				if sim.map.in_bounds(t):
+					sim.map.grid[t.y][t.x] = sim.map.TILE_GRASS
+	var build_at := func(type_id: String, tile: Vector2i) -> Dictionary:
+		if not sim.place_building(type_id, tile):
+			return {}
+		var b: Dictionary = sim.building_at(tile)
+		b["done"] = true
+		sim._complete_site(b)
+		return b
+	var qbase: Vector2i = sim.map.spawn_tile + Vector2i(14, -10)
+	if not sim.map.in_bounds(qbase + Vector2i(4, 4)):
+		qbase = sim.map.spawn_tile + Vector2i(-14, 10)
+	clear.call(qbase)
+
+	# --- складская зона: склад даёт более сильный и широкий бонус ---
+	var sbase: Vector2i = sim.map.spawn_tile + Vector2i(-14, -10)
+	if not sim.map.in_bounds(sbase + Vector2i(4, 4)):
+		sbase = sim.map.spawn_tile + Vector2i(14, 10)
+	clear.call(sbase)
+	var wh: Dictionary = build_at.call("warehouse", sbase)
+	var farm_c: Dictionary = build_at.call("farm", sbase + Vector2i(5, 0))
+	_check(not wh.is_empty() and not farm_c.is_empty(), "склад и ферма С построены")
+	_check(is_equal_approx(sim.layout_mult(farm_c), 1.0),
+			"склад дальше 4 клеток: бонуса нет (ферма С)")
+	sim.add_zone("storage", sim.bld_cells(wh))
+	_check(is_equal_approx(sim.layout_mult(farm_c),
+			float(zcfg.get("storage", {}).get("warehouse_mult", 1.5))),
+			"склад в складской зоне: бонус соседям х1.5")
+	var farm_d: Dictionary = build_at.call("farm", sbase + Vector2i(-6, 0))
+	_check(is_equal_approx(sim.layout_mult(farm_d), 1.5),
+			"радиус складской зоны — 6 клеток (ферма D накрыта)")
+
+	# --- магическая зона: алтарь и храм сильнее, порча чище ---
+	var mbase: Vector2i = sim.map.spawn_tile + Vector2i(0, 14)
+	if not sim.map.in_bounds(mbase + Vector2i(4, 4)):
+		mbase = sim.map.spawn_tile + Vector2i(0, -14)
+	clear.call(mbase)
+	var altar: Dictionary = build_at.call("altar", mbase)
+	_check(not altar.is_empty(), "алтарь построен")
+	_check(is_equal_approx(sim._altar_work_mult(), 1.0),
+			"без магзоны алтарь работает как обычно")
+	sim.add_zone("magic", sim.bld_cells(altar))
+	_check(is_equal_approx(sim._altar_work_mult(),
+			float(zcfg.get("magic", {}).get("work_mult", 1.2))),
+			"алтарь в магзоне: усиление х1.2")
+	_check(is_equal_approx(sim._magic_pollution_mult(),
+			float(zcfg.get("magic", {}).get("pollution_mult", 0.5))),
+			"порча алтарной магии в магзоне — половина")
+	# храм достроен — алтарь+храм образуют магический квартал (need 2)
+	var temple: Dictionary = build_at.call("temple", mbase + Vector2i(3, 0))
+	_check(not temple.is_empty(), "храм построен")
+	sim.add_zone("magic", sim.bld_cells(temple))
+	_check(is_equal_approx(sim._temple_work_mult(), 1.2 * 1.1),
+			"храм в магзоне и квартале: х1.32")
+
+	# --- кварталы: кластеры специализаций образуются сами ---
+	var f1: Dictionary = build_at.call("forge", qbase)
+	var f2: Dictionary = build_at.call("forge", qbase + Vector2i(3, 0))
+	_check(not f1.is_empty() and not f2.is_empty(), "две кузни стоят")
+	_check(String(f1.get("quarter", "")) == "" and String(f2.get("quarter", "")) == "",
+			"двух кузен для квартала мало")
+	var f3: Dictionary = build_at.call("forge", qbase + Vector2i(0, 3))
+	_check(not f3.is_empty(), "третья кузня стоит")
+	var q_ev := false
+	for ev in sim.events:
+		if String(ev["type"]) == "quarter_formed" and String(ev["spec"]) == "craft":
+			q_ev = true
+	_check(q_ev, "образование квартала — событие для тоста")
+	var q_chron := false
+	for e in sim.chronicle:
+		if String(e["key"]) == "chron.quarter_formed":
+			q_chron = true
+	_check(q_chron, "квартал отмечен в летописи")
+	_check(String(f1.get("quarter", "")) == "craft" and String(f2.get("quarter", "")) == "craft"
+			and String(f3.get("quarter", "")) == "craft", "все три кузни — в ремесленном квартале")
+	_check(is_equal_approx(sim.quarter_mult(f1), float(qcfg.get("mult", 1.1))),
+			"бонус квартала — х1.1")
+	_check(is_equal_approx(sim.layout_mult(farm_b), 1.0),
+			"ферма Б без склада рядом (чистая база для сравнения)")
+	_check(is_equal_approx(sim.production_mult(f1) / sim.production_mult(farm_b),
+			float(qcfg.get("mult", 1.1))),
+			"квартал усиливает производство кузни (х1.1)")
+	sim._damage_building(f2, 99999.0)
+	_check(bool(f2.get("razed", false)), "кузня 2 разрушена")
+	_check(String(f1.get("quarter", "")) == "" and String(f3.get("quarter", "")) == "",
+			"квартал распался (осталось двое)")
+	_check(not bool(sim._quarter_formed.get("craft", false)),
+			"флаг квартала сброшен — новое образование снова отметится")
+
+	# --- торговый квартал: рынок + 2 палатки ---
+	clear.call(qbase + Vector2i(2, 9))
+	var market: Dictionary = build_at.call("market", qbase + Vector2i(0, 8))
+	var t1: Dictionary = build_at.call("tent", qbase + Vector2i(3, 8))
+	var t2: Dictionary = build_at.call("tent", qbase + Vector2i(0, 11))
+	_check(not market.is_empty() and not t1.is_empty() and not t2.is_empty(),
+			"рынок и две палатки стоят")
+	_check(String(market.get("quarter", "")) == "trade" and String(t1.get("quarter", "")) == "trade"
+			and String(t2.get("quarter", "")) == "trade", "торговый квартал образовался")
+	_check(sim._market_in_trade_quarter(), "рынок в торговом квартале")
+
+	# --- магический квартал: алтарь + храм ---
+	_check(String(altar.get("quarter", "")) == "magic"
+			and String(temple.get("quarter", "")) == "magic",
+			"магический квартал: алтарь и храм помечены")
+	_check(is_equal_approx(sim._altar_work_mult(), 1.2 * 1.1),
+			"магзона и магквартал складываются (алтарь)")
+
+	# --- зона отдыха: вечерняя сцена и настроение ---
+	var lbase: Vector2i = sim.map.spawn_tile + Vector2i(6, 6)
+	clear.call(lbase)
+	var garden: Dictionary = build_at.call("garden", lbase)
+	var lcells: Array = sim.bld_cells(garden) + [lbase + Vector2i(3, 0), lbase + Vector2i(4, 0),
+			lbase + Vector2i(3, 1), lbase + Vector2i(4, 1)]
+	_check(sim.add_zone("leisure", lcells) == lcells.size(), "зона отдыха разбита (с садом внутри)")
+	var plain2: Array = [lbase + Vector2i(7, 0), lbase + Vector2i(7, 1)]
+	_check(sim.add_zone("leisure", plain2) == 2, "вторая зона отдыха — без мест притяжения")
+	var all_leisure: Array = lcells + plain2
+	var ztile: Vector2i = sim._nearest_leisure_tile(lbase + Vector2i(7, 1))
+	_check(plain2.has(ztile), "ближайшая клетка досуга — в пустой зоне")
+	var ztile_venue: Vector2i = sim._nearest_leisure_tile(lbase)
+	_check(lcells.has(ztile_venue), "клетка досуга — в зоне с садом")
+	_check(sim._leisure_zone_has_venue(ztile_venue), "сад внутри зоны — место притяжения")
+	_check(not sim._leisure_zone_has_venue(ztile), "пустая зона — без места притяжения")
+	_check(not sim._leisure_zone_has_venue(sim.map.spawn_tile),
+			"клетка вне зоны отдыха — не место притяжения")
+	var r1: Dictionary = sim.residents[0]
+	r1["mood"] = 50.0
+	r1["chat_left"] = 0.0
+	r1["chat_key"] = ""
+	r1["pos"] = sim.map.tile_center_px(ztile)
+	r1["leisure"] = {"tile": ztile, "leisure": true}
+	r1["path"] = PackedVector2Array()
+	sim._leisure(r1, 0.05)
+	_check(is_equal_approx(float(r1["mood"]), 53.0), "вечер в зоне отдыха: +3 настроения")
+	sim._leisure(r1, 0.05)
+	_check(is_equal_approx(float(r1["mood"]), 53.0), "настроение — раз в день")
+	var r2: Dictionary = sim.residents[1]
+	r2["mood"] = 50.0
+	r2["chat_left"] = 0.0
+	r2["chat_key"] = ""
+	r2["pos"] = sim.map.tile_center_px(ztile_venue)
+	r2["leisure"] = {"tile": ztile_venue, "leisure": true}
+	r2["path"] = PackedVector2Array()
+	sim._leisure(r2, 0.05)
+	_check(is_equal_approx(float(r2["mood"]), 55.0), "сад в зоне отдыха делает вечер приятнее (+5)")
+	sim.cfg["zones"]["leisure"]["pick_chance"] = 1.0
+	var plan: Dictionary = sim._pick_leisure(r1)
+	sim.cfg["zones"]["leisure"]["pick_chance"] = 0.5
+	_check(bool(plan.get("leisure", false)) and all_leisure.has(Vector2i(plan["tile"])),
+			"вечерний план: зона отдыха выбирается")
+
+	# --- дороги: через зоны-слои проходят, старые зоны бронируют ---
+	sim.res["stone"] = 50.0
+	var road_cell: Vector2i = lbase + Vector2i(4, 0)
+	if not sim.map.has_road(road_cell) and sim.map.grid[road_cell.y][road_cell.x] == sim.map.TILE_GRASS:
+		_check(sim.place_road(road_cell) == "", "дорога через зону-слой проходит")
+	var lv: Array = living_zone["cells"]
+	if lv.size() > 0 and sim.building_at(Vector2i(lv[0])).is_empty() \
+			and sim.map.grid[Vector2i(lv[0]).y][Vector2i(lv[0]).x] == sim.map.TILE_GRASS:
+		_check(sim.place_road(Vector2i(lv[0])) == "bad", "дорога в старую зону не идёт")
+
+	# --- самострой строит по зонам ---
+	var sim2 := _make_sim()
+	sim2.res["wood"] = 500.0
+	sim2.res["stone"] = 500.0
+	sim2.res["crystal"] = 50.0
+	var abase: Vector2i = sim2.map.spawn_tile + Vector2i(12, 10)
+	if not sim2.map.in_bounds(abase + Vector2i(4, 4)):
+		abase = sim2.map.spawn_tile + Vector2i(-12, -10)
+	for dy in range(-4, 5):
+		for dx in range(-4, 5):
+			var t: Vector2i = abase + Vector2i(dx, dy)
+			if sim2.map.in_bounds(t):
+				sim2.map.grid[t.y][t.x] = sim2.map.TILE_GRASS
+	var acells: Array = [abase, abase + Vector2i(1, 0), abase + Vector2i(0, 1),
+			abase + Vector2i(1, 1), abase + Vector2i(3, 0), abase + Vector2i(3, 1)]
+	_check(sim2.add_zone("industrial", acells) == acells.size(), "промзона для самостроя")
+	_check(acells.has(sim2._find_autobuild_tile("farm")), "самострой ставит ферму в промзону")
+	var sb2: Vector2i = sim2.map.spawn_tile + Vector2i(-12, 10)
+	if not sim2.map.in_bounds(sb2 + Vector2i(4, 4)):
+		sb2 = sim2.map.spawn_tile + Vector2i(12, -10)
+	for dy2 in range(-4, 5):
+		for dx2 in range(-4, 5):
+			var tt: Vector2i = sb2 + Vector2i(dx2, dy2)
+			if sim2.map.in_bounds(tt):
+				sim2.map.grid[tt.y][tt.x] = sim2.map.TILE_GRASS
+	var scells: Array = [sb2, sb2 + Vector2i(1, 0), sb2 + Vector2i(0, 1), sb2 + Vector2i(1, 1)]
+	_check(sim2.add_zone("storage", scells) == scells.size(), "складская зона для самостроя")
+	_check(scells.has(sim2._find_autobuild_tile("warehouse")),
+			"самострой ставит склад в складскую зону")
+
+	# --- сейв: зоны-слои, кварталы и флаги летописи переживают цикл ---
+	var SG: Script = load("res://scripts/save_game.gd")
+	SG.clear_save()
+	var g1 := _make_game()
+	var s1: Object = g1.city_sim
+	s1.res["wood"] = 500.0
+	s1.res["stone"] = 500.0
+	var gb: Vector2i = s1.map.spawn_tile + Vector2i(10, 10)
+	if not s1.map.in_bounds(gb + Vector2i(4, 4)):
+		gb = s1.map.spawn_tile + Vector2i(-10, -10)
+	for dy3 in range(-4, 5):
+		for dx3 in range(-4, 5):
+			var t3: Vector2i = gb + Vector2i(dx3, dy3)
+			if s1.map.in_bounds(t3):
+				s1.map.grid[t3.y][t3.x] = s1.map.TILE_GRASS
+	for i in 3:
+		var b: Dictionary = {}
+		var ft: Vector2i = gb + [Vector2i(0, 0), Vector2i(3, 0), Vector2i(0, 3)][i]
+		if s1.place_building("forge", ft):
+			b = s1.building_at(ft)
+			b["done"] = true
+			s1._complete_site(b)
+	s1.add_zone("industrial", [gb, gb + Vector2i(1, 0), gb + Vector2i(0, 1), gb + Vector2i(1, 1)])
+	var quarters_before := 0
+	for b in s1.buildings:
+		if String(b.get("quarter", "")) == "craft":
+			quarters_before += 1
+	_check(quarters_before == 3, "до сейва: три кузни в квартале")
+	_check(SG.save_game(g1, s1.map.spawn_tile, 7, 3) == "", "сейв с зонами и кварталами записан")
+	var g2 := FakeGame.new()
+	g2.skills = load("res://scripts/skills.gd").new()
+	g2.skills.setup(_read_json("res://data/skills.json"))
+	_check(SG.load_game(g2) == "", "сейв с зонами и кварталами читается")
+	var g2s = g2.city_sim
+	var zones_after := 0
+	for z in g2s.zones:
+		if String(z["type"]) == "industrial":
+			zones_after = (z["cells"] as Array).size()
+	_check(zones_after == 4, "промзона пережила сейв (4 клетки)")
+	var quarters_after := 0
+	for b in g2s.buildings:
+		if String(b.get("quarter", "")) == "craft":
+			quarters_after += 1
+	_check(quarters_after == 3, "квартал пересчитан после загрузки (3 кузни)")
+	var chron_count := 0
+	for e in g2s.chronicle:
+		if String(e["key"]) == "chron.quarter_formed":
+			chron_count += 1
+	_check(chron_count == 1, "летопись квартала не дублируется при загрузке")
+	SG.clear_save()
+	print("[Этап 2, аспект 6] готово")

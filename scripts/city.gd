@@ -492,6 +492,9 @@ func _process_events() -> void:
 			# --- зоны и логистика (M6) ---
 			"zone_done":
 				hud.toast(Loc.t("city.zone_done_toast") % Loc.t("zone." + String(ev["zone"])))
+			"quarter_formed":
+				# кварталы (этап 2, аспект 6): город сам сообщает о новом районе
+				hud.toast(Loc.t("city.quarter_toast") % Loc.t("quarter." + String(ev["spec"])))
 			"porter_trained":
 				hud.toast(Loc.t("city.porter_trained_toast") % String(ev["name"]))
 			"road_auto":
@@ -865,6 +868,8 @@ func _apply_zone() -> void:
 	var added: int = sim.add_zone(zone_mode, cells)
 	if added > 0:
 		hud.toast(Loc.t("city.zone_added") % [Loc.t("zone." + zone_mode), added])
+	elif sim._zone_type_overlay(zone_mode):
+		hud.toast(Loc.t("city.zone_overlay_bad"))
 	else:
 		hud.toast(Loc.t("city.zone_bad"))
 
@@ -980,7 +985,11 @@ func set_zone_mode(type_id: String) -> void:
 			set_move_mode(false)
 		if build_mode != "":
 			set_build_mode("")
-		hud.set_hint(Loc.t("city.zone_hint") % Loc.t("zone." + zone_mode))
+		# зоны-слои (этап 2, аспект 6) обустраивания не требуют — своя подсказка
+		if sim._zone_type_overlay(zone_mode):
+			hud.set_hint(Loc.t("city.zone_overlay_hint") % Loc.t("zone." + zone_mode))
+		else:
+			hud.set_hint(Loc.t("city.zone_hint") % Loc.t("zone." + zone_mode))
 	elif build_mode == "" and not road_mode and not plant_mode:
 		hud.set_hint(_default_hint())
 	_sync_view_tools()

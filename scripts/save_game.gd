@@ -177,6 +177,7 @@ static func _city_sim_block(sim) -> Dictionary:
 		"buildings": sim.buildings,
 		"zones": sim.zones,
 		"_zone_id": int(sim._zone_id),
+		"_quarter_formed": sim._quarter_formed,
 		"_next_id": int(sim._next_id),
 		"animals": sim.animals,
 		"livestock": sim.livestock,
@@ -392,6 +393,10 @@ static func _apply_city(game, cd: Variant) -> String:
 	for z in sim.zones:
 		z["id"] = int(z.get("id", 0))
 	sim._zone_id = int(sd.get("_zone_id", 1))
+	# кварталы (этап 2, аспект 6): флаги летописи и пометки зданий
+	sim._quarter_formed = _dec(sd.get("_quarter_formed", {}))
+	sim.recompute_quarters()
+	sim.events = []   # пересчёт не переигрывает тосты прошлой сессии
 	sim._next_id = int(sd.get("_next_id", 1))
 	sim.animals = _dec(sd.get("animals", []))
 	sim.livestock = _dec(sd.get("livestock", []))
@@ -489,6 +494,8 @@ static func _apply_city(game, cd: Variant) -> String:
 			r["goal_prev"] = ""
 		if not r.has("tavern_visited"):
 			r["tavern_visited"] = false
+		if not r.has("leisure_day"):
+			r["leisure_day"] = 0   # вечер в зоне отдыха (этап 2, аспект 6)
 	# события-тосты прошлой сессии не переигрываем; ландшафт перерисовать
 	sim.events = []
 	sim.hero_alive = false

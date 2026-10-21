@@ -22,6 +22,7 @@ var _autonomy_btn: Button = null   # автономная деревня (пра
 var _bld_btns: Array = []
 var _cat_btns: Array = []          # [{btn, cat_id}] — категории построек (M11)
 var _cat_popup: PopupPanel = null  # выпадающий список мастерских/ресурсных и т.д.
+var _zone_popup: PopupPanel = null # зоны-слои (этап 2, аспект 6)
 var _forest_label: Label = null    # гнев леса (M11)
 var _necro_label: Label = null     # тьма кладбища (M11)
 var _residents_panel: PanelContainer
@@ -780,6 +781,19 @@ func _build() -> void:
 		zbtn.focus_mode = Control.FOCUS_NONE
 		zbtn.pressed.connect(t[1])
 		row.add_child(zbtn)
+	# зоны-слои (этап 2, аспект 6): промышленная/магическая/складская/отдыха —
+	# в выпадающем списке, чтобы нижняя панель не разъезжалась за экран
+	_zone_popup = PopupPanel.new()
+	_zone_popup.add_theme_stylebox_override("panel", _panel_style())
+	root.add_child(_zone_popup)
+	var more_btn := Button.new()
+	more_btn.text = Loc.t("city.zones_more")
+	more_btn.tooltip_text = Loc.t("city.zones_more_tooltip")
+	more_btn.custom_minimum_size = Vector2(104, 52)
+	more_btn.add_theme_font_size_override("font_size", 17)
+	more_btn.focus_mode = Control.FOCUS_NONE
+	more_btn.pressed.connect(func() -> void: _open_zone_popup(more_btn))
+	row.add_child(more_btn)
 	var road_btn := Button.new()
 	road_btn.text = Loc.t("city.road")
 	road_btn.tooltip_text = Loc.t("city.road_tooltip")
@@ -838,6 +852,37 @@ func _open_cat(cat_id: String, btn: Button) -> void:
 	var gs: Vector2 = btn.get_screen_position()
 	_cat_popup.position = Vector2(gs.x, maxf(8.0, gs.y - _cat_popup.size.y - 8.0))
 	_cat_popup.popup()
+
+
+## Зоны-слои (этап 2, аспект 6): выпадающий список новых типов зон.
+func _open_zone_popup(btn: Button) -> void:
+	for child in _zone_popup.get_children():
+		child.queue_free()
+	var box := VBoxContainer.new()
+	box.add_theme_constant_override("separation", 4)
+	_zone_popup.add_child(box)
+	var ztypes: Dictionary = cfg.get("zones", {}).get("types", {})
+	for zid in ["industrial", "magic", "storage", "leisure"]:
+		if not ztypes.has(zid):
+			continue
+		var zbtn := Button.new()
+		zbtn.text = Loc.t("zone." + String(zid))
+		zbtn.tooltip_text = Loc.t("zone." + String(zid) + "_tip")
+		zbtn.custom_minimum_size = Vector2(240, 44)
+		zbtn.add_theme_font_size_override("font_size", 17)
+		zbtn.add_theme_color_override("font_color",
+				Color(String(ztypes[zid].get("color", "#ffffff"))))
+		zbtn.focus_mode = Control.FOCUS_NONE
+		zbtn.alignment = HORIZONTAL_ALIGNMENT_LEFT
+		var zid2 := String(zid)
+		zbtn.pressed.connect(func() -> void:
+			city.set_zone_mode(zid2)
+			_zone_popup.hide())
+		box.add_child(zbtn)
+	_zone_popup.reset_size()
+	var gs: Vector2 = btn.get_screen_position()
+	_zone_popup.position = Vector2(gs.x, maxf(8.0, gs.y - _zone_popup.size.y - 8.0))
+	_zone_popup.popup()
 
 
 ## --- Панель дисциплин города (M7, клавиша U) -------------------------------
@@ -1029,6 +1074,8 @@ func _chron_text_of(e: Dictionary) -> String:
 func _chron_arg(v: String) -> String:
 	if v.begins_with("goal."):
 		return Loc.t(v)
+	if v in ["craft", "trade", "magic"]:
+		return Loc.t("quarter." + v)   # кварталы (этап 2, аспект 6)
 	if v in ["wood", "stone", "food", "crystal", "tools", "iron", "metal", "kits", "seeds"]:
 		return Loc.t("res." + v)
 	if v in ["sheep", "cow", "pig", "chicken", "chick", "turkey"]:

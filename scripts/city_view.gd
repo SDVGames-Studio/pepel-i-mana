@@ -79,6 +79,7 @@ func _draw() -> void:
 	_draw_anomaly()
 	_draw_world_exit()
 	_draw_world_sorted()
+	_draw_quarters()
 	_draw_ghost()
 
 
@@ -394,10 +395,18 @@ func _draw_wanderer(w: Dictionary) -> void:
 
 
 ## Зоны (M6): заливка по типу, прогресс обустройства в незаполненных клетках.
+## Этап 2, аспект 6: зоны-слои (пром/магия/склад/отдых) — ровная заливка
+## без обустройства, ложатся поверх зданий и дорог.
 func _draw_zones() -> void:
 	var fill_work: float = float(sim.cfg.get("zones", {}).get("fill_work", 4.0))
 	for z in sim.zones:
 		var col: Color = _zone_colors.get(String(z["type"]), Color(0.7, 0.7, 0.4))
+		if sim._zone_type_overlay(String(z["type"])):
+			for c in z["cells"]:
+				var orect := Rect2(Vector2(c) * map.ts, Vector2(map.ts, map.ts))
+				draw_rect(orect, Color(col.r, col.g, col.b, 0.20))
+				draw_rect(orect.grow(-1.5), Color(col.r, col.g, col.b, 0.5), false, 1.0)
+			continue
 		for i in (z["cells"] as Array).size():
 			var tile: Vector2i = z["cells"][i]
 			var rect := Rect2(Vector2(tile) * map.ts, Vector2(map.ts, map.ts))
@@ -878,10 +887,40 @@ func _draw_zone_preview() -> void:
 			if not map.in_bounds(tile):
 				continue
 			var rect := Rect2(Vector2(tile) * map.ts, Vector2(map.ts, map.ts))
-			if sim._zone_cell_ok(tile):
+			# зоны-слои ложатся поверх зданий и дорог (этап 2, аспект 6)
+			var ok: bool = sim._overlay_zone_cell_ok(tile) if sim._zone_type_overlay(zone_mode) \
+					else sim._zone_cell_ok(tile)
+			if ok:
 				draw_rect(rect, Color(col.r, col.g, col.b, 0.35))
 			else:
 				draw_rect(rect, Color(1.0, 0.3, 0.3, 0.3))
+
+
+## Кварталы (этап 2, аспект 6): подпись над центром масс зданий квартала —
+## город сам показывает, где сложился ремесленный/торговый/магический район.
+func _draw_quarters() -> void:
+	var ts := float(map.ts)
+	var font := ThemeDB.fallback_font
+	for spec in ["craft", "trade", "magic"]:
+		var cx := 0.0
+		var cy := 0.0
+		var n := 0
+		for b in sim.buildings:
+			if String(b.get("quarter", "")) != spec:
+				continue
+			n += 1
+			var t: Vector2i = b["tile"]
+			cx += float(t.x)
+			cy += float(t.y)
+		if n == 0:
+			continue
+		var center := Vector2(cx / float(n), cy / float(n)) * ts + Vector2(ts, -ts * 0.4)
+		var text := Loc.t("quarter." + spec)
+		var fsize := 13
+		draw_string_outline(font, center - Vector2(text.length() * fsize * 0.28, 0), text,
+				HORIZONTAL_ALIGNMENT_LEFT, -1, fsize, 3, Color(0.1, 0.08, 0.05, 0.85))
+		draw_string(font, center - Vector2(text.length() * fsize * 0.28, 0), text,
+				HORIZONTAL_ALIGNMENT_LEFT, -1, fsize, Color(1.0, 0.95, 0.8, 0.95))
 
 
 func _center(x: int, y: int) -> Vector2:
