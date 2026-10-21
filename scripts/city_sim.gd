@@ -2018,8 +2018,9 @@ func _substitutes_to_primary(taken: Dictionary) -> void:
 
 ## Свободный житель замещает нехватку профессии need: предпочитает выучившего,
 ## иначе учится сам (профессия попадает в prof_extra — ответ на просьбу заказчика).
-## Староста — последний резерв стройки (правка 2026-10-21: при соло-старте без
-## строителя город вечно стоял на стройплощадках и не рос).
+## Староста — последний резерв (правки 2026-10-21): в одиночном городе без
+## строителей и фермеров стройки стояли вечно, фермы не давали еду и город
+## не рос; со старостой за любым рабочим местом город живёт и в соло.
 func _substitute_into(need: String, taken: Dictionary, bld: Dictionary, is_site: bool) -> void:
 	var learned_cand: Dictionary = {}
 	var any_cand: Dictionary = {}
@@ -2030,9 +2031,9 @@ func _substitute_into(need: String, taken: Dictionary, bld: Dictionary, is_site:
 		if String(r["prof"]) == "" or String(r.get("ail", "")) != "":
 			continue
 		if String(r["prof"]) == "elder":
-			# староста управляет, а не замещает — но стройку в одиночном городе
-			# тянет сам, иначе дома не достроятся и жители не придут
-			if r["bld"] == null and r["site"] == null and is_site:
+			# староста управляет, а не замещает — но в одиночном городе
+			# без рабочих он берёт любую нехватку на себя
+			if r["bld"] == null and r["site"] == null:
 				elder_cand = r
 			continue
 		if r["bld"] != null or r["site"] != null:
@@ -2329,7 +2330,11 @@ func _update_resident(r: Dictionary, dt: float) -> void:
 		_porter_work(r, dt)   # носит кучи со зданий на склад (M6)
 		return
 	if String(r["prof"]) == "elder":
-		_manage_walk(r, dt)
+		# староста при деле: пока есть незаполненные клетки зон и спелые
+		# грядки — работает ими (иначе в соло-городе поле стоит пустым),
+		# всё обустроено — обходит владения (правка 2026-10-21)
+		if not _zone_fill_work(r, dt):
+			_manage_walk(r, dt)
 		return
 	if guard_on_duty:
 		_guard_post(r, dt)
@@ -3265,6 +3270,46 @@ func _animal_by_id(animal_id: int) -> Dictionary:
 		if int(a["id"]) == animal_id:
 			return a
 	return {}
+
+
+## Готовое здание с кучей в шаге-двух от героя ({} — нет): героем по E куча
+## уносится на склад в общий пул, как носильщик (2026-10-21: «не могу собирать
+## с фермы еду» — в соло носильщика нет, еда застревала у фермы).
+func hero_haul_near(px: Vector2) -> Dictionary:
+	var best: Dictionary = {}
+	var best_d := 1.8 * float(map.ts) + float(map.ts) * 0.5
+	for b in buildings:
+		if not bool(b["done"]) or not (b as Dictionary).has("pile"):
+			continue
+		if _pile_total(b) < 0.5:
+			continue
+		var d: float = bld_dist_px(px, b)
+		if d <= best_d:
+			best_d = d
+			best = b
+	return best
+
+
+## Унести кучу здания в общий пул (весь ворох разом). "" — кучи рядом нет,
+## "haul" — принесено (детали — в событии hero_haul).
+func hero_haul(px: Vector2) -> String:
+	var b: Dictionary = hero_haul_near(px)
+	if b.is_empty():
+		return ""
+	var pile: Dictionary = b["pile"]
+	var total := 0.0
+	var key := ""
+	var best := 0.0
+	for k in pile:
+		var n := float(pile[k])
+		_add_resource_capped(String(k), n)
+		total += n
+		if n > best:
+			best = n
+			key = String(k)
+	b.erase("pile")
+	events.append({"type": "hero_haul", "res": key, "n": int(round(total))})
+	return "haul"
 
 
 ## Зона-поле, в которую попадает тайл ({} — нет).

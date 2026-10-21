@@ -37,7 +37,7 @@
 		"mine_hits": 4,
 		"stone_per_hit": 2,
 		"build_per_hit": 2.5,
-		"fill_per_hit": 2.0,
+		"fill_per_hit": 4.0,
 		"cooldown": 0.35
 	},
 	"storage_base": 150,

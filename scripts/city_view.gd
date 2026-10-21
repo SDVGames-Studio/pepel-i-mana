@@ -411,18 +411,23 @@ func _draw_zones() -> void:
 			var tile: Vector2i = z["cells"][i]
 			var rect := Rect2(Vector2(tile) * map.ts, Vector2(map.ts, map.ts))
 			var filled: bool = float(z["progress"][i]) >= fill_work
-			draw_rect(rect, Color(col.r, col.g, col.b, 0.42 if filled else 0.18))
+			# невыделенные клетки заметны сразу (замечание 2026-10-21:
+			# «ставлю поле — ничего нет»): заливка плотнее, у поля — борозды
+			draw_rect(rect, Color(col.r, col.g, col.b, 0.42 if filled else 0.32))
+			if String(z["type"]) == "field":
+				for k: int in 3:
+					var y: float = rect.position.y + map.ts * (0.25 + 0.25 * k)
+					draw_line(Vector2(rect.position.x + 4, y),
+							Vector2(rect.position.x + map.ts - 4, y),
+							col.darkened(0.3 if filled else 0.15),
+							1.5 if filled else 1.0)
 			if filled:
 				draw_rect(rect.grow(-2), col.darkened(0.15), false, 1.5)
 				match String(z["type"]):
 					"field":
-						# борозды поля
-						for k: int in 3:
-							var y: float = rect.position.y + map.ts * (0.25 + 0.25 * k)
-							draw_line(Vector2(rect.position.x + 4, y),
-									Vector2(rect.position.x + map.ts - 4, y), col.darkened(0.3), 1.5)
 						# посев (M10): стадия роста культуры — спрайт растения;
 						# этап 2, аспект 3: вид культуры — из культуры поля
+						# (борозды рисуются и вспаханным, и нет — см. выше)
 						var crops: Array = z.get("crops", [])
 						var crop_vis: int = int(sim.crop_def(String(z.get("crop", "turnip"))).get("sprite", 0))
 						if i < crops.size() and not (crops[i] as Dictionary).is_empty():

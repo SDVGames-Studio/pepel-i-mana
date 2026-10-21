@@ -46,6 +46,7 @@ var _hero_rock: Dictionary = {} # скала/руда рядом (E — добы
 var _hero_crop: Dictionary = {} # спелая грядка рядом (E — собрать, этап 2, аспект 3)
 var _hero_sow: Dictionary = {}  # пустая клетка поля рядом (E — посеять, 2026-10-21)
 var _hero_till: Dictionary = {} # невспаханная клетка зоны рядом (E — вспахать)
+var _hero_haul: Dictionary = {} # куча ресурса у здания рядом (E — на склад, 2026-10-21)
 var _pending_field: Array = []  # клетки нарисованного поля — ждут выбора культуры
 var _pick_zone_id := -1         # id поля, в котором меняем культуру
 var _hero_site: Dictionary = {} # недострой рядом (E — помочь)
@@ -292,6 +293,7 @@ func _process(delta: float) -> void:
 	_hero_crop = sim.hero_harvest_near(hero.position)
 	_hero_sow = sim.hero_sow_near(hero.position)
 	_hero_till = sim.hero_till_near(hero.position)
+	_hero_haul = sim.hero_haul_near(hero.position)
 	_hero_repair_bld = sim.hero_repair_near(hero.position)
 	if _near_map_border():
 		hud.set_hint(Loc.t("city.exit_world"))
@@ -310,6 +312,8 @@ func _process(delta: float) -> void:
 	elif not _hero_repair_bld.is_empty():
 		hud.set_hint(Loc.t("city.repair_hint") % [_bld_name(String(_hero_repair_bld["type"])),
 				_cost_str(sim.repair_cost(String(_hero_repair_bld["type"])))])
+	elif not _hero_haul.is_empty():
+		hud.set_hint(Loc.t("city.hint_haul") % _bld_name(String(_hero_haul["type"])))
 	elif not _hero_tree.is_empty():
 		hud.set_hint(Loc.t("city.hint_chop") % [int(_hero_tree["hits"]), int(_hero_tree["need"])])
 	elif not _hero_rock.is_empty():
@@ -507,6 +511,10 @@ func _process_events() -> void:
 			"dungeon_calm":
 				# данж у города зачищен — волны мутантов сдвинулись (2026-10-21)
 				hud.toast(Loc.t("city.dungeon_calm_toast") % int(ev["days"]))
+			"hero_haul":
+				# герой унёс кучу здания на склад (2026-10-21)
+				hud.toast(Loc.t("city.hero_haul_done") % [int(ev.get("n", 0)),
+						Loc.t("res." + String(ev.get("res", "food")))])
 			# --- ремонт и перенос (этап 2, аспект 5) ---
 			"bld_repaired":
 				hud.toast(Loc.t("city.restored_toast" if bool(ev.get("razed", false))
@@ -1251,7 +1259,9 @@ func _hero_act() -> bool:
 			hud.toast(Loc.t("city.repair_no_res") % _cost_str(sim.repair_cost(String(_hero_repair_bld["type"]))))
 			_hero_work_cd = float(hw.get("cooldown", 0.35))
 			return true
-		# "full" между кадрами починила мастерская — идём дальше
+	# "full" между кадрами починила мастерская — идём дальше
+	if res == "":
+		res = sim.hero_haul(hero.position)
 	if res == "":
 		res = sim.hero_chop(hero.position)
 	if res == "":

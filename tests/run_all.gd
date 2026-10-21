@@ -1681,6 +1681,7 @@ func _test_threat() -> void:
 	for r in sim2.residents:
 		r["traits"] = []
 	var brute_tile: Vector2i = sim2.map.nearest_walkable(wall_tile + Vector2i(2, 0))
+	sim2._raid_rng.seed = 7   # детерминированный спавн/поведение мутанта (анти-флейк)
 	_spawn_one_raider(sim2, "brute", brute_tile)
 	var razed_seen := false
 	for i in 2600:   # этап 2: рельеф сплошной в A* — обходы длиннее
@@ -2552,7 +2553,7 @@ func _test_m6() -> void:
 			or delivered, "носильщик забрал кучу целиком")
 	# если уже донёс — выдаём новый груз под проверку «носит к амбару»
 	if delivered and float(porter_pg.get("carry", 0.0)) <= 0.0:
-		farm_pg["pile"] = {"food": 5.0}
+		farm_pg["pile"] = {"food": 12.0}
 		_teleport(sim_pg, porter_pg, sim_pg.bld_spot(farm_pg))
 		for i in 4:
 			sim_pg.tick(1.0)
@@ -2562,8 +2563,9 @@ func _test_m6() -> void:
 	sim_pg._porter_work(porter_pg, 0.5)
 	_check(float(sim_pg.res["food"]) > food_pg0, "без склада носильщик сносит груз к амбару города")
 	# переполненное хранилище: носильщик ждёт с грузом
+	# (куча 12 >= chunk 8 — иначе подборка ниже порога и тест флейкает)
 	sim_pg.res["food"] = float(sim_pg.storage_cap())
-	farm_pg["pile"] = {"food": 5.0}
+	farm_pg["pile"] = {"food": 12.0}
 	var porter_pg2: Dictionary = _resident_by_prof(sim_pg, "porter")
 	porter_pg2["traits"] = []
 	porter_pg2["mood"] = 100.0
@@ -6631,6 +6633,10 @@ func _test_fixes_v1191() -> void:
 	solo.setup(solo_map, city, 1, "normal")
 	solo._event_rng.seed = 11
 	solo._next_raid_at = 999999999.0   # волны отдельно: здесь — рост города
+	# болезни глушим (гигиена теста): больной староста в соло может умереть —
+	# это честная игра, но не предмет этой проверки
+	solo.people["ailments"]["sick_chance"] = 0.0
+	solo.people["ailments"]["wounded_on_surge"] = 0
 	var step := day_len / 4.0
 	for i in 25 * 4:
 		solo.tick(step)
@@ -6728,9 +6734,8 @@ func _test_fixes_v1191() -> void:
 	var z: Dictionary = sim3.zones[0]
 	var px: Vector2 = sim3.map.tile_center_px(base)
 	_check(not sim3.hero_till_near(px).is_empty(), "герой видит невспаханную клетку поля")
-	_check(sim3.hero_till(px) == "till", "E пашет клетку (первый удар)")
-	_check(float(z["progress"][0]) > 0.0, "прогресс вспашки растёт")
-	_check(sim3.hero_till(px) == "tilled", "второй удар достраивает клетку (fill 2+2)")
+	_check(sim3.hero_till(px) == "tilled", "один E вспахивает клетку целиком (fill_per_hit)")
+	_check(float(z["progress"][0]) >= 4.0, "клетка обустроена (fill_work)")
 	# остальные клетки поля считают обустроенными (жители/герой уже прошли их)
 	z["progress"] = [9.0, 9.0, 9.0, 9.0]
 	sim3.res["seeds"] = 5.0
@@ -6792,4 +6797,54 @@ func _test_fixes_v1191() -> void:
 		if String(r["prof"]) == "elder":
 			elder = r
 	_check(elder["site"] == site, "староста в одиночном городе берёт стройку сам")
+
+	# --- 7. правки v1.19.2: староста работает, кучу можно унести, ферма живёт -
+	# староста обустраивает зоны сам (соло: «ставлю поле — ничего нет»)
+	var sim5 := _make_sim()
+	sim5._last_daily_day = 999
+	sim5._next_raid_at = 999999999.0
+	for r in sim5.residents.duplicate():
+		if String(r["prof"]) != "elder":
+			sim5.residents.erase(r)
+	var cells5: Array = []
+	var base5: Vector2i = sim5.map.spawn_tile + Vector2i(3, 3)
+	for dy in 2:
+		for dx in 2:
+			cells5.append(base5 + Vector2i(dx, dy))
+	_check(sim5.add_zone("field", cells5, "turnip") == 4, "поле для старосты создано")
+	var prog0 := float((sim5.zones[0]["progress"] as Array)[0])
+	for i in 4 * 8:   # ~2 дня: дойти и вспахать
+		sim5.tick(30.0)
+	var prog1 := float((sim5.zones[0]["progress"] as Array)[0])
+	_check(prog1 > prog0, "староста сам обустраивает клетки поля (%.1f → %.1f)" % [prog0, prog1])
+	# староста замещает фермера: ферма без работника не стоит в соло
+	var ftile := _find_free_tile(sim5, sim5.map.spawn_tile)
+	_check(ftile != Vector2i(-1, -1), "место под ферму найдено")
+	_check(sim5.place_building("farm", ftile), "ферма заложена")
+	var farm5: Dictionary = sim5.building_at(ftile)
+	sim5._complete_site(farm5)
+	sim5.tick(0.1)   # работник освобождается от готовой стройки на следующем тике
+	_check(bool(farm5["done"]), "ферма достроена")
+	sim5._assign_jobs()
+	var farm_worker: int = int(farm5["worker"])
+	var elder5: Dictionary = {}
+	for r in sim5.residents:
+		if String(r["prof"]) == "elder":
+			elder5 = r
+	_check(farm_worker == int(elder5["id"]), "староста замещает фермера в соло-городе")
+	# герой уносит кучу со здания в пул по E
+	var food5 := float(sim5.res["food"])
+	farm5["pile"] = {"food": 12.0}
+	var fpx: Vector2 = sim5.map.tile_center_px(Vector2i(farm5["tile"]))
+	_check(not sim5.hero_haul_near(fpx).is_empty(), "герой видит кучу у фермы")
+	_check(sim5.hero_haul(fpx) == "haul", "E уносит кучу фермы на склад")
+	_check(float(sim5.res["food"]) >= food5 + 12.0 - 0.01, "еда из кучи в общем пуле")
+	_check(not farm5.has("pile"), "куча опустела")
+	var haul_ev := false
+	for ev in sim5.events:
+		if String(ev["type"]) == "hero_haul":
+			haul_ev = true
+	_check(haul_ev, "событие «куча доставлена» дошло до сцены")
+	for key in ["city.hint_haul", "city.hero_haul_done"]:
+		_check(String(loc.get(key, "")) != "", "ключ локализации есть: " + key)
 	print("[Правки v1.19.1] готово")

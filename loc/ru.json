@@ -1026,6 +1026,8 @@
 	"city.hero_sow_no_seeds": "Нет семян для посева",
 	"city.hint_till": "E — вспахать клетку зоны",
 	"city.hero_till_done": "Клетка вспахана — можно сеять",
+	"city.hint_haul": "E — отнести кучу с %s на склад",
+	"city.hero_haul_done": "Куча доставлена на склад: +%d %s",
 	"city.hover_field": "%s · %s · засеяно %d/%d кл.",
 	"city.hover_field_ripe": "%s · %s · спелое: %d/%d кл. — E собрать",
 	"city.hover_pasture": "%s · скот %d/%d",
