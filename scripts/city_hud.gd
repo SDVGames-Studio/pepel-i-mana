@@ -295,6 +295,59 @@ func _m_btn(text: String, action: Callable) -> Button:
 	return btn
 
 
+## Пикер культур поля (этап 2, аспект 3): кнопки культур внизу поверх подсказки.
+## defs: [{id, loc, desc}], cb(crop_id) вызывается при выборе.
+var _crop_panel: PanelContainer = null
+var _crop_cb: Callable = Callable()
+
+
+func show_crop_pick(defs: Array, title: String, cb: Callable) -> void:
+	if _crop_panel == null:
+		_crop_panel = PanelContainer.new()
+		_crop_panel.add_theme_stylebox_override("panel", _panel_style())
+		_crop_panel.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
+		_crop_panel.grow_horizontal = Control.GROW_DIRECTION_BOTH
+		_crop_panel.grow_vertical = Control.GROW_DIRECTION_BEGIN
+		_crop_panel.position.y = -64.0
+		add_child(_crop_panel)
+	_crop_cb = cb
+	for c in _crop_panel.get_children():
+		c.queue_free()
+	var box := VBoxContainer.new()
+	box.add_theme_constant_override("separation", 6)
+	_crop_panel.add_child(box)
+	var lbl := _label(16)
+	lbl.text = title
+	lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	box.add_child(lbl)
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 8)
+	box.add_child(row)
+	for d: Dictionary in defs:
+		var cid := String(d["id"])
+		var btn := _m_btn(Loc.t(String(d.get("loc", cid))),
+				func() -> void: _crop_picked(cid))
+		btn.tooltip_text = Loc.t(String(d.get("desc", "")))
+		row.add_child(btn)
+	_crop_panel.visible = true
+
+
+func _crop_picked(crop: String) -> void:
+	hide_crop_pick()
+	if _crop_cb.is_valid():
+		_crop_cb.call(crop)
+
+
+func hide_crop_pick() -> void:
+	if _crop_panel != null:
+		_crop_panel.visible = false
+	_crop_cb = Callable()
+
+
+func crop_pick_visible() -> bool:
+	return _crop_panel != null and _crop_panel.visible
+
+
 func _build_magic_panel(root: Control) -> void:
 	_magic_panel = PanelContainer.new()
 	_magic_panel.add_theme_stylebox_override("panel", _panel_style())

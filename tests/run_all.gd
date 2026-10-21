@@ -256,6 +256,7 @@ func _initialize() -> void:
 	_test_hero_work()
 	_test_stage2_aspect1()
 	_test_stage2_aspect2()
+	_test_stage2_aspect3()
 	if _fails == 0:
 		print("OK: все тесты пройдены")
 		quit(0)
@@ -2385,11 +2386,11 @@ func _test_m6() -> void:
 		_teleport(sim_f, worker_f, zfield["cells"][i])
 		sim_f.tick(6.0)
 	var food0: float = float(sim_f.res["food"])
-	# M10: поле работает циклами посев→рост→урожай (stage_days 0.5 → урожай
-	# созревает за ~2.5 дня); тикаем полднями, пока не соберём урожай
+	# M10 + этап 2/аспект 3: поле работает циклами посев→рост→урожай; культура
+	# по умолчанию — репа (stage_days 0.4 → зреет за ~1.6 дня)
 	for i in 6:
 		sim_f.tick(float(sim_f.cfg["day_length"]) / 2.0)
-	var expected: float = float(fcells.size()) * float(sim_f.cfg["farming"]["harvest_food"])
+	var expected: float = fcells.size() * float(sim_f.crop_def("turnip")["harvest"])
 	_check(float(sim_f.res["food"]) >= food0 + expected - 0.6,
 			"поле собрало урожай: %d клетки × %.1f" % [fcells.size(), expected])
 	_check(float(sim_f.res["seeds"]) >= 1.0 or (sim_f.zones[0]["crops"] as Array).size() > 0,
@@ -5870,3 +5871,64 @@ func _test_stage2_aspect2() -> void:
 	_check(food_inv.size() == 1 and String(food_inv[0]["id"]) == "hide",
 			"шкура осталась в рюкзаке (не еда)")
 	print("[Этап 2, аспект 2] готово")
+
+
+## Этап 2, аспект 3 — поля-грядки DF-стиля: культура целиком на поле,
+## быстрая/медленная культуры, смена культуры, герой собирает урожай.
+func _test_stage2_aspect3() -> void:
+	print("[Этап 2, аспект 3: поля-грядки]")
+	var city: Variant = _read_json("res://data/city.json")
+	var loc: Variant = _read_json("res://loc/ru.json")
+	_check(city is Dictionary and loc is Dictionary, "конфиги читаются")
+	if not (city is Dictionary and loc is Dictionary):
+		return
+	var crops: Dictionary = city.get("farming", {}).get("crops", {})
+	_check(crops.size() == 2, "две культуры (репа и тыква)")
+	_check(crops.has("turnip") and crops.has("pumpkin"), "культуры: turnip и pumpkin")
+	var t_days := float(crops.get("turnip", {}).get("stage_days", 9.0))
+	var p_days := float(crops.get("pumpkin", {}).get("stage_days", 0.0))
+	var t_food := float(crops.get("turnip", {}).get("harvest", 0.0))
+	var p_food := float(crops.get("pumpkin", {}).get("harvest", 0.0))
+	_check(t_days < p_days, "репа зреет быстрее тыквы")
+	_check(t_food < p_food, "тыква даёт больше еды")
+	for cid in crops:
+		_check(String(loc.get("crop." + String(cid), "")) != "", "культура «%s» названа в локализации" % cid)
+	var sim := _make_sim()
+	# поле создаётся с культурой и сеется ею целиком
+	var cells: Array = []
+	var base: Vector2i = sim.map.spawn_tile + Vector2i(3, 3)
+	for dy in 2:
+		for dx in 2:
+			cells.append(base + Vector2i(dx, dy))
+	sim.res["seeds"] = 50.0
+	_check(sim.add_zone("field", cells, "pumpkin") == 4, "поле 2×2 засеяно тыквой")
+	var z: Dictionary = sim.zones[0]
+	_check(String(z.get("crop", "")) == "pumpkin", "культура поля — тыква")
+	z["progress"] = [9.0, 9.0, 9.0, 9.0]   # клетки «обустроены» (fill_work = 4)
+	# смена культуры очищает посевы и пересеивает
+	_check(sim.set_field_crop(z, "turnip"), "культура поля меняется")
+	_check(String(z["crop"]) == "turnip" and (z["crops"] as Array).is_empty(),
+			"после смены поле пусто — пересеется репой")
+	# герой собирает спелую грядку: еда в пул, семя назад, пересев той же культурой
+	var spot: Vector2i = base
+	var crops_arr: Array = z["crops"]
+	while crops_arr.size() <= 4:
+		crops_arr.append({})
+	crops_arr[0] = {"stage": 9, "t": 0.0, "ripe": true}   # спелая репа
+	sim.res["seeds"] = 5.0
+	var food0: float = float(sim.res["food"])
+	var seeds0: float = float(sim.res["seeds"])
+	var near: Dictionary = sim.hero_harvest_near(sim.map.tile_center_px(spot))
+	_check(not near.is_empty() and String(near["crop"]) == "turnip", "герой видит спелую грядку")
+	_check(sim.hero_harvest(sim.map.tile_center_px(spot)) == "food", "E собирает урожай")
+	var got: float = float(sim.crop_def("turnip")["harvest"]) * float(sim.crop_mult())
+	_check(float(sim.res["food"]) >= food0 + got - 0.01, "еда за клетку в общем пуле")
+	_check(float(sim.res["seeds"]) >= seeds0, "семя вернулось")
+	var cell0: Dictionary = (z["crops"] as Array)[0]
+	_check(not cell0.is_empty() and int(cell0["stage"]) == 0, "грядка пересеяна той же культурой")
+	_check(sim.hero_harvest(sim.map.tile_center_px(spot)) == "", "несозревшая клетка не собирается")
+	# ключи локализации пикера
+	for key in ["city.crop_pick_hint", "city.crop_pick_change", "city.crop_changed",
+			"city.hint_harvest", "city.hero_harvest_done"]:
+		_check(String(loc.get(key, "")) != "", "ключ локализации есть: " + key)
+	print("[Этап 2, аспект 3] готово")

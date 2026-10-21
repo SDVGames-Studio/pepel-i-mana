@@ -2840,11 +2840,13 @@ func _roll_porter() -> void:
 # --- зоны (M6): поле, пастбище, жилая ----------------------------------------
 
 ## Разбить зону из клеток (сцена выделяет мышью). Возвращает число годных клеток.
-func add_zone(type_id: String, cells: Array) -> int:
+func add_zone(type_id: String, cells: Array, crop := "turnip") -> int:
 	var types: Dictionary = cfg.get("zones", {}).get("types", {})
 	if not types.has(type_id):
 		return 0
 	var zone := {"id": _zone_id, "type": type_id, "cells": [], "progress": []}
+	if type_id == "field":
+		zone["crop"] = field_crop_id(crop)   # грядка засеивается целиком одной культурой
 	var added := 0
 	for c in cells:
 		if _zone_cell_ok(c):
@@ -2856,6 +2858,53 @@ func add_zone(type_id: String, cells: Array) -> int:
 	_zone_id += 1
 	zones.append(zone)
 	return added
+
+
+## Ид культуры поля из конфига (неизвестный — репа, фолбэк).
+func field_crop_id(crop: String) -> String:
+	var crops: Dictionary = cfg.get("farming", {}).get("crops", {})
+	return crop if crops.has(crop) else ("turnip" if crops.has("turnip") else "")
+
+
+## Определение культуры: темп созревания и еда за клетку (из data/city.json).
+func crop_def(crop: String) -> Dictionary:
+	var fcfg: Dictionary = cfg.get("farming", {})
+	var cdef: Dictionary = fcfg.get("crops", {}).get(crop, {})
+	if cdef.is_empty():
+		return {"stage_days": float(fcfg.get("stage_days", 0.5)),
+				"harvest": float(fcfg.get("harvest_food", 6.0)), "sprite": 0}
+	return cdef
+
+
+## Сменить культуру поля (DF-стиль): всё поле пересеивается заново.
+## Возвращает true, если зона — поле и культура применена.
+func set_field_crop(zone: Dictionary, crop: String) -> bool:
+	if zone.is_empty() or String(zone["type"]) != "field":
+		return false
+	zone["crop"] = field_crop_id(crop)
+	zone["crops"] = []   # старые посевы убраны — перезасеется само за семена
+	events.append({"type": "crop_changed", "crop": String(zone["crop"])})
+	return true
+
+
+## Зона по id ({} — нет).
+func zone_by_id(id: int) -> Dictionary:
+	for z in zones:
+		if int(z["id"]) == id:
+			return z
+	return {}
+
+
+## Зона-поле, в которую попадает тайл ({} — нет).
+func field_at(t: Vector2i) -> Dictionary:
+	for z in zones:
+		if String(z["type"]) != "field":
+			continue
+		for i in (z["cells"] as Array).size():
+			if Vector2i(z["cells"][i]) == t and bool(_cell_filled(z, i)) \
+					and building_at(t).is_empty():
+				return z
+	return {}
 
 
 ## Клетка годна под зону: трава без зданий и без чужих зон.
@@ -2952,9 +3001,13 @@ func _update_zones(dt: float, day_len: float) -> void:
 			continue
 		if t != "field":
 			continue
-		# посевы по клеткам (M10)
+		# посевы по клеткам (M10); культура поля — этап 2, аспект 3:
+		# вся грядка одной культурой, темп и урожай — из data/city.json
 		if not (z as Dictionary).has("crops"):
 			z["crops"] = []
+		var cdef: Dictionary = crop_def(String(z.get("crop", "turnip")))
+		var crop_stage_days := maxf(0.1, float(cdef.get("stage_days", fcfg.get("stage_days", 0.5))))
+		var crop_harvest := float(cdef.get("harvest", fcfg.get("harvest_food", 6.0)))
 		var crops: Array = z["crops"]
 		for i in (z["cells"] as Array).size():
 			if not _cell_filled(z, i) or not building_at(z["cells"][i]).is_empty():
@@ -2969,7 +3022,7 @@ func _update_zones(dt: float, day_len: float) -> void:
 					crops[i] = {"stage": 0, "t": 0.0, "ripe": false}
 			elif not bool(crop.get("ripe", false)):
 				crop["t"] = float(crop.get("t", 0.0)) + dt
-				if crop["t"] >= stage_days:
+				if crop["t"] >= crop_stage_days:
 					crop["t"] = 0.0
 					crop["stage"] = int(crop.get("stage", 0)) + 1
 					if int(crop["stage"]) >= stages:
@@ -2977,7 +3030,7 @@ func _update_zones(dt: float, day_len: float) -> void:
 			else:
 				# спелое: сбор (сами жители «снимают» — упрощённо автосбор)
 				# M14-J: погода и сезон поливают/глушат урожай
-				_add_resource_capped("food", harvest_food * crop_mult())
+				_add_resource_capped("food", crop_harvest * crop_mult())
 				_add_resource_capped("seeds", float(seed_return))
 				if _event_rng.randf() < seed_bonus:
 					_add_resource_capped("seeds", 1.0)
@@ -5415,6 +5468,47 @@ func hero_tree_near(px: Vector2) -> Dictionary:
 			return {"tile": t, "hits": int(_chop_progress.get(t, 0)),
 					"need": maxi(1, int(_hero_work_cfg().get("chop_hits", 5)))}
 	return {}
+
+
+## Спелая грядка в шаге от героя (этап 2, аспект 3): {zone, idx, tile, crop}.
+func hero_harvest_near(px: Vector2) -> Dictionary:
+	var base: Vector2i = map.tile_of_px(px)
+	for t in [base, base + Vector2i(1, 0), base + Vector2i(-1, 0),
+			base + Vector2i(0, 1), base + Vector2i(0, -1)]:
+		var z: Dictionary = field_at(t)
+		if z.is_empty():
+			continue
+		for i in (z["cells"] as Array).size():
+			if Vector2i(z["cells"][i]) != t or not (z["crops"] as Array).size() > i:
+				continue
+			var crop: Dictionary = (z["crops"] as Array)[i]
+			if bool(crop.get("ripe", false)):
+				return {"zone": z, "idx": i, "tile": t, "crop": String(z.get("crop", "turnip"))}
+	return {}
+
+
+## Сбор спелой грядки героем: еда в общий пул, семя возвращается, клетка
+## пересеивается той же культурой (за обычное семя). "" — нет спелой грядки.
+func hero_harvest(px: Vector2) -> String:
+	var h: Dictionary = hero_harvest_near(px)
+	if h.is_empty():
+		return ""
+	var zone: Dictionary = h["zone"]
+	var idx := int(h["idx"])
+	var cdef: Dictionary = crop_def(String(zone.get("crop", "turnip")))
+	var fcfg: Dictionary = cfg.get("farming", {})
+	_add_resource_capped("food", float(cdef.get("harvest", fcfg.get("harvest_food", 6.0))) * crop_mult())
+	_add_resource_capped("seeds", float(fcfg.get("seed_return", 1)))
+	if _event_rng.randf() < float(fcfg.get("seed_bonus_chance", 0.15)):
+		_add_resource_capped("seeds", 1.0)
+	var crops: Array = zone["crops"]
+	if float(res.get("seeds", 0.0)) >= float(fcfg.get("seed_sow", 1)):
+		res["seeds"] = float(res["seeds"]) - float(fcfg.get("seed_sow", 1))
+		crops[idx] = {"stage": 0, "t": 0.0, "ripe": false}
+	else:
+		crops[idx] = {}
+	events.append({"type": "hero_harvest"})
+	return "food"
 
 
 ## Скала или рудная жила в шаге от героя: {tile, kind: "rock"|"ore"}.

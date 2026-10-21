@@ -388,15 +388,16 @@ func _draw_zones() -> void:
 							var y: float = rect.position.y + map.ts * (0.25 + 0.25 * k)
 							draw_line(Vector2(rect.position.x + 4, y),
 									Vector2(rect.position.x + map.ts - 4, y), col.darkened(0.3), 1.5)
-						# посев (M10): стадия роста культуры — спрайт растения
+						# посев (M10): стадия роста культуры — спрайт растения;
+						# этап 2, аспект 3: вид культуры — из культуры поля
 						var crops: Array = z.get("crops", [])
+						var crop_vis: int = int(sim.crop_def(String(z.get("crop", "turnip"))).get("sprite", 0))
 						if i < crops.size() and not (crops[i] as Dictionary).is_empty():
 							var crop: Dictionary = crops[i]
 							var stage := int(crop.get("stage", 0)) + (1 if bool(crop.get("ripe", false)) else 0)
 							var ripe := bool(crop.get("ripe", false))
-							var crop_id := int(z["id"]) % 3
 							var ctint := Color.WHITE if not ripe else Color(1.15, 1.15, 0.95)
-							Assets.draw_ref(self, "e:crop%d_%d" % [crop_id, clampi(stage, 0, 3)],
+							Assets.draw_ref(self, "e:crop%d_%d" % [crop_vis, clampi(stage, 0, 3)],
 									rect.get_center() + Vector2(0, -2), map.ts * 0.9, false, ctint)
 					"pasture":
 						draw_circle(rect.position + Vector2(10, 20), 3.0, col.darkened(0.35))

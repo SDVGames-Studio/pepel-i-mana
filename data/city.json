@@ -136,7 +136,11 @@
 		"seed_sow": 1,
 		"seed_return": 1,
 		"seed_bonus_chance": 0.15,
-		"start_seeds": 16
+		"start_seeds": 16,
+		"crops": {
+			"turnip": { "loc": "crop.turnip", "desc": "crop.turnip.desc", "stage_days": 0.4, "harvest": 5.0, "sprite": 1 },
+			"pumpkin": { "loc": "crop.pumpkin", "desc": "crop.pumpkin.desc", "stage_days": 0.9, "harvest": 13.0, "sprite": 2 }
+		}
 	},
 	"livestock": {
 		"cells_per_animal": 4,

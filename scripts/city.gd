@@ -41,6 +41,9 @@ var _weather_fx = null          # погода: дождь/снег/туман/�
 var _near_temple := false       # храм рядом — E: молитва (M14-H)
 var _hero_tree: Dictionary = {} # дерево у ног героя (E — рубить, правки v1.12.2)
 var _hero_rock: Dictionary = {} # скала/руда рядом (E — добыть)
+var _hero_crop: Dictionary = {} # спелая грядка рядом (E — собрать, этап 2, аспект 3)
+var _pending_field: Array = []  # клетки нарисованного поля — ждут выбора культуры
+var _pick_zone_id := -1         # id поля, в котором меняем культуру
 var _hero_site: Dictionary = {} # недострой рядом (E — помочь)
 var _hero_work_cd := 0.0        # кулдаун удара героя по природе/стройке
 
@@ -280,6 +283,7 @@ func _process(delta: float) -> void:
 	_hero_site = sim.hero_site_near(hero.position)
 	_hero_tree = sim.hero_tree_near(hero.position)
 	_hero_rock = sim.hero_rock_near(hero.position)
+	_hero_crop = sim.hero_harvest_near(hero.position)
 	if _near_map_border():
 		hud.set_hint(Loc.t("city.exit_world"))
 	elif _near_anomaly:
@@ -298,6 +302,8 @@ func _process(delta: float) -> void:
 		hud.set_hint(Loc.t("city.hint_chop") % [int(_hero_tree["hits"]), int(_hero_tree["need"])])
 	elif not _hero_rock.is_empty():
 		hud.set_hint(Loc.t("city.hint_mine_ore" if String(_hero_rock["kind"]) == "ore" else "city.hint_mine"))
+	elif not _hero_crop.is_empty():
+		hud.set_hint(Loc.t("city.hint_harvest"))
 	elif build_mode == "":
 		hud.set_hint(_default_hint())
 
@@ -663,12 +669,21 @@ func _unhandled_input(event: InputEvent) -> void:
 			set_enchant_mode("")
 			return
 		if event.button_index == MOUSE_BUTTON_LEFT and zone_mode != "":
+			# этап 2, аспект 3: клик по готовой грядке — сменить культуру поля
+			if zone_mode == "field" and not hud.crop_pick_visible():
+				var zf: Dictionary = sim.field_at(map.tile_of_px(get_global_mouse_position()))
+				if not zf.is_empty():
+					_pick_zone_id = int(zf["id"])
+					var cname: String = Loc.t(String(sim.crop_def(String(zf.get("crop", "turnip"))).get("loc", "")))
+					_open_crop_picker(Loc.t("city.crop_pick_change") % cname)
+					return
 			_dragging = true
 			_drag_from = map.tile_of_px(get_global_mouse_position())
 			_drag_to = _drag_from
 			_sync_view_tools()
 			return
 		if event.button_index == MOUSE_BUTTON_RIGHT and (zone_mode != "" or road_mode or plant_mode):
+			_cancel_crop_pick()
 			set_zone_mode("")
 			set_road_mode(false)
 			set_plant_mode(false)
@@ -731,6 +746,8 @@ func _unhandled_input(event: InputEvent) -> void:
 			set_build_mode("")
 		elif enchant_mode != "":
 			set_enchant_mode("")
+		elif hud.crop_pick_visible():
+			_cancel_crop_pick()   # пикер закрыт — остаёмся в режиме поля
 		elif zone_mode != "":
 			set_zone_mode("")
 		elif road_mode:
@@ -790,11 +807,48 @@ func _apply_zone() -> void:
 	for y in range(y0, y1 + 1):
 		for x in range(x0, x1 + 1):
 			cells.append(Vector2i(x, y))
+	# этап 2, аспект 3: поле засеивается целиком одной культурой — сперва выбор
+	if zone_mode == "field":
+		_pending_field = cells
+		_open_crop_picker(Loc.t("city.crop_pick_hint") % cells.size())
+		return
 	var added: int = sim.add_zone(zone_mode, cells)
 	if added > 0:
 		hud.toast(Loc.t("city.zone_added") % [Loc.t("zone." + zone_mode), added])
 	else:
 		hud.toast(Loc.t("city.zone_bad"))
+
+
+## Кнопки культур (этап 2, аспект 3): при создании поля и при смене культуры.
+func _open_crop_picker(title: String) -> void:
+	var defs: Array = []
+	for cid in cfg.get("farming", {}).get("crops", {}):
+		var cd: Dictionary = cfg["farming"]["crops"][cid]
+		defs.append({"id": String(cid), "loc": String(cd.get("loc", cid)),
+				"desc": String(cd.get("desc", ""))})
+	hud.show_crop_pick(defs, title, _on_crop_picked)
+
+
+func _on_crop_picked(crop: String) -> void:
+	if _pending_field.size() > 0:
+		var added: int = sim.add_zone("field", _pending_field, crop)
+		_pending_field = []
+		if added > 0:
+			hud.toast(Loc.t("city.crop_changed") % Loc.t(String(sim.crop_def(crop).get("loc", crop))))
+		else:
+			hud.toast(Loc.t("city.zone_bad"))
+	elif _pick_zone_id >= 0:
+		var z: Dictionary = sim.zone_by_id(_pick_zone_id)
+		_pick_zone_id = -1
+		if sim.set_field_crop(z, crop):
+			hud.toast(Loc.t("city.crop_changed") % Loc.t(String(sim.crop_def(crop).get("loc", crop))))
+	view.queue_redraw()
+
+
+func _cancel_crop_pick() -> void:
+	_pending_field = []
+	_pick_zone_id = -1
+	hud.hide_crop_pick()
 
 
 ## Дорога: тайл под курсором (или под пером при зажатой ЛКМ).
@@ -812,6 +866,7 @@ func _paint_road(tile: Vector2i) -> void:
 ## Инструмент зоны: повторное нажатие / ПКМ / Esc отменяет.
 func set_zone_mode(type_id: String) -> void:
 	zone_mode = "" if zone_mode == type_id else type_id
+	_cancel_crop_pick()   # смена инструмента закрывает выбор культуры
 	if zone_mode != "":
 		road_mode = false
 		plant_mode = false
@@ -1027,6 +1082,8 @@ func _hero_act() -> bool:
 	if res == "":
 		res = sim.hero_mine(hero.position)
 	if res == "":
+		res = sim.hero_harvest(hero.position)
+	if res == "":
 		return false
 	_hero_work_cd = float(hw.get("cooldown", 0.35))
 	match res:
@@ -1038,6 +1095,8 @@ func _hero_act() -> bool:
 			hud.toast(Loc.t("city.hero_gem_found"))
 		"stone":
 			hud.toast(Loc.t("city.hero_rock_done"))
+		"food":
+			hud.toast(Loc.t("city.hero_harvest_done"))
 		"done":
 			# стена/ворота стали преградой — не даём герою остаться внутри
 			var st: Vector2i = map.tile_of_px(hero.position)
