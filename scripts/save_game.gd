@@ -485,10 +485,12 @@ static func _apply_city(game, cd: Variant) -> String:
 	sim.hero_alive = false
 	sim.hero_pos = Vector2.ZERO
 	sim.terrain_dirty = true
-	# стены-преграды для путей жителей и ворота
+	# миграция старых сейвов: здания 1×1 → 2×2 (этап 2, аспект 2), затем
+	# сплошные клетки всем готовым зданиям (препятствие для всех)
+	sim.migrate_legacy_buildings()
 	for b in sim.buildings:
-		if bool(b["done"]) and String(sim._def(b).get("effect", "")) == "wall":
-			map.set_solid(b["tile"], true)
+		if bool(b["done"]):
+			sim._set_bld_solid(b, true)
 	sim._update_gates()
 	game.city_sim = sim
 	return ""

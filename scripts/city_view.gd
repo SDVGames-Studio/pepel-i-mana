@@ -103,6 +103,11 @@ func mark_trees_dirty() -> void:
 func _draw_world_sorted() -> void:
 	var ts := float(map.ts)
 	var entries: Array = []   # [y_px, kind, payload]
+	# обитатели внутри домов (этап 2, аспект 2): для светящихся окон
+	_inside_homes.clear()
+	for r in sim.residents:
+		if int(r.get("inside", 0)) > 0 and r.get("home") != null and not (r["home"] as Dictionary).is_empty():
+			_inside_homes[int((r["home"] as Dictionary)["id"])] = true
 	if _trees_dirty:
 		_trees_dirty = false
 		_trees_cache = []
@@ -114,9 +119,11 @@ func _draw_world_sorted() -> void:
 	for tile: Vector2i in _trees_cache:
 		entries.append([float(tile.y) * ts + ts * 0.92, "tree", tile])
 	for b in sim.buildings:
-		entries.append([float(Vector2(b["tile"]).y) * ts + ts - 2.0, "bld", b])
+		# Y-якорь — нижняя линия прямоугольника здания (2×2: tile.y + 1)
+		var bw: int = sim.bld_w(b)
+		entries.append([float(Vector2(b["tile"]).y + bw - 1) * ts + ts - 2.0, "bld", b])
 		if bool(b["done"]) and (b as Dictionary).has("pile"):
-			var corner: Vector2 = Vector2(b["tile"]) * ts + Vector2(ts * 0.78, ts * 0.88)
+			var corner: Vector2 = Vector2(b["tile"]) * ts + Vector2(ts * (0.78 + float(bw - 1)), ts * (0.88 + float(bw - 1)))
 			if _pile_total(b) >= 0.5:
 				entries.append([corner.y, "pile", b])
 	for a in sim.animals:
@@ -126,6 +133,8 @@ func _draw_world_sorted() -> void:
 	for r in sim.raiders:
 		entries.append([Vector2(r["pos"]).y, "raider", r])
 	for r in sim.residents:
+		if int(r.get("inside", 0)) > 0:
+			continue   # спит/лежит/прячется внутри дома — с карты не виден
 		entries.append([Vector2(r["pos"]).y, "res", r])
 	if city != null and city.hero != null and not city.hero.dead:
 		entries.append([city.hero.global_position.y, "hero", city.hero])
@@ -458,13 +467,13 @@ func _draw_world_exit() -> void:
 
 
 ## Здание в общем сортированном слое (M12). Схематичный режим (этап 2,
-## аспект 1): плоский прямоугольник цвета категории + краткая подпись;
-## спрайты зданий убраны жёстко — до появления арта. Игровые метки
-## (прогресс стройки, точка-работник, зачарование, оглушение, прочность,
-## стадия сада, тьма кладбища) сохранены — это информация, не украшение.
+## аспект 1) + прямоугольник 2×2 с входом (этап 2, аспект 2): заливка
+## цвета категории, тёмная кайма, дверной проём у входа, окно светится,
+## если кто-то спит внутри. Игровые метки сохранены.
 func _draw_building(b: Dictionary) -> void:
 	var ts := float(map.ts)
-	var rect := Rect2(Vector2(b["tile"]) * ts, Vector2(ts, ts))
+	var bw: int = sim.bld_w(b)
+	var rect := Rect2(Vector2(b["tile"]) * ts, Vector2(ts * float(bw), ts * float(bw)))
 	var type_id := String(b["type"])
 	var col: Color = _bld_fill.get(type_id, Color(0.91, 0.85, 0.62))
 	var anchor: Vector2 = Vector2(rect.get_center().x, rect.end.y - 2.0)
@@ -474,22 +483,31 @@ func _draw_building(b: Dictionary) -> void:
 		draw_rect(rect.grow(-3), col.darkened(0.2), false, 2.0)
 		var work: float = _build_work(type_id)
 		var frac := clampf(float(b["progress"]) / work, 0.0, 1.0) if work > 0.0 else 0.0
-		draw_rect(Rect2(rect.position + Vector2(4, ts - 9), Vector2((ts - 8) * frac, 5)), Color("#ffe082"))
+		draw_rect(Rect2(rect.position + Vector2(4, rect.size.y - 9),
+				Vector2((rect.size.x - 8) * frac, 5)), Color("#ffe082"))
 		_draw_bld_label(b, rect)
 	else:
 		# схематичное здание: заливка категории, тёмная кайма по контуру
 		draw_rect(rect, col)
 		draw_rect(rect.grow(-2), col.darkened(0.3), false, 2.0)
+		_draw_bld_door(b, rect)
 		# точка-работник: занятое здание подсвечено
 		if int(b["worker"]) > 0:
-			draw_circle(rect.position + Vector2(ts - 6.0, 6.0), 2.5, Color(1, 1, 1, 0.95))
+			draw_circle(rect.position + Vector2(rect.size.x - 6.0, 6.0), 2.5, Color(1, 1, 1, 0.95))
 		# яблоневый сад (M10): растёт — полоска стадии, зелёная при спелости
 		if type_id == "orchard":
 			var stages := float(sim.cfg.get("orchard", {}).get("stages", 3))
 			var stage := clampf(float(b.get("apple_stage", 0)) / maxf(1.0, stages), 0.0, 1.0)
-			draw_rect(Rect2(rect.position + Vector2(4, ts - 8), Vector2((ts - 8) * stage, 4)),
+			draw_rect(Rect2(rect.position + Vector2(4, rect.size.y - 8),
+					Vector2((rect.size.x - 8) * stage, 4)),
 					Color("#8bc34a") if stage >= 1.0 else Color("#ffe082"))
 		_draw_bld_label(b, rect)
+	# окно: кто-то спит/лежит внутри — тёплый свет у входа (ночью особенно видно)
+	if bool(b["done"]) and _inside_homes.has(int(b["id"])):
+		var door: Vector2 = _bld_door_pos(b, rect)
+		var glow := 0.5 + 0.2 * sin(Time.get_ticks_msec() / 350.0)
+		draw_circle(door + Vector2(0, -ts * 0.2), ts * 0.28, Color(1.0, 0.85, 0.45, 0.55 + 0.25 * glow))
+		draw_circle(door + Vector2(0, -ts * 0.2), ts * 0.12, Color(1.0, 0.93, 0.7, 0.9))
 	# кладбище темнеет (M11): тьма ползёт с кладбища, пока некромант работает
 	if String(b["type"]) == "cemetery" and bool(b["done"]):
 		_draw_graves(anchor - Vector2(0, 0))
@@ -556,6 +574,37 @@ func _draw_bld_label(b: Dictionary, rect: Rect2) -> void:
 	draw_string_outline(font, pos, text, HORIZONTAL_ALIGNMENT_LEFT, -1, fsize, 3,
 			Color(0.12, 0.09, 0.05, 0.9))
 	draw_string(font, pos, text, HORIZONTAL_ALIGNMENT_LEFT, -1, fsize, Color(1, 1, 0.96, 0.97))
+
+
+## Дверной проём (этап 2, аспект 2): тёмная метка на кайме со стороны входа.
+func _draw_bld_door(b: Dictionary, rect: Rect2) -> void:
+	var door := _bld_door_pos(b, rect)
+	var w := rect.size.x * 0.16
+	var h := rect.size.y * 0.12
+	var horizontal: bool = absf(door.x - rect.get_center().x) > rect.size.x * 0.25
+	var r := Rect2(door - Vector2(w if horizontal else h * 0.5, h if horizontal else w * 0.5),
+			Vector2(h if horizontal else w, w if horizontal else h))
+	draw_rect(r, Color(0.18, 0.13, 0.09, 0.85))
+
+
+## Точка входа: середина общего ребра между входной клеткой и прямоугольником.
+func _bld_door_pos(b: Dictionary, rect: Rect2) -> Vector2:
+	var ts := float(map.ts)
+	var e: Vector2i = sim.bld_entrance(b)
+	if e == Vector2i(-1, -1):
+		return Vector2(rect.get_center().x, rect.end.y)
+	var t := Vector2i(b["tile"])
+	var bw: int = sim.bld_w(b)
+	var cx := clampi(e.x, t.x, t.x + bw - 1)
+	var cy := clampi(e.y, t.y, t.y + bw - 1)
+	var cell_center := Vector2(t) * ts + (Vector2(cx, cy) + Vector2(0.5, 0.5)) * ts
+	var e_center := Vector2(e) * ts + Vector2(ts, ts) * 0.5
+	return (cell_center + e_center) * 0.5
+
+
+## Дома с обитателями внутри (спят/лежат/прячутся): id здания → true.
+## Собирается один раз за кадр в _draw_world_sorted.
+var _inside_homes: Dictionary = {}
 
 
 ## Атакующие (M5 мутанты; M11 духи леса, Древень, скелеты некроманта).
@@ -708,9 +757,13 @@ func _draw_ghost() -> void:
 	var tile: Vector2i = map.tile_of_px(get_global_mouse_position())
 	if not map.in_bounds(tile):
 		return
-	var ok: bool = sim.is_buildable_tile(tile, build_mode) and sim.can_afford(_cost_of(build_mode))
+	var ok: bool = sim.is_buildable_rect(build_mode, tile) and sim.can_afford(_cost_of(build_mode))
 	var col := Color(0.5, 1.0, 0.5, 0.4) if ok else Color(1.0, 0.3, 0.3, 0.4)
-	draw_rect(Rect2(Vector2(tile) * map.ts, Vector2(map.ts, map.ts)), col)
+	# призрак всего прямоугольника здания (2×2; стены/ворота/мост — 1×1)
+	var w := float(sim.bld_w_of_type(build_mode))
+	draw_rect(Rect2(Vector2(tile) * map.ts, Vector2(map.ts * w, map.ts * w)), col)
+	draw_rect(Rect2(Vector2(tile) * map.ts, Vector2(map.ts * w, map.ts * w)).grow(-2),
+			Color(col.r, col.g, col.b, 0.9), false, 2.0)
 
 
 ## Выделение зоны (M6): прямоугольник от первой точки до курсора,

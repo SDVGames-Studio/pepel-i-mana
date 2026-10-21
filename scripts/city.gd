@@ -121,11 +121,11 @@ func _craft_item(item_id: String) -> String:
 			where == "workshop" and near_workshop)
 
 
-## Готовое здание типа type_id в двух тайлах от героя?
+## Готовое здание типа type_id в двух тайлах от героя (до прямоугольника 2×2)?
 func _near_building_kind(type_id: String) -> bool:
 	for b in sim.buildings:
 		if bool(b["done"]) and String(b["type"]) == type_id \
-				and hero.position.distance_to(map.tile_center_px(b["tile"])) < map.ts * 2.2:
+				and sim.bld_dist_px(hero.position, b) < map.ts * 2.2:
 			return true
 	return false
 
@@ -184,7 +184,9 @@ func _rebuild_collision() -> void:
 				continue
 			if _bld_effect(b) == "bridge":
 				continue
-			blocked[b["tile"]] = true
+			# здание 2×2: сплошной весь прямоугольник (этап 2, аспект 2)
+			for cell in sim.bld_cells(b):
+				blocked[cell] = true
 	for tile: Vector2i in blocked:
 		var shape := CollisionShape2D.new()
 		var rect := RectangleShape2D.new()
@@ -315,7 +317,7 @@ func _near_water(pos: Vector2) -> bool:
 func _armory_near_hero() -> Dictionary:
 	for b in sim.buildings:
 		if bool(b["done"]) and String(b["type"]) == "armory" \
-				and hero.position.distance_to(map.tile_center_px(b["tile"])) < map.ts * 1.7:
+				and sim.bld_dist_px(hero.position, b) < map.ts * 1.7:
 			return b
 	return {}
 
@@ -850,7 +852,7 @@ func _try_plant(tile: Vector2i) -> void:
 
 func _try_place() -> void:
 	var tile: Vector2i = map.tile_of_px(get_global_mouse_position())
-	if not sim.is_buildable_tile(tile, build_mode):
+	if not sim.is_buildable_rect(build_mode, tile):
 		hud.toast(Loc.t("city.cant_build_here"))
 		return
 	var cost: Dictionary = {}

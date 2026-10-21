@@ -80,6 +80,7 @@ var _event_rng := RandomNumberGenerator.new()
 var _last_event_day := 0
 var _last_daily_day := 0        # дневные броски M4: беженцы/рождения/болезни/истории
 var _gate_state := {}           # id ворот -> открыты? (страж на ближней вышке)
+var _spot_cache := {}           # id здания -> {key, spot}: кэш входа (этап 2, аспект 2)
 var _next_raid_at := 0.0        # время следующей волны, сек
 var _raid_gap_days := 1.2       # длительность текущего интервала между волнами
 var _raid_warned := false       # предупреждение уже объявлено
@@ -1126,11 +1127,219 @@ func _def(b: Dictionary) -> Dictionary:
 	return {}
 
 
+## Здание по тайлу (прямоугольник 2×2: попадание в любую клетку).
 func building_at(tile: Vector2i) -> Dictionary:
 	for b in buildings:
-		if b["tile"] == tile:
+		if bld_has_cell(b, tile):
 			return b
 	return {}
+
+# --- здания 2×2 (этап 2, аспект 2) -----------------------------------------
+
+## Ширина здания в клетках: 2 у всех капитальных, 1 у тайловой инфраструктуры
+## (стена, ворота, мост — кольцо обороны и переправы по природе тайловые).
+## Читается из здания ("w", ставится при стройке/миграции), фолбэк — конфиг.
+func bld_w(b: Dictionary) -> int:
+	if b.has("w"):
+		return int(b["w"])
+	var def := _def(b)
+	return int(def.get("w", 1)) if not def.is_empty() else 1
+
+
+## Все клетки прямоугольника здания (tile — левый-верхний угол).
+func bld_cells(b: Dictionary) -> Array:
+	var out: Array = []
+	var t := Vector2i(b["tile"])
+	var w := bld_w(b)
+	for dy in w:
+		for dx in w:
+			out.append(t + Vector2i(dx, dy))
+	return out
+
+
+## Клетка прямоугольника содержит тайл?
+func bld_has_cell(b: Dictionary, tile: Vector2i) -> bool:
+	var t: Vector2i = Vector2i(b["tile"])
+	var w := bld_w(b)
+	return tile.x >= t.x and tile.y >= t.y and tile.x < t.x + w and tile.y < t.y + w
+
+
+## Вход здания: клетка снаружи у прямоугольника, к которой примыкает
+## проходимый тайл. Приоритет — примыкание к дороге, затем южная сторона.
+## Кэш в _spot_cache, ключ сбрасывается при переносе здания.
+func bld_entrance(b: Dictionary) -> Vector2i:
+	var key := int(b["id"])
+	var tile := Vector2i(b["tile"])
+	var cached: Dictionary = _spot_cache.get(key, {})
+	if not cached.is_empty() and Vector2i(cached.get("key", Vector2i(-9, -9))) == tile:
+		return Vector2i(cached["spot"])
+	var w := bld_w(b)
+	var best := Vector2i(-1, -1)
+	var best_road := -1
+	for dy in range(-1, w + 1):
+		for dx in range(-1, w + 1):
+			var on_rect := dx >= 0 and dy >= 0 and dx < w and dy < w
+			if on_rect:
+				continue
+			# только клетки, примыкающие к прямоугольнику (не по диагонали)
+			if dx != -1 and dx != w and dy != -1 and dy != w:
+				continue
+			var n := tile + Vector2i(dx, dy)
+			if not map.in_bounds(n) or not map.is_walkable(n) or not building_at(n).is_empty():
+				continue
+			var road := 1 if map.has_road(n) else 0
+			var south := 1 if dy == w else 0
+			var score := road * 2 + south
+			if score > best_road:
+				best_road = score
+				best = n
+	if best == Vector2i(-1, -1):
+		best = _walkable_next_to_rect(b)   # замуровано: хоть что-то проходимое рядом
+	_spot_cache[key] = {"key": tile, "spot": best}
+	return best
+
+
+## Ближайшая проходимая клетка снаружи прямоугольника (без приоритетов).
+func _walkable_next_to_rect(b: Dictionary) -> Vector2i:
+	var t: Vector2i = Vector2i(b["tile"])
+	var w := bld_w(b)
+	for dy in range(-1, w + 1):
+		for dx in range(-1, w + 1):
+			if dx >= 0 and dy >= 0 and dx < w and dy < w:
+				continue
+			if dx != -1 and dx != w and dy != -1 and dy != w:
+				continue
+			var n := t + Vector2i(dx, dy)
+			if map.in_bounds(n) and map.is_walkable(n) and building_at(n).is_empty():
+				return n
+	return Vector2i(-1, -1)
+
+
+## Точка подхода к зданию: вход (проходимая клетка у прямоугольника).
+func bld_spot(b: Dictionary) -> Vector2i:
+	var e := bld_entrance(b)
+	return e if not e == Vector2i(-1, -1) else Vector2i(b["tile"])
+
+
+## Житель стоит у здания (на входе или — для незамкнутых случаев — в клетке).
+func at_bld(r: Dictionary, b: Dictionary) -> bool:
+	var t: Vector2i = map.tile_of_px(r["pos"])
+	return t == bld_spot(b)
+
+
+## Здание занимает тайл? (в отличие от building_at — по прямоугольнику)
+func building_at_rect(tile: Vector2i) -> Dictionary:
+	for b in buildings:
+		if bld_has_cell(b, tile):
+			return b
+	return {}
+
+
+## Ширина здания типа из конфига (без конкретного здания).
+func bld_w_of_type(type_id: String) -> int:
+	for d in cfg["buildings"]:
+		if String(d["id"]) == type_id:
+			return int(d.get("w", 1))
+	return 1
+
+
+## Прямоугольник w×w с углом в tile годен под здание типа type_id?
+## Стройплощадки и мосты проходимы — учитываются отдельно (мост на воде).
+func is_buildable_rect(type_id: String, tile: Vector2i) -> bool:
+	var w := bld_w_of_type(type_id)
+	for dy in w:
+		for dx in w:
+			if not is_buildable_tile(tile + Vector2i(dx, dy), type_id):
+				return false
+	return true
+
+
+## Расстояние по пикселям от точки до ближайшей клетки прямоугольника.
+func bld_dist_px(pos: Vector2, b: Dictionary) -> float:
+	var w := bld_w(b)
+	var t := Vector2i(b["tile"])
+	var best := INF
+	for dy in w:
+		for dx in w:
+			best = minf(best, map.tile_center_px(t + Vector2i(dx, dy)).distance_to(pos))
+	return best
+
+
+## Сбросить кэш входов (при переносе/сносе зданий).
+func _spots_dirty() -> void:
+	_spot_cache.clear()
+
+
+## Миграция старых сейвов (этап 2, аспект 2): здания без поля "w" — 1×1.
+## Расширяем до 2×2 на месте, если есть место; иначе бесплатно переносим
+## на ближайшее подходящее; в крайнем случае здание остаётся 1×1 (не теряем).
+func migrate_legacy_buildings() -> void:
+	var migrated := 0
+	for b in buildings:
+		if b.has("w"):
+			continue
+		var w := bld_w(b)   # размер из конфига (у здания поля ещё нет)
+		if w <= 1:
+			b["w"] = 1
+			continue
+		# до удачного расширения/переноса здание остаётся 1×1 — проверки места
+		# не считают его собственный будущий прямоугольник занятостью
+		if _try_expand_bld(b) or _try_relocate_bld(b):
+			b["w"] = w
+			migrated += 1
+		else:
+			b["w"] = 1   # совсем некуда — живёт в 1×1, игрок перенесёт сам
+	_spots_dirty()
+	if migrated > 0:
+		events.append({"type": "bld_migrated", "n": migrated})
+
+
+## Расширение 1×1 до 2×2 на месте: три соседние клетки свободны и пригодны.
+func _try_expand_bld(b: Dictionary) -> bool:
+	var t: Vector2i = Vector2i(b["tile"])
+	for off: Vector2i in [Vector2i(1, 0), Vector2i(0, 1), Vector2i(1, 1)]:
+		var c: Vector2i = t + off
+		if not map.in_bounds(c) or c == map.anomaly_tile:
+			return false
+		var type_id := String(b["type"])
+		var ok_nature: bool = map.is_nature_walkable(c) \
+				or (type_id == "mine" and map.grid[c.y][c.x] == map.TILE_ORE)
+		if not ok_nature or not building_at(c).is_empty():
+			return false
+		if map.bridges.has(c):
+			return false
+		for g in graves:
+			if Vector2i(g["tile"]) == c:
+				return false
+	# дороги и зоны под новыми клетками уступают место — как при стройке
+	for off2: Vector2i in [Vector2i(1, 0), Vector2i(0, 1), Vector2i(1, 1)]:
+		var c2: Vector2i = t + off2
+		map.remove_road(c2)
+		_drop_zone_cell(c2)
+	return true
+
+
+## Бесплатный перенос: ближайшее к старому месту годное 2×2 (правила места — те же).
+func _try_relocate_bld(b: Dictionary) -> bool:
+	var type_id := String(b["type"])
+	var old := Vector2i(b["tile"])
+	for radius in range(1, 13):
+		for dy in range(-radius, radius + 1):
+			for dx in range(-radius, radius + 1):
+				if maxi(absi(dx), absi(dy)) != radius:
+					continue
+				var t := old + Vector2i(dx, dy)
+				if not is_buildable_rect(type_id, t) or placement_block(type_id, t) != "":
+					continue
+				var w := bld_w_of_type(type_id)
+				for cy in w:
+					for cx in w:
+						var cell := t + Vector2i(cx, cy)
+						map.remove_road(cell)
+						_drop_zone_cell(cell)
+				b["tile"] = t
+				return true
+	return false
 
 
 # --- стройка -------------------------------------------------------------
@@ -1160,23 +1369,27 @@ func place_building(type_id: String, tile: Vector2i) -> bool:
 	if String(type_id) == "bridge":
 		return _place_bridge(tile)
 	var def := _def({"type": type_id})
-	if def.is_empty() or not is_buildable_tile(tile, type_id) or not can_afford(def["cost"]):
+	if def.is_empty() or not is_buildable_rect(type_id, tile) or not can_afford(def["cost"]):
 		return false
 	if placement_block(type_id, tile) != "":
 		return false
 	for key in def["cost"]:
 		res[key] = int(res[key]) - int(def["cost"][key])
+	var w := int(def.get("w", 1))
 	buildings.append({
-		"id": _next_id, "type": type_id, "tile": tile,
+		"id": _next_id, "type": type_id, "tile": tile, "w": w,
 		"done": false, "progress": 0.0, "worker": -1,
 		"enchant": "", "ench_mult": 1.0, "stun_left": 0.0,
 		"hp": float(_bld_max_hp(type_id)),
 		"pile": {},
 	})
 	_next_id += 1
-	# здание занимает тайл: дорога и клетка зоны под ним уступают место (M6)
-	map.remove_road(tile)
-	_drop_zone_cell(tile)
+	# здание занимает прямоугольник: дороги и клетки зон под ним уступают место
+	for dy in w:
+		for dx in w:
+			var cell := tile + Vector2i(dx, dy)
+			map.remove_road(cell)
+			_drop_zone_cell(cell)
 	events.append({"type": "site", "bld": type_id})
 	_assign_jobs()
 	return true
@@ -1348,6 +1561,11 @@ func _damage_building(b: Dictionary, amount: float) -> void:
 		b["worker"] = -1
 	if _def(b).get("effect", "") in ["wall", "gate"]:
 		map.set_solid(b["tile"], false)
+	elif bool(b.get("done", false)):
+		# разрушенное капитальное здание освобождает весь прямоугольник
+		for cell in bld_cells(b):
+			map.set_solid(cell, false)
+		_spots_dirty()
 	buildings.erase(b)
 	# кладбище разрушено (мутантами, бурей) — тайная армия рассыпается (M11)
 	if String(b["type"]) == "cemetery":
@@ -1368,10 +1586,31 @@ func _complete_site(site: Dictionary) -> void:
 	if _def(site).get("effect", "") == "wall":
 		map.set_solid(site["tile"], true)
 		_step_off_solid(site["tile"])
+	else:
+		# готовое здание — препятствие для всех (этап 2, аспект 2):
+		# клетки прямоугольника сплошные, стоявшие на них шагают наружу
+		_set_bld_solid(site, true)
+		_step_off_bld(site)
 	if _def(site).get("effect", "") == "gate":
 		_update_gates()   # ворота при достройке сразу закрываются/открываются
 	events.append({"type": "built", "bld": String(site["type"])})
 	_assign_jobs()
+
+
+## Клетки готового здания сплошные/проходимые (кроме ворот — ими ведёт страж).
+func _set_bld_solid(b: Dictionary, solid: bool) -> void:
+	if String(_def(b).get("effect", "")) == "gate":
+		_update_gates()
+		return
+	for cell in bld_cells(b):
+		map.set_solid(cell, solid)
+	_spots_dirty()
+
+
+## Жители, стоявшие в клетках достроенного здания, шагают на свободного соседа.
+func _step_off_bld(b: Dictionary) -> void:
+	for cell in bld_cells(b):
+		_step_off_solid(cell)
 
 
 ## Житель стоял на тайле, где достроили стену, — шагает на свободный соседний,
@@ -1692,6 +1931,7 @@ func _weighted_pick(weights: Dictionary) -> String:
 
 func _update_resident(r: Dictionary, dt: float) -> void:
 	var day_len := float(cfg["day_length"])
+	r["inside"] = 0   # бодрый житель снаружи; _sleep/_lie_ill/_flee_home ставят заново у входа
 	_update_mood(r, dt, day_len)
 	r["chat_cd_left"] = maxf(0.0, float(r.get("chat_cd_left", 0.0)) - dt)
 	# голод: без дела — идёт в очередь к складу; занятый работает вполсилы (иначе город умирает навсегда)
@@ -1793,11 +2033,11 @@ func _update_resident(r: Dictionary, dt: float) -> void:
 func _guard_post(r: Dictionary, dt: float) -> void:
 	var tower := _assigned_done(r, "guard")
 	if not tower.is_empty():
-		if _arrived(r, tower["tile"]):
+		if at_bld(r, tower):
 			r["state"] = "guard"
 			r["fatigue"] += dt / float(cfg["day_length"])
 		else:
-			_move_towards(r, tower["tile"], dt)
+			_move_towards(r, bld_spot(tower), dt)
 	else:
 		r["state"] = "idle"
 
@@ -1833,11 +2073,11 @@ func _is_evening() -> bool:
 	return t >= maxf(0.0, 1.0 - nf - evening) and t < 1.0 - nf
 
 
-## Точка городского костра (M12): у колодца, если он есть, иначе в центре.
+## Точка городского костра (M12): у входа колодца, если он есть, иначе в центре.
 func fire_tile() -> Vector2i:
 	for b in buildings:
 		if bool(b["done"]) and String(b["type"]) == "well":
-			return Vector2i(b["tile"]) + Vector2i(1, 0)
+			return bld_spot(b)
 	return map.spawn_tile
 
 
@@ -1880,7 +2120,7 @@ func _pick_leisure(r: Dictionary) -> Dictionary:
 	var plan: Dictionary
 	if _festival_today():
 		if not tavern.is_empty() and randf() < 0.7:
-			plan = {"tile": map.nearest_walkable(Vector2i(tavern["tile"]) + Vector2i(1, 0)), "tavern": true}
+			plan = {"tile": bld_spot(tavern), "tavern": true}
 		else:
 			plan = {"tile": map.nearest_walkable(fire_tile())}
 	else:
@@ -1888,7 +2128,7 @@ func _pick_leisure(r: Dictionary) -> Dictionary:
 		if not partner.is_empty() and randf() < 0.6:
 			plan = {"tile": map.nearest_walkable(map.tile_of_px(partner["pos"]))}
 		elif not tavern.is_empty() and randf() < 0.5:
-			plan = {"tile": map.nearest_walkable(Vector2i(tavern["tile"]) + Vector2i(1, 0)), "tavern": true}
+			plan = {"tile": bld_spot(tavern), "tavern": true}
 		else:
 			var friend := _friend_of(r)
 			if not friend.is_empty() and randf() < 0.4:
@@ -1972,7 +2212,7 @@ func _try_chat(r: Dictionary) -> void:
 ## state остаётся "hungry" и в пути — панель жителей объясняет простой.
 func _hungry_queue(r: Dictionary, dt: float) -> void:
 	var barn := _nearest_done_of_type(r["pos"], "warehouse")
-	var goal: Vector2i = Vector2i(barn["tile"]) if not barn.is_empty() else map.spawn_tile
+	var goal: Vector2i = bld_spot(barn) if not barn.is_empty() else map.spawn_tile
 	if _arrived(r, goal):
 		r["state"] = "hungry"
 		r["path"] = PackedVector2Array()
@@ -2110,9 +2350,10 @@ func _sleep(r: Dictionary, dt: float) -> void:
 		r["home"] = _free_home(r)
 	var home: Dictionary = r["home"]
 	if not home.is_empty():
-		if not _arrived(r, home["tile"]):
-			_move_towards(r, home["tile"], dt)
+		if not at_bld(r, home):
+			_move_towards(r, bld_spot(home), dt)
 			return
+		r["inside"] = 1   # спит внутри дома: с карты не виден, окно светится
 	r["state"] = "sleep"
 	r["fatigue"] = maxf(0.0, float(r["fatigue"]) - _restore_rate(r, true) * dt / float(cfg["day_length"]))
 
@@ -2158,11 +2399,11 @@ func _defender_update(r: Dictionary, dt: float, dmg: float, cd: float) -> void:
 	var armory := _done_building_of_type("armory")
 	# снаряжение: в хранилище есть комплекты, боец ещё без него
 	if not bool(r.get("kit", false)) and float(res.get("kits", 0.0)) > 0.0 and not armory.is_empty():
-		if _arrived(r, armory["tile"]):
+		if at_bld(r, armory):
 			res["kits"] = maxf(0.0, float(res["kits"]) - 1.0)
 			r["kit"] = true
 		else:
-			_move_towards(r, armory["tile"], dt)
+			_move_towards(r, bld_spot(armory), dt)
 			return
 	var mult := float(tcfg.get("kit_damage_mult", 2.0)) if bool(r.get("kit", false)) else 1.0
 	var target := _nearest_raider(r["pos"], float(map.ts) * 10.0)
@@ -2171,10 +2412,10 @@ func _defender_update(r: Dictionary, dt: float, dmg: float, cd: float) -> void:
 		if String(r["prof"]) == "guard":
 			var tower := _assigned_done(r, "guard")
 			if not tower.is_empty():
-				if _arrived(r, tower["tile"]):
+				if at_bld(r, tower):
 					r["state"] = "guard"
 				else:
-					_move_towards(r, tower["tile"], dt)
+					_move_towards(r, bld_spot(tower), dt)
 				return
 		if not _arrived(r, map.spawn_tile + Vector2i(1, 0)):
 			_move_towards(r, map.spawn_tile + Vector2i(1, 0), dt)
@@ -2204,9 +2445,11 @@ func _flee_home(r: Dictionary, dt: float) -> void:
 	if r["home"] == null:
 		r["home"] = _free_home(r)
 	var home: Dictionary = r["home"]
-	if not home.is_empty() and not _arrived(r, home["tile"]):
-		_move_towards(r, home["tile"], dt)
-		return
+	if not home.is_empty():
+		if not at_bld(r, home):
+			_move_towards(r, bld_spot(home), dt)
+			return
+		r["inside"] = 1   # трус прячется внутри дома
 	r["state"] = "hide"
 
 
@@ -2215,7 +2458,7 @@ func _do_build(r: Dictionary, site: Dictionary, dt: float) -> void:
 		r["site"] = null
 		r["sub_prof"] = ""
 		return
-	if _arrived(r, site["tile"]):
+	if bld_has_cell(site, map.tile_of_px(r["pos"])):
 		r["state"] = "build"
 		site["progress"] = float(site["progress"]) + dt * work_mult(r)
 		r["fatigue"] += dt / float(cfg["day_length"])
@@ -2233,10 +2476,10 @@ func _do_work(r: Dictionary, bld: Dictionary, dt: float) -> void:
 		# дикая вспышка: здание молчит, работник стоит
 		r["state"] = "idle"
 		return
-	if _arrived(r, bld["tile"]):
+	if at_bld(r, bld):
 		_produce_tick(r, bld, dt)
 	else:
-		_move_towards(r, bld["tile"], dt)
+		_move_towards(r, bld_spot(bld), dt)
 
 
 ## Добытчик (лесоруб/каменотёс) работает у источника: ходит к дереву или скале
@@ -2328,7 +2571,7 @@ func _workshop_work(r: Dictionary, bld: Dictionary, dt: float) -> void:
 	if broken.is_empty():
 		_produce_tick(r, bld, dt)   # переработка излишков в инструменты
 		return
-	if _arrived(r, broken["tile"]):
+	if at_bld(r, broken):
 		r["state"] = "repair"
 		var rate: float = float(cfg.get("repair", {}).get("per_day", 15.0)) * work_mult(r)
 		var max_hp := float(_bld_max_hp(String(broken["type"])))
@@ -2336,7 +2579,7 @@ func _workshop_work(r: Dictionary, bld: Dictionary, dt: float) -> void:
 		r["fatigue"] += dt / float(cfg["day_length"])
 		_grow_skill(r, dt)
 	else:
-		_move_towards(r, broken["tile"], dt)
+		_move_towards(r, bld_spot(broken), dt)
 
 
 ## Повреждённое готовое здание ближе прочих (для мастерской).
@@ -2487,7 +2730,7 @@ func _porter_work(r: Dictionary, dt: float) -> void:
 	if float(r.get("carry", 0.0)) > 0.0:
 		# склад — физическое хранилище; пока склада нет, носит к городскому амбару
 		var barn := _nearest_done_of_type(r["pos"], "warehouse")
-		var goal_tile: Vector2i = barn["tile"] if not barn.is_empty() else map.spawn_tile
+		var goal_tile: Vector2i = bld_spot(barn) if not barn.is_empty() else map.spawn_tile
 		if _arrived(r, goal_tile):
 			var key := String(r["carry_res"])
 			var free: float = float(storage_cap()) - float(res.get(key, 0.0))
@@ -2508,7 +2751,7 @@ func _porter_work(r: Dictionary, dt: float) -> void:
 	if target.is_empty():
 		r["state"] = "idle"
 		return
-	if _arrived(r, target["tile"]):
+	if at_bld(r, target):   # подходит к входу здания (2×2 — тайл сплошной)
 		var pile: Dictionary = target.get("pile", {})
 		var key := ""
 		var best := 0.0
@@ -3223,9 +3466,11 @@ func _lie_ill(r: Dictionary, dt: float) -> void:
 	if r["home"] == null:
 		r["home"] = _free_home(r)
 	var home: Dictionary = r["home"]
-	if not home.is_empty() and not _arrived(r, home["tile"]):
-		_move_towards(r, home["tile"], dt)
-		return
+	if not home.is_empty():
+		if not at_bld(r, home):
+			_move_towards(r, bld_spot(home), dt)
+			return
+		r["inside"] = 1   # болтый лежит внутри дома, с карты не виден
 	r["state"] = String(r["ail"])
 
 
@@ -3611,10 +3856,10 @@ func _find_autobuild_tile(type_id: String) -> Vector2i:
 		center += Vector2i(-4, 0)
 	else:
 		center += Vector2i(4, 0)
-	var tile := _ring_buildable(center, 4)
+	var tile := _ring_buildable(center, 4, type_id)
 	if not tile == Vector2i(-1, -1):
 		return tile
-	return _ring_buildable(map.spawn_tile, 8)
+	return _ring_buildable(map.spawn_tile, 8, type_id)
 
 
 ## Ближайший к центру города тайл рядом с ресурсом, куда можно поставить здание.
@@ -3626,10 +3871,10 @@ func _find_gather_tile(type_id: String, kinds: Array, on_resource: bool) -> Vect
 		for x in map.w:
 			var t := Vector2i(x, y)
 			if on_resource:
-				if not (map.grid[y][x] in kinds) or not is_buildable_tile(t, type_id):
+				if not (map.grid[y][x] in kinds) or not is_buildable_rect(type_id, t):
 					continue
 			else:
-				if not is_buildable_tile(t, type_id) or placement_block(type_id, t) != "":
+				if not is_buildable_rect(type_id, t) or placement_block(type_id, t) != "":
 					continue
 			var d: float = Vector2(t).distance_to(Vector2(map.spawn_tile))
 			if d < best_d:
@@ -3638,14 +3883,14 @@ func _find_gather_tile(type_id: String, kinds: Array, on_resource: bool) -> Vect
 	return best
 
 
-func _ring_buildable(center: Vector2i, max_radius: int) -> Vector2i:
+func _ring_buildable(center: Vector2i, max_radius: int, type_id := "") -> Vector2i:
 	for radius in range(1, max_radius + 1):
 		for dy in range(-radius, radius + 1):
 			for dx in range(-radius, radius + 1):
 				if maxi(absi(dx), absi(dy)) != radius:
 					continue
 				var tile := center + Vector2i(dx, dy)
-				if is_buildable_tile(tile):
+				if is_buildable_rect(type_id, tile) if type_id != "" else is_buildable_tile(tile):
 					return tile
 	return Vector2i(-1, -1)
 
@@ -4482,7 +4727,7 @@ func _raider_update(r: Dictionary, dt: float, tcfg: Dictionary) -> bool:
 	# здание в пределах досягаемости — крушим (иначе осцилляция «центр ↔ стена»:
 	# обходной путь всегда существует, и мутант ни разу не ударит)
 	var near := _nearest_building_of(r, [])
-	if not near.is_empty() and (r["pos"] as Vector2).distance_to(map.tile_center_px(near["tile"])) <= reach:
+	if not near.is_empty() and bld_dist_px(r["pos"], near) <= reach:
 		if float(r["atk_cd"]) <= 0.0:
 			r["atk_cd"] = float(p["attack_cooldown"])
 			var mult := float(tcfg.get("brute_bld_mult", 3.0)) if String(r["type"]) == "brute" else 1.0
@@ -4501,7 +4746,7 @@ func _raider_update(r: Dictionary, dt: float, tcfg: Dictionary) -> bool:
 		b = near
 	if b.is_empty():
 		return false   # город пуст — волне нечего делать
-	var goal := _walkable_next_to(b["tile"])
+	var goal := _walkable_next_to_rect(b)
 	if goal == Vector2i(-1, -1):
 		return true
 	_raider_move_to(r, goal, float(p["speed"]) * dt)
@@ -4539,9 +4784,9 @@ func _nearest_building_of(r: Dictionary, wanted: Array) -> Dictionary:
 	for b in buildings:
 		if not bool(b["done"]):
 			continue
-		if not wanted.is_empty() and not (_def(b).get("effect", "") in wanted):
+		if not wanted.is_empty() and not (String(_def(b).get("effect", b.get("type", ""))) in wanted):
 			continue
-		var d: float = map.tile_center_px(b["tile"]).distance_to(r["pos"])
+		var d: float = bld_dist_px(r["pos"], b)
 		if d < best_d:
 			best_d = d
 			best = b
@@ -5063,12 +5308,12 @@ func _spirit_update(r: Dictionary, dt: float) -> bool:
 	if mill.is_empty():
 		return true
 	var reach := float(p["attack_range"]) + float(map.ts) * 0.5
-	if (r["pos"] as Vector2).distance_to(map.tile_center_px(mill["tile"])) <= reach:
+	if bld_dist_px(r["pos"], mill) <= reach:
 		if float(r["atk_cd"]) <= 0.0:
 			r["atk_cd"] = float(p["attack_cooldown"])
 			_damage_building(mill, float(p["damage"]))
 		return true
-	var goal := _walkable_next_to(mill["tile"])
+	var goal := _walkable_next_to_rect(mill)
 	if goal == Vector2i(-1, -1):
 		return true
 	_raider_move_to(r, goal, float(p["speed"]) * dt)
@@ -5181,11 +5426,11 @@ func hero_rock_near(px: Vector2) -> Dictionary:
 ## Недостроенное здание в шаге от героя ({}, если стройки рядом нет).
 func hero_site_near(px: Vector2) -> Dictionary:
 	var best: Dictionary = {}
-	var best_d := 1.6 * float(map.ts)
+	var best_d := 1.6 * float(map.ts) + float(map.ts) * 0.5   # прямоугольник 2×2: чуть щедрее
 	for b in buildings:
 		if bool(b["done"]):
 			continue
-		var d: float = (map.tile_center_px(b["tile"]) as Vector2).distance_to(px)
+		var d: float = bld_dist_px(px, b)
 		if d <= best_d:
 			best_d = d
 			best = b

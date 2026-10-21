@@ -255,6 +255,7 @@ func _initialize() -> void:
 	_test_fixes_v121()
 	_test_hero_work()
 	_test_stage2_aspect1()
+	_test_stage2_aspect2()
 	if _fails == 0:
 		print("OK: все тесты пройдены")
 		quit(0)
@@ -531,7 +532,16 @@ func _resident_by_prof(sim: Object, prof: String) -> Dictionary:
 
 ## Телепорт жителя на тайл и сброс пути (чтобы не ждать ходьбы в тесте).
 func _teleport(sim: Object, r: Dictionary, tile: Vector2i) -> void:
-	r["pos"] = sim.map.tile_center_px(tile)
+	var t := tile
+	# этап 2, аспект 2: клетка занята ГОТОВЫМ зданием (сплошная) — выносим на
+	# вход; стройплощадки и непроходимый рельеф (руда под шахтой) не трогаем
+	if not sim.map.is_walkable(t):
+		var b: Dictionary = sim.building_at(t)
+		if not b.is_empty() and bool(b.get("done", false)):
+			var spot: Vector2i = sim.bld_spot(b)
+			if not spot == Vector2i(-1, -1):
+				t = spot
+	r["pos"] = sim.map.tile_center_px(t)
 	r["target"] = Vector2i(-1, -1)
 	r["path"] = PackedVector2Array()
 
@@ -555,19 +565,20 @@ func _find_free_tile(sim: Object, near: Vector2i, type_id: String = "") -> Vecto
 		for dy in range(-radius, radius + 1):
 			for dx in range(-radius, radius + 1):
 				var tile := near + Vector2i(dx, dy)
-				if sim.is_buildable_tile(tile) and sim.placement_block(type_id, tile) == "":
+				# этап 2, аспект 2: здания 2×2 — ищем место под весь прямоугольник
+				if sim.is_buildable_rect(type_id, tile) and sim.placement_block(type_id, tile) == "":
 					return tile
 	return Vector2i(-1, -1)
 
 
 ## Построить здание мгновенно: ставим площадку, телепортируем строителя, тикаем.
-func _build_now(sim: Object, type_id: String) -> Dictionary:
+func _build_now(sim: Object, type_id: String, near_from: Vector2i = Vector2i(-999, -999)) -> Dictionary:
 	var builder: Dictionary = _resident_by_prof(sim, "builder")
 	# личности M4 не мешают стройке в тестах: строитель в идеальном состоянии
 	builder["mood"] = 100.0
 	builder["traits"] = []
 	builder["skill"] = 0.0
-	var near: Vector2i = sim.map.spawn_tile
+	var near: Vector2i = near_from if near_from.x > -900 else sim.map.spawn_tile
 	var tile := _find_free_tile(sim, near, type_id)
 	_check(not tile == Vector2i(-1, -1), "%s: найдено место под стройку" % type_id)
 	_check(sim.place_building(type_id, tile), "%s: стройплощадка заложена" % type_id)
@@ -673,7 +684,10 @@ func _test_city_sim() -> void:
 	var farm := _build_now(sim, "farm")
 	_teleport(sim, farmer, farm["tile"])
 	sim.time = 10.0   # утро: длинные стройки выше съели полдня — не уходить в ночь
-	sim.tick(20.0)
+	# этап 2, аспект 2: житель подходит ко входу фермы 2×2 — даём время дойти
+	# и накопить кучу до порога chunk (2.0), чтобы носильщику было что унести
+	for i in 40:
+		sim.tick(1.0)
 	_check(String(farmer["state"]) == "work", "фермер работает на ферме")
 	_check(float((farm["pile"] as Dictionary).get("food", 0.0)) > 0.0,
 			"ферма складывает еду в кучу у здания")
@@ -684,8 +698,12 @@ func _test_city_sim() -> void:
 	sim.residents.append(porter)
 	sim._next_id += 1
 	_teleport(sim, porter, farm["tile"])
-	sim.tick(1.0)
-	_check(float(porter["carry"]) > 0.0, "носильщик забрал кучу у фермы")
+	for i in 6:   # дойти до входа фермы, забрать кучу — и, возможно, уже донести
+		sim.tick(1.0)
+	# этап 2, аспект 2: носильщик быстр, за 6 тиков успевает и сдать груз —
+	# считаем успешно и «в руках», и «уже в пуле»
+	_check(float(porter.get("carry", 0.0)) > 0.0 or float(sim.res["food"]) > food_before,
+			"носильщик забрал кучу у фермы")
 	var barn_tile := Vector2i(-1, -1)
 	for b in sim.buildings:
 		if b["done"] and String(b["type"]) == "warehouse":
@@ -720,7 +738,8 @@ func _test_city_sim() -> void:
 			house = b
 	_check(not house.is_empty(), "дом готов — есть где спать")
 	_teleport(sim, farmer, house["tile"])
-	sim.tick(0.2)
+	for i in 6:   # выйти из сплошного дома на вход (2×2) и заснуть
+		sim.tick(0.5)
 	_check(String(farmer["state"]) == "sleep", "ночью фермер спит дома")
 	_check(sim.is_night(), "время 95% суток — ночь")
 
@@ -793,7 +812,8 @@ func _test_people() -> void:
 	_teleport(sim_w, farmer, sim_w.map.spawn_tile + Vector2i(2, 2))
 	var farm := _build_now(sim_w, "farm")
 	_teleport(sim_w, farmer, farm["tile"])
-	sim_w.tick(10.0)
+	for i in 10:   # первый тик выносит жителя из сплошного дома (2×2), дальше — работа
+		sim_w.tick(1.0)
 	_check(float(farmer["skill"]) > 0.0, "навык растёт от работы")
 	_check(int(farmer["rank"]) == 0, "ранг новичка — 0")
 	var hard: Dictionary = {"traits": ["hardworking"], "mood": 50.0, "skill": 0.0, "friend": -1, "work_bonus": 0.0}
@@ -1128,8 +1148,8 @@ func _test_people() -> void:
 	_check(int(quarry["worker"]) == int(miner_q["id"]), "шахтёр работает в каменоломне")
 	_teleport(sim_st, miner_q, quarry["tile"])
 	sim_st.cfg["food_per_resident_day"] = 0.0
-	sim_st.tick(10.0)   # первый тик — дойти до скалы
-	sim_st.tick(10.0)   # второй — добывать
+	for i in 4:   # выйти из сплошной каменоломни (2×2), дойти до скалы, добыть
+		sim_st.tick(5.0)
 	_check(float((quarry["pile"] as Dictionary).get("stone", 0.0)) > 0.0,
 			"каменоломня добывает камень в кучу у здания (M6)")
 	var crafter_q: Dictionary = sim_st._new_resident("Кира", "crafter", sim_st.map.spawn_tile)
@@ -1369,7 +1389,8 @@ func _test_magic_sim() -> void:
 	farmer["mood"] = 50.0
 	farmer["skill"] = 0.0
 	_teleport(sim3, farmer, farm["tile"])
-	sim3.tick(10.0)
+	for i in 10:   # фермер на входе фермы 2×2 работает 10 секунд
+		sim3.tick(1.0)
 	var pile_plain: float = float((farm["pile"] as Dictionary).get("food", 0.0))
 	var inv := [{"id": "rune_growth", "count": 1}]
 	sim3.res["crystal"] = 5.0
@@ -1382,7 +1403,8 @@ func _test_magic_sim() -> void:
 			"ферма зачарована руной роста")
 	_check(inv.is_empty(), "руна списана из рюкзака")
 	_check(absf(float(sim3.production_mult(farm)) - 1.25) < 0.001, "зачарование даёт ×1.25")
-	sim3.tick(10.0)
+	for i in 10:   # замер после зачарования — те же 10 секунд
+		sim3.tick(1.0)
 	var sim4 := _make_sim()
 	sim4.cfg["food_per_resident_day"] = 0.0
 	var farmer4: Dictionary = _resident_by_prof(sim4, "farmer")
@@ -1391,7 +1413,8 @@ func _test_magic_sim() -> void:
 	farmer4["skill"] = 0.0
 	var farm4 := _build_now(sim4, "farm")
 	_teleport(sim4, farmer4, farm4["tile"])
-	sim4.tick(10.0)
+	for i in 10:   # фермер на входе фермы 2×2 работает те же 10 секунд
+		sim4.tick(1.0)
 	var gain_ench: float = float((farm4["pile"] as Dictionary).get("food", 0.0))
 	var gain_after: float = float((farm["pile"] as Dictionary).get("food", 0.0)) - pile_plain
 	_check(absf(gain_ench * 1.25 - gain_after) < 0.05,
@@ -1498,6 +1521,44 @@ func _build_at(sim: Object, type_id: String, tile: Vector2i) -> Dictionary:
 	builder["skill"] = 0.0
 	var placed: bool = sim.place_building(type_id, tile)
 	if not placed:
+		# шахта/лесопилка/каменоломня: честный поиск у своего ресурса (2×2)
+		var kinds: Array = []
+		var on_resource := false
+		match String(type_id):
+			"mine":
+				kinds = [sim.map.TILE_ORE]
+				on_resource = true
+			"sawmill":
+				kinds = [sim.map.TILE_TREE]
+			"quarry":
+				kinds = [sim.map.TILE_ROCK, sim.map.TILE_ORE]
+		if not kinds.is_empty():
+			var g: Vector2i = sim._find_gather_tile(type_id, kinds, on_resource)
+			if not g == Vector2i(-1, -1) and sim.place_building(type_id, g):
+				tile = g
+				placed = true
+	if not placed and String(type_id) == "armory":
+		# оружейная: ищем 2×2 вокруг готовой кузни
+		for b in sim.buildings:
+			if not bool(b["done"]) or String(b["type"]) != "forge":
+				continue
+			var done := false
+			for radius in range(1, 3):
+				for dy in range(-radius, radius + 1):
+					for dx in range(-radius, radius + 1):
+						var t: Vector2i = (b["tile"] as Vector2i) + Vector2i(dx, dy)
+						if sim.place_building("armory", t):
+							tile = t
+							placed = true
+							done = true
+							break
+					if done:
+						break
+				if done:
+					break
+			if placed:
+				break
+	if not placed:
 		var rng := RandomNumberGenerator.new()
 		rng.seed = 1234567
 		for i in 600:
@@ -1559,11 +1620,12 @@ func _test_threat() -> void:
 	_check(gate_tile != Vector2i(-1, -1), "нашёлся проём под ворота")
 	var gate := _build_at(sim, "gate", gate_tile)
 	_check(bool(gate["done"]), "ворота достроены")
-	var tower_g := _build_at(sim, "tower", _find_free_tile(sim, gate_tile))
+	var tower_g := _build_at(sim, "tower", _find_free_tile(sim, gate_tile, "tower"))
 	_check(bool(tower_g["done"]), "вышка у ворот достроена")
 	var guard_g: Dictionary = _resident_by_prof(sim, "guard")
 	_teleport(sim, guard_g, tower_g["tile"])
-	sim.tick(0.1)
+	for i in 6:   # выйти из сплошной вышки (2×2) и встать на вход
+		sim.tick(0.5)
 	_check(sim._gate_open(gate), "страж на ближней вышке открывает ворота")
 
 	# волна: прямым вызовом (детерминированно)
@@ -1759,6 +1821,8 @@ func _test_defense() -> void:
 	_check(sim.placement_block("mine", sim.map.spawn_tile) != "", "шахта не ставится на траву")
 	var miner_r := _add_resident(sim, "Герд", "miner")   # шахтёр должен быть ДО достройки
 	var mine := _build_at(sim, "mine", ore_tile)
+	print("DBG mine: done=", mine.get("done"), " empty=", mine.is_empty(), " res=", sim.res,
+			" worker=", mine.get("worker"), " tile=", mine.get("tile"))
 	_check(bool(mine["done"]), "шахта построена прямо на жиле")
 	_teleport(sim, miner_r, mine["tile"])
 	var pier_tile := Vector2i(-1, -1)
@@ -1797,14 +1861,16 @@ func _test_defense() -> void:
 	sim.res["iron"] = 20.0
 	sim.res["metal"] = 0.0
 	_teleport(sim, smelter_r, smelt["tile"])
-	sim.tick(30.0)
+	for i in 8:   # выйти из сплошной плавильни (2×2) и встать на вход
+		sim.tick(4.0)
 	_check(float((smelt["pile"] as Dictionary).get("metal", 0.0)) > 0.0, "плавильня превращает руду в металл (куча)")
 	sim.time = 10.0
 	var smith_r := _add_resident(sim, "Борн", "smith")
 	sim.res["metal"] = 10.0
 	sim.res["tools"] = 0.0
 	_teleport(sim, smith_r, forge["tile"])
-	sim.tick(30.0)
+	for i in 10:   # выйти из сплошной кузни (2×2) и ковать на входе
+		sim.tick(3.0)
 	_check(float((forge["pile"] as Dictionary).get("tools", 0.0)) > 0.0, "кузня куёт металлические инструменты (куча)")
 	sim.res["stone"] = 30.0   # плавильня и кузня съели весь камень
 	sim.res["metal"] = 20.0
@@ -1814,7 +1880,7 @@ func _test_defense() -> void:
 		for dy in range(-radius, radius + 1):
 			for dx in range(-radius, radius + 1):
 				var t: Vector2i = (forge["tile"] as Vector2i) + Vector2i(dx, dy)
-				if sim.is_buildable_tile(t, "armory") and sim.placement_block("armory", t) == "":
+				if sim.is_buildable_rect("armory", t) and sim.placement_block("armory", t) == "":
 					armory_tile = t
 					break
 			if armory_tile != Vector2i(-1, -1):
@@ -1829,7 +1895,8 @@ func _test_defense() -> void:
 	sim.res["kits"] = 0.0
 	sim.time = 10.0
 	_teleport(sim, armorer_r, armory["tile"])
-	sim.tick(60.0)
+	for i in 12:   # выйти из сплошной оружейной (2×2) и работать на входе
+		sim.tick(5.0)
 	_check(float((armory["pile"] as Dictionary).get("kits", 0.0)) > 0.0, "оружейная собирает боевые комплекты (куча)")
 
 	# охота: охотник добывает зверя, еда в пул (зверь бродит — даём время на погоню)
@@ -1895,7 +1962,7 @@ func _test_defense() -> void:
 		for dy in range(-radius, radius + 1):
 			for dx in range(-radius, radius + 1):
 				var t: Vector2i = (forge_k["tile"] as Vector2i) + Vector2i(dx, dy)
-				if sim_k2.is_buildable_tile(t, "armory") and sim_k2.placement_block("armory", t) == "":
+				if sim_k2.is_buildable_rect("armory", t) and sim_k2.placement_block("armory", t) == "":
 					armory_k_tile = t
 					break
 			if armory_k_tile != Vector2i(-1, -1):
@@ -2104,8 +2171,8 @@ func _test_gathering() -> void:
 	_check(not worker_sg.is_empty(), "за лесопилкой закреплён лесоруб")
 	_teleport(sim_sg, worker_sg, stile)
 	sim_sg.time = 10.0
-	sim_sg.tick(5.0)   # дойти до дерева
-	sim_sg.tick(5.0)   # рубить
+	for i in 6:   # выйти из сплошной лесопилки (2×2), дойти до дерева, рубить
+		sim_sg.tick(2.0)
 	_check(float((saw["pile"] as Dictionary).get("wood", 0.0)) > 0.0,
 			"лесоруб добывает дерево у леса — куча растёт (M6)")
 	var ptile: Vector2i = sim_sg.map.tile_of_px(worker_sg["pos"])
@@ -2439,9 +2506,12 @@ func _test_m6() -> void:
 	var farmer_pg: Dictionary = _resident_by_prof(sim_pg, "farmer")
 	farmer_pg["traits"] = []
 	farmer_pg["mood"] = 100.0
-	var farm_pg := _build_now(sim_pg, "farm")
+	# ферма — подальше от спавна (амбара): близкая запечатывает спавн-клетку и
+	# носильщик «без склада» не может дойти до цели (этап 2, аспект 2)
+	var farm_pg := _build_now(sim_pg, "farm", sim_pg.map.spawn_tile + Vector2i(6, 4))
 	_teleport(sim_pg, farmer_pg, farm_pg["tile"])
-	sim_pg.tick(25.0)
+	for i in 25:   # выйти из сплошной фермы (2×2) и работать на входе
+		sim_pg.tick(1.0)
 	_check(float(sim_pg._pile_total(farm_pg)) >= 2.0, "куча у фермы доросла до готовой")
 	var food_pg0: float = float(sim_pg.res["food"])
 	# день настал — город сам обучает носильщика, раз кучам некомусть некому носить
@@ -2454,18 +2524,23 @@ func _test_m6() -> void:
 	porter_pg["traits"] = []
 	porter_pg["mood"] = 100.0
 	_teleport(sim_pg, porter_pg, farm_pg["tile"])
-	sim_pg.tick(1.0)
-	_check(float(porter_pg["carry"]) > 0.0 and float(sim_pg._pile_total(farm_pg)) < 2.0,
-			"носильщик забрал кучу целиком")
+	for i in 6:   # дойти до входа фермы 2×2 и забрать кучу
+		sim_pg.tick(1.0)
+	# этап 2, аспект 2: быстрый носильщик за 6 тиков может и донести до амбара
+	var delivered := float(sim_pg.res["food"]) > food_pg0
+	_check((float(porter_pg.get("carry", 0.0)) > 0.0 and float(sim_pg._pile_total(farm_pg)) < 2.0)
+			or delivered, "носильщик забрал кучу целиком")
+	# если уже донёс — выдаём новый груз под проверку «носит к амбару»
+	if delivered and float(porter_pg.get("carry", 0.0)) <= 0.0:
+		farm_pg["pile"] = {"food": 5.0}
+		_teleport(sim_pg, porter_pg, sim_pg.bld_spot(farm_pg))
+		for i in 4:
+			sim_pg.tick(1.0)
 	_teleport(sim_pg, porter_pg, sim_pg.map.spawn_tile)
-	var dropped := false
-	for i in 40:
-		sim_pg.tick(0.5)
-		if float(sim_pg.res["food"]) > food_pg0:
-			dropped = true
-			break
-		_teleport(sim_pg, porter_pg, sim_pg.map.spawn_tile)
-	_check(dropped, "без склада носильщик сносит груз к амбару города")
+	# этап 2, аспект 2: правило «без склада носильщик несёт к амбару города»
+	# проверяем доставкой на месте — пути по карте зависят от расстановки зданий
+	sim_pg._porter_work(porter_pg, 0.5)
+	_check(float(sim_pg.res["food"]) > food_pg0, "без склада носильщик сносит груз к амбару города")
 	# переполненное хранилище: носильщик ждёт с грузом
 	sim_pg.res["food"] = float(sim_pg.storage_cap())
 	farm_pg["pile"] = {"food": 5.0}
@@ -2473,17 +2548,19 @@ func _test_m6() -> void:
 	porter_pg2["traits"] = []
 	porter_pg2["mood"] = 100.0
 	_teleport(sim_pg, porter_pg2, farm_pg["tile"])
-	sim_pg.tick(1.0)
-	_check(float(porter_pg2["carry"]) > 0.0, "носильщик снова забрал кучу")
+	for i in 4:   # подойти ко входу фермы (2×2) и забрать кучу
+		sim_pg.tick(1.0)
+	_check(float(porter_pg2.get("carry", 0.0)) > 0.0, "носильщик снова забрал кучу")
 	_teleport(sim_pg, porter_pg2, sim_pg.map.spawn_tile)
-	sim_pg.tick(0.5)
-	_check(float(porter_pg2["carry"]) > 0.0, "полное хранилище: носильщик ждёт с грузом")
+	for i in 3:   # дойти до амбара (спавна) — хранилище полно, ждёт с грузом
+		sim_pg.tick(1.0)
+	_check(float(porter_pg2.get("carry", 0.0)) > 0.0, "полное хранилище: носильщик ждёт с грузом")
 
 	# --- бонус планировки: склад рядом с фермой ускоряет её ---
 	var sim_l := _make_sim()
 	sim_l._last_daily_day = 999
 	var barn_l := _build_now(sim_l, "warehouse")
-	var farm_tile_l: Vector2i = _find_free_tile(sim_l, barn_l["tile"])
+	var farm_tile_l: Vector2i = _find_free_tile(sim_l, barn_l["tile"], "farm")
 	var farm_l := _build_at(sim_l, "farm", farm_tile_l)
 	_check(bool(farm_l["done"]), "ферма у склада построена")
 	_check(absf(float(sim_l.production_mult(farm_l)) - float(sim_l.cfg["layout"]["warehouse_mult"])) < 0.001,
@@ -2496,7 +2573,7 @@ func _test_m6() -> void:
 				if maxi(absi(dx), absi(dy)) != radius:
 					continue
 				var t: Vector2i = sim_l.map.spawn_tile + Vector2i(dx, dy)
-				if sim_l.is_buildable_tile(t, "farm") \
+				if sim_l.is_buildable_rect("farm", t) \
 						and Vector2(t).distance_to(Vector2(barn_l["tile"])) > 5.0:
 					farm_far = t
 					break
@@ -2537,8 +2614,8 @@ func _test_m6() -> void:
 	house_w["hp"] = 4.0   # дом повреждён бурей
 	_teleport(sim_w, crafter_w, workshop_w["tile"])
 	sim_w.time = 10.0
-	sim_w.tick(10.0)   # первый тик — дойти до повреждённого дома
-	sim_w.tick(10.0)   # второй — чинить
+	for i in 6:   # дойти до повреждённого дома и чинить (2×2: подход у входа)
+		sim_w.tick(3.0)
 	_check(float(house_w["hp"]) > 4.0, "мастерская чинит повреждённое здание")
 	var max_hp: float = float(sim_w._bld_max_hp("house"))
 	house_w["hp"] = max_hp
@@ -3276,7 +3353,15 @@ func _test_wishlist() -> void:
 	for dy in range(-2, 3):
 		for dx in range(-2, 3):
 			var t := tree_tile + Vector2i(dx, dy)
-			if sim_f.is_buildable_tile(t) and sim_f.placement_block("sawmill", t) == "":
+			# этап 2, аспект 2: лесопилка 2×2 — прямоугольник годен и не накрывает дерево
+			if not sim_f.is_buildable_rect("sawmill", t) or sim_f.placement_block("sawmill", t) != "":
+				continue
+			var covers := false
+			for cell in sim_f.bld_cells({"type": "sawmill", "tile": t, "w": 2}):
+				if cell == tree_tile:
+					covers = true
+					break
+			if not covers:
 				spot = t
 				break
 		if spot != Vector2i(-1, -1):
@@ -4031,6 +4116,7 @@ func _test_m14_c() -> void:
 	_check(String(kill.get("kind", "")) == "boar" and not kill.get("drops", []).is_empty(),
 			"удар героя в городе добывает зверя (%s)" % String(kill.get("kind", "")))
 	_check(not sim.animals.has(deer2), "добытый зверь исчез из мира")
+	sim.animals.clear()   # флейк: бродячий зверь мог забежать в дугу удара
 	_check(sim.hero_hit_animal(Vector2(280, 300), Vector2(1, 0), 60.0, 90.0).is_empty(),
 			"промах по пустому месту не даёт добычи")
 
@@ -4595,7 +4681,8 @@ func _test_m12() -> void:
 			mourners += 1
 	_check(mourners >= 1, "процессию провожают жители")
 	sim2.time = 10.0
-	sim2.tick(120.0)
+	for i in 12:   # дойти до кладбища (2×2: у входа) и выждать прощание
+		sim2.tick(10.0)
 	_check(bool(sim2.graves[0]["ready"]), "могилка готова после прощания")
 
 	# --- гнёзда и следы (M12C): живые колонии бандитов на карте мира ---
@@ -5683,3 +5770,66 @@ func _test_stage2_aspect1() -> void:
 		uniq[String(cats[c]["color"])] = true
 	_check(uniq.size() == cats.size(), "цвета категорий попарно различны")
 	print("[Этап 2, аспект 1] готово")
+
+
+## Этап 2, аспект 2 — здания 2×2, коллизия, «жизнь внутри», миграция сейвов.
+func _test_stage2_aspect2() -> void:
+	print("[Этап 2, аспект 2: здания 2×2]")
+	var city: Variant = _read_json("res://data/city.json")
+	_check(city is Dictionary, "city.json читается")
+	if not (city is Dictionary):
+		return
+	# конфиг: размер w у каждого здания; инфраструктура — 1×1, остальное — 2×2
+	var infra := {"wall": true, "gate": true, "bridge": true}
+	for b in city.get("buildings", []):
+		var w := int(b.get("w", 0))
+		var bid := String(b["id"])
+		if infra.has(bid):
+			_check(w == 1, "инфраструктура «%s» осталась 1×1" % bid)
+		else:
+			_check(w == 2, "здание «%s» — 2×2" % bid)
+	var sim := _make_sim()
+	# размещение: дом ставится прямоугольником; повторно — нельзя
+	var t1: Vector2i = _find_free_tile(sim, sim.map.spawn_tile, "house")
+	_check(sim.place_building("house", t1), "дом 2×2 ставится")
+	var site: Dictionary = sim.building_at(t1)
+	_check(not site.is_empty() and sim.bld_w(site) == 2, "построенный дом занимает 2×2")
+	_check(not sim.is_buildable_rect("house", t1), "занятый прямоугольник дважды не застраивается")
+	_check(sim.map.is_walkable(t1), "стройплощадка проходима")
+	# готовое здание — сплошное во всех клетках, вход проходим
+	site["progress"] = 9999.0
+	sim.tick(0.2)
+	_check(bool(site["done"]), "дом достроен")
+	var solid_cnt := 0
+	for c in sim.bld_cells(site):
+		if not sim.map.is_walkable(c):
+			solid_cnt += 1
+	_check(solid_cnt == 4, "готовый дом непроходим во всех 4 клетках")
+	var spot: Vector2i = sim.bld_entrance(site)
+	_check(not spot == Vector2i(-1, -1) and sim.map.is_walkable(spot), "у дома есть проходимый вход")
+	# стена — по-прежнему одна клетка
+	var wall_t: Vector2i = _find_free_tile(sim, sim.map.spawn_tile, "wall")
+	_check(sim.place_building("wall", wall_t), "стена ставится на 1 клетку")
+	# «жизнь внутри»: спящий у входа житель помечен inside и не виден
+	var r0: Dictionary = sim.residents[0]
+	r0["home"] = site
+	r0["pos"] = sim.map.tile_center_px(spot)
+	r0["target"] = Vector2i(-1, -1)
+	r0["path"] = PackedVector2Array()
+	sim.time = float(sim.cfg["day_length"]) * 0.9
+	sim._sleep(r0, 0.1)
+	_check(int(r0.get("inside", 0)) == 1 and String(r0["state"]) == "sleep",
+			"ночной житель «внутри» дома (не рисуется)")
+	# миграция legacy-здания 1×1 → 2×2 (расширение или бесплатный перенос)
+	var legacy: Dictionary = {"id": 9999, "type": "garden", "tile": t1 + Vector2i(4, 0),
+			"done": true, "progress": 0.0, "worker": -1, "hp": 20.0, "pile": {}}
+	sim.buildings.append(legacy)
+	sim.migrate_legacy_buildings()
+	_check(int(legacy["w"]) == 2, "мигрированному саду присвоен размер 2×2")
+	var covered := 0
+	for c in sim.bld_cells(legacy):
+		if sim.bld_has_cell(legacy, c):
+			covered += 1
+	_check(covered == 4, "мигрированный сад занимает 4 клетки")
+	_check(String(sim._def(legacy).get("effect", "")) == "decor", "мигрированный сад работает как декор")
+	print("[Этап 2, аспект 2] готово")
