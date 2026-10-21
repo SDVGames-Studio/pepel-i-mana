@@ -44,6 +44,8 @@ var _near_temple := false       # храм рядом — E: молитва (M14
 var _hero_tree: Dictionary = {} # дерево у ног героя (E — рубить, правки v1.12.2)
 var _hero_rock: Dictionary = {} # скала/руда рядом (E — добыть)
 var _hero_crop: Dictionary = {} # спелая грядка рядом (E — собрать, этап 2, аспект 3)
+var _hero_sow: Dictionary = {}  # пустая клетка поля рядом (E — посеять, 2026-10-21)
+var _hero_till: Dictionary = {} # невспаханная клетка зоны рядом (E — вспахать)
 var _pending_field: Array = []  # клетки нарисованного поля — ждут выбора культуры
 var _pick_zone_id := -1         # id поля, в котором меняем культуру
 var _hero_site: Dictionary = {} # недострой рядом (E — помочь)
@@ -288,6 +290,8 @@ func _process(delta: float) -> void:
 	_hero_tree = sim.hero_tree_near(hero.position)
 	_hero_rock = sim.hero_rock_near(hero.position)
 	_hero_crop = sim.hero_harvest_near(hero.position)
+	_hero_sow = sim.hero_sow_near(hero.position)
+	_hero_till = sim.hero_till_near(hero.position)
 	_hero_repair_bld = sim.hero_repair_near(hero.position)
 	if _near_map_border():
 		hud.set_hint(Loc.t("city.exit_world"))
@@ -312,6 +316,10 @@ func _process(delta: float) -> void:
 		hud.set_hint(Loc.t("city.hint_mine_ore" if String(_hero_rock["kind"]) == "ore" else "city.hint_mine"))
 	elif not _hero_crop.is_empty():
 		hud.set_hint(Loc.t("city.hint_harvest"))
+	elif not _hero_sow.is_empty():
+		hud.set_hint(Loc.t("city.hint_sow"))
+	elif not _hero_till.is_empty():
+		hud.set_hint(Loc.t("city.hint_till"))
 	elif build_mode == "":
 		hud.set_hint(_default_hint())
 
@@ -337,16 +345,47 @@ func _armory_near_hero() -> Dictionary:
 
 
 ## Название здания под курсором — тултип у мыши (просьба заказчика).
+## Нет здания — подписываем зону (поле/пастбище и пр., 2026-10-21).
 func _update_hover() -> void:
 	if build_mode != "" or enchant_mode != "" or zone_mode != "" or road_mode or plant_mode \
 			or move_mode:
 		hud.set_hover_info("", Vector2.ZERO)
 		return
-	var b: Dictionary = sim.building_at(map.tile_of_px(get_global_mouse_position()))
+	var tile: Vector2i = map.tile_of_px(get_global_mouse_position())
+	var b: Dictionary = sim.building_at(tile)
 	if b.is_empty():
-		hud.set_hover_info("", Vector2.ZERO)
+		var zone_text := _zone_hover_text(sim.zone_at(tile))
+		if zone_text == "":
+			hud.set_hover_info("", Vector2.ZERO)
+			return
+		hud.set_hover_info(zone_text, get_viewport().get_mouse_position())
 		return
 	hud.set_hover_info(_hover_text(b), get_viewport().get_mouse_position())
+
+
+## Подпись зоны при наведении: имя + живая статистика поля/пастбища.
+func _zone_hover_text(z: Dictionary) -> String:
+	if z.is_empty():
+		return ""
+	var type_id := String(z["type"])
+	var name := Loc.t("zone." + type_id)
+	if type_id == "field":
+		var st: Dictionary = sim.field_stats(z)
+		var crop := Loc.t(String(sim.crop_def(String(z.get("crop", "turnip"))).get("loc", "")))
+		if int(st["ripe"]) > 0:
+			return Loc.t("city.hover_field_ripe") % [name, crop, int(st["ripe"]), int(st["filled"])]
+		return Loc.t("city.hover_field") % [name, crop, int(st["sown"]), int(st["filled"])]
+	if type_id == "pasture":
+		var cap: int = sim.pasture_capacity(z)
+		return Loc.t("city.hover_pasture") % [name, sim._livestock_in(int(z["id"])), maxf(cap, 1)]
+	if sim._zone_type_overlay(type_id):
+		return name + " • " + Loc.t("zone." + type_id + "_tip")
+	var fill_work: float = float(cfg.get("zones", {}).get("fill_work", 4.0))
+	var filled := 0
+	for i in (z["cells"] as Array).size():
+		if float((z["progress"] as Array)[i]) >= fill_work:
+			filled += 1
+	return Loc.t("city.hover_zone_progress") % [name, filled, (z["cells"] as Array).size()]
 
 
 func _hover_text(b: Dictionary) -> String:
@@ -465,6 +504,9 @@ func _process_events() -> void:
 			"razed":
 				hud.toast(Loc.t("city.razed_toast") % bld_name)
 				_rebuild_collision()
+			"dungeon_calm":
+				# данж у города зачищен — волны мутантов сдвинулись (2026-10-21)
+				hud.toast(Loc.t("city.dungeon_calm_toast") % int(ev["days"]))
 			# --- ремонт и перенос (этап 2, аспект 5) ---
 			"bld_repaired":
 				hud.toast(Loc.t("city.restored_toast" if bool(ev.get("razed", false))
@@ -1193,7 +1235,8 @@ func go_autonomous() -> void:
 
 
 ## E у природы или стройки: герой работает сам (правки v1.12.2).
-## Порядок: стройка → ремонт (этап 2, аспект 5) → дерево → скала/руда → сбор.
+## Порядок: стройка → ремонт (этап 2, аспект 5) → дерево → скала/руда → сбор →
+## посев → вспашка (2026-10-21: герой сам сеет и пашет поля).
 func _hero_act() -> bool:
 	if _hero_work_cd > 0.0:
 		return false   # кулдаун: молча, тосты не спамим
@@ -1216,6 +1259,10 @@ func _hero_act() -> bool:
 	if res == "":
 		res = sim.hero_harvest(hero.position)
 	if res == "":
+		res = sim.hero_sow(hero.position)
+	if res == "":
+		res = sim.hero_till(hero.position)
+	if res == "":
 		return false
 	_hero_work_cd = float(hw.get("cooldown", 0.35))
 	match res:
@@ -1229,6 +1276,12 @@ func _hero_act() -> bool:
 			hud.toast(Loc.t("city.hero_rock_done"))
 		"food":
 			hud.toast(Loc.t("city.hero_harvest_done"))
+		"sow":
+			hud.toast(Loc.t("city.hero_sow_done"))
+		"no_seeds":
+			hud.toast(Loc.t("city.hero_sow_no_seeds"))
+		"tilled":
+			hud.toast(Loc.t("city.hero_till_done"))
 		"done":
 			# стена/ворота стали преградой — не даём герою остаться внутри
 			var st: Vector2i = map.tile_of_px(hero.position)

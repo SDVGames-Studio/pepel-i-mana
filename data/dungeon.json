@@ -27,7 +27,9 @@
 	},
 	"mana_drain_period": 25.0,
 	"crystal_mana": 3,
-	"clear_growth": { "lock_days": 10, "hp_per_clear": 0.3, "damage_per_clear": 1 },
+	"clear_growth": { "lock_days": 20, "hp_per_clear": 0.3, "damage_per_clear": 1 },
+	"clear_light": { "_comment": "данж светлеет по мере убийства монстров: ambient лерпится к color с силой power (2026-10-21)",
+		"color": "#7a7a8c", "power": 0.9 },
 	"traps": {
 		"count": 6,
 		"types": ["spikes", "darts", "rune_mine"],

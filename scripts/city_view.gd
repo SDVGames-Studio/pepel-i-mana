@@ -445,6 +445,35 @@ func _draw_zones() -> void:
 				var frac := clampf(float(z["progress"][i]) / maxf(0.1, fill_work), 0.0, 1.0)
 				draw_rect(Rect2(rect.position + Vector2(4, map.ts - 8), Vector2((map.ts - 8) * frac, 4)),
 						Color("#ffe082"))
+		# пастбище — забор по периметру зоны (2026-10-21): цветное обозначение
+		# читается с одного взгляда, скот внутри как за забором
+		if String(z["type"]) == "pasture":
+			_draw_zone_fence(z)
+
+
+## Забор пастбища: по внешним рёбрам клеток зоны — перекладина и столбики.
+func _draw_zone_fence(z: Dictionary) -> void:
+	var ts := float(map.ts)
+	var inside := {}
+	for c in z["cells"]:
+		inside[Vector2i(c)] = true
+	var wood := Color("#7a5a3a")
+	var dark := Color("#5d4030")
+	for c: Vector2i in inside.keys():
+		var p := Vector2(c) * ts
+		var edges := []
+		if not inside.has(c + Vector2i(1, 0)):
+			edges.append([p + Vector2(ts, 0), p + Vector2(ts, ts), p + Vector2(ts, ts * 0.5)])
+		if not inside.has(c + Vector2i(-1, 0)):
+			edges.append([p, p + Vector2(0, ts), p + Vector2(0, ts * 0.5)])
+		if not inside.has(c + Vector2i(0, 1)):
+			edges.append([p + Vector2(0, ts), p + Vector2(ts, ts), p + Vector2(ts * 0.5, ts)])
+		if not inside.has(c + Vector2i(0, -1)):
+			edges.append([p, p + Vector2(ts, 0), p + Vector2(ts * 0.5, 0)])
+		for e in edges:
+			draw_line(e[0], e[1], wood, 2.5)
+			draw_line(e[2], e[2] + Vector2(0, -8), dark, 2.5)
+			draw_circle(e[2] + Vector2(0, -8), 1.6, dark)
 
 
 ## Дороги (M6): тёплые плитки с камешками.

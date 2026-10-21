@@ -32,6 +32,9 @@ var _rng := RandomNumberGenerator.new()
 var _loot_rng := RandomNumberGenerator.new()
 var _zones: Array = []            # зоны «Терновых шипов»: {pos, radius, until, acc, dps}
 var _zone_time := 0.0
+var _darkness: CanvasModulate = null    # общий свет данжа: светлеет по мере убийств
+var _ambient_base := Color.WHITE        # исходная тьма биома
+var _enemies_total := 0                 # монстров на входе в данж (для подсветки)
 var _pause_layer: CanvasLayer = null   # пауза данжа (M9, Esc)
 var _pause_overlay = null
 var _equip_panel = null                # панель экипировки (M14-B, клавиша I)
@@ -96,6 +99,8 @@ func _ready() -> void:
 	_build_traps()
 	_build_boss()
 	_build_fauna()
+	# сколько монстров было на входе: по доле убитых данж светлеет (2026-10-21)
+	_enemies_total = get_tree().get_nodes_in_group("enemies").size()
 
 	hud = HudScript.new()
 	hud.init(hero, gen, loot_data)
@@ -183,11 +188,35 @@ func _pos_to_tile(pos: Vector2) -> Vector2i:
 
 
 ## Тьма: весь данж гасится, видимость даёт только фонарь героя (hero.make_light).
+## Правка 2026-10-21: с каждым убитым монстром данж светлеет — к финалу видно всё.
 func _build_darkness() -> void:
 	var dark := CanvasModulate.new()
 	dark.name = "Darkness"
-	dark.color = Color(String(biome["ambient"]))
+	_ambient_base = Color(String(biome["ambient"]))
+	dark.color = _ambient_base
+	_darkness = dark
 	add_child(dark)
+
+
+## Чистая математика подсветки (для тестов): доля убитых 0..1 лерпит исходную
+## тьму биома к светлому цвету clear_light с силой power.
+static func bright_ambient(base: Color, killed_frac: float, lcfg: Dictionary) -> Color:
+	var target := Color(String(lcfg.get("color", "#7a7a8c")))
+	var power := clampf(float(lcfg.get("power", 0.9)), 0.0, 1.0)
+	return base.lerp(target, clampf(killed_frac, 0.0, 1.0) * power)
+
+
+## Пересчитать общий свет: чем больше монстров убито, тем светлее данж.
+func _apply_clear_light() -> void:
+	if _darkness == null or _enemies_total <= 0:
+		return
+	var alive := 0
+	for e in get_tree().get_nodes_in_group("enemies"):
+		if is_instance_valid(e) and int(e["hp"]) > 0:
+			alive += 1
+	var killed_frac := 1.0 - float(alive) / float(_enemies_total)
+	_darkness.color = bright_ambient(_ambient_base, killed_frac,
+			params.get("clear_light", {}))
 
 
 func _make_view() -> Node2D:
@@ -936,6 +965,7 @@ func _on_enemy_died(enemy) -> void:
 		if ups > 0:
 			hud.toast(Loc.t("hud.level_up") % Game.skills.level)
 			hud.open_skill_choice()
+	_apply_clear_light()
 	_check_dungeon_cleared()
 
 
@@ -970,7 +1000,9 @@ func _roll_equipment_boss(tier: int) -> String:
 	return String(pool[_loot_rng.randi_range(0, pool.size() - 1)]["id"])
 
 
-## Все враги мертвы — данж зачищен: 10 дней не работает, следующая версия сильнее (M5.1).
+## Все враги мертвы — данж зачищен: 20 дней не работает (перезарядка данжа
+## у города, 2026-10-21), следующая версия сильнее, атаки мутантов на город
+## сдвигаются на время перезарядки.
 func _check_dungeon_cleared() -> void:
 	for e in get_tree().get_nodes_in_group("enemies"):
 		if is_instance_valid(e) and int(e["hp"]) > 0:
@@ -979,8 +1011,12 @@ func _check_dungeon_cleared() -> void:
 	var day := 0
 	if Game.city_sim != null:
 		day = int(Game.city_sim.day)
-	Game.register_dungeon_clear(day, int(growth.get("lock_days", 10)))
-	hud.toast(Loc.t("dungeon.cleared_toast") % int(growth.get("lock_days", 10)))
+	Game.register_dungeon_clear(day, int(growth.get("lock_days", 20)))
+	hud.toast(Loc.t("dungeon.cleared_toast") % int(growth.get("lock_days", 20)))
+	# зачищен именно данж у города (не точка карты мира): атаки сдвигаются
+	if Game.poi_id == 0 and Game.city_sim != null \
+			and Game.city_sim.has_method("delay_raids_after_dungeon_clear"):
+		Game.city_sim.delay_raids_after_dungeon_clear()
 	# карта мира (M8): монеты за лагерь/руины и отметка точки интереса
 	if Game.poi_coins > 0:
 		Game.coins += Game.poi_coins

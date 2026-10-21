@@ -201,6 +201,7 @@ static func _city_sim_block(sim) -> Dictionary:
 		"_gate_state": sim._gate_state,
 		"_next_raid_at": float(sim._next_raid_at),
 		"_raid_gap_days": float(sim._raid_gap_days),
+		"_raid_not_before": float(sim._raid_not_before),
 		"_raid_warned": bool(sim._raid_warned),
 		"_raid_kind": String(sim._raid_kind),
 		"graves": sim.graves,
@@ -431,7 +432,8 @@ static func _apply_city(game, cd: Variant) -> String:
 	for k in gstate:
 		sim._gate_state[int(k)] = bool(gstate[k])
 	sim._next_raid_at = float(sd.get("_next_raid_at", 0.0))
-	sim._raid_gap_days = float(sd.get("_raid_gap_days", 1.2))
+	sim._raid_gap_days = float(sd.get("_raid_gap_days", 10.0))
+	sim._raid_not_before = float(sd.get("_raid_not_before", 0.0))
 	sim._raid_warned = bool(sd.get("_raid_warned", false))
 	sim._raid_kind = String(sd.get("_raid_kind", "mutant"))
 	sim.graves = _dec(sd.get("graves", []))

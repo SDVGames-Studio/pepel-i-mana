@@ -261,6 +261,7 @@ func _initialize() -> void:
 	_test_stage2_aspect4()
 	_test_stage2_aspect5()
 	_test_stage2_aspect6()
+	_test_fixes_v1191()
 	if _fails == 0:
 		print("OK: все тесты пройдены")
 		quit(0)
@@ -2020,7 +2021,8 @@ func _test_defense() -> void:
 	sim_c2.tick(0.1)
 	_check(String(coward["state"]) == "hide", "трус прячется с момента предупреждения")
 
-	# рост волн: следующая позже (+2 дня) и сильнее
+	# расписание волн (правка 2026-10-21): ровный интервал из конфига, волны
+	# ослаблены — размера и здоровья с номером волны почти не добавляется
 	var sim_w2 := _make_sim()
 	sim_w2._last_daily_day = 999
 	sim_w2._next_raid_at = 999999999.0
@@ -2028,11 +2030,13 @@ func _test_defense() -> void:
 	sim_w2.raiders.clear()
 	sim_w2._raid_end(true)
 	var eta: float = sim_w2.raid_eta_days()
-	_check(eta > 2.5, "после волны интервал вырос до %.1f дня (+2)" % eta)
+	_check(absf(eta - float(sim_w2.cfg["threat"]["raid_every_days"])) < 0.1,
+			"после волны следующая через %.1f дня (ровный интервал)" % eta)
 	sim_w2._spawn_raid(1, false)
 	var r2: Dictionary = sim_w2.raiders[0]
-	var expected: int = int(round(float(r2["p"]["hp"]) * (1.0 + sim_w2.threat_value() * 0.04 + 1 * 0.15)))
-	_check(int(r2["max_hp"]) == expected, "вторая волна крепче: формула роста работает")
+	var expected: int = int(round(float(r2["p"]["hp"]) * (1.0 + sim_w2.threat_value()
+			* float(sim_w2.cfg["threat"]["hp_per_threat"]) + 1.0 * float(sim_w2.cfg["threat"]["wave_growth_hp"]))))
+	_check(int(r2["max_hp"]) == expected, "волна крепчает только по формуле конфига")
 
 	# данж: зачистка закрывает его на 10 дней, герой носит комплекты
 	var game3: Node = load("res://scripts/game.gd").new()
@@ -5724,7 +5728,9 @@ func _test_hero_work() -> void:
 	_check(res in ["ore", "gem", "stone"], "выработанная жила даёт исход: " + res)
 	_check(int(sim.res["stone"]) > stone0, "добыча не пропала даром")
 
-	# --- стройка героем (при соло-старте строителей нет) ---
+	# --- стройка героем (соло-старт) ---
+	# правка 2026-10-21: староста — последний резерв стройки (иначе соло-город
+	# вечно стоит на площадках и жители не приходят), герой помогает руками
 	var elder_only = load("res://scripts/city_sim.gd").new()
 	elder_only.setup(sim.map, sim.cfg, 1, "normal")
 	elder_only._last_daily_day = 1
@@ -5733,16 +5739,20 @@ func _test_hero_work() -> void:
 	_check(elder_only.place_building("house", spot), "герой поставил площадку дома")
 	var site: Dictionary = elder_only.building_at(spot)
 	_check(not site.is_empty() and not bool(site["done"]), "стройка ждёт мастера")
-	# староста не подменяет строителя — стройку ждёт именно герой
 	elder_only._assign_jobs()
-	_check(int(site["worker"]) <= 0, "при соло-старте строить некому — это работа героя")
+	var elder_r: Dictionary = {}
+	for r in elder_only.residents:
+		if String(r["prof"]) == "elder":
+			elder_r = r
+	_check(int(site["worker"]) == int(elder_r["id"]),
+			"при соло-старте стройку берёт староста (резерв строителя)")
 	var guard2 := 0
 	res = ""
 	while not bool(site["done"]) and guard2 < 100:
 		guard2 += 1
 		res = elder_only.hero_build(elder_only.map.tile_center_px(spot))
 	_check(res == "done", "герой достраивает дом сам")
-	_check(bool(site["done"]), "дом готов без строителей")
+	_check(bool(site["done"]), "дом готов")
 	var built_ev := false
 	for e in elder_only.events:
 		if String(e["type"]) == "built" and String(e["bld"]) == "house":
@@ -6597,3 +6607,189 @@ func _test_stage2_aspect6() -> void:
 	_check(chron_count == 1, "летопись квартала не дублируется при загрузке")
 	SG.clear_save()
 	print("[Этап 2, аспект 6] готово")
+
+
+## Правки приёмки v1.19.1 (2026-10-21): жители приходят (соло-старт строит и
+## живёт), волны из аномалии раз в 10 дней и ослаблены, зачистка данжа у города
+## сдвигает атаки на 20 дней и светлеет данж, герой сам пашет/сеет/собирает поля,
+## зоны Поле/Пастбище цветные и подписываются при наведении.
+func _test_fixes_v1191() -> void:
+	print("[Правки v1.19.1: жители, данж-волны, поля героя, зоны]")
+	var city: Variant = _read_json("res://data/city.json")
+	var loc: Variant = _read_json("res://loc/ru.json")
+	var dungeon_cfg: Variant = _read_json("res://data/dungeon.json")
+	_check(city is Dictionary and loc is Dictionary and dungeon_cfg is Dictionary,
+			"конфиги читаются")
+	if not (city is Dictionary and loc is Dictionary and dungeon_cfg is Dictionary):
+		return
+	var day_len: float = float(city["day_length"])
+
+	# --- 1. соло-старт: город строит и растёт, беженцы приходят ---------------
+	var solo_map = load("res://scripts/city_map.gd").new()
+	solo_map.generate(7, city)
+	var solo = load("res://scripts/city_sim.gd").new()
+	solo.setup(solo_map, city, 1, "normal")
+	solo._event_rng.seed = 11
+	solo._next_raid_at = 999999999.0   # волны отдельно: здесь — рост города
+	var step := day_len / 4.0
+	for i in 25 * 4:
+		solo.tick(step)
+	_check(solo.pop_cap() > 1, "соло-старт: староста достроил дома, кап %d" % solo.pop_cap())
+	_check(solo.residents.size() > 1,
+			"соло-старт: к 25-му дню пришли поселенцы (жителей %d)" % solo.residents.size())
+	var housed := 0
+	for r in solo.residents:
+		if not solo._homeless(r):
+			housed += 1
+	_check(housed > 0, "жители заселяют дома (с homeless %d чел.)" % housed)
+
+	# --- 2. расписание волн: раз в 10 дней, зачистка данжа сдвигает на 20 -----
+	var sim := _make_sim()
+	sim.time = 0.0
+	sim._raid_not_before = 0.0
+	sim._next_raid_at = 0.0
+	sim._schedule_next_raid()
+	_check(absf(sim._raid_gap_days - float(city["threat"]["raid_every_days"])) < 0.01,
+			"интервал волн из конфига — 10 дней")
+	_check(absf(sim._next_raid_at / day_len - 10.0) < 0.01, "первая волна — на 10-й день")
+	sim.delay_raids_after_dungeon_clear()
+	_check(absf((sim._raid_not_before - sim.time) / day_len
+			- float(city["threat"]["clear_raid_delay_days"])) < 0.01,
+			"зачистка данжа у города сдвигает волны на 20 дней")
+	_check(sim._next_raid_at >= sim._raid_not_before, "следующая волна не раньше перезарядки")
+	var calm_seen := false
+	for ev in sim.events:
+		if String(ev["type"]) == "dungeon_calm":
+			calm_seen = true
+	_check(calm_seen, "событие «данж затих» дошло до сцены")
+	# отбили волну — новая тоже уважает сдвиг
+	sim._raid_kind = "mutant"
+	sim._spawn_raid(2, false)
+	sim.raiders.clear()
+	sim._raid_end(true)
+	_check(sim._next_raid_at >= sim._raid_not_before,
+			"после отбитой волны новая не раньше перезарядки данжа")
+
+	# --- 3. волны ослаблены: размер не растёт с номером, потолок 6 -----------
+	var sim2 := _make_sim()
+	sim2._next_raid_at = 999999999.0
+	sim2._last_daily_day = 999
+	sim2.time = 30.0 * day_len
+	sim2.day = 31
+	sim2.raid_count = 0
+	sim2._spawn_raid(20, false)
+	_check(sim2.raiders.size() <= int(city["threat"]["raid_size_max"]),
+			"волна не больше потолка %d (пришло %d)" % [int(city["threat"]["raid_size_max"]),
+					sim2.raiders.size()])
+	var wave1_size: int = sim2.raiders.size()
+	sim2.raiders.clear()
+	sim2.raid_active = false
+	sim2.raid_count = 5   # шестая волна
+	sim2._spawn_raid(20, false)
+	_check(sim2.raiders.size() <= maxi(wave1_size, int(city["threat"]["raid_size_max"])),
+			"размер волны не растёт с номером (волна 6: %d)" % sim2.raiders.size())
+	var brute_base := 0
+	var brute_now := 0
+	var enemies: Array = _read_json("res://data/enemies.json")
+	for e in enemies:
+		if String(e["id"]) == "brute":
+			brute_base = int(e["hp"])
+	for r in sim2.raiders:
+		if String(r["type"]) == "brute":
+			brute_now = maxi(brute_now, int(r["hp"]))
+	var hp_cap: float = (1.0 + float(city["threat"]["hp_per_threat"]) * sim2.threat_value()
+			+ 5.0 * float(city["threat"]["wave_growth_hp"])) * float(brute_base)
+	_check(brute_now == 0 or float(brute_now) <= hp_cap + 0.5,
+			"здоровье мутантов ослаблено (бутан hp %d <= %.0f)" % [brute_now, hp_cap])
+
+	# --- 4. данж: перезарядка 20 дней, светлеет по мере убийств --------------
+	_check(int((dungeon_cfg as Dictionary).get("clear_growth", {}).get("lock_days", 0)) == 20,
+			"данж перезаряжается 20 дней")
+	var light_cfg: Dictionary = (dungeon_cfg as Dictionary).get("clear_light", {})
+	_check(not light_cfg.is_empty(), "конфиг подсветки данжа есть")
+	var DS: Script = load("res://scripts/dungeon.gd")
+	var base_dark := Color("#090910")
+	var l0: Color = DS.bright_ambient(base_dark, 0.0, light_cfg)
+	var l_half: Color = DS.bright_ambient(base_dark, 0.5, light_cfg)
+	var l_full: Color = DS.bright_ambient(base_dark, 1.0, light_cfg)
+	_check(l0 == base_dark, "в начале данж тёмный, как в биоме")
+	_check(l_half.v > l0.v and l_full.v > l_half.v,
+			"с каждым убитым монстром данж светлеет")
+
+	# --- 5. герой сам пашет, сеет и собирает поле -----------------------------
+	var sim3 := _make_sim()
+	sim3._last_daily_day = 999
+	var cells: Array = []
+	var base: Vector2i = sim3.map.spawn_tile + Vector2i(3, 3)
+	for dy in 2:
+		for dx in 2:
+			cells.append(base + Vector2i(dx, dy))
+	_check(sim3.add_zone("field", cells, "turnip") == 4, "поле 2×2 создано")
+	var z: Dictionary = sim3.zones[0]
+	var px: Vector2 = sim3.map.tile_center_px(base)
+	_check(not sim3.hero_till_near(px).is_empty(), "герой видит невспаханную клетку поля")
+	_check(sim3.hero_till(px) == "till", "E пашет клетку (первый удар)")
+	_check(float(z["progress"][0]) > 0.0, "прогресс вспашки растёт")
+	_check(sim3.hero_till(px) == "tilled", "второй удар достраивает клетку (fill 2+2)")
+	# остальные клетки поля считают обустроенными (жители/герой уже прошли их)
+	z["progress"] = [9.0, 9.0, 9.0, 9.0]
+	sim3.res["seeds"] = 5.0
+	_check(sim3.hero_sow_near(px).is_empty() == false, "герой видит пустую клетку под посев")
+	_check(sim3.hero_sow(px) == "sow", "E сеет клетку за семя")
+	var cell0: Dictionary = (z["crops"] as Array)[0]
+	_check(not cell0.is_empty() and int(cell0["stage"]) == 0, "росток посажен")
+	_check(float(sim3.res["seeds"]) < 5.0, "семя потрачено из пула")
+	# созревание и сбор
+	var crops_arr: Array = z["crops"]
+	while crops_arr.size() < 4:
+		crops_arr.append({})
+	crops_arr[1] = {"stage": 9, "t": 0.0, "ripe": true}
+	var food0: float = float(sim3.res["food"])
+	var px1: Vector2 = sim3.map.tile_center_px(base + Vector2i(1, 0))
+	_check(sim3.hero_harvest(px1) == "food", "E собирает спелую грядку")
+	_check(float(sim3.res["food"]) > food0, "еда за спелую клетку в пуле")
+	# без семян посев честно отказывает
+	sim3.res["seeds"] = 0.0
+	while (z["crops"] as Array).size() < 3:
+		(z["crops"] as Array).append({})
+	(z["crops"] as Array)[2] = {}
+	_check(sim3.hero_sow(sim3.map.tile_center_px(base + Vector2i(0, 1))) == "no_seeds",
+			"без семян герой не сеет (тост объясняет)")
+
+	# --- 6. зоны: цвета Поле/Пастбище различимы, подписи при наведении --------
+	var ztypes: Dictionary = (city as Dictionary).get("zones", {}).get("types", {})
+	_check(Color(String(ztypes["field"]["color"])) != Color(String(ztypes["pasture"]["color"])),
+			"поле и пастбище разных цветов")
+	_check(Color(String(ztypes["field"]["color"])) != Color(String(city["colors"]["grass"])),
+			"поле отличается от травы")
+	_check(Color(String(ztypes["pasture"]["color"])) != Color(String(city["colors"]["grass"])),
+			"пастбище отличается от травы")
+	_check(not sim3.zone_at(base).is_empty(), "zone_at находит зону по тайлу")
+	_check(sim3.zone_at(sim3.map.spawn_tile).is_empty(), "zone_at не врёт вне зоны")
+	var st: Dictionary = sim3.field_stats(z)
+	_check(int(st["total"]) == 4 and int(st["filled"]) >= 2, "статистика поля для подписи считается")
+	for key in ["city.hint_sow", "city.hero_sow_done", "city.hero_sow_no_seeds",
+			"city.hint_till", "city.hero_till_done", "city.hover_field",
+			"city.hover_field_ripe", "city.hover_pasture", "city.hover_zone_progress",
+			"city.dungeon_calm_toast"]:
+		_check(String(loc.get(key, "")) != "", "ключ локализации есть: " + key)
+	# староста-строитель: без строителей староста замещает стройку
+	var sim4 := _make_sim()
+	sim4._last_daily_day = 999
+	for r in sim4.residents.duplicate():
+		if String(r["prof"]) != "elder":
+			sim4.residents.erase(r)
+	var tile_b: Vector2i = _find_free_tile(sim4, sim4.map.spawn_tile)
+	_check(sim4.place_building("house", tile_b), "стройплощадка поставлена")
+	var site: Dictionary = {}
+	for b in sim4.buildings:
+		if not bool(b["done"]):
+			site = b
+	_check(not site.is_empty(), "стройка нашлась")
+	sim4._assign_jobs()
+	var elder: Dictionary = {}
+	for r in sim4.residents:
+		if String(r["prof"]) == "elder":
+			elder = r
+	_check(elder["site"] == site, "староста в одиночном городе берёт стройку сам")
+	print("[Правки v1.19.1] готово")

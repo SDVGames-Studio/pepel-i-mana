@@ -24,10 +24,10 @@
 	},
 	"threat": {
 		"start_day": 10.0,
-		"gap_start_days": 1.2,
-		"gap_min_days": 0.6,
+		"raid_every_days": 10.0,
+		"clear_raid_delay_days": 20.0,
 		"wave_size_base": 2,
-		"wave_size_max": 10,
+		"wave_size_max": 6,
 		"siege_from_threat": 8.0,
 		"siege_chance": 0.35
 	},

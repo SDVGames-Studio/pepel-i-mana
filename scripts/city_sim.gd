@@ -87,7 +87,8 @@ var _last_daily_day := 0        # дневные броски M4: беженцы
 var _gate_state := {}           # id ворот -> открыты? (страж на ближней вышке)
 var _spot_cache := {}           # id здания -> {key, spot}: кэш входа (этап 2, аспект 2)
 var _next_raid_at := 0.0        # время следующей волны, сек
-var _raid_gap_days := 1.2       # длительность текущего интервала между волнами
+var _raid_gap_days := 10.0      # длительность текущего интервала между волнами
+var _raid_not_before := 0.0     # волна не раньше этого времени: зачистка данжа у города сдвигает атаки (2026-10-21)
 var _raid_warned := false       # предупреждение уже объявлено
 # имитация жизни (M12): похороны и могилки у кладбища
 var graves: Array = []                 # [{tile: Vector2i, name: String, ready: bool}]
@@ -2017,16 +2018,23 @@ func _substitutes_to_primary(taken: Dictionary) -> void:
 
 ## Свободный житель замещает нехватку профессии need: предпочитает выучившего,
 ## иначе учится сам (профессия попадает в prof_extra — ответ на просьбу заказчика).
+## Староста — последний резерв стройки (правка 2026-10-21: при соло-старте без
+## строителя город вечно стоял на стройплощадках и не рос).
 func _substitute_into(need: String, taken: Dictionary, bld: Dictionary, is_site: bool) -> void:
 	var learned_cand: Dictionary = {}
 	var any_cand: Dictionary = {}
+	var elder_cand: Dictionary = {}
 	for r in residents:
 		if taken.has(int(r["id"])) or String(r["prof"]) == need:
 			continue
 		if String(r["prof"]) == "" or String(r.get("ail", "")) != "":
 			continue
 		if String(r["prof"]) == "elder":
-			continue   # староста управляет, а не замещает
+			# староста управляет, а не замещает — но стройку в одиночном городе
+			# тянет сам, иначе дома не достроятся и жители не придут
+			if r["bld"] == null and r["site"] == null and is_site:
+				elder_cand = r
+			continue
 		if r["bld"] != null or r["site"] != null:
 			continue
 		if (r.get("prof_extra", []) as Array).has(need):
@@ -2035,6 +2043,8 @@ func _substitute_into(need: String, taken: Dictionary, bld: Dictionary, is_site:
 		if any_cand.is_empty():
 			any_cand = r
 	var cand: Dictionary = learned_cand if not learned_cand.is_empty() else any_cand
+	if cand.is_empty():
+		cand = elder_cand   # никого, кроме старосты, — староста берёт кирку
 	if cand.is_empty():
 		return
 	var extras: Array = cand.get("prof_extra", [])
@@ -2088,6 +2098,10 @@ func tick(dt_raw: float) -> void:
 	if season() == "winter":
 		eat *= float(_weather_cfg().get("effects", {}).get("winter_food_mult", 1.1))   # зима (M14-J)
 	res["food"] = maxf(0.0, float(res["food"]) - eat)
+	# голод не ждёт носильщика (2026-10-21): еда кончилась, а кучи лежат у ферм —
+	# город разбирает их руками, иначе поселенцы голодают при полных грядках
+	if float(res["food"]) < 1.0:
+		_pull_food_piles_to_pool()
 	_tavern_beer(dt, day_len)
 	# инструменты изнашиваются у работающих (мастерская обновляет запас)
 	var workers := 0
@@ -2244,7 +2258,13 @@ func _update_resident(r: Dictionary, dt: float) -> void:
 			_defender_update(r, dt, float(tcfg.get("guard_damage", 2)), float(tcfg.get("guard_cd", 1.0)))
 			return
 		if _raid_warned and not raid_active:
-			_gather_fire(r, dt)   # сбор у костра: город ждёт волну вместе (M12)
+			# ночью даже при тревоге спят (2026-10-21): при волнах раз в 10 дней
+			# предупреждение длится 3 дня — без сна город не заселяет дома и не растёт
+			# (стражи отсюда недостижимы — они закрыты веткой защитников выше)
+			if night:
+				_sleep(r, dt)
+			else:
+				_gather_fire(r, dt)   # сбор у костра: город ждёт волну вместе (M12)
 			return
 	if raid_active:
 		# ополчение: бьются все свободные взрослые и храбрые работники (заказчик)
@@ -2662,8 +2682,16 @@ func _guard_patrol(r: Dictionary, dt: float) -> bool:
 	return true
 
 
-func _sleep(r: Dictionary, dt: float) -> void:
+## Бездомный ли житель: дом бывает null или пустой словарь от неудачного
+## поиска ДО постройки домов — пустышка не должна прилипать навсегда (фикс 2026-10-21).
+func _homeless(r: Dictionary) -> bool:
 	if r["home"] == null:
+		return true
+	return (r["home"] as Dictionary).is_empty()
+
+
+func _sleep(r: Dictionary, dt: float) -> void:
+	if _homeless(r):
 		r["home"] = _free_home(r)
 	var home: Dictionary = r["home"]
 	if not home.is_empty():
@@ -2759,7 +2787,7 @@ func _done_building_of_type(type_id: String) -> Dictionary:
 
 ## Трус прячется дома, пока в городе мутанты.
 func _flee_home(r: Dictionary, dt: float) -> void:
-	if r["home"] == null:
+	if _homeless(r):
 		r["home"] = _free_home(r)
 	var home: Dictionary = r["home"]
 	if not home.is_empty():
@@ -2971,6 +2999,21 @@ func _piled_total_of(key: String) -> float:
 			continue
 		total += float((b["pile"] as Dictionary).get(key, 0.0))
 	return total
+
+
+## Голодный город разбирает кучи еды у зданий прямо в общий пул (без носильщика).
+func _pull_food_piles_to_pool() -> void:
+	for b in buildings:
+		if not bool(b["done"]) or not (b as Dictionary).has("pile"):
+			continue
+		var pile: Dictionary = b["pile"]
+		var have := float(pile.get("food", 0.0))
+		if have <= 0.0:
+			continue
+		_add_resource_capped("food", have)
+		pile.erase("food")
+		if pile.is_empty():
+			b.erase("pile")
 
 
 func _pile_total(b: Dictionary) -> float:
@@ -3234,6 +3277,35 @@ func field_at(t: Vector2i) -> Dictionary:
 					and building_at(t).is_empty():
 				return z
 	return {}
+
+
+## Любая зона, в которую попадает тайл ({} — нет) — для подписи при наведении.
+func zone_at(t: Vector2i) -> Dictionary:
+	for z in zones:
+		if (z["cells"] as Array).has(t):
+			return z
+	return {}
+
+
+## Статистика поля для подписи: {filled, total, sown, ripe}.
+func field_stats(z: Dictionary) -> Dictionary:
+	var fill_work: float = float(cfg.get("zones", {}).get("fill_work", 4.0))
+	var filled := 0
+	var sown := 0
+	var ripe := 0
+	var crops: Array = z.get("crops", [])
+	for i in (z["cells"] as Array).size():
+		if float((z["progress"] as Array)[i]) >= fill_work \
+				and building_at(z["cells"][i]).is_empty():
+			filled += 1
+			if crops.size() > i:
+				var c: Dictionary = crops[i]
+				if not c.is_empty():
+					sown += 1
+					if bool(c.get("ripe", false)):
+						ripe += 1
+	return {"filled": filled, "total": (z["cells"] as Array).size(),
+			"sown": sown, "ripe": ripe}
 
 
 ## Клетка годна под зону: трава без зданий и без чужих зон.
@@ -3514,7 +3586,8 @@ func _zone_check_done(z: Dictionary, who: Dictionary) -> void:
 			return
 	z["done_announced"] = true
 	events.append({"type": "zone_done", "zone": String(z["type"])})
-	_chron("chron.zone_done", String(who["name"]), String(z["type"]))
+	if not who.is_empty():
+		_chron("chron.zone_done", String(who["name"]), String(z["type"]))
 
 
 ## Поля (M10): обустроенная клетка сеется (1 семя), культура растёт стадиями
@@ -4357,7 +4430,7 @@ func _make_ail(r: Dictionary, kind: String, chron_key: String) -> void:
 
 ## Больной/раненый идёт домой и лежит.
 func _lie_ill(r: Dictionary, dt: float) -> void:
-	if r["home"] == null:
+	if _homeless(r):
 		r["home"] = _free_home(r)
 	var home: Dictionary = r["home"]
 	if not home.is_empty():
@@ -5464,15 +5537,29 @@ func raid_eta_days() -> float:
 
 func _schedule_next_raid() -> void:
 	var tcfg: Dictionary = cfg.get("threat", {})
-	# каждая прошедшая волна сильнее, а следующая приходит на 2 дня позже (заказчик)
-	var gap: float = float(tcfg.get("base_gap_days", 1.2)) \
-			+ float(tcfg.get("wave_growth_gap_days", 2.0)) * float(raid_count) \
-			- float(tcfg.get("gap_shrink", 0.04)) * threat_value()
-	_raid_gap_days = maxf(gap, float(tcfg.get("gap_min_days", 0.6)))
+	# мутанты из аномалии ходят по ровному расписанию — каждые raid_every_days
+	# дней, пока данж у города не зачищен (заказчик 2026-10-21); зачистка
+	# сдвигает следующую волну на clear_raid_delay_days — время перезарядки данжа
+	_raid_gap_days = maxf(0.5, float(tcfg.get("raid_every_days", 10.0)))
 	# первая волна — не раньше start_day, как бы ни разросся город (заказчик: на 4-й день пришла)
-	_next_raid_at = maxf(time + _raid_gap_days * float(cfg["day_length"]),
-			float(tcfg.get("start_day", 10.0)) * float(cfg["day_length"]) + 1.0)
+	_next_raid_at = maxf(maxf(time + _raid_gap_days * float(cfg["day_length"]),
+			float(tcfg.get("start_day", 10.0)) * float(cfg["day_length"]) + 1.0),
+			_raid_not_before)
 	_raid_warned = false
+
+
+## Данж у города зачищен (все монстры уничтожены): атаки сдвигаются на
+## clear_raid_delay_days — столько длится перезарядка данжа рядом с городом.
+func delay_raids_after_dungeon_clear() -> void:
+	var tcfg: Dictionary = cfg.get("threat", {})
+	var delay: float = maxf(float(tcfg.get("raid_every_days", 10.0)),
+			float(tcfg.get("clear_raid_delay_days", 20.0)))
+	_raid_not_before = maxf(_raid_not_before, time + delay * float(cfg["day_length"]))
+	if not raid_active and _next_raid_at < _raid_not_before:
+		_next_raid_at = _raid_not_before
+		_raid_warned = false
+	_raid_gap_days = maxf(_raid_gap_days, delay)   # индикатор ETA не врёт
+	events.append({"type": "dungeon_calm", "days": int(delay)})
 
 
 ## Планировщик волн: предупреждение за warn_fraction интервала, затем атака.
@@ -5516,10 +5603,11 @@ func _spawn_raid(size: int, siege: bool) -> void:
 	_raid_kind = "mutant"
 	raid_count += 1
 	razed_this_raid = 0
-	# каждая следующая волна сильнее (заказчик): больше размер и прочность тварей
+	# каждая следующая волна чуть крепче (заказчик), но размер жёстко ограничен —
+	# мутанты из данжа ослаблены (2026-10-21): без выхода размера за потолок
 	var wave_no := raid_count - 1
 	size = clampi(size + wave_no * int(tcfg.get("wave_growth_size", 1)), 1,
-			int(tcfg.get("raid_size_max", 10)) + wave_no)
+			int(tcfg.get("raid_size_max", 6)))
 	var hp_mult := 1.0 + threat_value() * float(tcfg.get("hp_per_threat", 0.04)) \
 			+ float(wave_no) * float(tcfg.get("wave_growth_hp", 0.15))
 	for i in size:
@@ -6360,6 +6448,84 @@ func hero_harvest(px: Vector2) -> String:
 	_harvest_cell(h["zone"], int(h["idx"]))
 	events.append({"type": "hero_harvest"})
 	return "food"
+
+
+## Незаполненная клетка зоны (поле/пастбище/жилая) в шаге от героя:
+## {zone, idx, tile} — герой может вспахать её сам (2026-10-21).
+func hero_till_near(px: Vector2) -> Dictionary:
+	var base: Vector2i = map.tile_of_px(px)
+	for t in [base, base + Vector2i(1, 0), base + Vector2i(-1, 0),
+			base + Vector2i(0, 1), base + Vector2i(0, -1)]:
+		for z in zones:
+			if _zone_type_overlay(String(z["type"])):
+				continue   # зоны-слои не обустраиваются
+			for i in (z["cells"] as Array).size():
+				if Vector2i(z["cells"][i]) != t or _cell_filled(z, i):
+					continue
+				if not building_at(t).is_empty():
+					continue
+				return {"zone": z, "idx": i, "tile": t}
+	return {}
+
+
+## Вспашка клетки зоны героем: каждый E продвигает обустройство на fill_per_hit.
+## "" — рядом нет клетки зоны, "till" — удар засчитан, "tilled" — клетка готова.
+func hero_till(px: Vector2) -> String:
+	var h: Dictionary = hero_till_near(px)
+	if h.is_empty():
+		return ""
+	var z: Dictionary = h["zone"]
+	var i := int(h["idx"])
+	var fill_work: float = float(cfg.get("zones", {}).get("fill_work", 4.0))
+	var was: float = float(z["progress"][i])
+	z["progress"][i] = minf(fill_work, was + float(_hero_work_cfg().get("fill_per_hit", 2.0)))
+	if float(z["progress"][i]) >= fill_work and was < fill_work:
+		events.append({"type": "zone_cell", "zone": String(z["type"])})
+		_zone_check_done(z, {})
+		return "tilled"
+	return "till"
+
+
+## Засеянная пустая клетка поля в шаге от героя (заполнена, без посева):
+## {zone, idx, tile} — герой сеет сам, если семян не нашлось автоматом.
+func hero_sow_near(px: Vector2) -> Dictionary:
+	var base: Vector2i = map.tile_of_px(px)
+	for t in [base, base + Vector2i(1, 0), base + Vector2i(-1, 0),
+			base + Vector2i(0, 1), base + Vector2i(0, -1)]:
+		for z in zones:
+			if String(z["type"]) != "field":
+				continue
+			var crops: Array = z.get("crops", [])
+			for i in (z["cells"] as Array).size():
+				if Vector2i(z["cells"][i]) != t or not _cell_filled(z, i):
+					continue
+				if not building_at(t).is_empty():
+					continue
+				if crops.size() > i and not (crops[i] as Dictionary).is_empty():
+					continue   # уже растёт
+				return {"zone": z, "idx": i, "tile": t}
+	return {}
+
+
+## Посев клетки поля героем: 1 семя из пула, росток той же культуры поля.
+## "" — сеять нечего, "no_seeds" — нет семян, "sow" — посеяно.
+func hero_sow(px: Vector2) -> String:
+	var h: Dictionary = hero_sow_near(px)
+	if h.is_empty():
+		return ""
+	var fcfg: Dictionary = cfg.get("farming", {})
+	if float(res.get("seeds", 0.0)) < float(fcfg.get("seed_sow", 1)):
+		return "no_seeds"
+	res["seeds"] = float(res["seeds"]) - float(fcfg.get("seed_sow", 1))
+	var zone: Dictionary = h["zone"]
+	if not (zone as Dictionary).has("crops"):
+		zone["crops"] = []
+	var crops: Array = zone["crops"]
+	while crops.size() <= int(h["idx"]):
+		crops.append({})
+	crops[int(h["idx"])] = {"stage": 0, "t": 0.0, "ripe": false}
+	events.append({"type": "hero_sow"})
+	return "sow"
 
 
 ## Работа фермера (этап 2, аспект 3): сперва собирает спелые клетки полей,
