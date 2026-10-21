@@ -254,6 +254,7 @@ func _initialize() -> void:
 	_test_m14_l()
 	_test_fixes_v121()
 	_test_hero_work()
+	_test_stage2_aspect1()
 	if _fails == 0:
 		print("OK: все тесты пройдены")
 		quit(0)
@@ -3056,8 +3057,8 @@ func _test_m9() -> void:
 		_check(s != null and (s as Script).can_instantiate(), path.get_file() + " компилируется")
 	# версия этапа (стабильнее номера: номер растёт с каждой частью)
 	var vdata: Variant = _read_json("res://data/version.json")
-	_check(vdata is Dictionary and String(vdata.get("stage", "")) == "M14",
-			"проект на этапе M14 (версия %s)" % (String(vdata.get("version", "?")) if vdata is Dictionary else "?"))
+	_check(vdata is Dictionary and String(vdata.get("stage", "")) == "Этап 2",
+			"проект на этапе «Полировка города» (версия %s)" % (String(vdata.get("version", "?")) if vdata is Dictionary else "?"))
 
 
 # --- M10: релиз v1.0 — craftpix-ассеты, бандиты, скот, поля, рынок, гуляй-город
@@ -5645,3 +5646,40 @@ func _test_hero_work() -> void:
 			"city.hero_gem_found", "city.founder_hint"]:
 		_check(String(loc.get(key, "")) != "", "ключ локализации есть: " + key)
 	print("[Правки v1.12.2] готово")
+
+
+## Этап 2, аспект 1 — схематичный режим зданий: данные должны быть полными
+## (категория с цветом, краткая и полная подписи у каждого здания).
+func _test_stage2_aspect1() -> void:
+	print("[Этап 2, аспект 1: схематичный режим]")
+	var city: Variant = _read_json("res://data/city.json")
+	var loc: Variant = _read_json("res://loc/ru.json")
+	if not (city is Dictionary and loc is Dictionary):
+		_check(false, "city.json и loc/ru.json читаются")
+		return
+	var cats: Dictionary = city.get("cats", {})
+	_check(cats.size() >= 5, "палитра категорий есть в city.json (%d шт.)" % cats.size())
+	var used := {}
+	for b in city.get("buildings", []):
+		var bid := String(b["id"])
+		var cat := String(b.get("cat", ""))
+		used[cat] = true
+		_check(cat != "", "у здания «%s» задана категория" % bid)
+		if cats.has(cat):
+			var cval := String(cats[cat].get("color", ""))
+			_check(cval.begins_with("#") and cval.length() >= 7, "категория «%s» имеет цвет" % cat)
+		_check(String(b.get("short", "")) != "", "у здания «%s» задан ключ краткой подписи" % bid)
+		var skey := String(b.get("short", ""))
+		if skey != "":
+			_check(String(loc.get(skey, "")) != "", "подпись «%s» есть в локализации" % skey)
+		var lkey := String(b.get("loc", ""))
+		_check(String(loc.get(lkey, "")) != "", "полное название «%s» есть в локализации" % lkey)
+	for cat in used:
+		_check(cats.has(cat), "категория «%s» из зданий определена в cats" % cat)
+	_check(String(loc.get("bld.short.wall", "")) != "", "у стены есть ключ подписи (резерв)")
+	# цвета категорий различимы: хотя бы 5 уникальных
+	var uniq := {}
+	for c in cats:
+		uniq[String(cats[c]["color"])] = true
+	_check(uniq.size() == cats.size(), "цвета категорий попарно различны")
+	print("[Этап 2, аспект 1] готово")

@@ -21,8 +21,9 @@ var drag_to := Vector2i(-1, -1)
 
 var _prof_colors: Dictionary = {}
 var _prof_sprites: Dictionary = {}
-var _bld_colors: Dictionary = {}
-var _bld_sprites: Dictionary = {}
+var _bld_fill: Dictionary = {}      # тип здания → цвет категории (схематичный режим)
+var _bld_short: Dictionary = {}     # тип здания → ключ краткой подписи (bld.short.*)
+var _bld_loc: Dictionary = {}       # тип здания → ключ полного названия (bld.*)
 var _zone_colors: Dictionary = {}
 var city = null                 # сцена города — для проверки цели зачарования (неглубокая ссылка)
 
@@ -54,9 +55,14 @@ func setup(city_map, city_sim, city_cfg: Dictionary) -> void:
 	for prof in city_cfg["professions"]:
 		_prof_colors[String(prof["id"])] = Color(String(prof["color"]))
 		_prof_sprites[String(prof["id"])] = String(prof.get("sprite", ""))
+	# схематичный режим (этап 2, аспект 1): цвет здания — цвет его категории
+	var cat_colors: Dictionary = {}
+	for cid in city_cfg.get("cats", {}):
+		cat_colors[String(cid)] = Color(String(city_cfg["cats"][cid]["color"]))
 	for b in city_cfg["buildings"]:
-		_bld_colors[String(b["id"])] = Color(String(b["color"]))
-		_bld_sprites[String(b["id"])] = String(b.get("sprite", ""))
+		_bld_fill[String(b["id"])] = cat_colors.get(String(b.get("cat", "")), Color(0.91, 0.85, 0.62))
+		_bld_short[String(b["id"])] = String(b.get("short", ""))
+		_bld_loc[String(b["id"])] = String(b.get("loc", ""))
 	for t in city_cfg.get("zones", {}).get("types", {}):
 		_zone_colors[String(t)] = Color(String(city_cfg["zones"]["types"][t]["color"]))
 	queue_redraw()
@@ -451,57 +457,39 @@ func _draw_world_exit() -> void:
 		Color(glow.r, glow.g, glow.b, 0.6 + 0.3 * pulse))
 
 
-## Здание в общем сортированном слое (M12). Стиль «рамка-фундамент +
-## предмет-функция» (замечание приёмки M11): производственные здания —
-## фундамент и характерный предмет (наковальня, верстак, котёл, пила…),
-## жилые дома — крупная картинка на общем фундаменте.
+## Здание в общем сортированном слое (M12). Схематичный режим (этап 2,
+## аспект 1): плоский прямоугольник цвета категории + краткая подпись;
+## спрайты зданий убраны жёстко — до появления арта. Игровые метки
+## (прогресс стройки, точка-работник, зачарование, оглушение, прочность,
+## стадия сада, тьма кладбища) сохранены — это информация, не украшение.
 func _draw_building(b: Dictionary) -> void:
 	var ts := float(map.ts)
 	var rect := Rect2(Vector2(b["tile"]) * ts, Vector2(ts, ts))
-	var col: Color = _bld_colors.get(String(b["type"]), Color(0.91, 0.85, 0.62))
+	var type_id := String(b["type"])
+	var col: Color = _bld_fill.get(type_id, Color(0.91, 0.85, 0.62))
 	var anchor: Vector2 = Vector2(rect.get_center().x, rect.end.y - 2.0)
 	if not b["done"]:
-		# стройплощадка: каркас и полоса прогресса
-		draw_rect(rect.grow(-3), Color(col.r, col.g, col.b, 0.25))
+		# стройплощадка: призрачная заливка, каркас и полоса прогресса
+		draw_rect(rect.grow(-3), Color(col.r, col.g, col.b, 0.22))
 		draw_rect(rect.grow(-3), col.darkened(0.2), false, 2.0)
-		var work: float = _build_work(String(b["type"]))
+		var work: float = _build_work(type_id)
 		var frac := clampf(float(b["progress"]) / work, 0.0, 1.0) if work > 0.0 else 0.0
 		draw_rect(Rect2(rect.position + Vector2(4, ts - 9), Vector2((ts - 8) * frac, 5)), Color("#ffe082"))
+		_draw_bld_label(b, rect)
 	else:
-		var h := ts * 1.9   # дома крупнее (M12, было ×1.55)
-		var ref: String = _bld_sprites.get(String(b["type"]), "")
-		if ref == "dom_house":
-			# дома разные (M11): 7 вариантов dom-пака по номеру здания
-			var variants := ["b:dom2", "b:dom3", "b:dom5", "b:dom7", "b:dom10", "b:dom16", "b:dom18"]
-			ref = variants[absi(int(b["id"])) % variants.size()]
-		if String(b["type"]) == "wall" or String(b["type"]) == "gate":
-			h = ts * 1.15   # стены не должны нависать над рядом
-		# рамка-фундамент (M12): плита под постройкой — общий «земляной» стиль
-		var work_kind: String = BLD_PROPS.get(String(b["type"]), "")
-		if work_kind != "" or ref == "dom_house":
-			var fr := rect.grow(-2)
-			draw_rect(Rect2(fr.position + Vector2(0, ts * 0.18), fr.size - Vector2(0, ts * 0.18)),
-					Color("#6e5f4a").darkened(0.05))
-			draw_rect(Rect2(fr.position + Vector2(0, ts * 0.18), fr.size - Vector2(0, ts * 0.18)),
-					Color("#8a7a5f"), false, 2.0)
-		if work_kind != "":
-			# предмет-функция (M12): у производственных зданий вместо картинки-дома
-			draw_circle(anchor + Vector2(0, -2), ts * 0.24, Color(0, 0, 0, 0.16))
-			Assets.draw_ref(self, work_kind, anchor - Vector2(0, ts * 0.42), ts * 0.95)
-		elif ref != "":
-			var sref := ref
-			if String(b["type"]) == "orchard":
-				# яблоневый сад (M10): растёт — молодое дерево, зрелое — с яблоками
-				var stage := int(b.get("apple_stage", 0))
-				sref = "e:tree_oak" if stage < 2 else "e:tree_fruit2"
-			draw_circle(anchor + Vector2(0, -2), h * 0.22, Color(0, 0, 0, 0.16))
-			Assets.draw_ref(self, sref, anchor - Vector2(0, h * 0.5), h)
-		else:
-			draw_rect(rect, col)
-			draw_rect(rect.grow(-4), col.darkened(0.25))
+		# схематичное здание: заливка категории, тёмная кайма по контуру
+		draw_rect(rect, col)
+		draw_rect(rect.grow(-2), col.darkened(0.3), false, 2.0)
 		# точка-работник: занятое здание подсвечено
 		if int(b["worker"]) > 0:
-			draw_circle(anchor + Vector2(0, -h + 2.0), 2.5, Color(1, 1, 1, 0.9))
+			draw_circle(rect.position + Vector2(ts - 6.0, 6.0), 2.5, Color(1, 1, 1, 0.95))
+		# яблоневый сад (M10): растёт — полоска стадии, зелёная при спелости
+		if type_id == "orchard":
+			var stages := float(sim.cfg.get("orchard", {}).get("stages", 3))
+			var stage := clampf(float(b.get("apple_stage", 0)) / maxf(1.0, stages), 0.0, 1.0)
+			draw_rect(Rect2(rect.position + Vector2(4, ts - 8), Vector2((ts - 8) * stage, 4)),
+					Color("#8bc34a") if stage >= 1.0 else Color("#ffe082"))
+		_draw_bld_label(b, rect)
 	# кладбище темнеет (M11): тьма ползёт с кладбища, пока некромант работает
 	if String(b["type"]) == "cemetery" and bool(b["done"]):
 		_draw_graves(anchor - Vector2(0, 0))
@@ -542,22 +530,32 @@ func _draw_building(b: Dictionary) -> void:
 		draw_rect(Rect2(rect.position + Vector2(4, -7), Vector2((ts - 8) * frac2, 4)), Color("#8bc34a"))
 
 
-## Предмет-функция (M12): проп вместо картинки-дома у производственных зданий.
-## Генератор — tools/make_props.py (спрайты assets/sprites/props/).
-const BLD_PROPS := {
-	"sawmill": "p:sawlog",     # пила с брёвнами
-	"quarry": "p:tools_stone", # каменная плита с инструментом
-	"mine": "p:minecart",      # тачка руды у входа
-	"smelter": "p:crucible",   # горн с тиглем
-	"forge": "p:anvil",        # наковальня = кузня
-	"workshop": "p:workbench", # верстак = мастерская
-	"armory": "p:rack",        # стойка с оружием
-	"warehouse": "p:crates",   # ящики со складом
-	"farm": "p:hay",           # стог сена = ферма
-	"tavern": "p:cauldron",    # котёл = таверна
-	"healer_hut": "p:mortar",  # ступка = хижина лекаря
-	"market": "p:stall",       # прилавок торговца
-}
+## Подпись схематичного здания (этап 2, аспект 1): краткое название
+## поверх заливки, обводка для читаемости на любом цвете. Стена —
+## сплошное кольцо, её тайлы подписями не метятся (шум); ворота подписаны.
+const BLD_NO_LABEL := {"wall": true}
+
+
+func _draw_bld_label(b: Dictionary, rect: Rect2) -> void:
+	var type_id := String(b["type"])
+	if bool(BLD_NO_LABEL.get(type_id, false)):
+		return
+	var key: String = _bld_short.get(type_id, "")
+	if key == "":
+		return
+	var text := Loc.t(key)
+	if text == key:
+		# краткой подписи нет — падаем на полное название, затем на id
+		var full_key: String = _bld_loc.get(type_id, "")
+		var full := Loc.t(full_key) if full_key != "" else ""
+		text = full if full != full_key and full != "" else type_id
+	var font := ThemeDB.fallback_font
+	var fsize := 8
+	var pos := rect.get_center() - Vector2(
+			font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, fsize).x * 0.5, -3.0)
+	draw_string_outline(font, pos, text, HORIZONTAL_ALIGNMENT_LEFT, -1, fsize, 3,
+			Color(0.12, 0.09, 0.05, 0.9))
+	draw_string(font, pos, text, HORIZONTAL_ALIGNMENT_LEFT, -1, fsize, Color(1, 1, 0.96, 0.97))
 
 
 ## Атакующие (M5 мутанты; M11 духи леса, Древень, скелеты некроманта).
