@@ -257,6 +257,7 @@ func _initialize() -> void:
 	_test_stage2_aspect1()
 	_test_stage2_aspect2()
 	_test_stage2_aspect3()
+	_test_stage2_entrance_recalc()
 	if _fails == 0:
 		print("OK: все тесты пройдены")
 		quit(0)
@@ -5932,3 +5933,38 @@ func _test_stage2_aspect3() -> void:
 			"city.hint_harvest", "city.hero_harvest_done"]:
 		_check(String(loc.get(key, "")) != "", "ключ локализации есть: " + key)
 	print("[Этап 2, аспект 3] готово")
+
+
+## Правка приёмки v1.15.1: соседняя постройка 2×2 перекрыла вход здания —
+## работник не должен простаивать вечно, вход пересчитывается.
+func _test_stage2_entrance_recalc() -> void:
+	print("[Этап 2: перекрытый вход]")
+	var sim_e := _make_sim()
+	sim_e._last_daily_day = 999
+	sim_e.cfg["food_per_resident_day"] = 0.0
+	var farmer_e: Dictionary = _resident_by_prof(sim_e, "farmer")
+	farmer_e["traits"] = []
+	farmer_e["mood"] = 100.0
+	var farm_e := _build_now(sim_e, "farm")
+	var spot0: Vector2i = sim_e.bld_spot(farm_e)
+	_teleport(sim_e, farmer_e, spot0)
+	for i in 4:
+		sim_e.tick(2.0)
+	var pile0: float = sim_e._pile_total(farm_e)
+	_check(pile0 > 0.0, "фермер работает у входа фермы")
+	# ставим постройку 2×2 поверх текущего входа (пробуем 4 якоря вокруг)
+	var placed := false
+	for off in [Vector2i(0, 0), Vector2i(-1, 0), Vector2i(0, -1), Vector2i(-1, -1)]:
+		var a: Vector2i = spot0 + off
+		if sim_e.place_building("warehouse", a):
+			placed = true
+			break
+	_check(placed, "вход фермы перекрыт складом")
+	var spot1: Vector2i = sim_e.bld_spot(farm_e)
+	_check(spot1 != spot0 and sim_e.map.is_walkable(spot1),
+			"вход пересчитан на свободную сторону")
+	_teleport(sim_e, farmer_e, spot1)
+	for i in 5:
+		sim_e.tick(2.0)
+	_check(sim_e._pile_total(farm_e) > pile0, "фермер вернулся к работе через новый вход")
+	print("[Этап 2: перекрытый вход] готово")

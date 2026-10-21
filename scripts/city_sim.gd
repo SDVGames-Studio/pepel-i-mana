@@ -1166,13 +1166,17 @@ func bld_has_cell(b: Dictionary, tile: Vector2i) -> bool:
 
 ## Вход здания: клетка снаружи у прямоугольника, к которой примыкает
 ## проходимый тайл. Приоритет — примыкание к дороге, затем южная сторона.
-## Кэш в _spot_cache, ключ сбрасывается при переносе здания.
+## Кэш в _spot_cache валиден, пока вход проходим и не занят другим зданием:
+## соседние постройки 2×2 в плотном городе перекрывают вход — кэш
+## пересчитывается (замечание приёмки: работники простаивали вечно).
 func bld_entrance(b: Dictionary) -> Vector2i:
 	var key := int(b["id"])
 	var tile := Vector2i(b["tile"])
 	var cached: Dictionary = _spot_cache.get(key, {})
 	if not cached.is_empty() and Vector2i(cached.get("key", Vector2i(-9, -9))) == tile:
-		return Vector2i(cached["spot"])
+		var cs: Vector2i = Vector2i(cached["spot"])
+		if not cs == Vector2i(-1, -1) and map.is_walkable(cs) and building_at(cs).is_empty():
+			return cs
 	var w := bld_w(b)
 	var best := Vector2i(-1, -1)
 	var best_road := -1
