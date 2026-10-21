@@ -472,6 +472,10 @@ func _process_events() -> void:
 			"road_auto":
 				hud.toast(Loc.t("city.road_auto_toast") % int(ev["count"]))
 			# --- скот, поля, рынок (M10) ---
+			"tame_sent":
+				hud.toast(Loc.t("city.tame_sent_toast") % String(ev.get("name", "")))
+			"pig_slaughtered":
+				hud.toast(Loc.t("city.pig_slaughtered_toast") % int(ev.get("food", 0)))
 			"livestock_tame":
 				hud.toast(Loc.t("city.livestock_tame_toast") % Loc.t("animal." + String(ev["kind"])))
 			"livestock_born":

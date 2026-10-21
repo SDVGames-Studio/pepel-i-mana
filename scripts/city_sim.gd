@@ -1269,6 +1269,38 @@ func bld_dist_px(pos: Vector2, b: Dictionary) -> float:
 	return best
 
 
+## Зазор между прямоугольниками зданий в клетках (шебышев): 0 — касаются
+## или пересекаются. Используется правилами размещения (этап 2).
+func rects_gap(a: Dictionary, b: Dictionary) -> int:
+	var at: Vector2i = Vector2i(a["tile"])
+	var bt: Vector2i = Vector2i(b["tile"])
+	var aw := bld_w(a)
+	var bw := bld_w(b)
+	var dx := maxf(maxi(at.x - (bt.x + bw), bt.x - (at.x + aw)), 0)
+	var dy := maxf(maxi(at.y - (bt.y + bw), bt.y - (at.y + aw)), 0)
+	return int(maxf(float(dx), float(dy)))
+
+
+## Правила размещения (этап 2, замечание приёмки): между обычными зданиями —
+## зазор минимум build_gap (клетка под дорогу); стена/ворота строятся
+## сплошным кольцом (между собой зазора не держат), но держат wall_house_gap
+## минимум до ближайшего дома.
+func placement_gap_ok(type_id: String, tile: Vector2i) -> bool:
+	var pcfg: Dictionary = cfg.get("placement", {})
+	var new_b := {"type": type_id, "tile": tile}
+	var wall_class := type_id == "wall" or type_id == "gate"
+	for b in buildings:
+		var other_type := String(b["type"])
+		var gap := rects_gap(new_b, b)
+		if wall_class:
+			if other_type == "house" and gap < int(pcfg.get("wall_house_gap", 3)):
+				return false
+		elif other_type != "wall" and other_type != "gate":
+			if gap < int(pcfg.get("build_gap", 1)):
+				return false
+	return true
+
+
 ## Сбросить кэш входов (при переносе/сносе зданий).
 func _spots_dirty() -> void:
 	_spot_cache.clear()
@@ -1333,7 +1365,8 @@ func _try_relocate_bld(b: Dictionary) -> bool:
 				if maxi(absi(dx), absi(dy)) != radius:
 					continue
 				var t := old + Vector2i(dx, dy)
-				if not is_buildable_rect(type_id, t) or placement_block(type_id, t) != "":
+				if not is_buildable_rect(type_id, t) or placement_block(type_id, t) != "" \
+						or not placement_gap_ok(type_id, t):
 					continue
 				var w := bld_w_of_type(type_id)
 				for cy in w:
@@ -1377,6 +1410,8 @@ func place_building(type_id: String, tile: Vector2i) -> bool:
 		return false
 	if placement_block(type_id, tile) != "":
 		return false
+	if not placement_gap_ok(type_id, tile):
+		return false   # зазор между зданиями / стена ближе 3 к дому (этап 2)
 	for key in def["cost"]:
 		res[key] = int(res[key]) - int(def["cost"][key])
 	var w := int(def.get("w", 1))
@@ -1491,7 +1526,16 @@ func placement_block(type_id: String, tile: Vector2i) -> String:
 			if not _water_near(tile):
 				return "city.placement_water"
 		"near_forge":
-			if _nearest_building_type(tile, ["forge"], 2.0).is_empty():
+			# этап 2: кузня «в 1–2 клетках зазора» (здания 2×2 не касаются)
+			var near_f := false
+			for b in buildings:
+				if not bool(b["done"]) or String(b["type"]) != "forge":
+					continue
+				var g := rects_gap({"type": type_id, "tile": tile}, b)
+				if g >= 1 and g <= 2:
+					near_f = true
+					break
+			if not near_f:
 				return "city.placement_forge"
 		"forest":
 			# лесопилка — только у леса: лесоруб добывает именно деревья (заказчик)
@@ -2002,6 +2046,8 @@ func _update_resident(r: Dictionary, dt: float) -> void:
 			# добытчики работают у источника: лесоруб — у дерева, каменотёс — у скалы (заказчик)
 			if bld_type == "workshop":
 				_workshop_work(r, r["bld"], dt)   # сперва ремонт повреждённых, потом переработка (M6)
+			elif bld_type == "farm":
+				_farm_work(r, r["bld"], dt)   # поля: сбор спелого, обустройство, потом ферма (этап 2)
 			elif bld_type == "sawmill" or bld_type == "quarry":
 				_gather_work(r, r["bld"], dt)
 			else:
@@ -2027,6 +2073,8 @@ func _update_resident(r: Dictionary, dt: float) -> void:
 	if guard_on_duty:
 		_guard_post(r, dt)
 		return
+	if _tame_work(r, dt):
+		return   # ловчий тащит дикого зверя на пастбище (этап 2)
 	if _zone_fill_work(r, dt):
 		return   # свободный житель обустраивает зоны (M6: город заполняет их сам)
 	if _help_build(r, dt):
@@ -2899,6 +2947,14 @@ func zone_by_id(id: int) -> Dictionary:
 	return {}
 
 
+## Дикий зверь по id ({} — нет).
+func _animal_by_id(animal_id: int) -> Dictionary:
+	for a in animals:
+		if int(a["id"]) == animal_id:
+			return a
+	return {}
+
+
 ## Зона-поле, в которую попадает тайл ({} — нет).
 func field_at(t: Vector2i) -> Dictionary:
 	for z in zones:
@@ -2929,8 +2985,19 @@ func _cell_filled(z: Dictionary, i: int) -> bool:
 	return float(z["progress"][i]) >= float(cfg.get("zones", {}).get("fill_work", 4.0))
 
 
-## Свободный житель обустраивает ближайшую незаполненную клетку зоны. False — зон нет.
+## Свободный житель обустраивает ближайшую незаполненную клетку зоны;
+## спелые грядки полей собирает (этап 2, аспект 3). False — зон нет.
 func _zone_fill_work(r: Dictionary, dt: float) -> bool:
+	var ripe := _nearest_ripe_field_cell(r)
+	if not ripe.is_empty():
+		var rt: Vector2i = ripe["tile"]
+		if _arrived(r, rt):
+			_harvest_cell(ripe["zone"], int(ripe["idx"]))
+			r["state"] = "harvest"
+			r["fatigue"] += dt / float(cfg["day_length"])
+		else:
+			_move_towards(r, rt, dt)
+		return true
 	if zones.is_empty():
 		return false
 	var target := _nearest_zone_cell(r)
@@ -2989,9 +3056,6 @@ func _update_zones(dt: float, day_len: float) -> void:
 	var fcfg: Dictionary = cfg.get("farming", {})
 	var stage_days: float = float(fcfg.get("stage_days", 0.5))
 	var stages: int = int(fcfg.get("stages", 4))
-	var harvest_food: float = float(fcfg.get("harvest_food", 6.0))
-	var seed_return: int = int(fcfg.get("seed_return", 1))
-	var seed_bonus: float = float(fcfg.get("seed_bonus_chance", 0.15))
 	for z in zones:
 		var t := String(z["type"])
 		if t == "pasture":
@@ -3031,14 +3095,26 @@ func _update_zones(dt: float, day_len: float) -> void:
 					crop["stage"] = int(crop.get("stage", 0)) + 1
 					if int(crop["stage"]) >= stages:
 						crop["ripe"] = true
-			else:
-				# спелое: сбор (сами жители «снимают» — упрощённо автосбор)
-				# M14-J: погода и сезон поливают/глушат урожай
-				_add_resource_capped("food", crop_harvest * crop_mult())
-				_add_resource_capped("seeds", float(seed_return))
-				if _event_rng.randf() < seed_bonus:
-					_add_resource_capped("seeds", 1.0)
-				crops[i] = {}
+			# спелая грядка ЖДЁТ сборщика (этап 2, аспект 3): фермер обходит
+			# поле и собирает, герой — по E. Автосбора больше нет.
+
+
+## Сбор спелой клетки поля (фермер и герой): еда в общий пул, семя
+## возвращается (с бонусным шансом), клетка пересеивается той же культурой
+## за обычное семя; без семян клетка пустует.
+func _harvest_cell(zone: Dictionary, idx: int) -> void:
+	var cdef: Dictionary = crop_def(String(zone.get("crop", "turnip")))
+	var fcfg: Dictionary = cfg.get("farming", {})
+	_add_resource_capped("food", float(cdef.get("harvest", fcfg.get("harvest_food", 6.0))) * crop_mult())
+	_add_resource_capped("seeds", float(fcfg.get("seed_return", 1)))
+	if _event_rng.randf() < float(fcfg.get("seed_bonus_chance", 0.15)):
+		_add_resource_capped("seeds", 1.0)
+	var crops: Array = zone["crops"]
+	if float(res.get("seeds", 0.0)) >= float(fcfg.get("seed_sow", 1)):
+		res["seeds"] = float(res["seeds"]) - float(fcfg.get("seed_sow", 1))
+		crops[idx] = {"stage": 0, "t": 0.0, "ripe": false}
+	else:
+		crops[idx] = {}
 
 
 ## Пастбище: ёмкость по обустроенным клеткам. Разведение — логистическое:
@@ -3075,45 +3151,119 @@ func _roll_livestock() -> void:
 	if lcfg.is_empty():
 		return
 	var kinds: Array = lcfg.get("kinds", {"sheep": 3, "chicken": 3, "cow": 2, "pig": 2}).keys()
+	var products: Dictionary = lcfg.get("products", {})
+	var no_breed: Array = lcfg.get("no_breed", ["pig"])
 	var total_food := 0.0
-	var events_today := 0
 	for z in zones:
 		if String(z["type"]) != "pasture":
 			continue
 		var cap := pasture_capacity(z)
 		if cap <= 0:
 			continue
-		var count := _livestock_in(int(z["id"]))
-		# приручение: дикий зверь со двора — в загон (шанс в день)
-		if count < cap and not animals.is_empty() \
+		var pid := int(z["id"])
+		var count := _livestock_in(pid)
+		# ловля: житель отправляется за диким зверем и тащит его на пастбище
+		# (этап 2: не телепорт, а работа жителя; один носильщик за раз)
+		if count < cap and not animals.is_empty() and tame_task.is_empty() \
 				and _event_rng.randf() < float(lcfg.get("tame_chance", 0.5)):
-			var wild: Dictionary = animals[_event_rng.randi_range(0, animals.size() - 1)]
-			animals.erase(wild)
-			var kind: String = kinds[_event_rng.randi_range(0, kinds.size() - 1)]
-			livestock.append({"id": _livestock_id, "kind": kind, "pasture": int(z["id"]),
-					"pos": map.tile_center_px(z["cells"][0]), "target": Vector2i.ZERO,
-					"path": PackedVector2Array(), "idle": 0.0, "adult": true, "age": 99.0})
-			_livestock_id += 1
-			count += 1
-			events.append({"type": "livestock_tame", "kind": kind})
-			_chron("chron.livestock_tame", kind)
-		# приплод: пара взрослых и есть место (в меру — шанс в день)
-		if count < cap and _livestock_adults(int(z["id"])) >= 2 \
-				and _event_rng.randf() < float(lcfg.get("breed_chance", 0.25)):
-			var kind2 := "chick"
-			if not livestock.is_empty():
-				kind2 = String(livestock[_event_rng.randi_range(0, livestock.size() - 1)]["kind"])
-			livestock.append({"id": _livestock_id, "kind": kind2, "pasture": int(z["id"]),
-					"pos": map.tile_center_px(z["cells"][0]), "target": Vector2i.ZERO,
-					"path": PackedVector2Array(), "idle": 0.0, "adult": false, "age": 0.0})
-			_livestock_id += 1
-			events.append({"type": "livestock_born", "kind": kind2})
-			_chron("chron.livestock_born", kind2)
-		# продукция: взрослые дают еду (молоко/яйца) — в пул раз в день
-		total_food += float(_livestock_adults(int(z["id"]))) * float(lcfg.get("food_per_adult", 1.2))
+			var carrier: Dictionary = _free_tamer()
+			if not carrier.is_empty():
+				var wild: Dictionary = animals[_event_rng.randi_range(0, animals.size() - 1)]
+				tame_task = {"animal": int(wild["id"]), "pasture": pid,
+						"carrier": int(carrier["id"]), "phase": "to_animal"}
+				events.append({"type": "tame_sent", "name": String(carrier["name"])})
+		# приплод: пара взрослых ОДНОГО вида; свиньи не размножаются (заказчик)
+		var by_kind := {}
+		for a in livestock:
+			if int(a["pasture"]) != pid or not bool(a["adult"]):
+				continue
+			var k := String(a["kind"])
+			by_kind[k] = int(by_kind.get(k, 0)) + 1
+		for k in by_kind:
+			if k in no_breed or int(by_kind[k]) < 2 or count >= cap:
+				continue
+			if _event_rng.randf() < float(lcfg.get("breed_chance", 0.25)):
+				var baby: String = "chick" if k == "chicken" else k
+				livestock.append({"id": _livestock_id, "kind": baby, "pasture": pid,
+						"pos": map.tile_center_px(z["cells"][0]), "target": Vector2i.ZERO,
+						"path": PackedVector2Array(), "idle": 0.0, "adult": false, "age": 0.0})
+				_livestock_id += 1
+				count += 1
+				events.append({"type": "livestock_born", "kind": baby})
+				_chron("chron.livestock_born", baby)
+			break   # один приплод в день на пастбище
+		# свиньи: не размножаются, лишние (сверх одной) идут на мясо
+		var pigs := 0
+		var oldest := {}
+		for a in livestock:
+			if int(a["pasture"]) != pid or String(a["kind"]) != "pig":
+				continue
+			pigs += 1
+			if oldest.is_empty() or int(a["id"]) < int(oldest["id"]):
+				oldest = a
+		if pigs > int(lcfg.get("pig_excess", 1)):
+			livestock.erase(oldest)
+			var meat := float(lcfg.get("pig_meat", 10.0))
+			_add_resource_capped("food", meat)
+			events.append({"type": "pig_slaughtered", "food": int(meat)})
+			_chron("chron.pig_meat")
+		# продукция по видам: корова — молоко, птица — яйца, овца — руно в еду;
+		# свинья еды не даёт (её продукт — мясо при убое)
+		for k in by_kind:
+			total_food += float(by_kind[k]) * float(products.get(k, lcfg.get("food_per_adult", 1.2)))
 	if total_food >= 1.0:
 		_add_resource_capped("food", total_food)
 		events.append({"type": "livestock_food", "food": int(total_food)})
+
+
+## Свободный житель для ловли зверя: без работы, не староста/страж/носильщик.
+func _free_tamer() -> Dictionary:
+	for r in residents:
+		if String(r["prof"]) in ["", "elder", "guard", "porter", "hunter"] or String(r.get("ail", "")) != "":
+			continue
+		if r["bld"] != null or r["site"] != null or int(r.get("funeral", 0)) > 0:
+			continue
+		return r
+	return {}
+
+
+## Работа ловчего: дойти до зверя, поймать, дотащить до пастбища (этап 2).
+var tame_task := {}   # {animal, pasture, carrier, phase: "to_animal"|"to_pasture"}
+
+
+func _tame_work(r: Dictionary, dt: float) -> bool:
+	if tame_task.is_empty() or int(tame_task["carrier"]) != int(r["id"]):
+		return false
+	var wild := _animal_by_id(int(tame_task["animal"]))
+	var pasture := _pasture_by_id(int(tame_task["pasture"]))
+	if wild.is_empty() or pasture.is_empty() or (pasture["cells"] as Array).is_empty():
+		tame_task = {}
+		return false
+	if (pasture["cells"] as Array).size() <= _livestock_in(int(pasture["id"])):
+		tame_task = {}   # пастбище забито — зверь остался на воле
+		return false
+	if String(tame_task["phase"]) == "to_animal":
+		var at: Vector2i = map.nearest_walkable(map.tile_of_px(wild["pos"]))
+		if _arrived(r, at):
+			animals.erase(wild)
+			tame_task["phase"] = "to_pasture"
+			return true
+		_move_towards(r, at, dt)
+		return true
+	var goal: Vector2i = map.nearest_walkable(Vector2i(pasture["cells"][0]))
+	if _arrived(r, goal):
+		var wild_kind := String(wild.get("kind", "deer"))
+		var kind: String = {"boar": "pig", "bird": "chicken", "turkey": "chicken", "deer": "sheep"}.get(wild_kind, "cow")
+		livestock.append({"id": _livestock_id, "kind": kind, "pasture": int(pasture["id"]),
+				"pos": map.tile_center_px(Vector2i(pasture["cells"][0])), "target": Vector2i.ZERO,
+				"path": PackedVector2Array(), "idle": 0.0, "adult": true, "age": 99.0})
+		_livestock_id += 1
+		events.append({"type": "livestock_tame", "kind": kind})
+		_chron("chron.livestock_tame", kind)
+		tame_task = {}
+		return false
+	_move_towards(r, goal, dt)
+	return true
 
 
 ## Скот бродит по клеткам своего пастбища, детёныши растут.
@@ -3929,10 +4079,12 @@ func _find_gather_tile(type_id: String, kinds: Array, on_resource: bool) -> Vect
 		for x in map.w:
 			var t := Vector2i(x, y)
 			if on_resource:
-				if not (map.grid[y][x] in kinds) or not is_buildable_rect(type_id, t):
+				if not (map.grid[y][x] in kinds) or not is_buildable_rect(type_id, t) \
+						or not placement_gap_ok(type_id, t):
 					continue
 			else:
-				if not is_buildable_rect(type_id, t) or placement_block(type_id, t) != "":
+				if not is_buildable_rect(type_id, t) or placement_block(type_id, t) != "" \
+						or not placement_gap_ok(type_id, t):
 					continue
 			var d: float = Vector2(t).distance_to(Vector2(map.spawn_tile))
 			if d < best_d:
@@ -3948,7 +4100,11 @@ func _ring_buildable(center: Vector2i, max_radius: int, type_id := "") -> Vector
 				if maxi(absi(dx), absi(dy)) != radius:
 					continue
 				var tile := center + Vector2i(dx, dy)
-				if is_buildable_rect(type_id, tile) if type_id != "" else is_buildable_tile(tile):
+				if type_id != "":
+					# этап 2: автострой учитывает зазор между зданиями
+					if is_buildable_rect(type_id, tile) and placement_gap_ok(type_id, tile):
+						return tile
+				elif is_buildable_tile(tile):
 					return tile
 	return Vector2i(-1, -1)
 
@@ -5497,22 +5653,82 @@ func hero_harvest(px: Vector2) -> String:
 	var h: Dictionary = hero_harvest_near(px)
 	if h.is_empty():
 		return ""
-	var zone: Dictionary = h["zone"]
-	var idx := int(h["idx"])
-	var cdef: Dictionary = crop_def(String(zone.get("crop", "turnip")))
-	var fcfg: Dictionary = cfg.get("farming", {})
-	_add_resource_capped("food", float(cdef.get("harvest", fcfg.get("harvest_food", 6.0))) * crop_mult())
-	_add_resource_capped("seeds", float(fcfg.get("seed_return", 1)))
-	if _event_rng.randf() < float(fcfg.get("seed_bonus_chance", 0.15)):
-		_add_resource_capped("seeds", 1.0)
-	var crops: Array = zone["crops"]
-	if float(res.get("seeds", 0.0)) >= float(fcfg.get("seed_sow", 1)):
-		res["seeds"] = float(res["seeds"]) - float(fcfg.get("seed_sow", 1))
-		crops[idx] = {"stage": 0, "t": 0.0, "ripe": false}
-	else:
-		crops[idx] = {}
+	_harvest_cell(h["zone"], int(h["idx"]))
 	events.append({"type": "hero_harvest"})
 	return "food"
+
+
+## Работа фермера (этап 2, аспект 3): сперва собирает спелые клетки полей,
+## затем обустраивает незаполненные, и только потом работает на ферме —
+## поля живут visibly, а не «сами собой».
+func _farm_work(r: Dictionary, bld: Dictionary, dt: float) -> void:
+	if float(bld.get("stun_left", 0.0)) > 0.0:
+		r["state"] = "idle"
+		return
+	# 1) спелая клетка поля — собрать
+	var ripe := _nearest_ripe_field_cell(r)
+	if not ripe.is_empty():
+		var tile: Vector2i = ripe["tile"]
+		if _arrived(r, tile):
+			_harvest_cell(ripe["zone"], int(ripe["idx"]))
+			r["state"] = "harvest"
+			r["fatigue"] += dt / float(cfg["day_length"])
+			_grow_skill(r, dt)
+		else:
+			_move_towards(r, tile, dt)
+		return
+	# 2) незаполненная клетка поля — обустроить (посев на заполненной клетке)
+	var zcfg: Dictionary = cfg.get("zones", {})
+	var fill_work: float = float(zcfg.get("fill_work", 4.0))
+	var best := {}
+	var best_d := INF
+	for z in zones:
+		if String(z["type"]) != "field":
+			continue
+		for i in (z["cells"] as Array).size():
+			if _cell_filled(z, i) or not building_at(z["cells"][i]).is_empty():
+				continue
+			var d: float = map.tile_center_px(z["cells"][i]).distance_to(r["pos"])
+			if d < best_d:
+				best_d = d
+				best = {"zone": z, "idx": i, "tile": z["cells"][i]}
+	if not best.is_empty():
+		var tile2: Vector2i = best["tile"]
+		if _arrived(r, tile2):
+			r["state"] = "fill"
+			var zz: Dictionary = best["zone"]
+			var i2 := int(best["idx"])
+			zz["progress"][i2] = float(zz["progress"][i2]) + dt * work_mult(r)
+			r["fatigue"] += dt / float(cfg["day_length"])
+			_grow_skill(r, dt)
+			if _cell_filled(zz, i2):
+				events.append({"type": "zone_cell", "zone": "field"})
+				_zone_check_done(zz, r)
+		else:
+			_move_towards(r, tile2, dt)
+		return
+	# 3) поля в порядке — производство на ферме (куча еды)
+	_do_work(r, bld, dt)
+
+
+## Ближайшая спелая клетка поля: {zone, idx, tile} или {}.
+func _nearest_ripe_field_cell(r: Dictionary) -> Dictionary:
+	var best := {}
+	var best_d := INF
+	for z in zones:
+		if String(z["type"]) != "field":
+			continue
+		var crops: Array = z.get("crops", [])
+		for i in (z["cells"] as Array).size():
+			if not _cell_filled(z, i) or not building_at(z["cells"][i]).is_empty():
+				continue
+			if crops.size() <= i or not bool((crops[i] as Dictionary).get("ripe", false)):
+				continue
+			var d: float = map.tile_center_px(z["cells"][i]).distance_to(r["pos"])
+			if d < best_d:
+				best_d = d
+				best = {"zone": z, "idx": i, "tile": z["cells"][i]}
+	return best
 
 
 ## Скала или рудная жила в шаге от героя: {tile, kind: "rock"|"ore"}.

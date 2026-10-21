@@ -149,7 +149,11 @@
 		"mature_days": 3,
 		"food_per_adult": 1.2,
 		"speed": 24.0,
-		"kinds": { "sheep": 3, "chicken": 3, "cow": 2, "pig": 2 }
+		"kinds": { "sheep": 3, "chicken": 3, "cow": 2, "pig": 2 },
+		"products": { "cow": 1.6, "sheep": 1.2, "chicken": 0.8, "pig": 0.0 },
+		"no_breed": [ "pig" ],
+		"pig_excess": 1,
+		"pig_meat": 10.0
 	},
 	"orchard": { "stages": 3, "food": 14.0, "harvest_chance": 0.7 },
 	"market": {
@@ -258,6 +262,7 @@
 		{"id": "temple", "w": 2, "sprite": "b:temple", "short": "bld.short.temple", "loc": "bld.temple", "desc": "bld.desc.temple", "color": "#ffb74d", "cost": {"wood": 20, "stone": 15, "crystal": 3}, "build_work": 35, "worker": "acolyte", "effect": "temple", "district": "living", "cat": "special"},
 		{"id": "bridge", "w": 1, "sprite": "b:bridge", "short": "bld.short.bridge", "loc": "bld.bridge", "desc": "bld.desc.bridge", "color": "#a1662f", "cost": {"wood": 4}, "build_work": 6, "effect": "bridge", "district": "living", "cat": "special"}
 	],
+	"placement": { "build_gap": 1, "wall_house_gap": 3 },
 	"loot_to_pool": {
 		"stone_chip": "stone",
 		"echo_crystal": "crystal",

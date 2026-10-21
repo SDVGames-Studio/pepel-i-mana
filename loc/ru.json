@@ -904,6 +904,9 @@
 	"city.caravan_lost_toast": "Караван разграблен бандитами! Потерян груз: %s",
 
 	"chron.livestock_tame": "Приручено животное: %s",
+	"chron.pig_meat": "Лишняя свинья пущена на мясо",
+	"city.tame_sent_toast": "%s отправился за диким зверем",
+	"city.pig_slaughtered_toast": "Лишняя свинья пущена на мясо: +%d еды",
 	"chron.livestock_born": "Приплод на пастбище: %s",
 	"chron.caravan_sent": "Мэр отправил караван: %s × %s",
 	"chron.caravan_returned": "Караван вернулся: +%s монет",
