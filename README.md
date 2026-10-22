@@ -1,4 +1,6 @@
-# Пепел и Мана — v1.20.1
+# Пепел и Мана — v1.20.2
+
+[![Тесты](https://github.com/SDVGames-Studio/pepel-i-mana/actions/workflows/tests.yml/badge.svg)](https://github.com/SDVGames-Studio/pepel-i-mana/actions/workflows/tests.yml)
 
 Градострой + выживание + магия + рогалик в одном мире. Вы — герой-основатель
 маленького города у магической аномалии: начинаете в одиночестве, рубите лес
