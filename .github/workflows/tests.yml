@@ -20,7 +20,8 @@ jobs:
           godot/godot --version
 
       - name: Import assets
-        run: godot/godot --headless --path . --import > import.log 2>&1 || echo "import: есть предупреждения"
+        run: |
+          godot/godot --headless --path . --import > import.log 2>&1 || echo "import: есть предупреждения"
         # импорт печатает много шума — ошибки всплывут в тестах
 
       - name: Run tests
