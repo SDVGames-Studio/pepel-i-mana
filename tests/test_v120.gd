@@ -18,9 +18,14 @@ func _test_fixes_v1191() -> void:
 	var solo_map = load("res://scripts/city_map.gd").new()
 	solo_map.generate(7, city)
 	var solo = load("res://scripts/city_sim.gd").new()
+	seed(11)   # глобальный RNG ДО setup: погода/досуг тянут randf()
 	solo.setup(solo_map, city, 1, "normal")
+	# setup() внутри делает _event_rng.randomize() и бросает черты характера
+	# основателя (±15% скорости стройки) ДО нашей установки seed — обнуляем
+	# черты сразу после setup: единственный оставшийся источник недетерминизма
+	for r in solo.residents:
+		r["traits"] = []
 	solo._event_rng.seed = 11
-	seed(11)   # и глобальный RNG: погода/досуг тянут randf() — иначе прогон флакает
 	solo._next_raid_at = 999999999.0   # волны отдельно: здесь — рост города
 	# болезни глушим (гигиена теста): больной староста в соло может умереть —
 	# это честная игра, но не предмет этой проверки
