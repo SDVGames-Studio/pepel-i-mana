@@ -1,52 +1,26 @@
-name: Тесты
+name: Tests
 
-# Автотесты на каждый пуш (feat-ветки) и в PR на main.
-# Порядок работы (решение заказчика 2026-10-22): изменение делается в ветке
-# feat/..., ветка пушится БЕЗ локального прогона тестов; CI зелёный —
-# ветка сливается в main и удаляется; красный — правим и пушим снова.
-on:
-  push:
-  pull_request:
-    branches: [main]
-  workflow_dispatch:
-
-concurrency:
-  group: tests-${{ github.ref }}
-  cancel-in-progress: true
+on: [push, pull_request, workflow_dispatch]
 
 jobs:
   tests:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - name: Забрать репозиторий
+      - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Кэш Godot 4.7.2
-        uses: actions/cache@v4
-        with:
-          path: godot
-          key: godot-4.7.2-linux-x86_64
-
-      - name: Скачать Godot 4.7.2 (headless)
+      - name: Download Godot 4.7.2
         run: |
-          if [ ! -x godot/godot ]; then
-            mkdir -p godot
-            curl -sSfL https://github.com/godotengine/godot/releases/download/4.7.2-stable/Godot_v4.7.2-stable_linux.x86_64.zip -o /tmp/godot.zip
-            unzip -oq /tmp/godot.zip -d godot
-            mv "godot/Godot_v4.7.2-stable_linux.x86_64" godot/godot
-            chmod +x godot/godot
-          fi
+          mkdir -p godot
+          curl -sSfL https://github.com/godotengine/godot/releases/download/4.7.2-stable/Godot_v4.7.2-stable_linux.x86_64.zip -o /tmp/godot.zip
+          unzip -oq /tmp/godot.zip -d godot
+          mv "godot/Godot_v4.7.2-stable_linux.x86_64" godot/godot
+          chmod +x godot/godot
           godot/godot --version
 
-      - name: Кэш импорта ресурсов
-        uses: actions/cache@v4
-        with:
-          path: .godot
-          key: godot-import-${{ hashFiles('project.godot', 'assets/**', 'loc/**') }}
+      - name: Import assets
+        run: godot/godot --headless --path . --import || echo "import warnings ignored"
 
-      - name: Импорт ресурсов
-        run: godot/godot --headless --path . --import || echo "импорт: есть предупреждения, тесты рассудят"
-
-      - name: Автотесты
+      - name: Run tests
         run: godot/godot --headless --path . --script res://tests/run_all.gd
