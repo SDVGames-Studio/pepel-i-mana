@@ -112,7 +112,7 @@ const REQUIRED_LOCALES := [
 	"city.dungeon_locked_hint", "city.dungeon_locked_toast", "dungeon.cleared_toast",
 	"city.armory_hint", "city.armory_bought_toast", "city.armory_max_toast", "city.armory_no_metal_toast",
 	# --- M6: зоны, дороги, физическая логистика ---
-	"zone.field", "zone.pasture", "zone.living",
+	"zone.field", "zone.pasture",
 	"city.road", "city.road_tooltip", "city.road_hint", "city.road_no_stone",
 	"city.road_auto_toast", "chron.road_built",
 	"city.zone_hint", "city.zone_tooltip", "city.zone_added", "city.zone_bad", "city.zone_done_toast",
@@ -262,6 +262,7 @@ func _initialize() -> void:
 	_test_stage2_aspect5()
 	_test_stage2_aspect6()
 	_test_fixes_v1191()
+	_test_fixes_v120()
 	if _fails == 0:
 		print("OK: все тесты пройдены")
 		quit(0)
@@ -644,13 +645,13 @@ func _test_city_sim() -> void:
 	var start: Dictionary = sim.cfg["start"]["levels"]["normal"]
 	_check(int(sim.res["wood"]) == int(start["wood"]), "старт: дерево по уровню «норма»")
 	_check(int(sim.res["crystal"]) == int(start["crystal"]), "старт: кристаллы по уровню")
-	_check(sim.residents.size() == 6, "старт: 6 жителей, на одного больше (заказчик)")
+	_check(sim.residents.size() == 7, "старт: 6 жителей + голем-староста (правки v1.20)")
 	var elder_started := false
 	for r in sim.residents:
 		if String(r["prof"]) == "elder":
 			elder_started = true
 	_check(elder_started, "в стартовом наборе есть староста — город растёт сам")
-	_check(sim.pop_cap() == 6, "лимит жителей = стартовым без домов")
+	_check(sim.pop_cap() == 7, "лимит жителей = стартовым + слот голема без домов")
 	_check(sim.storage_cap() == int(sim.cfg["storage_base"]), "вместимость хранилища базовая")
 	_check(not sim.is_night(), "утро нового города — день")
 
@@ -669,9 +670,9 @@ func _test_city_sim() -> void:
 	_check(not poor.place_building("house", poor.map.spawn_tile + Vector2i(1, 0)),
 			"без ресурсов стройка не начинается")
 
-	# дом: +2 к лимиту жителей
+	# дом: +1 к лимиту жителей (один дом — один человек, правки v1.20)
 	_build_now(sim, "house")
-	_check(sim.pop_cap() == 8, "дом даёт +2 к лимиту жителей")
+	_check(sim.pop_cap() == 8, "дом даёт +1 к лимиту жителей (правки v1.20)")
 	# склад: +200 к вместимости
 	_build_now(sim, "warehouse")
 	_check(sim.storage_cap() == int(sim.cfg["storage_base"]) + int(sim.cfg["storage_per_warehouse"]),
@@ -877,7 +878,7 @@ func _test_people() -> void:
 	var mourner: Dictionary = sim_d.residents[0]
 	var mood_before_death := float(mourner["mood"])
 	sim_d._kill(victim, "chron.died_sick")
-	_check(sim_d.residents.size() == 5, "житель умер — его больше нет")
+	_check(sim_d.residents.size() == 6, "житель умер — его больше нет")
 	_check(float(mourner["mood"]) < mood_before_death, "смерть жителя роняет мораль остальных")
 	_check(sim_d.chronicle.size() > 0 and String(sim_d.chronicle[-1]["key"]) == "chron.died_sick",
 			"смерть попала в летопись")
@@ -885,7 +886,7 @@ func _test_people() -> void:
 	# беженцы идут сами (ответ №27), рождения дают ребёнка, ребёнок вырастает
 	var sim_r := _make_sim()
 	sim_r.res["food"] = 30.0   # запас еды на всех — иначе беженцы не придут
-	_build_now(sim_r, "house")   # +2 к лимиту: место для пришельцев и новорождённых
+	_build_now(sim_r, "house")   # +1 к лимиту: место для пришельцев и новорождённых
 	for r in sim_r.residents:
 		r["mood"] = 80.0
 	var pop_before: int = sim_r.residents.size()
@@ -900,12 +901,12 @@ func _test_people() -> void:
 	_check(String(sim_g.growth_block()) == "city.growth_cap", "прирост стоит: лимит жителей полон")
 	sim_g.people["refugees"]["chance_per_day"] = 1.0
 	sim_g._roll_refugees()
-	_check(sim_g.residents.size() == 6, "при полном лимите беженец не приходит")
+	_check(sim_g.residents.size() == 7, "при полном лимите беженец не приходит")
 	_build_now(sim_g, "house")
 	sim_g.res["food"] = 2.0
 	_check(String(sim_g.growth_block()) == "city.growth_food", "прирост стоит: нет запаса еды")
 	sim_g._roll_refugees()
-	_check(sim_g.residents.size() == 6, "без запаса еды беженец не идёт в голодный город")
+	_check(sim_g.residents.size() == 7, "без запаса еды беженец не идёт в голодный город")
 	for r in sim_g.residents:
 		r["mood"] = 80.0
 	sim_g.res["food"] = 50.0
@@ -913,6 +914,7 @@ func _test_people() -> void:
 	_check(sim_g.residents.size() >= 7, "есть место и еда — беженцы приходят (волна 1-2)")
 
 	sim_r.people["births"]["chance_per_day"] = 1.0
+	_build_now(sim_r, "house")   # v1.20: дом даёт +1 — ребёнку нужен свой слот лимита
 	sim_r._roll_births()
 	var child: Dictionary = {}
 	for r in sim_r.residents:
@@ -1033,13 +1035,19 @@ func _test_people() -> void:
 	sim_l._substitute_into("farmer", taken, farm_l, false)
 	_check(int(farm_l["worker"]) == int(knowing["id"]), "выучивший профессию замещает первым")
 
-	# подмена вдвое хуже основной работы (просьба заказчика)
+	# цветовая система (правки v1.20): чужой цвет — вполсилы, выученный — со
+	# штрафом extra_mult; основная профессия — полная отдача
 	var sim_sb := _make_sim()
-	var plain: Dictionary = {"traits": [], "mood": 50.0, "skill": 0.0, "friend": -1, "work_bonus": 0.0, "sub_prof": ""}
-	var substituting: Dictionary = {"traits": [], "mood": 50.0, "skill": 0.0, "friend": -1, "work_bonus": 0.0, "sub_prof": "farmer"}
+	var plain: Dictionary = {"traits": [], "mood": 50.0, "skill": 0.0, "friend": -1, "work_bonus": 0.0, "prof": "builder"}
+	var offc: Dictionary = {"traits": [], "mood": 50.0, "skill": 0.0, "friend": -1, "work_bonus": 0.0, "prof": "builder", "bld": {"type": "farm"}, "site": null}
+	var extrac: Dictionary = {"traits": [], "mood": 50.0, "skill": 0.0, "friend": -1, "work_bonus": 0.0, "prof": "builder", "bld": {"type": "farm"}, "site": null, "prof_extra": ["farmer"]}
 	var plain_mult: float = sim_sb.work_mult(plain)
-	var sub_mult: float = sim_sb.work_mult(substituting)
-	_check(absf(plain_mult - sub_mult * 2.0) < 0.01, "неосновная профессия работает ровно вдвое хуже")
+	var off_mult: float = sim_sb.work_mult(offc)
+	var extra_mult_v: float = sim_sb.work_mult(extrac)
+	_check(absf(plain_mult - off_mult / float(sim_sb.cfg["work_colors"]["off_mult"])) < 0.01,
+			"чужой цвет работает хуже основной профессии (off_mult)")
+	_check(absf(off_mult - extra_mult_v / float(sim_sb.cfg["work_colors"]["extra_mult"]) * float(sim_sb.cfg["work_colors"]["off_mult"])) < 0.01,
+			"дополнительный цвет работает лучше чужого, но хуже своего (extra_mult)")
 
 	# таверна: тратит еду на пиво и поднимает настроение городу
 	var sim_t := _make_sim()
@@ -1084,7 +1092,8 @@ func _test_people() -> void:
 	sim_e2._roll_autobuild()
 	_check(sim_e2.buildings.size() == buildings_before2, "без старосты город сам не строит")
 
-	# преемственность: староста погиб — самым опытным становится новый староста
+	# преемственность (правки v1.20): староста-голем погиб — у площади
+	# пробуждается НОВЫЙ голем, жители старостой не становятся
 	var sim_pr := _make_sim()
 	var dead_elder: Dictionary = _resident_by_prof(sim_pr, "elder")
 	var heir: Dictionary = sim_pr.residents[0]
@@ -1093,8 +1102,12 @@ func _test_people() -> void:
 	heir["skill"] = 4.0
 	sim_pr._kill(dead_elder, "chron.died_sick")
 	sim_pr._ensure_elder()
-	_check(String(heir["prof"]) == "elder", "самый опытный стал новым старостой")
-	_check(String(sim_pr.chronicle[-1]["key"]) == "chron.promoted", "назначение записано в летопись")
+	_check(String(heir["prof"]) != "elder", "житель старостой не становится")
+	var new_elder: Dictionary = _resident_by_prof(sim_pr, "elder")
+	_check(not new_elder.is_empty() and bool(new_elder.get("golem", false)),
+			"пробудился новый голем-староста")
+	_check(String(sim_pr.chronicle[-1]["key"]) == "chron.golem_awakens",
+			"пробуждение записано в летопись")
 
 	# заболел — освободил рабочее место, здоровый замещающий подхватил (анти-стопор)
 	var sim_il := _make_sim()
@@ -1160,6 +1173,11 @@ func _test_people() -> void:
 		sim_st.tick(5.0)
 	_check(float((quarry["pile"] as Dictionary).get("stone", 0.0)) > 0.0,
 			"каменоломня добывает камень в кучу у здания (M6)")
+	# v1.20: стартовых жителей теперь ШЕСТЬ (староста — отдельный голем) — среди
+	# них есть крафтер; для чистоты проверки новичка уводим стартового с профессии
+	for r in sim_st.residents:
+		if String(r["prof"]) == "crafter":
+			r["prof"] = "lumberjack"
 	var crafter_q: Dictionary = sim_st._new_resident("Кира", "crafter", sim_st.map.spawn_tile)
 	sim_st.residents.append(crafter_q)
 	sim_st._next_id += 1
@@ -1661,12 +1679,14 @@ func _test_threat() -> void:
 			repelled_seen = true
 	_check(repelled_seen, "событие «атака отбита» дошло до сцены")
 
-	# мутант ломает стену
+	# мутант ломает стену (площадь у спавна: строим за её запретным радиусом, v1.20)
 	var sim2 := _make_sim()
 	sim2._next_raid_at = 999999999.0
 	sim2._last_daily_day = 999
 	sim2.time = 10.0 * float(sim2.cfg["day_length"])
-	var wall_tile: Vector2i = sim2.map.spawn_tile + Vector2i(4, 0)
+	var wall_tile: Vector2i = sim2.map.spawn_tile + Vector2i(7, 0)
+	while not sim2.is_buildable_rect("wall", wall_tile):
+		wall_tile += Vector2i(1, 0)
 	var grass_w: Array = _grass_tiles(sim2, wall_tile, 4)
 	if not grass_w.is_empty():
 		wall_tile = grass_w[0]
@@ -2063,11 +2083,11 @@ func _test_defense() -> void:
 	game4.free()
 	game5.free()
 
-	# стартовый город: герой начинает ОДИН (правки v1.12.0), поселенцы придут сами
+	# стартовый город: герой начинает ОДИН + голем-староста у площади (v1.20)
 	var game6: Node = load("res://scripts/game.gd").new()
 	game6.new_city()
-	_check(game6.city_sim.residents.size() == 1, "новый город: герой начинает один")
-	_check(game6.city_sim.pop_cap() >= 1, "лимит жителей вмещает основателя")
+	_check(game6.city_sim.residents.size() == 2, "новый город: основатель + голем-староста")
+	_check(game6.city_sim.pop_cap() >= 2, "лимит жителей вмещает основателя и голема")
 	game6.free()
 
 	# страж вне смены помогает на стройке (заказчик: стража тоже должна помогать)
@@ -2353,6 +2373,7 @@ func _test_m6() -> void:
 	print("[M6: зоны, дороги, носильщик, декор]")
 
 	# --- зоны: разбивка, отсев негодных клеток, заполнение жителями ---
+	# (правки v1.20: остались только Поле и Пастбище — проверяем на пастбище)
 	var sim := _make_sim()
 	sim._last_daily_day = 999
 	sim.cfg["food_per_resident_day"] = 0.0
@@ -2367,22 +2388,21 @@ func _test_m6() -> void:
 				break
 		if mixed.size() > cells.size():
 			break
-	var added: int = sim.add_zone("living", mixed)
+	var added: int = sim.add_zone("pasture", mixed)
 	_check(added == cells.size(), "зона разбита: вода и скалы отсечены")
 	_check(sim.zones.size() == 1, "зона сохранена в симуляции")
-	_check(sim.add_zone("living", cells) == 0, "второй раз на те же клетки зону не разбить")
+	_check(sim.add_zone("pasture", cells) == 0, "второй раз на те же клетки зону не разбить")
 	_check(sim.add_zone("unknown", cells) == 0, "неизвестный тип зоны отвергается")
-	# жилые клетки дают лимит жителей только после обустройства
-	var cap0: int = sim.pop_cap()
+	_check(sim.add_zone("living", cells) == 0, "жилая зона убрана из конфига (v1.20)")
+	_check(sim.add_zone("industrial", cells) == 0, "зоны-слои убраны из конфига (v1.20)")
+	# обустроенные клетки пастбища кормят: житель сам идёт к ближайшей незаполненной
 	var zliving: Dictionary = sim.zones[0]
 	var farmer_z: Dictionary = _resident_by_prof(sim, "farmer")
 	farmer_z["traits"] = []
 	farmer_z["mood"] = 100.0
-	# заполняем все клетки по очереди: житель сам идёт к ближайшей незаполненной
 	for i in (zliving["cells"] as Array).size():
 		_teleport(sim, farmer_z, zliving["cells"][i])
 		sim.tick(6.0)
-	_check(sim.pop_cap() > cap0, "обустроенная жилая зона добавила лимит жителей (шалаши)")
 	var done_seen := false
 	for ev in sim.events:
 		if String(ev["type"]) == "zone_done":
@@ -2417,9 +2437,10 @@ func _test_m6() -> void:
 			"урожай вернул семена — цикл поля замкнулся")
 
 	# --- здание на клетке зоны вытесняет её из зоны ---
+	# (v1.20: у спавна площадь с запретом стройки — зона подальше)
 	var sim_z2 := _make_sim()
 	sim_z2._last_daily_day = 999
-	var zcells: Array = _grass_tiles(sim_z2, sim_z2.map.spawn_tile + Vector2i(2, 2), 4)
+	var zcells: Array = _grass_tiles(sim_z2, sim_z2.map.spawn_tile + Vector2i(7, 7), 4)
 	sim_z2.add_zone("field", zcells)
 	var before_n: int = (sim_z2.zones[0]["cells"] as Array).size()
 	sim_z2.place_building("wall", zcells[0])
@@ -2630,6 +2651,9 @@ func _test_m6() -> void:
 	var sim_w := _make_sim()
 	sim_w._last_daily_day = 999
 	sim_w.cfg["repair"] = {"per_day": 240.0}
+	for r in sim_w.residents:   # v1.20: среди стартовых есть крафтер — уводим
+		if String(r["prof"]) == "crafter":
+			r["prof"] = "lumberjack"
 	var crafter_w: Dictionary = _add_resident(sim_w, "Кира", "crafter")
 	var workshop_w := _build_now(sim_w, "workshop")
 	_check(int(workshop_w["worker"]) == int(crafter_w["id"]), "мастер в мастерской")
@@ -2654,7 +2678,7 @@ func _test_m6() -> void:
 	var sim_wr := _make_sim()
 	sim_wr._last_daily_day = 999
 	sim_wr.res["stone"] = 50.0
-	var rtile: Vector2i = _grass_tiles(sim_wr, sim_wr.map.spawn_tile + Vector2i(1, 1), 1)[0]
+	var rtile: Vector2i = _grass_tiles(sim_wr, sim_wr.map.spawn_tile + Vector2i(6, 6), 1)[0]   # v1.20: вне радиуса площади
 	sim_wr.place_road(rtile)
 	_check(sim_wr.map.has_road(rtile), "дорога перед стройкой есть")
 	sim_wr.place_building("wall", rtile)
@@ -3679,13 +3703,20 @@ func _test_m14_save() -> void:
 	_check(sim2.buildings.size() == sim1.buildings.size(), "число зданий совпадает")
 	var farm2: Dictionary = sim2.building_at(bld["tile"])
 	_check(not farm2.is_empty() and bool(farm2["done"]), "ферма восстановлена и готова")
-	var chron_same: bool = sim2.chronicle.size() == sim1.chronicle.size()
+	# v1.20: после загрузки староста сразу строит утренний план (запись в летопись)
+	# — сверяем, что старая летопись сохранена как начало новой, без потерь
+	var chron_same: bool = sim2.chronicle.size() >= sim1.chronicle.size()
 	if chron_same:
 		for i in sim1.chronicle.size():
 			if int(sim2.chronicle[i]["day"]) != int(sim1.chronicle[i]["day"]) \
 					or String(sim2.chronicle[i]["key"]) != String(sim1.chronicle[i]["key"]):
 				chron_same = false
 	_check(chron_same, "летопись совпадает")
+	var morning_after_load := false
+	for e in sim2.chronicle:
+		if String(e["key"]) == "chron.morning_plan":
+			morning_after_load = true
+	_check(morning_after_load, "утренний тик после загрузки построил план")
 	var ref_ok := true
 	for r in sim2.residents:
 		var b = r.get("bld")
@@ -5566,9 +5597,11 @@ func _test_fixes_v121() -> void:
 	var solo = load("res://scripts/city_sim.gd").new()
 	solo.setup(city_map, city_cfg, 1, "normal")
 	solo._next_raid_at = 999999999.0
-	_check(solo.residents.size() == 1, "соло-старт: в городе один житель")
-	_check(String(solo.residents[0]["prof"]) == "elder", "основатель — сам себе староста")
-	_check(solo.pop_cap() >= 1, "лимит населения вмещает основателя")
+	_check(solo.residents.size() == 2, "соло-старт: основатель + голем-староста (v1.20)")
+	_check(String(solo.residents[0]["prof"]) != "elder" and String(solo.residents[1]["prof"]) == "elder",
+			"основатель — работник, городом правит голем-староста")
+	_check(bool(solo.residents[1].get("golem", false)), "староста — голем (белый кружок)")
+	_check(solo.pop_cap() >= 2, "лимит населения вмещает основателя и голема")
 
 	# --- поселенцы приходят постепенно: ранний бонус малому городу ---
 	var residents_cfg: Dictionary = _read_json("res://data/residents.json")
@@ -5746,8 +5779,8 @@ func _test_hero_work() -> void:
 	for r in elder_only.residents:
 		if String(r["prof"]) == "elder":
 			elder_r = r
-	_check(int(site["worker"]) == int(elder_r["id"]),
-			"при соло-старте стройку берёт староста (резерв строителя)")
+	_check(int(site["worker"]) == int(elder_r["id"]) or int(site["worker"]) == int(elder_only.residents[0]["id"]),
+			"при соло-старте стройку берёт основатель или голем-староста (резерв строителя)")
 	var guard2 := 0
 	res = ""
 	while not bool(site["done"]) and guard2 < 100:
@@ -5834,7 +5867,10 @@ func _test_stage2_aspect2() -> void:
 	_check(not sim.is_buildable_rect("house", t1), "занятый прямоугольник дважды не застраивается")
 	_check(sim.map.is_walkable(t1), "стройплощадка проходима")
 	# готовое здание — сплошное во всех клетках, вход проходим
+	# (v1.20: площадь у спавна — стройки дальше, строителю дать дойти)
 	site["progress"] = 9999.0
+	var builder_a2: Dictionary = _resident_by_prof(sim, "builder")
+	_teleport(sim, builder_a2, site["tile"])
 	sim.tick(0.2)
 	_check(bool(site["done"]), "дом достроен")
 	var solid_cnt := 0
@@ -5974,7 +6010,9 @@ func _test_stage2_entrance_recalc() -> void:
 	var farmer_e: Dictionary = _resident_by_prof(sim_e, "farmer")
 	farmer_e["traits"] = []
 	farmer_e["mood"] = 100.0
-	var farm_e := _build_now(sim_e, "farm")
+	# v1.20: у спавна площадь с запретным радиусом — ферму строим вдали,
+	# чтобы стены у её входа не упирались в запрет стройки
+	var farm_e := _build_now(sim_e, "farm", sim_e.map.spawn_tile + Vector2i(14, 8))
 	var spot0: Vector2i = sim_e.bld_spot(farm_e)
 	_teleport(sim_e, farmer_e, spot0)
 	for i in 4:
@@ -6299,12 +6337,14 @@ func _test_stage2_aspect5() -> void:
 	print("[Этап 2, аспект 5] готово")
 
 
-## Этап 2, аспект 6 — новые зоны (промышленная/магическая/складская/отдыха)
-## и кварталы (ремесленный/торговый/магический). Зоны-слои ложатся поверх
-## зданий и дорог и дают скромные бонусы; кварталы образуются сами (кластер
-## зданий специализации); самострой строит по зонам.
+## Правки приёмки v1.20 (второй чат правок): зоны-слои (промышленная/
+## магическая/складская/отдыха), жилая зона и кварталы УБРАНЫ по решению
+## заказчика («убери зоны, жилые и тд») — остались только Поле и Пастбище.
+## Взамен: главная площадь 2×2, голем-староста и утренняя планёрка (отдельный
+## блок тестов ниже). Здесь — обратная совместимость: конфиг чист, старые
+## типы зон отвергаются, сейвы с лишними зонами вычищаются при загрузке.
 func _test_stage2_aspect6() -> void:
-	print("[Этап 2, аспект 6: новые зоны и кварталы]")
+	print("[Правки v1.20: зоны убраны (жилая и слои)]")
 	var city: Variant = _read_json("res://data/city.json")
 	var loc: Variant = _read_json("res://loc/ru.json")
 	_check(city is Dictionary and loc is Dictionary, "конфиги читаются")
@@ -6312,303 +6352,80 @@ func _test_stage2_aspect6() -> void:
 		return
 	var zcfg: Dictionary = city.get("zones", {})
 	var ztypes: Dictionary = zcfg.get("types", {})
-	for zid in ["industrial", "magic", "storage", "leisure"]:
-		_check(bool(ztypes.get(zid, {}).get("overlay", false))
-				and String(ztypes.get(zid, {}).get("color", "")) != "",
-				"тип зоны-слоя в конфиге: " + zid)
-	var qcfg: Dictionary = zcfg.get("quarters", {})
-	_check(not qcfg.is_empty()
-			and not (qcfg.get("specs", {}) as Dictionary).get("craft", {}).is_empty(),
-			"кварталы описаны в конфиге (специализации)")
-	_check(int((qcfg.get("specs", {}) as Dictionary).get("magic", {}) \
-			.get("need", 0)) == 2, "магический квартал: алтаря и храма хватает (need 2)")
-	for key in ["zone.industrial", "zone.magic", "zone.storage", "zone.leisure",
-			"city.zones_more", "city.zones_more_tooltip", "city.quarter_toast",
-			"quarter.craft", "quarter.trade", "quarter.magic", "chron.quarter_formed",
-			"city.zone_overlay_hint", "city.zone_overlay_bad"]:
+	_check(ztypes.has("field") and ztypes.has("pasture"), "остались только Поле и Пастбище")
+	for zid in ["living", "industrial", "magic", "storage", "leisure"]:
+		_check(not ztypes.has(zid), "тип зоны убран из конфига: " + zid)
+	_check(not zcfg.has("quarters"), "кварталы убраны из конфига")
+	_check(not city.has("pop_per_house") or int(city["pop_per_house"]) == 1,
+			"один дом — один человек (pop_per_house = 1)")
+	for key in ["city.plaza_move", "city.plaza_pick", "city.plaza_moved",
+			"city.plaza_bad_spot", "city.golem_toast", "city.morning_plan_toast",
+			"city.zone_field_added", "chron.plaza_moved", "chron.golem_awakens",
+			"chron.morning_plan", "chron.wedding_home"]:
 		_check(String(loc.get(key, "")) != "", "ключ локализации есть: " + key)
+	# больше нет кнопок «Ещё зоны» и подсказок слоёв
+	for key in ["city.zones_more", "city.zones_more_tooltip", "city.zone_overlay_hint",
+			"city.zone_overlay_bad"]:
+		_check(String(loc.get(key, "")) == "", "ключ слоёв убран: " + key)
 
+	# стройка у площади запрещена, дальше — можно; перенос площади работает
 	var sim := _make_sim()
 	sim.res["wood"] = 500.0
 	sim.res["stone"] = 500.0
-	sim.res["crystal"] = 50.0
+	_check(sim.plaza != Vector2i(-1, -1), "площадь 2×2 появилась у спавна")
+	_check(sim.plaza_cells().size() == 4, "площадь занимает 4 клетки")
+	_check(sim.near_plaza(sim.plaza), "клетки площади сами в запретном радиусе")
+	_check(not sim.is_buildable_tile(sim.plaza), "на клетках площади строить нельзя")
+	var near_t: Vector2i = sim.plaza + Vector2i(2, 1)
+	_check(sim.near_plaza(near_t), "радиус 3: близко к площади строить нельзя")
+	var far_t: Vector2i = sim.plaza + Vector2i(5, 0)
+	while not (sim.map.in_bounds(far_t) and sim.map.grid[far_t.y][far_t.x] == sim.map.TILE_GRASS):
+		far_t += Vector2i(1, 0)
+	_check(not sim.near_plaza(far_t), "далее 3 клеток от площади строить можно")
+	var plaza_far: Vector2i = sim.map.spawn_tile + Vector2i(12, 8)
+	while not sim._plaza_ok(plaza_far) or not sim.building_at(plaza_far).is_empty():
+		plaza_far += Vector2i(1, 0)
+	_check(sim.move_plaza(plaza_far) == "", "площадь переносится")
+	_check(sim.plaza == plaza_far, "площадь на новом месте")
+	sim.move_plaza(sim.map.spawn_tile + Vector2i(-1, -1))   # вернули как было
 
-	# --- зоны-слои ложатся поверх зданий; обустройства не требуют ---
-	var farm_a := _build_now(sim, "farm")
-	_check(not farm_a.is_empty(), "ферма А построена")
-	var farm_b := _build_now(sim, "farm", sim.map.spawn_tile + Vector2i(16, 12))
-	_check(not farm_b.is_empty(), "ферма Б построена (вдали от А)")
-	var ind_cells: Array = sim.bld_cells(farm_a)
-	var added: int = sim.add_zone("industrial", ind_cells)
-	_check(added == ind_cells.size(), "промзона легла прямо на клетки здания")
-	var zone_a: Dictionary = sim.zone_by_id(int(sim.zones[sim.zones.size() - 1]["id"]))
-	_check((zone_a["progress"] as Array).is_empty(), "зона-слой не требует обустройства")
-	_check(sim.bld_in_zone(farm_a, "industrial"), "ферма А стоит в промзоне")
-	_check(not sim.bld_in_zone(farm_b, "industrial"), "ферма Б вне промзоны")
-	var ratio: float = sim.production_mult(farm_a) / sim.production_mult(farm_b)
-	_check(is_equal_approx(ratio, float(zcfg.get("industrial", {}).get("prod_mult", 1.15))),
-			"промзона: производство +15%")
-	var wall_tile: Vector2i = Vector2i(farm_a["tile"]) + Vector2i(0, -2)
-	if sim.placement_block("wall", wall_tile) == "" and sim.placement_gap_ok("wall", wall_tile):
-		_check(sim.place_building("wall", wall_tile), "стена заложена в промзоне")
-		_check((zone_a["cells"] as Array).size() == added,
-				"стройка в зоне-слое не изымает клетки")
-	var grass5: Array = _grass_tiles(sim, sim.map.spawn_tile + Vector2i(-8, 8), 5)
-	_check(grass5.size() >= 5 and sim.add_zone("living", grass5) == 5, "жилая зона разбита")
-	var living_zone: Dictionary = sim.zones[sim.zones.size() - 1]
-	var lt: Vector2i = grass5[0]
-	if sim.placement_block("wall", lt) == "" and sim.placement_gap_ok("wall", lt):
-		sim.place_building("wall", lt)
-		_check((living_zone["cells"] as Array).size() == 4,
-				"стройка на клетке старой зоны изымает клетку (как раньше)")
-
-	# --- расчистка площадок: детерминированные места под кварталы ---
-	var clear := func(base: Vector2i) -> void:
-		for dy in range(-7, 8):
-			for dx in range(-7, 8):
-				var t: Vector2i = base + Vector2i(dx, dy)
-				if sim.map.in_bounds(t):
-					sim.map.grid[t.y][t.x] = sim.map.TILE_GRASS
-	var build_at := func(type_id: String, tile: Vector2i) -> Dictionary:
-		if not sim.place_building(type_id, tile):
-			return {}
-		var b: Dictionary = sim.building_at(tile)
-		b["done"] = true
-		sim._complete_site(b)
-		return b
-	var qbase: Vector2i = sim.map.spawn_tile + Vector2i(14, -10)
-	if not sim.map.in_bounds(qbase + Vector2i(4, 4)):
-		qbase = sim.map.spawn_tile + Vector2i(-14, 10)
-	clear.call(qbase)
-
-	# --- складская зона: склад даёт более сильный и широкий бонус ---
-	var sbase: Vector2i = sim.map.spawn_tile + Vector2i(-14, -10)
-	if not sim.map.in_bounds(sbase + Vector2i(4, 4)):
-		sbase = sim.map.spawn_tile + Vector2i(14, 10)
-	clear.call(sbase)
-	var wh: Dictionary = build_at.call("warehouse", sbase)
-	var farm_c: Dictionary = build_at.call("farm", sbase + Vector2i(5, 0))
-	_check(not wh.is_empty() and not farm_c.is_empty(), "склад и ферма С построены")
-	_check(is_equal_approx(sim.layout_mult(farm_c), 1.0),
-			"склад дальше 4 клеток: бонуса нет (ферма С)")
-	sim.add_zone("storage", sim.bld_cells(wh))
-	_check(is_equal_approx(sim.layout_mult(farm_c),
-			float(zcfg.get("storage", {}).get("warehouse_mult", 1.5))),
-			"склад в складской зоне: бонус соседям х1.5")
-	var farm_d: Dictionary = build_at.call("farm", sbase + Vector2i(-6, 0))
-	_check(is_equal_approx(sim.layout_mult(farm_d), 1.5),
-			"радиус складской зоны — 6 клеток (ферма D накрыта)")
-
-	# --- магическая зона: алтарь и храм сильнее, порча чище ---
-	var mbase: Vector2i = sim.map.spawn_tile + Vector2i(0, 14)
-	if not sim.map.in_bounds(mbase + Vector2i(4, 4)):
-		mbase = sim.map.spawn_tile + Vector2i(0, -14)
-	clear.call(mbase)
-	var altar: Dictionary = build_at.call("altar", mbase)
-	_check(not altar.is_empty(), "алтарь построен")
-	_check(is_equal_approx(sim._altar_work_mult(), 1.0),
-			"без магзоны алтарь работает как обычно")
-	sim.add_zone("magic", sim.bld_cells(altar))
-	_check(is_equal_approx(sim._altar_work_mult(),
-			float(zcfg.get("magic", {}).get("work_mult", 1.2))),
-			"алтарь в магзоне: усиление х1.2")
-	_check(is_equal_approx(sim._magic_pollution_mult(),
-			float(zcfg.get("magic", {}).get("pollution_mult", 0.5))),
-			"порча алтарной магии в магзоне — половина")
-	# храм достроен — алтарь+храм образуют магический квартал (need 2)
-	var temple: Dictionary = build_at.call("temple", mbase + Vector2i(3, 0))
-	_check(not temple.is_empty(), "храм построен")
-	sim.add_zone("magic", sim.bld_cells(temple))
-	_check(is_equal_approx(sim._temple_work_mult(), 1.2 * 1.1),
-			"храм в магзоне и квартале: х1.32")
-
-	# --- кварталы: кластеры специализаций образуются сами ---
-	var f1: Dictionary = build_at.call("forge", qbase)
-	var f2: Dictionary = build_at.call("forge", qbase + Vector2i(3, 0))
-	_check(not f1.is_empty() and not f2.is_empty(), "две кузни стоят")
-	_check(String(f1.get("quarter", "")) == "" and String(f2.get("quarter", "")) == "",
-			"двух кузен для квартала мало")
-	var f3: Dictionary = build_at.call("forge", qbase + Vector2i(0, 3))
-	_check(not f3.is_empty(), "третья кузня стоит")
-	var q_ev := false
-	for ev in sim.events:
-		if String(ev["type"]) == "quarter_formed" and String(ev["spec"]) == "craft":
-			q_ev = true
-	_check(q_ev, "образование квартала — событие для тоста")
-	var q_chron := false
-	for e in sim.chronicle:
-		if String(e["key"]) == "chron.quarter_formed":
-			q_chron = true
-	_check(q_chron, "квартал отмечен в летописи")
-	_check(String(f1.get("quarter", "")) == "craft" and String(f2.get("quarter", "")) == "craft"
-			and String(f3.get("quarter", "")) == "craft", "все три кузни — в ремесленном квартале")
-	_check(is_equal_approx(sim.quarter_mult(f1), float(qcfg.get("mult", 1.1))),
-			"бонус квартала — х1.1")
-	_check(is_equal_approx(sim.layout_mult(farm_b), 1.0),
-			"ферма Б без склада рядом (чистая база для сравнения)")
-	_check(is_equal_approx(sim.production_mult(f1) / sim.production_mult(farm_b),
-			float(qcfg.get("mult", 1.1))),
-			"квартал усиливает производство кузни (х1.1)")
-	sim._damage_building(f2, 99999.0)
-	_check(bool(f2.get("razed", false)), "кузня 2 разрушена")
-	_check(String(f1.get("quarter", "")) == "" and String(f3.get("quarter", "")) == "",
-			"квартал распался (осталось двое)")
-	_check(not bool(sim._quarter_formed.get("craft", false)),
-			"флаг квартала сброшен — новое образование снова отметится")
-
-	# --- торговый квартал: рынок + 2 палатки ---
-	clear.call(qbase + Vector2i(2, 9))
-	var market: Dictionary = build_at.call("market", qbase + Vector2i(0, 8))
-	var t1: Dictionary = build_at.call("tent", qbase + Vector2i(3, 8))
-	var t2: Dictionary = build_at.call("tent", qbase + Vector2i(0, 11))
-	_check(not market.is_empty() and not t1.is_empty() and not t2.is_empty(),
-			"рынок и две палатки стоят")
-	_check(String(market.get("quarter", "")) == "trade" and String(t1.get("quarter", "")) == "trade"
-			and String(t2.get("quarter", "")) == "trade", "торговый квартал образовался")
-	_check(sim._market_in_trade_quarter(), "рынок в торговом квартале")
-
-	# --- магический квартал: алтарь + храм ---
-	_check(String(altar.get("quarter", "")) == "magic"
-			and String(temple.get("quarter", "")) == "magic",
-			"магический квартал: алтарь и храм помечены")
-	_check(is_equal_approx(sim._altar_work_mult(), 1.2 * 1.1),
-			"магзона и магквартал складываются (алтарь)")
-
-	# --- зона отдыха: вечерняя сцена и настроение ---
-	var lbase: Vector2i = sim.map.spawn_tile + Vector2i(6, 6)
-	clear.call(lbase)
-	var garden: Dictionary = build_at.call("garden", lbase)
-	var lcells: Array = sim.bld_cells(garden) + [lbase + Vector2i(3, 0), lbase + Vector2i(4, 0),
-			lbase + Vector2i(3, 1), lbase + Vector2i(4, 1)]
-	_check(sim.add_zone("leisure", lcells) == lcells.size(), "зона отдыха разбита (с садом внутри)")
-	var plain2: Array = [lbase + Vector2i(7, 0), lbase + Vector2i(7, 1)]
-	_check(sim.add_zone("leisure", plain2) == 2, "вторая зона отдыха — без мест притяжения")
-	var all_leisure: Array = lcells + plain2
-	var ztile: Vector2i = sim._nearest_leisure_tile(lbase + Vector2i(7, 1))
-	_check(plain2.has(ztile), "ближайшая клетка досуга — в пустой зоне")
-	var ztile_venue: Vector2i = sim._nearest_leisure_tile(lbase)
-	_check(lcells.has(ztile_venue), "клетка досуга — в зоне с садом")
-	_check(sim._leisure_zone_has_venue(ztile_venue), "сад внутри зоны — место притяжения")
-	_check(not sim._leisure_zone_has_venue(ztile), "пустая зона — без места притяжения")
-	_check(not sim._leisure_zone_has_venue(sim.map.spawn_tile),
-			"клетка вне зоны отдыха — не место притяжения")
-	var r1: Dictionary = sim.residents[0]
-	r1["mood"] = 50.0
-	r1["chat_left"] = 0.0
-	r1["chat_key"] = ""
-	r1["pos"] = sim.map.tile_center_px(ztile)
-	r1["leisure"] = {"tile": ztile, "leisure": true}
-	r1["path"] = PackedVector2Array()
-	sim._leisure(r1, 0.05)
-	_check(is_equal_approx(float(r1["mood"]), 53.0), "вечер в зоне отдыха: +3 настроения")
-	sim._leisure(r1, 0.05)
-	_check(is_equal_approx(float(r1["mood"]), 53.0), "настроение — раз в день")
-	var r2: Dictionary = sim.residents[1]
-	r2["mood"] = 50.0
-	r2["chat_left"] = 0.0
-	r2["chat_key"] = ""
-	r2["pos"] = sim.map.tile_center_px(ztile_venue)
-	r2["leisure"] = {"tile": ztile_venue, "leisure": true}
-	r2["path"] = PackedVector2Array()
-	sim._leisure(r2, 0.05)
-	_check(is_equal_approx(float(r2["mood"]), 55.0), "сад в зоне отдыха делает вечер приятнее (+5)")
-	sim.cfg["zones"]["leisure"]["pick_chance"] = 1.0
-	var plan: Dictionary = sim._pick_leisure(r1)
-	sim.cfg["zones"]["leisure"]["pick_chance"] = 0.5
-	_check(bool(plan.get("leisure", false)) and all_leisure.has(Vector2i(plan["tile"])),
-			"вечерний план: зона отдыха выбирается")
-
-	# --- дороги: через зоны-слои проходят, старые зоны бронируют ---
-	sim.res["stone"] = 50.0
-	var road_cell: Vector2i = lbase + Vector2i(4, 0)
-	if not sim.map.has_road(road_cell) and sim.map.grid[road_cell.y][road_cell.x] == sim.map.TILE_GRASS:
-		_check(sim.place_road(road_cell) == "", "дорога через зону-слой проходит")
-	var lv: Array = living_zone["cells"]
-	if lv.size() > 0 and sim.building_at(Vector2i(lv[0])).is_empty() \
-			and sim.map.grid[Vector2i(lv[0]).y][Vector2i(lv[0]).x] == sim.map.TILE_GRASS:
-		_check(sim.place_road(Vector2i(lv[0])) == "bad", "дорога в старую зону не идёт")
-
-	# --- самострой строит по зонам ---
-	var sim2 := _make_sim()
-	sim2.res["wood"] = 500.0
-	sim2.res["stone"] = 500.0
-	sim2.res["crystal"] = 50.0
-	var abase: Vector2i = sim2.map.spawn_tile + Vector2i(12, 10)
-	if not sim2.map.in_bounds(abase + Vector2i(4, 4)):
-		abase = sim2.map.spawn_tile + Vector2i(-12, -10)
-	for dy in range(-4, 5):
-		for dx in range(-4, 5):
-			var t: Vector2i = abase + Vector2i(dx, dy)
-			if sim2.map.in_bounds(t):
-				sim2.map.grid[t.y][t.x] = sim2.map.TILE_GRASS
-	var acells: Array = [abase, abase + Vector2i(1, 0), abase + Vector2i(0, 1),
-			abase + Vector2i(1, 1), abase + Vector2i(3, 0), abase + Vector2i(3, 1)]
-	_check(sim2.add_zone("industrial", acells) == acells.size(), "промзона для самостроя")
-	_check(acells.has(sim2._find_autobuild_tile("farm")), "самострой ставит ферму в промзону")
-	var sb2: Vector2i = sim2.map.spawn_tile + Vector2i(-12, 10)
-	if not sim2.map.in_bounds(sb2 + Vector2i(4, 4)):
-		sb2 = sim2.map.spawn_tile + Vector2i(12, -10)
-	for dy2 in range(-4, 5):
-		for dx2 in range(-4, 5):
-			var tt: Vector2i = sb2 + Vector2i(dx2, dy2)
-			if sim2.map.in_bounds(tt):
-				sim2.map.grid[tt.y][tt.x] = sim2.map.TILE_GRASS
-	var scells: Array = [sb2, sb2 + Vector2i(1, 0), sb2 + Vector2i(0, 1), sb2 + Vector2i(1, 1)]
-	_check(sim2.add_zone("storage", scells) == scells.size(), "складская зона для самостроя")
-	_check(scells.has(sim2._find_autobuild_tile("warehouse")),
-			"самострой ставит склад в складскую зону")
-
-	# --- сейв: зоны-слои, кварталы и флаги летописи переживают цикл ---
+	# сейв со старыми зонами: лишние типы вычищаются, Поле остаётся
 	var SG: Script = load("res://scripts/save_game.gd")
 	SG.clear_save()
 	var g1 := _make_game()
 	var s1: Object = g1.city_sim
-	s1.res["wood"] = 500.0
-	s1.res["stone"] = 500.0
-	var gb: Vector2i = s1.map.spawn_tile + Vector2i(10, 10)
-	if not s1.map.in_bounds(gb + Vector2i(4, 4)):
-		gb = s1.map.spawn_tile + Vector2i(-10, -10)
-	for dy3 in range(-4, 5):
-		for dx3 in range(-4, 5):
-			var t3: Vector2i = gb + Vector2i(dx3, dy3)
-			if s1.map.in_bounds(t3):
-				s1.map.grid[t3.y][t3.x] = s1.map.TILE_GRASS
-	for i in 3:
-		var b: Dictionary = {}
-		var ft: Vector2i = gb + [Vector2i(0, 0), Vector2i(3, 0), Vector2i(0, 3)][i]
-		if s1.place_building("forge", ft):
-			b = s1.building_at(ft)
-			b["done"] = true
-			s1._complete_site(b)
-	s1.add_zone("industrial", [gb, gb + Vector2i(1, 0), gb + Vector2i(0, 1), gb + Vector2i(1, 1)])
-	var quarters_before := 0
-	for b in s1.buildings:
-		if String(b.get("quarter", "")) == "craft":
-			quarters_before += 1
-	_check(quarters_before == 3, "до сейва: три кузни в квартале")
-	_check(SG.save_game(g1, s1.map.spawn_tile, 7, 3) == "", "сейв с зонами и кварталами записан")
+	var fcells: Array = []
+	var fb: Vector2i = s1.map.spawn_tile + Vector2i(8, 8)
+	for dy in 2:
+		for dx in 2:
+			if s1.map.grid[fb.y + dy][fb.x + dx] == s1.map.TILE_GRASS:
+				fcells.append(fb + Vector2i(dx, dy))
+	_check(s1.add_zone("field", fcells) == fcells.size(), "поле перед сейвом разбито")
+	# подсовываем «наследие»: старая жилая зона руками в список зон
+	s1.zones.append({"id": 999, "type": "living", "cells": [s1.map.spawn_tile + Vector2i(9, 9)],
+			"progress": [0.0]})
+	var p_before: Vector2i = s1.plaza
+	_check(SG.save_game(g1, s1.map.spawn_tile, 7, 3) == "", "сейв с площадью записан")
 	var g2 := FakeGame.new()
 	g2.skills = load("res://scripts/skills.gd").new()
 	g2.skills.setup(_read_json("res://data/skills.json"))
-	_check(SG.load_game(g2) == "", "сейв с зонами и кварталами читается")
+	_check(SG.load_game(g2) == "", "сейв читается")
 	var g2s = g2.city_sim
-	var zones_after := 0
+	var field_kept := false
+	var living_gone := true
 	for z in g2s.zones:
-		if String(z["type"]) == "industrial":
-			zones_after = (z["cells"] as Array).size()
-	_check(zones_after == 4, "промзона пережила сейв (4 клетки)")
-	var quarters_after := 0
-	for b in g2s.buildings:
-		if String(b.get("quarter", "")) == "craft":
-			quarters_after += 1
-	_check(quarters_after == 3, "квартал пересчитан после загрузки (3 кузни)")
-	var chron_count := 0
-	for e in g2s.chronicle:
-		if String(e["key"]) == "chron.quarter_formed":
-			chron_count += 1
-	_check(chron_count == 1, "летопись квартала не дублируется при загрузке")
+		if String(z["type"]) == "field":
+			field_kept = true
+		if String(z["type"]) == "living":
+			living_gone = false
+	_check(field_kept, "поле пережило сейв-цикл")
+	_check(living_gone, "старая жилая зона вычищена при загрузке")
+	_check(g2s.plaza == p_before, "площадь пережила сейв-цикл")
+	_check(not g2s.day_plans.is_empty(), "утренний план построен после загрузки")
 	SG.clear_save()
-	print("[Этап 2, аспект 6] готово")
+	print("[Правки v1.20: зоны убраны] готово")
+
+
 
 
 ## Правки приёмки v1.19.1 (2026-10-21): жители приходят (соло-старт строит и
@@ -6818,6 +6635,12 @@ func _test_fixes_v1191() -> void:
 	var prog1 := float((sim5.zones[0]["progress"] as Array)[0])
 	_check(prog1 > prog0, "староста сам обустраивает клетки поля (%.1f → %.1f)" % [prog0, prog1])
 	# староста замещает фермера: ферма без работника не стоит в соло
+	# (v1.20: голем устал на поле — перед стройкой дадим ему «отдохнуть»)
+	var elder5pre: Dictionary = {}
+	for r in sim5.residents:
+		if String(r["prof"]) == "elder":
+			elder5pre = r
+	elder5pre["fatigue"] = 0.0
 	var ftile := _find_free_tile(sim5, sim5.map.spawn_tile)
 	_check(ftile != Vector2i(-1, -1), "место под ферму найдено")
 	_check(sim5.place_building("farm", ftile), "ферма заложена")
@@ -6848,3 +6671,221 @@ func _test_fixes_v1191() -> void:
 	for key in ["city.hint_haul", "city.hero_haul_done"]:
 		_check(String(loc.get(key, "")) != "", "ключ локализации есть: " + key)
 	print("[Правки v1.19.1] готово")
+
+
+## Правки приёмки v1.20 (второй чат правок, 2026-10-22): жители-кружки
+## с цветом специальности, жильё «один дом — один человек» (+пара и дети),
+## голем-староста с главной площадью 2×2, утренняя планёрка с цветовым
+## распределением и дефицитами, мысли жителей в журнале, анти-застревание.
+func _test_fixes_v120() -> void:
+	print("[Правки v1.20: кружки, жильё, площадь, планёрка]")
+	var city: Variant = _read_json("res://data/city.json")
+	var loc: Variant = _read_json("res://loc/ru.json")
+	_check(city is Dictionary and loc is Dictionary, "конфиги читаются")
+	if not (city is Dictionary and loc is Dictionary):
+		return
+	var wcolors: Dictionary = city.get("work_colors", {})
+	_check(float(wcolors.get("extra_mult", 0.0)) < 1.0 and float(wcolors.get("off_mult", 0.0)) < 1.0,
+			"цветовая система: доп. и чужой цвет хуже основного")
+	_check(float(wcolors.get("dilution_per_color", 0.0)) > 0.0,
+			"баланс: каждый лишний цвет размывает мастера")
+	var profs: Dictionary = {}
+	for p in city.get("professions", []):
+		profs[String(p["id"])] = p
+	_check(String(profs.get("elder", {}).get("color", "")) == "#ffffff",
+			"староста-голем — белый кружок")
+	var colors_set := {}
+	for pid in profs:
+		colors_set[String(profs[pid]["color"])] = true
+	_check(colors_set.size() >= 10, "цветов специальностей много — кружки различимы")
+
+	# --- цветовая эффективность: dilution за каждый лишний цвет ---
+	var sim := _make_sim()
+	var r_x: Dictionary = {"prof": "builder", "prof_extra": ["farmer", "miner", "smith"],
+			"mood": 50.0, "skill": 0.0, "friend": -1, "work_bonus": 0.0, "traits": [],
+			"bld": null, "site": null}
+	var m1: float = sim.color_work_mult(r_x, "farmer")
+	var many: float = sim.color_work_mult(r_x, "smith")
+	_check(is_equal_approx(m1, float(wcolors["extra_mult"]) * (1.0 - 2.0 * float(wcolors["dilution_per_color"]))),
+			"третий цвет работает хуже второго (dilution)")
+	_check(many >= float(wcolors.get("extra_floor", 0.4)) - 0.001,
+			"дно эффективности дополнительных цветов — extra_floor")
+	var golem_r: Dictionary = {"prof": "elder", "golem": true, "prof_extra": [], "mood": 50.0,
+			"skill": 0.0, "friend": -1, "work_bonus": 0.0, "traits": [], "bld": null, "site": null}
+	_check(is_equal_approx(sim.color_work_mult(golem_r, "farmer"), float(wcolors.get("golem_mult", 0.75))),
+			"голем работает без цветового бонуса (golem_mult)")
+
+	# --- кружок жителя: цвет из профессии, голем — белый ---
+	var villager: Dictionary = sim.residents[0]
+	_check(sim.resident_color(villager) != Color.WHITE, "жителю — цвет его специальности")
+	var golem_v: Dictionary = {}
+	for r in sim.residents:
+		if String(r["prof"]) == "elder":
+			golem_v = r
+	_check(not golem_v.is_empty() and sim.resident_color(golem_v) == Color.WHITE,
+			"голему — белый кружок")
+	_check(String(golem_v["name"]) == "Голем" and bool(golem_v.get("golem", false)),
+			"голем-староста пришёл с именем Голем")
+
+	# --- жильё: один дом — один человек; пара — один дом + дети ---
+	var sim_h := _make_sim()
+	sim_h._last_daily_day = 999
+	var h1: Dictionary = _build_now(sim_h, "house")
+	var h2: Dictionary = _build_now(sim_h, "house")
+	var a: Dictionary = sim_h.residents[0]
+	var b: Dictionary = sim_h.residents[1]
+	a["home"] = h1
+	b["home"] = h1   # двое чужих взрослых в одном доме — один должен выехать
+	sim_h._sleep(a, 0.1)
+	sim_h._sleep(b, 0.1)
+	var a_home: Dictionary = a["home"]
+	var b_home: Dictionary = b["home"]
+	_check(not _homeless_t(a) and not _homeless_t(b), "оба жильца при домах (домов хватает)")
+	_check(int(a_home["id"]) != int(b_home["id"]),
+			"чужие взрослые не живут в одном доме (1 дом = 1 человек)")
+	# пара: b выписывается из своего дома, оба живут в одном
+	a["partner"] = int(b["id"])
+	b["partner"] = int(a["id"])
+	a["home"] = h1
+	b["home"] = h2
+	sim_h._wedding_unify_home(a, b)
+	_check(int((a["home"] as Dictionary)["id"]) == int((b["home"] as Dictionary)["id"]),
+			"пара живёт в одном доме")
+	var freed_home_ev := false
+	for e in sim_h.chronicle:
+		if String(e["key"]) == "chron.wedding_home":
+			freed_home_ev = true
+	_check(freed_home_ev, "«выписался из дома» записан в летопись")
+	# ребёнок живёт с родителями
+	var kid: Dictionary = sim_h._new_resident("Малыш", "", sim_h.map.spawn_tile)
+	kid["parents"] = [int(a["id"]), int(b["id"])]
+	kid["home"] = null
+	sim_h.residents.append(kid)
+	sim_h._sleep(kid, 0.1)
+	var kid_home: Dictionary = kid["home"]
+	_check(not _homeless_t(kid) and int(kid_home["id"]) == int((a["home"] as Dictionary)["id"]),
+			"ребёнок живёт в доме родителей")
+
+	# --- утренний план: профильные цвета, конфликт компетентности,
+	#     дефицит жизненно важного, один житель — одно назначение ---
+	var sim_p := _make_sim()
+	sim_p._last_daily_day = 999
+	sim_p.res["wood"] = 500.0
+	sim_p.res["stone"] = 500.0
+	var farm_p: Dictionary = _build_now(sim_p, "farm")
+	var farm2_p: Dictionary = _build_now(sim_p, "farm", sim_p.map.spawn_tile + Vector2i(14, 8))
+	var plan: Dictionary = sim_p.morning_plan()
+	_check(int(plan["day"]) == sim_p.day, "план знает свой день")
+	_check((plan["profile"] as Array).size() > 0, "профильные назначения по цветам есть")
+	_check(int(farm_p["worker"]) > 0 and int(farm2_p["worker"]) > 0,
+			"фермы получили работников по плану")
+	var assigned_n := 0
+	var names := {}
+	var names_ok := true
+	for r in sim_p.residents:
+		if r["bld"] != null or r["site"] != null:
+			assigned_n += 1
+			if names.has(String(r["name"])):
+				names_ok = false
+			names[String(r["name"])] = true
+	_check(names_ok, "один житель — одно назначение (без дублей)")
+	var covered := 0
+	for bld_p in sim_p.buildings:
+		if int(bld_p["worker"]) > 0:
+			covered += 1
+	_check(covered == assigned_n, "у каждого занятого места — ровно один работник")
+	_check((sim_p.day_plans as Array).size() >= 1, "план сохранён в журнале дня")
+	# конфликт за место: два фермера, одна ферма — берёт компетентнее (skill),
+	# тай-брейк — меньший id; проигравший не теряется — идёт дальше по шагам
+	var sim_c := _make_sim()
+	sim_c._last_daily_day = 999
+	var f1c: Dictionary = _build_now(sim_c, "farm")
+	var farmer_a: Dictionary = _resident_by_prof(sim_c, "farmer")
+	var farmer_b: Dictionary = _add_resident(sim_c, "Ферра", "farmer")
+	farmer_a["skill"] = 3.0
+	farmer_b["skill"] = 1.0
+	var plan_c: Dictionary = sim_c.morning_plan()
+	_check(int(f1c["worker"]) == int(farmer_a["id"]),
+			"конфликт за ферму: победил более компетентный")
+	var conflict_ok := false
+	for c in plan_c["conflicts"]:
+		if String(c["bld"]) == "farm" and String(c["chosen"]) == String(farmer_a["name"]):
+			conflict_ok = true
+	_check(conflict_ok, "причина выбора при конфликте отмечена в плане")
+	# вторая ферма — проигравший фермер не потерян
+	var f2c: Dictionary = _build_now(sim_c, "farm", sim_c.map.spawn_tile + Vector2i(14, 8))
+	sim_c.morning_plan()
+	_check(int(f2c["worker"]) == int(farmer_b["id"]), "проигравший конфликт занял вторую ферму")
+	# дефицит: жизненно важное без людей — план обязан это показать
+	var sim_d2 := _make_sim()
+	sim_d2._last_daily_day = 999
+	for r in sim_d2.residents.duplicate():
+		if not (String(r["prof"]) in ["elder"]):
+			sim_d2.residents.erase(r)
+	# фермы ставим и достраиваем вручную: строитель в городе — только голем
+	for btype in ["farm", "sawmill"]:
+		var bt: Vector2i = _find_free_tile(sim_d2, sim_d2.map.spawn_tile, btype)
+		_check(bt != Vector2i(-1, -1), "место для «%s» найдено" % btype)
+		_check(sim_d2.place_building(btype, bt), "«%s» заложена" % btype)
+		var bsite: Dictionary = sim_d2.building_at(bt)
+		bsite["done"] = true
+		sim_d2._complete_site(bsite)
+	var plan_d: Dictionary = sim_d2.morning_plan()
+	var deficit_seen := (plan_d["deficits"] as Array).size() > 0 \
+			or int((plan_d["vital"] as Array).size()) > 0
+	_check(deficit_seen, "незакрытое жизненно важное видно в плане (дефицит/голем)")
+	var workers_d := 0
+	for r in sim_d2.residents:
+		if r["bld"] != null or r["site"] != null:
+			workers_d += 1
+	_check(workers_d >= 1, "голем-староста закрыл жизненно важное в одиночном городе")
+
+	# --- планёрка: жители идут к площади утром ---
+	var sim_m := _make_sim()
+	sim_m._last_daily_day = 0
+	sim_m._next_raid_at = 999999999.0
+	sim_m.people["refugees"]["chance_per_day"] = 0.0
+	sim_m.people["ailments"]["sick_chance"] = 0.0
+	sim_m.tick(float(sim_m.cfg["day_length"]) + 0.1)   # граница дня = утро
+	var meeting_n := 0
+	for r in sim_m.residents:
+		if float(r.get("meeting_until", 0.0)) > sim_m.time:
+			meeting_n += 1
+	_check(meeting_n > 0, "утро: жители получили зов на планёрку")
+	var plaza_center: Vector2i = sim_m.plaza + Vector2i(1, 1)
+	for i in 60:
+		sim_m.tick(0.5)
+	var at_plaza := 0
+	for r in sim_m.residents:
+		if (r["pos"] as Vector2).distance_to(sim_m.map.tile_center_px(plaza_center)) < float(sim_m.map.ts) * 3.5:
+			at_plaza += 1
+	_check(at_plaza > 0, "жители собрались у главной площади на планёрку")
+
+	# --- мысли жителей: строка для тултипа и журнал наведения ---
+	var think: String = sim.resident_thought(golem_v)
+	_check(think != "", "мысль жителя формируется («о чём думает»)")
+	sim.log_thought(golem_v)
+	sim.log_thought(golem_v)
+	var logged := 0
+	for t in sim.thought_log:
+		if String(t.get("text", "")).contains("Голем"):
+			logged += 1
+	_check(logged == 1, "наведение пишет мысль в журнал один раз (без спама)")
+
+	# --- анти-застревание: замерший работник получает пинок ---
+	var sim_st2 := _make_sim()
+	sim_st2._last_daily_day = 999
+	var stuck: Dictionary = sim_st2.residents[0]
+	stuck["state"] = "going"
+	stuck["pos"] = sim_st2.map.tile_center_px(sim_st2.map.spawn_tile + Vector2i(5, 5))
+	stuck["_watch_pos"] = stuck["pos"]
+	stuck["_watch_state"] = "going"
+	sim_st2._watchdog_stuck()
+	_check(String(stuck.get("state", "going")) != "going",
+			"застрявший в пути житель растормошен (путь сброшен)")
+	print("[Правки v1.20] готово")
+
+
+func _homeless_t(r: Dictionary) -> bool:
+	var h = r.get("home", null)
+	return h == null or (h is Dictionary and (h as Dictionary).is_empty())

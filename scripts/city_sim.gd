@@ -73,10 +73,18 @@ var _last_caravan_day := -99
 var wanderers: Array = []       # {id, pos, path, mode: come|trade|leave, tent(id здания), left}
 var _wanderer_id := 1
 var _last_wanderer_day := -99
-var zones: Array = []           # зоны (M6): {id, type, cells, progress, crops: [{stage, t, fallow}]}; зоны-слои (этап 2, аспект 6) без progress
+var zones: Array = []           # зоны (M6): {id, type: "field"|"pasture", cells, progress, crops}
 var _zone_id := 1
-var _quarter_formed: Dictionary = {}   # спек квартала -> уже отмечен летописью (этап 2, аспект 6)
 var _livestock_id := 1
+var plaza := Vector2i(-1, -1)   # Главная площадь 2×2 (левый верхний угол): место
+                                # сбора и планёрки; рядом строить нельзя, переносится
+var day_plans: Array = []       # утренние планы старосты (правки v1.20): последние N дней
+var thought_log: Array = []     # журнал мыслей жителей [{t, name, text}] — тултип и отладка
+var _log_file: FileAccess = null    # файл отладочного лога user://city_debug.log
+var _stuck_checked_day := 0     # день последней проверки застрявших (анти-фриз, v1.20)
+
+const GOLEM_NAME := "Голем"     # староста-голем «Белый властелин» (правки v1.20):
+                                # не житель, без цвета, управляет утром деревней
 
 var _next_id := 1
 var _trait_map := {}            # id черты -> описание (из people["traits"])
@@ -153,7 +161,10 @@ func setup(city_map, city_cfg: Dictionary, residents_count: int, level: String) 
 	_last_wanderer_day = -99
 	zones = []
 	_zone_id = 1
-	_quarter_formed = {}
+	day_plans = []
+	thought_log = []
+	_stuck_checked_day = 0
+	plaza = Vector2i(-1, -1)
 	_livestock_id = 1
 	forest_anger = 0.0
 	necro_dark = 0.0
@@ -196,13 +207,106 @@ func setup(city_map, city_cfg: Dictionary, residents_count: int, level: String) 
 		var tile: Vector2i = map.spawn_tile + Vector2i(offset)
 		if not map.is_walkable(tile):
 			tile = map.spawn_tile
-		# последний стартовый житель — всегда староста (просьба заказчика)
-		var prof := String(profs[i % profs.size()])
-		if i == residents_count - 1:
-			prof = "elder"
-		residents.append(_new_resident(String(names[i % names.size()]), prof, tile))
+		residents.append(_new_resident(String(names[i % names.size()]), String(profs[i % profs.size()]), tile))
 		_next_id += 1
+	# главная площадь 2×2 в центре появления и староста-голем при нём (правки
+	# v1.20): голем — не житель, белый, размещает здания и ведёт утреннюю планёрку
+	_ensure_plaza()
+	_spawn_golem()
 	_assign_jobs()
+
+
+## Главная площадь 2×2 у точки появления: место сбора и планёрки.
+## Рядом (радиус plaza.radius клеток) строить нельзя; переносится игроком.
+func _ensure_plaza() -> void:
+	if plaza != Vector2i(-1, -1) and _plaza_ok(plaza):
+		return
+	plaza = map.spawn_tile + Vector2i(-1, -1)   # площадь накрывает точку появления
+	if not _plaza_ok(plaza):
+		plaza = map.nearest_walkable(map.spawn_tile) + Vector2i(-1, -1)
+	if not _plaza_ok(plaza):
+		plaza = map.spawn_tile
+
+
+## Площадь 2×2 годна: в границах, без аномалии (вода/скалы допустимы — мостки).
+func _plaza_ok(tile: Vector2i) -> bool:
+	for dy in 2:
+		for dx in 2:
+			var c: Vector2i = tile + Vector2i(dx, dy)
+			if not map.in_bounds(c) or c == map.anomaly_tile:
+				return false
+	return true
+
+
+## Тайл в запретном радиусе площади (шебчево <= radius от прямоугольника 2×2).
+func near_plaza(tile: Vector2i) -> bool:
+	if plaza == Vector2i(-1, -1):
+		return false
+	var radius := int(cfg.get("plaza", {}).get("radius", 3))
+	var dx := maxi(plaza.x - tile.x, tile.x - (plaza.x + 1))
+	var dy := maxi(plaza.y - tile.y, tile.y - (plaza.y + 1))
+	return maxi(dx, dy) <= radius
+
+
+## Клетки площади 2×2.
+func plaza_cells() -> Array:
+	var out: Array = []
+	if plaza == Vector2i(-1, -1):
+		return out
+	for dy in 2:
+		for dx in 2:
+			out.append(plaza + Vector2i(dx, dy))
+	return out
+
+
+## Клетки сбора: сама площадь + кольцо вокруг (жителям хватит места).
+func plaza_gather_tiles() -> Array:
+	var out := plaza_cells()
+	for c in plaza_cells():
+		for d in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
+			var n: Vector2i = c + d
+			if map.in_bounds(n) and map.is_walkable(n) and not out.has(n):
+				out.append(n)
+	return out
+
+
+## Перенос площади (инструмент игрока): "" — перенесена, иначе ключ ошибки.
+func move_plaza(tile: Vector2i) -> String:
+	if not _plaza_ok(tile):
+		return "city.plaza_bad_spot"
+	for c in plaza_cells():
+		if not building_at(c).is_empty():
+			return "city.plaza_bad_spot"
+	for c in _plaza_new_cells(tile):
+		if not building_at(c).is_empty():
+			return "city.plaza_bad_spot"
+	plaza = tile
+	_chron("chron.plaza_moved")
+	return ""
+
+
+func _plaza_new_cells(tile: Vector2i) -> Array:
+	var out: Array = []
+	for dy in 2:
+		for dx in 2:
+			out.append(tile + Vector2i(dx, dy))
+	return out
+
+
+## Голем-староста появляется у площади: белый, без черт, не ест, не болеет.
+func _spawn_golem() -> void:
+	for r in residents:
+		if String(r["prof"]) == "elder":
+			return   # староста уже есть (болеющий голем — всё же староста)
+	var g := _new_resident(GOLEM_NAME, "elder", map.nearest_walkable(map.spawn_tile))
+	g["traits"] = []
+	g["mood"] = 100.0
+	g["golem"] = true
+	g["age_days"] = -1.0   # не стареет
+	residents.append(g)
+	_next_id += 1
+	_chron("chron.golem_awakens", GOLEM_NAME)
+	events.append({"type": "golem_awakens", "name": GOLEM_NAME})
 
 
 ## Новый житель с личностью: черты, настроение, навык с нуля.
@@ -219,7 +323,8 @@ func _new_resident(res_name: String, prof: String, tile: Vector2i) -> Dictionary
 		"ail": "", "ail_days": 0.0, "friend": -1, "work_bonus": 0.0,
 		"prof_extra": [], "sub_prof": "", "atk_cd": 0.0, "partner": -1,
 		"rel": {}, "mem": [], "goal": "", "goal_prev": "", "tavern_visited": false,
-		"leisure_day": 0,   # день последнего вечера в зоне отдыха (этап 2, аспект 6)
+		"parents": [],          # родители-жители (для детей, правки v1.20)
+		"golem": false,         # староста-голем: белый, без цвета и быта
 	}
 	return r
 
@@ -843,20 +948,19 @@ func storage_cap() -> int:
 
 
 func pop_cap() -> int:
+	# один дом — один человек (правки v1.20): пара с детьми живёт в одном
+	# доме и освобождает второй — деревня растёт, строя новые дома.
+	# Голем-староста — не житель: своего слота в лимите не занимает,
+	# но в residents.size() он есть — компенсируем, чтобы рост не вставал.
 	var houses := 0
 	for b in buildings:
 		if _active(b) and _def(b).get("effect", "") == "pop":
 			houses += 1
-	# обустроенные клетки жилой зоны — шалаши, каждый даёт место (M6)
-	var tents := 0
-	var per := int(cfg.get("zones", {}).get("types", {}).get("living", {}).get("pop", 1))
-	for z in zones:
-		if String(z["type"]) != "living":
-			continue
-		for i in (z["cells"] as Array).size():
-			if _cell_filled(z, i) and building_at(z["cells"][i]).is_empty():
-				tents += 1
-	return base_pop + houses * int(cfg["pop_per_house"]) + tents * per
+	var golems := 0
+	for r in residents:
+		if _is_golem(r):
+			golems += 1
+	return base_pop + houses * int(cfg["pop_per_house"]) + golems
 
 
 func is_night() -> bool:
@@ -932,10 +1036,6 @@ func production_mult(bld: Dictionary) -> float:
 		mult *= resonance_mult
 	mult *= float(bld.get("ench_mult", 1.0))
 	mult *= layout_mult(bld)
-	# этап 2, аспект 6: промышленная зона и квартал ускоряют производство
-	if bld_in_zone(bld, "industrial"):
-		mult *= float(cfg.get("zones", {}).get("industrial", {}).get("prod_mult", 1.0))
-	mult *= quarter_mult(bld)
 	mult *= research_mult("prod_all", 1.0)
 	if not bld.is_empty() and bld.has("type") \
 			and String(_def(bld).get("produce", {}).get("res", "")) == "food":
@@ -949,27 +1049,20 @@ func production_mult(bld: Dictionary) -> float:
 
 
 ## Бонус планировки (M6): склад рядом со зданием ускоряет производство
-## («склад рядом с фермами = +скорость», пункт плана M6). Этап 2, аспект 6:
-## склад в складской зоне даёт более сильный и широкий бонус соседям.
+## («склад рядом с фермами = +скорость», пункт плана M6).
 func layout_mult(bld: Dictionary) -> float:
 	if bld.is_empty() or not bld.has("type") or not _def(bld).has("produce"):
 		return 1.0
 	var lcfg: Dictionary = cfg.get("layout", {})
 	if lcfg.is_empty():
 		return 1.0
-	var scfg: Dictionary = cfg.get("zones", {}).get("storage", {})
 	var radius := float(lcfg.get("warehouse_radius", 4))
 	var best := 1.0
 	for b in buildings:
 		if not _active(b) or _def(b).get("effect", "") != "storage":
 			continue
-		var r := radius
-		var m := float(lcfg.get("warehouse_mult", 1.25))
-		if not scfg.is_empty() and bld_in_zone(b, "storage"):
-			r = maxf(r, float(scfg.get("warehouse_radius", radius)))
-			m = maxf(m, float(scfg.get("warehouse_mult", m)))
-		if Vector2(b["tile"]).distance_to(Vector2(bld["tile"])) <= r:
-			best = maxf(best, m)
+		if Vector2(b["tile"]).distance_to(Vector2(bld["tile"])) <= radius:
+			best = maxf(best, float(lcfg.get("warehouse_mult", 1.25)))
 	return best
 
 
@@ -1413,6 +1506,9 @@ func _try_relocate_bld(b: Dictionary) -> bool:
 func is_buildable_tile(tile: Vector2i, type_id := "") -> bool:
 	if not map.in_bounds(tile) or tile == map.anomaly_tile:
 		return false
+	# главная площадь (правки v1.20): в радиусе plaza.radius клеток строить нельзя
+	if type_id != "bridge" and near_plaza(tile):
+		return false
 	if not map.is_nature_walkable(tile):
 		# шахту ставим прямо на рудную жилу (заказчик: место под шахту)
 		if type_id == "mine" and map.grid[tile.y][tile.x] == map.TILE_ORE:
@@ -1503,12 +1599,9 @@ func _tile_in_zone(tile: Vector2i) -> bool:
 	return false
 
 
-## Клетка занята «обустраиваемой» зоной (поле/пастбище/жилая): дороги и
-## посадка леса туда не идут, зоны-слои не мешают (этап 2, аспект 6).
+## Клетка занята зоной (поле/пастбище): дороги и посадка леса туда не идут.
 func _tile_in_fill_zone(tile: Vector2i) -> bool:
 	for z in zones:
-		if _zone_type_overlay(String(z["type"])):
-			continue
 		if (z["cells"] as Array).has(tile):
 			return true
 	return false
@@ -1543,12 +1636,9 @@ func _roll_auto_roads() -> void:
 		_chron("chron.road_built", str(laid))
 
 
-## Убрать тайл из его зоны (здание заняло клетку). Зоны-слои не изымаются:
-## здание стоит В зоне и получает её бонус (этап 2, аспект 6).
+## Убрать тайл из его зоны (здание заняло клетку).
 func _drop_zone_cell(tile: Vector2i) -> void:
 	for z in zones:
-		if _zone_type_overlay(String(z["type"])):
-			continue
 		var idx: int = (z["cells"] as Array).find(tile)
 		if idx >= 0:
 			z["cells"].remove_at(idx)
@@ -1692,7 +1782,6 @@ func _damage_building(b: Dictionary, amount: float) -> bool:
 	b["hp"] = 0.0
 	b["enchant"] = ""   # руины не удерживают зачарование
 	b["stun_left"] = 0.0
-	recompute_quarters()   # руины выбывают из квартала (этап 2, аспект 6)
 	# кладбище разрушено (мутантами, бурей) — тайная армия рассыпается (M11)
 	if String(b["type"]) == "cemetery":
 		_necro_purge()
@@ -1840,7 +1929,6 @@ func move_building(b: Dictionary, tile: Vector2i) -> String:
 		_set_bld_solid(b, true)
 		_step_off_bld(b)
 	_spots_dirty()
-	recompute_quarters()   # после переезда связи квартала могли измениться
 	events.append({"type": "bld_moved", "bld": String(b["type"])})
 	_chron("chron.moved", String(b["type"]))
 	return ""
@@ -1865,7 +1953,6 @@ func _complete_site(site: Dictionary) -> void:
 		_step_off_bld(site)
 	if _def(site).get("effect", "") == "gate":
 		_update_gates()   # ворота при достройке сразу закрываются/открываются
-	recompute_quarters()   # достройка может завершить квартал (этап 2, аспект 6)
 	events.append({"type": "built", "bld": String(site["type"])})
 	_assign_jobs()
 
@@ -2018,13 +2105,14 @@ func _substitutes_to_primary(taken: Dictionary) -> void:
 
 ## Свободный житель замещает нехватку профессии need: предпочитает выучившего,
 ## иначе учится сам (профессия попадает в prof_extra — ответ на просьбу заказчика).
-## Староста — последний резерв (правки 2026-10-21): в одиночном городе без
-## строителей и фермеров стройки стояли вечно, фермы не давали еду и город
-## не рос; со старостой за любым рабочим местом город живёт и в соло.
+## Староста — последний резерв ТОЛЬКО жизненно важных мест (правки v1.20:
+## еда/ресурсы/стройка): в одиночном городе без рабочих фермы стояли вечно;
+## белому голему не место за стойкой таверны и у алтаря.
 func _substitute_into(need: String, taken: Dictionary, bld: Dictionary, is_site: bool) -> void:
 	var learned_cand: Dictionary = {}
 	var any_cand: Dictionary = {}
 	var elder_cand: Dictionary = {}
+	var vital := is_site or String(bld.get("type", "")) in ["farm", "pier", "sawmill", "quarry", "mine"]
 	for r in residents:
 		if taken.has(int(r["id"])) or String(r["prof"]) == need:
 			continue
@@ -2032,8 +2120,8 @@ func _substitute_into(need: String, taken: Dictionary, bld: Dictionary, is_site:
 			continue
 		if String(r["prof"]) == "elder":
 			# староста управляет, а не замещает — но в одиночном городе
-			# без рабочих он берёт любую нехватку на себя
-			if r["bld"] == null and r["site"] == null:
+			# без рабочих он берёт жизненно важную нехватку на себя
+			if vital and r["bld"] == null and r["site"] == null:
 				elder_cand = r
 			continue
 		if r["bld"] != null or r["site"] != null:
@@ -2050,7 +2138,8 @@ func _substitute_into(need: String, taken: Dictionary, bld: Dictionary, is_site:
 		return
 	var extras: Array = cand.get("prof_extra", [])
 	var learned := not extras.has(need)
-	if learned:
+	if learned and not _is_golem(cand):
+		# голем-староста цветов не учит — белый вне цветовой схемы
 		extras.append(need)
 		_chron("chron.learned", String(cand["name"]), need)
 		events.append({"type": "learned", "name": String(cand["name"]), "prof": need})
@@ -2089,6 +2178,8 @@ func tick(dt_raw: float) -> void:
 	# еда: все жители едят непрерывно (обжора ×2, ребёнок ×0.5); пусто — город голодает
 	var eaters := 0.0
 	for r in residents:
+		if _is_golem(r):
+			continue   # голем-староста не ест (правки v1.20)
 		var portion := _trait_prod(r, "food_mult")
 		if String(r["prof"]) == "":
 			portion *= float(people.get("child_food", 0.5))
@@ -2136,10 +2227,14 @@ func tick(dt_raw: float) -> void:
 	if day > _last_daily_day:
 		_last_daily_day = day
 		_ensure_elder()
+		_ensure_plaza()
+		# утро старосты (правки v1.20): размещает требуемые здания, затем
+		# собирает жителей на площади и раздаёт план по цветам и приоритетам
+		_roll_autobuild()
+		morning_plan()
 		_roll_ailments()
 		_roll_refugees()
 		_roll_births()
-		_roll_autobuild()
 		_roll_stories()
 		_roll_couples()
 		_roll_festival()
@@ -2152,6 +2247,7 @@ func tick(dt_raw: float) -> void:
 		_roll_livestock()
 		_roll_market()
 		_roll_wanderer()
+		_watchdog_stuck()
 		_tick_caravans()
 		_tick_tents()
 		_tick_orchards()
@@ -2160,7 +2256,6 @@ func tick(dt_raw: float) -> void:
 		_roll_weather()   # погода и сезоны (M14-J)
 		_roll_quests()   # доска объявлений (M14-K)
 		_roll_story()   # сюжетная рамка (M14-L)
-		recompute_quarters()   # кварталы: снос/руины могли развалить связность (аспект 6)
 	_update_gates()   # достроенные за тик вышки/ворота сразу меняют проходимость
 
 
@@ -2248,6 +2343,20 @@ func _update_resident(r: Dictionary, dt: float) -> void:
 	if String(r.get("ail", "")) != "":
 		_lie_ill(r, dt)
 		return
+	# утренняя планёрка (правки v1.20): после раздачи плана город собирается
+	# у главной площади — планёрка короткая, работа не страдает; несущий груз
+	# носильщик идёт сдавать груз, а не стоять в кругу
+	if not raid_active and not _raid_warned \
+			and float(r.get("meeting_until", 0.0)) > time and String(r["prof"]) != "" \
+			and float(r.get("carry", 0.0)) <= 0.0:
+		var mt: Vector2i = r.get("meeting_tile", map.spawn_tile)
+		if _arrived(r, mt):
+			r["state"] = "meeting"
+			r["path"] = PackedVector2Array()
+			_try_chat(r)
+		else:
+			_move_towards(r, mt, dt)
+		return
 	var night := is_night()
 	var tcfg: Dictionary = cfg.get("threat", {})
 	# угроза (M5+): трус прячется сразу с предупреждения, бойцы снаряжаются в оружейке
@@ -2282,8 +2391,14 @@ func _update_resident(r: Dictionary, dt: float) -> void:
 	var guard_on_duty := String(r["prof"]) == "guard" \
 			and ((night and String(r.get("shift", "day")) == "night") \
 				or (not night and String(r.get("shift", "day")) == "day"))
-	if night and not guard_on_duty:
+	if night and not guard_on_duty and not _is_golem(r):
 		_sleep(r, dt)
+		return
+	if night and _is_golem(r) and String(r["prof"]) == "elder":
+		# голем не спит: ночью обходит владения (правки v1.20); днём — работает
+		# как обычный резерв (стройка/ферма в соло-городе)
+		if not _zone_fill_work(r, dt):
+			_manage_walk(r, dt)
 		return
 	# сильная усталость: отдых в любое время
 	if float(r["fatigue"]) >= float(cfg["tired_at"]):
@@ -2396,11 +2511,13 @@ func _is_evening() -> bool:
 	return t >= maxf(0.0, 1.0 - nf - evening) and t < 1.0 - nf
 
 
-## Точка городского костра (M12): у входа колодца, если он есть, иначе в центре.
+## Точка городского костра: у главной площади (правки v1.20), если есть колодец — у него.
 func fire_tile() -> Vector2i:
 	for b in buildings:
 		if _active(b) and String(b["type"]) == "well":
 			return bld_spot(b)
+	if plaza != Vector2i(-1, -1):
+		return map.nearest_walkable(plaza)
 	return map.spawn_tile
 
 
@@ -2433,21 +2550,11 @@ func _leisure(r: Dictionary, dt: float) -> void:
 		# личная цель «пировать в таверне» (M14-F): вечер в таверне засчитан
 		if bool(plan.get("tavern", false)):
 			r["tavern_visited"] = true
-		# вечер в зоне отдыха (этап 2, аспект 6): настроение раз в день;
-		# таверна/сад/статуя внутри зоны делают вечер приятнее
-		if bool(plan.get("leisure", false)) and int(r.get("leisure_day", 0)) != day:
-			r["leisure_day"] = day
-			var lcfg2: Dictionary = cfg.get("zones", {}).get("leisure", {})
-			var mood := float(lcfg2.get("mood", 3.0))
-			if _leisure_zone_has_venue(target):
-				mood += float(lcfg2.get("mood_venue", 2.0))
-			r["mood"] = clampf(float(r["mood"]) + mood, 0.0, 100.0)
 		_try_chat(r)
 
 
 ## Выбор вечернего занятия: в День основания — весь город гуляет (M13),
 ## иначе таверна 50%, любимый 60% / друг 40%, костёр — остальное.
-## Этап 2, аспект 6: зона отдыха — вечером город гуляет там (с шансом pick_chance).
 func _pick_leisure(r: Dictionary) -> Dictionary:
 	var tavern := _nearest_done_of_type(r["pos"], "tavern")
 	var plan: Dictionary
@@ -2457,26 +2564,21 @@ func _pick_leisure(r: Dictionary) -> Dictionary:
 		else:
 			plan = {"tile": map.nearest_walkable(fire_tile())}
 	else:
-		var leisure_tile := _nearest_leisure_tile(map.tile_of_px(r["pos"]))
-		if not leisure_tile == Vector2i(-1, -1) \
-				and randf() < float(cfg.get("zones", {}).get("leisure", {}).get("pick_chance", 0.5)):
-			plan = {"tile": leisure_tile, "leisure": true}
+		var partner := _partner_of(r)
+		if not partner.is_empty() and randf() < 0.6:
+			plan = {"tile": map.nearest_walkable(map.tile_of_px(partner["pos"]))}
+		elif not tavern.is_empty() and randf() < 0.5:
+			plan = {"tile": bld_spot(tavern), "tavern": true}
+		elif not working_tents().is_empty() and randf() < 0.25:
+			# вечерняя торговая палатка (этап 2, аспект 4): зайти «купить» по пути
+			var tents := working_tents()
+			plan = {"tile": bld_spot(tents[randi() % tents.size()])}
 		else:
-			var partner := _partner_of(r)
-			if not partner.is_empty() and randf() < 0.6:
-				plan = {"tile": map.nearest_walkable(map.tile_of_px(partner["pos"]))}
-			elif not tavern.is_empty() and randf() < 0.5:
-				plan = {"tile": bld_spot(tavern), "tavern": true}
-			elif not working_tents().is_empty() and randf() < 0.25:
-				# вечерняя торговая палатка (этап 2, аспект 4): зайти «купить» по пути
-				var tents := working_tents()
-				plan = {"tile": bld_spot(tents[randi() % tents.size()])}
+			var friend := _friend_of(r)
+			if not friend.is_empty() and randf() < 0.4:
+				plan = {"tile": map.nearest_walkable(map.tile_of_px(friend["pos"]))}
 			else:
-				var friend := _friend_of(r)
-				if not friend.is_empty() and randf() < 0.4:
-					plan = {"tile": map.nearest_walkable(map.tile_of_px(friend["pos"]))}
-				else:
-					plan = {"tile": map.nearest_walkable(fire_tile())}
+				plan = {"tile": map.nearest_walkable(fire_tile())}
 	# ссорящиеся (M14-F) избегают друг друга вечером: цель рядом с врагом — к костру
 	var foe: Dictionary = rel_worst(r)
 	if not foe.is_empty():
@@ -2696,7 +2798,7 @@ func _homeless(r: Dictionary) -> bool:
 
 
 func _sleep(r: Dictionary, dt: float) -> void:
-	if _homeless(r):
+	if _homeless(r) or not _home_family_ok(r, r["home"]):
 		r["home"] = _free_home(r)
 	var home: Dictionary = r["home"]
 	if not home.is_empty():
@@ -2708,25 +2810,79 @@ func _sleep(r: Dictionary, dt: float) -> void:
 	r["fatigue"] = maxf(0.0, float(r["fatigue"]) - _restore_rate(r, true) * dt / float(cfg["day_length"]))
 
 
-## Свободный готовый дом (до pop_per_house спящих).
+## Свободный дом по правилу «один дом — один человек» (правки v1.20):
+## ребёнок живёт с родителями; пара — в одном доме (второй дом освобождается);
+## одиночка получает дом, где не живёт чужая семья.
 func _free_home(r: Dictionary) -> Dictionary:
+	# ребёнок — к живому родителю (дом родителей и есть его дом)
+	if String(r["prof"]) == "":
+		for pid in (r.get("parents", []) as Array):
+			var parent := _resident_by_id(int(pid))
+			if parent.is_empty() or _homeless(parent):
+				continue
+			return parent["home"]
+	# взрослый при паре — дом партнёра (пара занимает один дом)
+	var partner := _resident_by_id(int(r.get("partner", -1)))
+	if not partner.is_empty() and not _homeless(partner):
+		return partner["home"]
+	# свой дом ещё годен (там только он, его пара и его дети) — остаётся
+	if not _homeless(r) and _home_family_ok(r, r["home"]):
+		return r["home"]
+	# пустой дом без чужих взрослых: первый подошедший его занимает
 	var best: Dictionary = {}
 	var best_dist := INF
-	var counts := {}
-	for other in residents:
-		if other["home"] != null and not other["home"].is_empty():
-			var hb: Dictionary = other["home"]
-			counts[int(hb["id"])] = int(counts.get(int(hb["id"]), 0)) + 1
+	var busy := _homes_adults()
 	for b in buildings:
 		if not _active(b) or _def(b).get("effect", "") != "pop":
 			continue
-		if int(counts.get(int(b["id"]), 0)) >= int(cfg["pop_per_house"]):
-			continue
+		if busy.has(int(b["id"])):
+			continue   # в доме живёт чужой взрослый
 		var dist: float = map.tile_center_px(b["tile"]).distance_to(r["pos"])
 		if dist < best_dist:
 			best_dist = dist
 			best = b
 	return best
+
+
+## В доме только сам житель, его пара и их дети? (чужих выселять нельзя)
+func _home_family_ok(r: Dictionary, home: Dictionary) -> bool:
+	if home.is_empty():
+		return false
+	var hid := int(home["id"])
+	var pid := int(r.get("partner", -1))
+	for other in residents:
+		if other == r:
+			continue
+		if String(other["prof"]) == "":
+			var parents: Array = other.get("parents", [])
+			if parents.has(int(r["id"])) or (pid >= 0 and parents.has(pid)):
+				continue   # его ребёнок (или ребёнок пары) — живёт с ним
+			var ok_kid := false
+			for opid in parents:   # ребёнок партнёра от прежнего — тоже семья
+				var op := _resident_by_id(int(opid))
+				if not op.is_empty() and int(op.get("partner", -1)) == int(r["id"]):
+					ok_kid = true
+			if ok_kid:
+				continue
+		if int(other.get("partner", -1)) == int(r["id"]):
+			continue   # его пара — общий дом
+		var oh = other.get("home", null)
+		if oh != null and not (oh as Dictionary).is_empty() \
+				and int((oh as Dictionary).get("id", -1)) == hid:
+			return false
+	return true
+
+
+## Список id домов, где живёт хоть один взрослый.
+func _homes_adults() -> Dictionary:
+	var busy := {}
+	for other in residents:
+		if String(other["prof"]) == "":
+			continue   # дети живут с родителями и дом не «занимают»
+		var oh = other.get("home", null)
+		if oh != null and not (oh as Dictionary).is_empty():
+			busy[int((oh as Dictionary)["id"])] = true
+	return busy
 
 
 ## Скорость восстановления усталости (в единицах усталости за игровой день).
@@ -3209,18 +3365,14 @@ func add_zone(type_id: String, cells: Array, crop := "turnip") -> int:
 	var types: Dictionary = cfg.get("zones", {}).get("types", {})
 	if not types.has(type_id):
 		return 0
-	var overlay := _zone_type_overlay(type_id)
 	var zone := {"id": _zone_id, "type": type_id, "cells": [], "progress": []}
 	if type_id == "field":
 		zone["crop"] = field_crop_id(crop)   # грядка засеивается целиком одной культурой
 	var added := 0
 	for c in cells:
-		# зоны-слои (этап 2, аспект 6) ложатся поверх зданий и дорог
-		var ok := _overlay_zone_cell_ok(c) if overlay else _zone_cell_ok(c)
-		if ok:
+		if _zone_cell_ok(c):
 			zone["cells"].append(c)
-			if not overlay:
-				zone["progress"].append(0.0)
+			zone["progress"].append(0.0)
 			added += 1
 	if added == 0:
 		return 0
@@ -3371,204 +3523,29 @@ func _cell_filled(z: Dictionary, i: int) -> bool:
 	return float(z["progress"][i]) >= float(cfg.get("zones", {}).get("fill_work", 4.0))
 
 
-# --- этап 2, аспект 6: зоны-слои и кварталы ----------------------------------
-
-## Зона этого типа — «слой» (промышленная/магическая/складская/отдыха):
-## рисуется поверх зданий и дорог, клетки не изымаются при стройке.
-func _zone_type_overlay(type_id: String) -> bool:
-	return bool(cfg.get("zones", {}).get("types", {}).get(type_id, {}).get("overlay", false))
+# --- зоны: только Поле и Пастбище (правки v1.20: слои и кварталы убраны) -----
 
 
-## Клетка годна под зону-слой: суша без аномалии, без чужих зон;
-## здания и дороги не мешают — слой ложится поверх.
-func _overlay_zone_cell_ok(t: Vector2i) -> bool:
-	if not map.in_bounds(t) or t == map.anomaly_tile:
-		return false
-	if map.grid[t.y][t.x] in [map.TILE_WATER, map.TILE_ROCK, map.TILE_ORE]:
-		return false
-	for z in zones:
-		if (z["cells"] as Array).has(t):
-			return false
-	return true
-
-
-## Стоит ли здание хоть одной клеткой в зоне этого типа.
-func bld_in_zone(bld: Dictionary, zone_type: String) -> bool:
-	if bld.is_empty() or not bld.has("tile"):
-		return false
-	var cells := bld_cells(bld)
-	for z in zones:
-		if String(z["type"]) != zone_type:
-			continue
-		for c in z["cells"]:
-			for cell in cells:
-				if Vector2i(c) == cell:
-					return true
-	return false
-
-
-## Специализация квартала для типа здания ("" — здание не квартальное).
-func quarter_spec_of(type_id: String) -> String:
-	var specs: Dictionary = cfg.get("zones", {}).get("quarters", {}).get("specs", {})
-	for spec in specs:
-		if type_id in (specs[spec] as Dictionary).get("types", []):
-			return String(spec)
-	return ""
-
-
-## Бонус квартала зданию (1.0 — здания нет или не в квартале).
-func quarter_mult(bld: Dictionary) -> float:
-	if bld.is_empty() or String(bld.get("quarter", "")) == "":
-		return 1.0
-	return float(cfg.get("zones", {}).get("quarters", {}).get("mult", 1.0))
-
-
-## Пересчитать кварталы: здания одной специализации рядом (кластер связностью
-## по link_dist) образуют квартал, каждому зданию ставится пометка quarter.
-## Летопись — один раз на «жизнь» кластера (пере-образование после распада — снова).
-func recompute_quarters() -> void:
-	var qcfg: Dictionary = cfg.get("zones", {}).get("quarters", {})
-	if qcfg.is_empty():
-		return
-	var link := float(qcfg.get("link_dist", 6.0))
-	for spec_key in qcfg.get("specs", {}):
-		var spec := String(spec_key)
-		var need := int(qcfg["specs"][spec_key].get("need", 3))
-		var list: Array = []
-		for b in buildings:
-			if quarter_spec_of(String(b["type"])) != spec:
-				continue
-			b["quarter"] = ""
-			if _active(b):
-				list.append(b)
-		var seen := {}
-		for b in list:
-			if seen.has(int(b["id"])):
-				continue
-			var cluster: Array = [b]
-			seen[int(b["id"])] = true
-			var queue: Array = [b]
-			while not queue.is_empty():
-				var cur: Dictionary = queue.pop_back()
-				for other in list:
-					if seen.has(int(other["id"])):
-						continue
-					if Vector2(cur["tile"]).distance_to(Vector2(other["tile"])) <= link:
-						seen[int(other["id"])] = true
-						cluster.append(other)
-						queue.append(other)
-			if cluster.size() >= need:
-				for m in cluster:
-					m["quarter"] = spec
-		var any_quarter := false
-		for b in list:
-			if String(b.get("quarter", "")) == spec:
-				any_quarter = true
-				break
-		if any_quarter and not bool(_quarter_formed.get(spec, false)):
-			_quarter_formed[spec] = true
-			_chron("chron.quarter_formed", spec)
-			events.append({"type": "quarter_formed", "spec": spec})
-		elif not any_quarter:
-			_quarter_formed[spec] = false
-
-
-## Усиление храма: магическая зона и магический квартал (благословение сильнее).
+## Усиление храма: благословение сильнее при служке (зоны-кварталы убраны, v1.20).
 func _temple_work_mult() -> float:
-	var mult := 1.0
-	for b in buildings:
-		if not _active(b) or String(b["type"]) != "temple":
-			continue
-		if bld_in_zone(b, "magic"):
-			mult *= float(cfg.get("zones", {}).get("magic", {}).get("work_mult", 1.0))
-		if String(b.get("quarter", "")) == "magic":
-			mult *= float(cfg.get("zones", {}).get("quarters", {}).get("mult", 1.0))
-		break
-	return mult
-
-
-## Благословение храма (M14-H), усиленное магической зоной/кварталом.
-func blessing_boost() -> float:
-	if not has_blessing():
-		return 1.0
-	return float(cfg.get("altar_boost", 1.0)) * _temple_work_mult()
-
-
-## Усиление алтаря: магическая зона и магический квартал (реген маны героя).
-func _altar_work_mult() -> float:
-	var mult := 1.0
-	for b in buildings:
-		if not _active(b) or String(b["type"]) != "altar":
-			continue
-		if bld_in_zone(b, "magic"):
-			mult *= float(cfg.get("zones", {}).get("magic", {}).get("work_mult", 1.0))
-		if String(b.get("quarter", "")) == "magic":
-			mult *= float(cfg.get("zones", {}).get("quarters", {}).get("mult", 1.0))
-		break
-	return mult
-
-
-## Порча городской магии: алтарь в магической зоне «чистит» половину порчи
-## своих заклинаний (этап 2, аспект 6).
-func _magic_pollution_mult() -> float:
-	for b in buildings:
-		if not _active(b) or String(b["type"]) != "altar":
-			continue
-		if bld_in_zone(b, "magic"):
-			return float(cfg.get("zones", {}).get("magic", {}).get("pollution_mult", 1.0))
-		break
 	return 1.0
 
 
-## Ближайшая проходимая клетка зоны отдыха ({} — зон нет) для вечернего досуга.
-func _nearest_leisure_tile(from: Vector2i) -> Vector2i:
-	var best := Vector2i(-1, -1)
-	var best_d := INF
-	for z in zones:
-		if String(z["type"]) != "leisure":
-			continue
-		for c in z["cells"]:
-			var t: Vector2i = c
-			if not map.is_walkable(t):
-				continue
-			var d := Vector2(t).distance_to(Vector2(from))
-			if d < best_d:
-				best_d = d
-				best = t
-	return best
+## Благословение храма (M14-H).
+func blessing_boost() -> float:
+	if not has_blessing():
+		return 1.0
+	return float(cfg.get("altar_boost", 1.0))
 
 
-## Есть ли в зоне отдыха (где эта клетка) «место притяжения»: таверна,
-## сад или статуя — вечер там приятнее.
-func _leisure_zone_has_venue(tile: Vector2i) -> bool:
-	for z in zones:
-		if String(z["type"]) != "leisure" or not (z["cells"] as Array).has(tile):
-			continue
-		for c in z["cells"]:
-			var b: Dictionary = building_at(Vector2i(c))
-			if not b.is_empty() and String(b["type"]) in ["tavern", "garden", "statue"]:
-				return true
-	return false
+## Усиление алтаря (реген маны героя) — базовое (магзоны убраны, v1.20).
+func _altar_work_mult() -> float:
+	return 1.0
 
 
-## Место самостроя внутри зоны-слоя: ближайшая к центру города свободная
-## клетка зоны, годная под прямоугольник здания (этап 2, аспект 6).
-func _tile_in_zone_for_build(zone_type: String, type_id: String) -> Vector2i:
-	var best := Vector2i(-1, -1)
-	var best_d := INF
-	for z in zones:
-		if String(z["type"]) != zone_type:
-			continue
-		for c in z["cells"]:
-			var t: Vector2i = c
-			if not is_buildable_rect(type_id, t) or placement_block(type_id, t) != "" \
-					or not placement_gap_ok(type_id, t):
-				continue
-			var d := Vector2(t).distance_to(Vector2(map.spawn_tile))
-			if d < best_d:
-				best_d = d
-				best = t
-	return best
+## Порча городской магии — базовая (магзоны убраны, v1.20).
+func _magic_pollution_mult() -> float:
+	return 1.0
 
 
 ## Свободный житель обустраивает ближайшую незаполненную клетку зоны;
@@ -3610,8 +3587,6 @@ func _nearest_zone_cell(r: Dictionary) -> Dictionary:
 	var best: Dictionary = {}
 	var best_d := INF
 	for z in zones:
-		if _zone_type_overlay(String(z["type"])):
-			continue   # зоны-слои не обустраиваются (этап 2, аспект 6)
 		for i in (z["cells"] as Array).size():
 			if _cell_filled(z, i) or not building_at(z["cells"][i]).is_empty():
 				continue
@@ -3921,15 +3896,6 @@ func market_ready() -> bool:
 	return false
 
 
-## Есть ли действующий рынок в торговом квартале (этап 2, аспект 6).
-func _market_in_trade_quarter() -> bool:
-	for b in buildings:
-		if _active(b) and String(b["type"]) == "market" \
-				and String(b.get("quarter", "")) == "trade":
-			return true
-	return false
-
-
 ## Ежедневный бросок: раз в N дней караван приходит в город (рынок активен).
 func _roll_market() -> void:
 	var mcfg: Dictionary = cfg.get("market", {})
@@ -3984,11 +3950,7 @@ func _tick_caravans() -> void:
 			events.append({"type": "caravan_lost", "res": String(c["res"])})
 			_chron("chron.caravan_lost", Loc_res(String(c["res"])), str(int(float(c["amount"]))))
 		else:
-			# этап 2, аспект 6: рынок в торговом квартале — караваны выгоднее
 			var coins := int(c["coins"])
-			if _market_in_trade_quarter():
-				coins = int(floor(float(coins) * float(cfg.get("zones", {}) \
-						.get("quarters", {}).get("mult", 1.0))))
 			Game_coins_add(coins)
 			events.append({"type": "caravan_returned", "coins": coins})
 			_chron("chron.caravan_returned", str(coins))
@@ -4324,9 +4286,14 @@ func _has_trait_flag(r: Dictionary, flag: String) -> bool:
 func _adults() -> Array:
 	var out: Array = []
 	for r in residents:
-		if String(r["prof"]) != "":
+		if String(r["prof"]) != "" and not _is_golem(r):
 			out.append(r)
 	return out
+
+
+## Голем-староста: не житель — не ест, не болеет, не женится (правки v1.20).
+func _is_golem(r: Dictionary) -> bool:
+	return bool(r.get("golem", false)) or String(r.get("prof", "")) == "elder"
 
 
 func _avg_mood() -> float:
@@ -4372,9 +4339,12 @@ func work_mult(r: Dictionary) -> float:
 	if _friend_working(r):
 		mult *= float(people.get("friend_work", 1.1))
 	mult *= 1.0 + float(r.get("work_bonus", 0.0))
-	# подмена: работа не по основной профессии вдвое хуже (просьба заказчика)
-	if String(r.get("sub_prof", "")) != "":
-		mult *= float(people.get("sub_work", 0.5))
+	# цветовая система (правки v1.20): основная специальность — полная отдача,
+	# дополнительные цвета — со штрафом (чем больше цветов, тем ниже КПД),
+	# чужой цвет — вполсилы; белый голем-староста цветов не имеет
+	var need := _work_need(r)
+	if need != "":
+		mult *= color_work_mult(r, need)
 	# инструменты из мастерской ускоряют всех, пока есть в хранилище
 	if float(res.get("tools", 0.0)) > 0.0:
 		mult *= float(cfg.get("tools_boost", 1.15))
@@ -4384,6 +4354,46 @@ func work_mult(r: Dictionary) -> float:
 	if float(res["food"]) <= 0.0:
 		mult *= float(people.get("starving_work", 0.6))
 	return clampf(mult, 0.2, 3.0)
+
+
+## Текущее «цветовое» задание жителя: стройка — строитель, иначе профессия
+## рабочего места. "" — свободен/не за производством.
+func _work_need(r: Dictionary) -> String:
+	if r.get("site", null) != null:
+		return "builder"
+	if r.get("bld", null) != null:
+		return String(_def(r["bld"]).get("worker", ""))
+	return ""
+
+
+## Цветовая эффективность (правки v1.20): основной цвет — 1.0; дополнительный
+## цвет — extra_mult, но каждый лишний цвет «размывает» мастера (dilution);
+## чужой цвет — off_mult. Голем-староста белый: без цветовых бонусов.
+func color_work_mult(r: Dictionary, need: String) -> float:
+	var ccfg: Dictionary = cfg.get("work_colors", {})
+	if need == "" or need == String(r["prof"]):
+		return 1.0
+	if _is_golem(r):
+		return float(ccfg.get("golem_mult", 0.75))
+	var extras: Array = r.get("prof_extra", [])
+	if extras.has(need):
+		var base := float(ccfg.get("extra_mult", 0.7))
+		var dilution := float(ccfg.get("dilution_per_color", 0.08))
+		return maxf(float(ccfg.get("extra_floor", 0.4)),
+				base * (1.0 - dilution * maxi(0, extras.size() - 1)))
+	return float(ccfg.get("off_mult", 0.35))
+
+
+## Кружок жителя (правки v1.20): цвет основной специальности, голем — белый.
+func resident_color(r: Dictionary) -> Color:
+	if _is_golem(r):
+		return Color.WHITE
+	if String(r["prof"]) == "":
+		return Color("#b0a08c")   # ребёнок — серо-бежевый кружок
+	for p in cfg.get("professions", []):
+		if String(p["id"]) == String(r["prof"]):
+			return Color(String(p.get("color", "#ffffff")))
+	return Color.WHITE
 
 
 ## Настроение плывёт к целевому: черты + загрязнение + потребности + события.
@@ -4729,6 +4739,436 @@ func _roll_autobuild() -> void:
 			return
 
 
+# --- утренняя планёрка старосты (правки v1.20) --------------------------------
+## Белый голем-староста каждое утро: определяет требуемые здания (самострой),
+## собирает жителей на площади и распределяет их по цветам и приоритетам:
+## 1) профильные цвета (при конкуренции — самый компетентный, тай-брейк по id);
+## 2) жизненно важные объекты (еда/ресурсы/стройка) — жители без нужного цвета;
+## 3) остаток — вторичные задачи, резерв или дополнительные цвета со штрафом.
+## Незакрытое жизненно важное — явный дефицит с предложением решения.
+## План возвращается структурой, пишется в летопись и отладочный лог.
+
+## Рабочие места утра: {bld, need, vital, is_site}.
+func _work_spots() -> Array:
+	var out: Array = []
+	for b in buildings:
+		if not bool(b["done"]):
+			out.append({"bld": b, "need": "builder", "vital": true, "is_site": true})
+			continue
+		if not _active(b) or not _def(b).has("worker"):
+			continue
+		var need := String(_def(b)["worker"])
+		var vital := String(b["type"]) in ["farm", "pier", "sawmill", "quarry", "mine"]
+		out.append({"bld": b, "need": need, "vital": vital, "is_site": false})
+	return out
+
+
+func _spot_name(spot: Dictionary) -> String:
+	return String(spot["bld"]["type"])
+
+
+## Снять все рабочие назначения (утро — новый план).
+func _reset_assignments() -> void:
+	for r in residents:
+		if r["bld"] != null:
+			(r["bld"] as Dictionary)["worker"] = -1
+		if r["site"] != null:
+			(r["site"] as Dictionary)["worker"] = -1
+		r["bld"] = null
+		r["site"] = null
+		r["sub_prof"] = ""
+	for b in buildings:
+		if int(b["worker"]) > 0 and not _taken_by(b):
+			b["worker"] = -1
+
+
+func _taken_by(b: Dictionary) -> bool:
+	for r in residents:
+		if r["bld"] == b or r["site"] == b:
+			return true
+	return false
+
+
+## Назначить жителя на место (одно назначение на жителя).
+func _assign_spot(r: Dictionary, spot: Dictionary, note: String) -> void:
+	if r["bld"] != null and r["bld"] != spot["bld"]:
+		(r["bld"] as Dictionary)["worker"] = -1
+	if r["site"] != null and r["site"] != spot["bld"]:
+		(r["site"] as Dictionary)["worker"] = -1
+	spot["bld"]["worker"] = int(r["id"])
+	if spot["is_site"]:
+		r["site"] = spot["bld"]
+		r["bld"] = null
+	else:
+		r["bld"] = spot["bld"]
+		r["site"] = null
+	var need := String(spot["need"])
+	if need != String(r["prof"]) and not _is_golem(r) \
+			and not (r.get("prof_extra", []) as Array).has(need):
+		# работа не по цвету: цвет «учится» на месте (много цветов — штраф КПД)
+		(r["prof_extra"] as Array).append(need)
+		_chron("chron.learned", String(r["name"]), need)
+	r["sub_prof"] = ""
+
+
+## Утренний план: распределение жителей по приоритетам. Вызывается раз в день
+## (и после загрузки сейва — утренний тик). Возвращает структуру плана.
+func morning_plan() -> Dictionary:
+	_reset_assignments()
+	var spots := _work_spots()
+	var plan := {
+		"day": day,
+		"profile": [], "vital": [], "rest": [], "extra": [],
+		"deficits": [], "conflicts": [], "reserve": [],
+	}
+	var taken := {}
+	for r in residents:
+		if String(r.get("ail", "")) != "" or String(r["prof"]) == "":
+			taken[int(r["id"])] = true   # больные и дети в раздаче не участвуют
+
+	# 1) профильные назначения: цвет места = основная специальность жителя;
+	# конкуренция за место — берёт самый компетентный (тай-брейк — меньший id)
+	for spot in spots:
+		var cands := _plan_candidates(String(spot["need"]), taken, true)
+		if cands.is_empty():
+			continue
+		var winner: Dictionary = cands[0]
+		_assign_spot(winner, spot, "profile")
+		taken[int(winner["id"])] = true
+		var entry := {"bld": _spot_name(spot), "who": String(winner["name"])}
+		if cands.size() > 1:
+			entry["why"] = "%s > %s" % [String(winner["name"]), String(cands[1]["name"])]
+			plan["conflicts"].append({
+				"bld": _spot_name(spot), "chosen": String(winner["name"]),
+				"why": "competence:%.1f" % float(winner.get("skill", 0.0))})
+		plan["profile"].append(entry)
+		if bool(spot["vital"]):
+			plan["vital"].append({"bld": _spot_name(spot), "who": String(winner["name"]), "color": "primary"})
+
+	# 2) жизненно важные объекты без работника: еда / ресурсы / стройка —
+	# любой свободный житель (лучше — с дополнительным цветом места);
+	# самый последний резерв — голем-староста без цветового бонуса
+	for spot in spots:
+		if not bool(spot["vital"]) or int(spot["bld"]["worker"]) > 0:
+			continue
+		var cands := _plan_candidates(String(spot["need"]), taken, false)
+		var winner: Dictionary = {}
+		if cands.is_empty():
+			for r in residents:
+				if _is_golem(r) and not taken.has(int(r["id"])) \
+						and String(r.get("ail", "")) == "":
+					winner = r
+					break
+			if winner.is_empty():
+				continue
+		else:
+			winner = cands[0]
+		var via_extra: bool = not _is_golem(winner) \
+				and (winner.get("prof_extra", []) as Array).has(String(spot["need"]))
+		_assign_spot(winner, spot, "vital")
+		taken[int(winner["id"])] = true
+		plan["vital"].append({"bld": _spot_name(spot), "who": String(winner["name"]),
+				"color": ("golem" if _is_golem(winner) else
+						("extra" if via_extra else "none"))})
+		if via_extra:
+			plan["extra"].append({"who": String(winner["name"]), "color": String(spot["need"]),
+					"penalty": color_work_mult(winner, String(spot["need"]))})
+		elif String(winner["prof"]) != String(spot["need"]) and not _is_golem(winner):
+			(winner["prof_extra"] as Array).append(String(spot["need"]))
+			plan["extra"].append({"who": String(winner["name"]), "color": String(spot["need"]),
+					"penalty": color_work_mult(winner, String(spot["need"]))})
+
+	# 3) остаток: вторичные производства — свободные жители (доп. цвета со штрафом)
+	for spot in spots:
+		if int(spot["bld"]["worker"]) > 0:
+			continue
+		var cands := _plan_candidates(String(spot["need"]), taken, false)
+		if cands.is_empty():
+			continue
+		var winner: Dictionary = cands[0]
+		var via_extra: bool = (winner.get("prof_extra", []) as Array).has(String(spot["need"]))
+		_assign_spot(winner, spot, "rest")
+		taken[int(winner["id"])] = true
+		plan["rest"].append({"bld": _spot_name(spot), "who": String(winner["name"])})
+		if String(winner["prof"]) != String(spot["need"]):
+			plan["extra"].append({"who": String(winner["name"]), "color": String(spot["need"]),
+					"penalty": color_work_mult(winner, String(spot["need"]))})
+
+	# 4) контроль дефицита: незакрытое жизненно важное — предложить решение:
+	# снять жителя с менее важного производства или доп. цвет со штрафом
+	for spot in spots:
+		if not bool(spot["vital"]) or int(spot["bld"]["worker"]) > 0:
+			continue
+		var donor := _deficit_donor(spot, taken)
+		if donor.is_empty():
+			plan["deficits"].append({"bld": _spot_name(spot),
+					"note": "нет работника — построить/подождать беженца"})
+			continue
+		var freed_bld: Dictionary = donor["bld"] if donor["bld"] != null else donor["site"]
+		_assign_spot(donor, spot, "deficit")
+		plan["vital"].append({"bld": _spot_name(spot), "who": String(donor["name"]),
+				"color": "swap"})
+		plan["deficits"].append({"bld": _spot_name(spot),
+				"note": "снят %s с «%s»" % [String(donor["name"]), String(freed_bld["type"])]})
+
+	# резерв: кому не нашлось места (староста-голем, больные и дети не в счёте)
+	for r in residents:
+		if taken.has(int(r["id"])) or r["bld"] != null or r["site"] != null:
+			continue
+		if String(r["prof"]) != "" and not _is_golem(r):
+			plan["reserve"].append(String(r["name"]))
+
+	# планёрка на площади: свободные взрослые собираются ненадолго
+	var meet_len := float(cfg.get("plaza", {}).get("meeting_len", 0.06))
+	var tiles := plaza_gather_tiles()
+	var i := 0
+	for r in residents:
+		if String(r["prof"]) == "" or _is_golem(r) or String(r.get("ail", "")) != "":
+			continue
+		r["meeting_until"] = time + float(cfg["day_length"]) * meet_len
+		if not tiles.is_empty():
+			r["meeting_tile"] = tiles[i % tiles.size()]
+			i += 1
+
+	day_plans.append(plan)
+	if day_plans.size() > 7:
+		day_plans.pop_front()
+	_chron("chron.morning_plan", str(day),
+			str(plan["profile"].size() + plan["vital"].size() + plan["rest"].size()))
+	events.append({"type": "morning_plan", "day": day})
+	_log_line(_plan_text(plan))
+	return plan
+
+
+## Кандидаты на место: primary_only — только основной цвет; сортировка:
+## компетентность (skill) по убыванию, стабильный тай-брейк — меньший id.
+func _plan_candidates(need: String, taken: Dictionary, primary_only: bool) -> Array:
+	var out: Array = []
+	for r in residents:
+		if taken.has(int(r["id"])) or String(r.get("ail", "")) != "":
+			continue
+		if String(r["prof"]) == "":
+			continue   # дети не работают
+		if primary_only:
+			if String(r["prof"]) != need:
+				continue
+		else:
+			if _is_golem(r):
+				continue   # голем — последний резерв, не цветная замена
+			if String(r["prof"]) == need:
+				continue   # уже разобраны профильным шагом (или заняты)
+		out.append(r)
+	out.sort_custom(func(a, b) -> bool:
+		var sa := float(a.get("skill", 0.0))
+		var sb := float(b.get("skill", 0.0))
+		if sa != sb:
+			return sa > sb
+		return int(a["id"]) < int(b["id"]))
+	return out
+
+
+## Донор для дефицита: житель с менее важного производства, чей цвет (или доп.
+## цвет) подходит под незакрытое жизненно важное место.
+func _deficit_donor(spot: Dictionary, taken: Dictionary) -> Dictionary:
+	var need := String(spot["need"])
+	var best: Dictionary = {}
+	var best_score := -1
+	for r in residents:
+		if taken.has(int(r["id"])) or String(r.get("ail", "")) != "" or String(r["prof"]) == "":
+			continue
+		var cur: Dictionary = r["bld"] if r["bld"] != null else r["site"]
+		if cur.is_empty():
+			continue   # свободных уже нет — только снимать с работы
+		var sdef: Dictionary = {}
+		for s in _work_spots():
+			if s["bld"] == cur:
+				sdef = s
+				break
+		if sdef.is_empty() or bool(sdef["vital"]):
+			continue   # не снимаем с жизненно важного
+		var score := 2 if String(r["prof"]) == need \
+				else (1 if (r.get("prof_extra", []) as Array).has(need) else 0)
+		if score > best_score:
+			best_score = score
+			best = r
+	if best.is_empty() or best_score <= 0:
+		if best.is_empty():
+			return {}
+		# никто с подходящим цветом — всё же снять самого бесполезного
+		return best
+	return best
+
+
+## План одной строкой (для лога и отладки).
+func _plan_text(plan: Dictionary) -> String:
+	var parts := PackedStringArray()
+	parts.append("=== День %d: утренний план старосты ===" % int(plan["day"]))
+	parts.append("Профильные: " + _plan_names(plan["profile"]))
+	parts.append("Жизненно важные: " + _plan_names(plan["vital"]))
+	parts.append("Остаток: " + _plan_names(plan["rest"]))
+	var extras: Array = plan["extra"]
+	if extras.is_empty():
+		parts.append("Доп. цвета: не использованы")
+	else:
+		var lines := PackedStringArray()
+		for e in extras:
+			lines.append("%s→%s(×%.2f)" % [String(e["who"]), String(e["color"]), float(e["penalty"])])
+		parts.append("Доп. цвета: " + ", ".join(lines))
+	if (plan["deficits"] as Array).is_empty():
+		parts.append("Дефицитов нет")
+	else:
+		var lines := PackedStringArray()
+		for d in plan["deficits"]:
+			lines.append("%s: %s" % [String(d["bld"]), String(d["note"])])
+		parts.append("Дефициты: " + "; ".join(lines))
+	if (plan["conflicts"] as Array).size() > 0:
+		var lines := PackedStringArray()
+		for c in plan["conflicts"]:
+			lines.append("%s→%s (%s)" % [String(c["bld"]), String(c["chosen"]), String(c["why"])])
+		parts.append("Конфликты: " + ", ".join(lines))
+	var reserve: Array = plan["reserve"]
+	parts.append("Резерв: " + (", ".join(reserve) if not reserve.is_empty() else "—"))
+	return "\n".join(parts)
+
+
+func _plan_names(entries: Array) -> String:
+	if entries.is_empty():
+		return "—"
+	var lines := PackedStringArray()
+	for e in entries:
+		lines.append("%s→%s" % [String(e.get("who", "?")), String(e.get("bld", "?"))])
+	return ", ".join(lines)
+
+
+## Строка в отладочный лог (user://city_debug.log) — «логи исправления»:
+## планы, застрявания, ключевые события города.
+func _log_line(text: String) -> void:
+	thought_log.append({"t": day + fmod(time, float(cfg["day_length"])) / float(cfg["day_length"]),
+			"name": "", "text": text})
+	if thought_log.size() > 600:
+		thought_log.pop_front()
+	if _log_file == null:
+		_log_file = FileAccess.open("user://city_debug.log", FileAccess.READ_WRITE \
+				if FileAccess.file_exists("user://city_debug.log") else FileAccess.WRITE_READ)
+		if _log_file != null:
+			_log_file.seek_end()
+	if _log_file != null:
+		_log_file.store_line(text)
+		_log_file.flush()
+
+
+## Записать текущую мысль жителя в журнал отладки (вызывает тултип
+## наведения на кружок — правки v1.20: «чтобы это ещё сохранялось в логах»).
+func log_thought(r: Dictionary) -> void:
+	var text := resident_thought(r)
+	if String(r.get("_last_thought", "")) == text:
+		return   # мысль не менялась — не спамим журнал
+	r["_last_thought"] = text
+	_log_line("День %d, %s: %s" % [day, String(r["name"]), text])
+
+
+## Мысль жителя для тултипа: кто, куда идёт, чем занят (правки v1.20).
+func resident_thought(r: Dictionary) -> String:
+	var st := String(r["state"])
+	var target: Vector2i = r.get("target", Vector2i(-1, -1))
+	var dest := ""
+	if target != Vector2i(-1, -1):
+		dest = " → (%d, %d)" % [target.x, target.y]
+	match st:
+		"going":
+			var job := _thought_job(r)
+			return ("Идёт: %s%s" % [job, dest]) if job != "" else ("Идёт по делам%s" % dest)
+		"work":
+			return "Работает: %s%s" % [_thought_job(r), dest]
+		"build":
+			return "Строит%s" % dest
+		"fill":
+			return "Обустраивает зону%s" % dest
+		"harvest":
+			return "Собирает урожай%s" % dest
+		"sleep":
+			return "Спит дома"
+		"rest":
+			return "Отдыхает"
+		"eat", "hungry":
+			return "Голодает: ищет еду%s" % dest
+		"guard":
+			return "На страже%s" % dest
+		"hide":
+			return "Прячется дома"
+		"leisure":
+			return "Отдыхает вечером%s" % dest
+		"chat":
+			return "Болтает"
+		"porter":
+			return "Носит груз%s" % dest
+		"manage":
+			return "Обходит владения%s" % dest
+		"meeting":
+			return "На утренней планёрке у площади"
+		"hunt":
+			return "Охотится%s" % dest
+		"tame":
+			return "Присматривает скот%s" % dest
+		"patrol":
+			return "Патрулирует%s" % dest
+		"dead":
+			return "Погиб"
+	var job := _thought_job(r)
+	return ("Занят: %s" % job) if job != "" else "Свободен"
+
+
+func _thought_job(r: Dictionary) -> String:
+	if r["site"] != null:
+		return "стройка «%s»" % String(r["site"]["type"])
+	if r["bld"] != null:
+		var need := String(_def(r["bld"]).get("worker", ""))
+		var via := ""
+		if need != String(r["prof"]):
+			if (r.get("prof_extra", []) as Array).has(need):
+				via = " (доп. цвет, ×%.2f)" % color_work_mult(r, need)
+			else:
+				via = " (не по цвету, ×%.2f)" % color_work_mult(r, need)
+		return "«%s»%s" % [String(r["bld"]["type"]), via]
+	if String(r["prof"]) == "porter":
+		return "носит кучи на склад"
+	if String(r["prof"]) == "hunter":
+		return "охота"
+	return ""
+
+
+## Раз в день: житель, который застрял (не сдвинулся и не менял занятие),
+## получает пинок — путь сброшен, работа перевыдана (анти-фриз 50-го дня).
+func _watchdog_stuck() -> void:
+	if _stuck_checked_day == day:
+		return
+	_stuck_checked_day = day
+	var calm := ["sleep", "rest", "idle", "guard", "hide", "chat", "leisure", "meeting", "dead"]
+	var nudged := 0
+	for r in residents:
+		var last_pos: Vector2 = r.get("_watch_pos", Vector2(-9999, -9999))
+		var last_state := String(r.get("_watch_state", ""))
+		if not last_pos.is_equal_approx(Vector2(-9999, -9999)) and last_state != "" \
+				and last_state == String(r["state"]) \
+				and (last_pos.distance_to(r["pos"]) < float(map.ts)) \
+				and not calm.has(last_state) \
+				and String(r["prof"]) != "":
+			# застрял: сброс пути, шаг в сторону, перевыдача работы
+			r["path"] = PackedVector2Array()
+			r["target"] = Vector2i(-1, -1)
+			var here: Vector2i = map.tile_of_px(r["pos"])
+			if not map.is_walkable(here):
+				r["pos"] = map.tile_center_px(_nearest_walkable(here))
+			r["state"] = "idle"
+			_log_line("День %d: %s застрял в «%s» — пнул планом" % [day, String(r["name"]), last_state])
+			nudged += 1
+		r["_watch_pos"] = r["pos"]
+		r["_watch_state"] = r["state"]
+	if nudged > 0:
+		_assign_jobs()
+		events.append({"type": "stuck_nudged", "n": nudged})
+
+
 ## Четыре проёма кольца: север, юг, запад, восток.
 func _gate_offsets() -> Array:
 	return [Vector2i(0, -WALL_RING), Vector2i(0, WALL_RING), Vector2i(-WALL_RING, 0), Vector2i(WALL_RING, 0)]
@@ -4858,25 +5298,6 @@ func _find_autobuild_tile(type_id: String) -> Vector2i:
 		var rock_t := _find_gather_tile(type_id, [map.TILE_ROCK, map.TILE_ORE], false)
 		if not rock_t == Vector2i(-1, -1):
 			return rock_t
-	# этап 2, аспект 6: самострой идёт по зонам-слоям — магические здания
-	# в магическую зону, склад в складскую, прочие рабочие в промышленную
-	var zone_type := ""
-	if type_id in ["altar", "temple"]:
-		zone_type = "magic"
-	elif type_id == "warehouse":
-		zone_type = "storage"
-	else:
-		var d0 := ""
-		for d in cfg["buildings"]:
-			if String(d["id"]) == type_id:
-				d0 = String(d.get("district", "work"))
-				break
-		if d0 == "work":
-			zone_type = "industrial"
-	if zone_type != "":
-		var zone_t := _tile_in_zone_for_build(zone_type, type_id)
-		if not zone_t == Vector2i(-1, -1):
-			return zone_t
 	var district := "work"
 	for d in cfg["buildings"]:
 		if String(d["id"]) == type_id:
@@ -4943,28 +5364,13 @@ func _announce_autobuild(type_id: String, toast: bool) -> void:
 		events.append({"type": "autobuild", "name": manager, "bld": type_id})
 
 
-## Староста погиб — город не остаётся без управления: старостой становится
-## самый опытный взрослый (просьба заказчика: город должен расти сам).
+## Староста погиб — деревня не остаётся без управления: у площади просыпается
+## новый голем-староста (правки v1.20: староста — голем, а не повышенный житель).
 func _ensure_elder() -> void:
 	for r in residents:
 		if String(r["prof"]) == "elder":
 			return
-	var best: Dictionary = {}
-	for r in _adults():
-		if best.is_empty() or float(r.get("skill", 0.0)) > float(best.get("skill", 0.0)):
-			best = r
-	if best.is_empty():
-		return
-	if best["bld"] != null:
-		(best["bld"] as Dictionary)["worker"] = -1
-	if best["site"] != null:
-		(best["site"] as Dictionary)["worker"] = -1
-	best["bld"] = null
-	best["site"] = null
-	best["sub_prof"] = ""
-	best["prof"] = "elder"
-	_chron("chron.promoted", String(best["name"]))
-	events.append({"type": "promoted", "name": String(best["name"])})
+	_spawn_golem()
 	_assign_jobs()
 
 
@@ -4972,8 +5378,8 @@ func _ensure_elder() -> void:
 func _roll_ailments() -> void:
 	var acfg: Dictionary = people.get("ailments", {})
 	for r in residents.duplicate():
-		if String(r["prof"]) == "":
-			continue
+		if String(r["prof"]) == "" or _is_golem(r):
+			continue   # дети и голем не болеют
 		var ail := String(r.get("ail", ""))
 		if ail == "":
 			var chance: float = float(acfg.get("sick_chance", 0.02)) \
@@ -5075,6 +5481,14 @@ func _roll_births() -> void:
 	child["age_days"] = 0.0
 	child["traits"] = []
 	child["mood"] = float(people.get("mood_base", 50.0))
+	# ребёнок знает родителей и живёт их домом (жильё v1.20)
+	var prnts: Array = [int(parent["id"])]
+	var pp := _resident_by_id(int(parent.get("partner", -1)))
+	if not pp.is_empty() and String(pp["prof"]) != "":
+		prnts.append(int(pp["id"]))
+	child["parents"] = prnts
+	if not _homeless(parent):
+		child["home"] = parent["home"]
 	residents.append(child)
 	_next_id += 1
 	_chron("chron.birth", String(child["name"]))
@@ -5109,6 +5523,7 @@ func _roll_couples() -> void:
 			continue
 		r["partner"] = int(other["id"])
 		other["partner"] = int(r["id"])
+		_wedding_unify_home(r, other)   # пара живёт одним домом (правки v1.20)
 		var boost := float(people.get("wedding_mood", 12.0))
 		r["mood"] = clampf(float(r["mood"]) + boost, 0.0, 100.0)
 		other["mood"] = clampf(float(other["mood"]) + boost, 0.0, 100.0)
@@ -5124,6 +5539,37 @@ func _roll_couples() -> void:
 			continue
 		if not _resident_by_id(pid).is_empty():
 			r["mood"] = clampf(float(r["mood"]) + pm, 0.0, 100.0)
+
+
+## Свадьба: один из пары «выписывается» из своего дома — пара с детьми
+## занимает ОДИН дом, второй дом освобождается деревне (правки v1.20).
+func _wedding_unify_home(a: Dictionary, b: Dictionary) -> void:
+	var ha: Dictionary = a["home"] if a["home"] != null else {}
+	var hb: Dictionary = b["home"] if b["home"] != null else {}
+	var keep: Dictionary = ha if (not ha.is_empty() and _home_family_ok(a, ha)) else hb
+	if keep.is_empty():
+		keep = hb if not hb.is_empty() else {}
+	if keep.is_empty():
+		return   # дома нет ни у кого — заселятся ночью вместе
+	var freed := ""
+	if not ha.is_empty() and int(ha.get("id", -1)) != int(keep.get("id", -2)) \
+			and _home_family_ok(a, ha):
+		freed = String(a["name"])
+	if not hb.is_empty() and int(hb.get("id", -1)) != int(keep.get("id", -2)) \
+			and _home_family_ok(b, hb):
+		freed = String(b["name"])
+	a["home"] = keep
+	b["home"] = keep
+	# дети обоих — в общий дом
+	for other in residents:
+		if String(other["prof"]) != "":
+			continue
+		var parents: Array = other.get("parents", [])
+		if parents.has(int(a["id"])) or parents.has(int(b["id"])):
+			other["home"] = keep
+	if freed != "":
+		_chron("chron.wedding_home", freed)
+		events.append({"type": "wedding_home", "name": freed})
 
 
 ## День основания (M13): раз в N дней город гуляет всем городом —
@@ -6502,8 +6948,6 @@ func hero_till_near(px: Vector2) -> Dictionary:
 	for t in [base, base + Vector2i(1, 0), base + Vector2i(-1, 0),
 			base + Vector2i(0, 1), base + Vector2i(0, -1)]:
 		for z in zones:
-			if _zone_type_overlay(String(z["type"])):
-				continue   # зоны-слои не обустраиваются
 			for i in (z["cells"] as Array).size():
 				if Vector2i(z["cells"][i]) != t or _cell_filled(z, i):
 					continue

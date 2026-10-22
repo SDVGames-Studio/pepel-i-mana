@@ -19,8 +19,21 @@
 	"sleep_restore_home": 3.0,
 	"rest_fraction": 0.6,
 	"well_bonus": 0.5,
-	"pop_per_house": 2,
+	"pop_per_house": 1,
 	"mayor_pop": 15,
+	"plaza": {
+		"_comment": "главная площадь 2×2 у точки появления (правки v1.20): место сбора и утренней планёрки; radius — запрет стройки вокруг в клетках, meeting_len — доля дня на планёрку",
+		"radius": 3,
+		"meeting_len": 0.06
+	},
+	"work_colors": {
+		"_comment": "цветовая система v1.20: кружок жителя = цвет основной специальности; основная работа — 1.0; дополнительный цвет (выученный) — extra_mult, каждый лишний цвет размывает мастера (dilution, не ниже extra_floor); чужой цвет — off_mult; белый голем-староста — без цветовых бонусов (golem_mult)",
+		"extra_mult": 0.7,
+		"dilution_per_color": 0.08,
+		"extra_floor": 0.4,
+		"off_mult": 0.35,
+		"golem_mult": 0.75
+	},
 	"tavern": {"food_per_day": 8.0, "mood": 12.0},
 	"tools_boost": 1.15,
 	"tools_wear_per_day": 0.1,
@@ -47,27 +60,9 @@
 		"fill_work": 4.0,
 		"types": {
 			"field": { "color": "#d9b83c", "food": 1.5 },
-			"pasture": { "color": "#66bb6a", "food": 1.0 },
-			"living": { "color": "#c9a06a", "pop": 1 },
-			"industrial": { "color": "#8d9aa5", "overlay": true },
-			"magic": { "color": "#b087c7", "overlay": true },
-			"storage": { "color": "#d9a441", "overlay": true },
-			"leisure": { "color": "#d97b8a", "overlay": true }
+			"pasture": { "color": "#66bb6a", "food": 1.0 }
 		},
-		"_comment2": "этап 2, аспект 6: зоны-слои (overlay) рисуются поверх зданий и дорог, клетки не изымаются; эффекты ниже, все цифры правятся здесь",
-		"industrial": { "prod_mult": 1.15 },
-		"magic": { "work_mult": 1.2, "pollution_mult": 0.5 },
-		"storage": { "warehouse_mult": 1.5, "warehouse_radius": 6.0 },
-		"leisure": { "pick_chance": 0.5, "mood": 3.0, "mood_venue": 2.0 },
-		"quarters": {
-			"_comment": "кварталы (этап 2, аспект 6): 3+ готовых здания специализации рядом (магических — 2: алтарь и храм) сами образуют квартал; link_dist — расстояние связи между зданиями, mult — бонус работе зданий квартала",
-			"link_dist": 6.0, "mult": 1.1,
-			"specs": {
-				"craft": { "need": 3, "types": ["workshop", "smelter", "forge", "armory"] },
-				"trade": { "need": 3, "types": ["market", "tent"] },
-				"magic": { "need": 2, "types": ["altar", "temple"] }
-			}
-		}
+		"_comment2": "правки v1.20: остались только Поле и Пастбище; зоны-слои (промышленная/магическая/складская/отдыха), жилая зона и кварталы убраны по приёмке"
 	},
 	"roads": { "cost_stone": 1, "mult": 1.4, "porter_mult": 1.8, "astar_weight": 0.4,
 		"wear_per_tile": 1.0, "wear_threshold": 25.0,
@@ -242,7 +237,7 @@
 		{"id": "guard", "sprite": "k:96", "loc": "prof.guard", "color": "#ef5350"},
 		{"id": "acolyte", "sprite": "k:84", "loc": "prof.acolyte", "color": "#ba68c8"},
 		{"id": "healer", "sprite": "k:100", "loc": "prof.healer", "color": "#4db6ac"},
-		{"id": "elder", "sprite": "k:99", "loc": "prof.elder", "color": "#ffd54f"},
+		{"id": "elder", "sprite": "k:99", "loc": "prof.elder", "color": "#ffffff"},
 		{"id": "bartender", "sprite": "k:112", "loc": "prof.bartender", "color": "#ffb300"},
 		{"id": "miner", "sprite": "k:97", "loc": "prof.miner", "color": "#b0bec5"},
 		{"id": "smelter", "sprite": "b:smelter", "sprite": "k:86", "loc": "prof.smelter", "color": "#ff8a65"},

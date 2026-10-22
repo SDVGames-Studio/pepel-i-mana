@@ -20,10 +20,11 @@ var hud: CanvasLayer = null
 
 var build_mode := ""            # выбранный тип здания для стройки
 var enchant_mode := ""          # выбранное зачарование (M3): клик по зданию применит
-var zone_mode := ""             # инструмент зоны (M6): "field" | "pasture" | "living"
+var zone_mode := ""             # инструмент зоны (M6): "field" | "pasture"
 var road_mode := false          # инструмент дороги (M6)
 var plant_mode := false         # инструмент посадки леса (M11)
 var move_mode := false          # инструмент переноса зданий (этап 2, аспект 5)
+var plaza_mode := false         # перенос главной площади (правки v1.20)
 var _move_bld: Dictionary = {}  # здание, снятое для переноса; {} — не выбрано
 var _dragging := false          # ЛКМ зажата — выделение зоны или рисование дороги
 var _drag_from := Vector2i(-1, -1)
@@ -47,7 +48,6 @@ var _hero_crop: Dictionary = {} # спелая грядка рядом (E — с
 var _hero_sow: Dictionary = {}  # пустая клетка поля рядом (E — посеять, 2026-10-21)
 var _hero_till: Dictionary = {} # невспаханная клетка зоны рядом (E — вспахать)
 var _hero_haul: Dictionary = {} # куча ресурса у здания рядом (E — на склад, 2026-10-21)
-var _pending_field: Array = []  # клетки нарисованного поля — ждут выбора культуры
 var _pick_zone_id := -1         # id поля, в котором меняем культуру
 var _hero_site: Dictionary = {} # недострой рядом (E — помочь)
 var _hero_repair_bld: Dictionary = {}   # повреждённое здание/руины рядом (E — ремонт, этап 2, аспект 5)
@@ -352,8 +352,14 @@ func _armory_near_hero() -> Dictionary:
 ## Нет здания — подписываем зону (поле/пастбище и пр., 2026-10-21).
 func _update_hover() -> void:
 	if build_mode != "" or enchant_mode != "" or zone_mode != "" or road_mode or plant_mode \
-			or move_mode:
+			or move_mode or plaza_mode:
 		hud.set_hover_info("", Vector2.ZERO)
+		return
+	# житель-кружок под курсором (правки v1.20): имя, специальность,
+	# куда идёт и о чём думает — инструмент отладки жизни деревни
+	var res_tt := _resident_hover_text()
+	if res_tt != "":
+		hud.set_hover_info(res_tt, get_viewport().get_mouse_position())
 		return
 	var tile: Vector2i = map.tile_of_px(get_global_mouse_position())
 	var b: Dictionary = sim.building_at(tile)
@@ -365,6 +371,30 @@ func _update_hover() -> void:
 		hud.set_hover_info(zone_text, get_viewport().get_mouse_position())
 		return
 	hud.set_hover_info(_hover_text(b), get_viewport().get_mouse_position())
+
+
+## Тултип кружка жителя у мыши: имя + профессия + мысль (куда идёт, что делает).
+func _resident_hover_text() -> String:
+	var mouse := get_global_mouse_position()
+	var best: Dictionary = {}
+	var best_d := 22.0
+	for r in sim.residents:
+		if int(r.get("inside", 0)) > 0:
+			continue   # спит внутри — не на карте
+		var d: float = (r["pos"] as Vector2).distance_to(mouse)
+		if d < best_d:
+			best_d = d
+			best = r
+	if best.is_empty():
+		return ""
+	sim.log_thought(best)   # наведение — мысль уходит в журнал отладки
+	var prof := String(best["prof"])
+	var prof_name := Loc.t("prof.elder_golem") if prof == "elder" else ""
+	if prof_name == "" and prof != "":
+		prof_name = _prof_name(prof)
+	elif prof == "":
+		prof_name = Loc.t("city.res_child")
+	return "%s • %s\n%s" % [String(best["name"]), prof_name, sim.resident_thought(best)]
 
 
 ## Подпись зоны при наведении: имя + живая статистика поля/пастбища.
@@ -382,8 +412,6 @@ func _zone_hover_text(z: Dictionary) -> String:
 	if type_id == "pasture":
 		var cap: int = sim.pasture_capacity(z)
 		return Loc.t("city.hover_pasture") % [name, sim._livestock_in(int(z["id"])), maxf(cap, 1)]
-	if sim._zone_type_overlay(type_id):
-		return name + " • " + Loc.t("zone." + type_id + "_tip")
 	var fill_work: float = float(cfg.get("zones", {}).get("fill_work", 4.0))
 	var filled := 0
 	for i in (z["cells"] as Array).size():
@@ -472,6 +500,10 @@ func _process_events() -> void:
 				hud.toast(Loc.t("city.learned_toast") % [String(ev["name"]), _prof_name(String(ev["prof"]))])
 			"autobuild":
 				hud.toast(Loc.t("city.autobuild_toast") % [String(ev["name"]), _bld_name(String(ev["bld"]))])
+			"golem_awakens":
+				hud.toast(Loc.t("city.golem_toast"))
+			"morning_plan":
+				hud.toast(Loc.t("city.morning_plan_toast"))
 			"promoted":
 				hud.toast(Loc.t("city.promoted_toast") % String(ev["name"]))
 			"autonomy":
@@ -542,9 +574,6 @@ func _process_events() -> void:
 			# --- зоны и логистика (M6) ---
 			"zone_done":
 				hud.toast(Loc.t("city.zone_done_toast") % Loc.t("zone." + String(ev["zone"])))
-			"quarter_formed":
-				# кварталы (этап 2, аспект 6): город сам сообщает о новом районе
-				hud.toast(Loc.t("city.quarter_toast") % Loc.t("quarter." + String(ev["spec"])))
 			"porter_trained":
 				hud.toast(Loc.t("city.porter_trained_toast") % String(ev["name"]))
 			"road_auto":
@@ -764,6 +793,18 @@ func _unhandled_input(event: InputEvent) -> void:
 			else:
 				set_move_mode(false)
 			return
+		if event.button_index == MOUSE_BUTTON_LEFT and plaza_mode:
+			var pt: Vector2i = map.tile_of_px(get_global_mouse_position())
+			var perr: String = sim.move_plaza(pt)
+			if perr == "":
+				hud.toast(Loc.t("city.plaza_moved"))
+				set_plaza_mode(false)
+			else:
+				hud.toast(Loc.t(perr))
+			return
+		if event.button_index == MOUSE_BUTTON_RIGHT and plaza_mode:
+			set_plaza_mode(false)
+			return
 		if event.button_index == MOUSE_BUTTON_LEFT and zone_mode != "":
 			# этап 2, аспект 3: клик по готовой грядке — сменить культуру поля
 			if zone_mode == "field" and not hud.crop_pick_visible():
@@ -847,6 +888,8 @@ func _unhandled_input(event: InputEvent) -> void:
 				_pick_move_bld({})
 			else:
 				set_move_mode(false)
+		elif plaza_mode:
+			set_plaza_mode(false)
 		elif hud.crop_pick_visible():
 			_cancel_crop_pick()   # пикер закрыт — остаёмся в режиме поля
 		elif zone_mode != "":
@@ -898,6 +941,7 @@ func _sync_view_tools() -> void:
 	view.drag_to = _drag_to
 	view.move_mode = move_mode
 	view.move_bld_id = int(_move_bld.get("id", -1))
+	view.plaza_mode = plaza_mode
 
 
 ## Выделение зоны применено: все клетки прямоугольника уходят в симуляцию.
@@ -910,21 +954,26 @@ func _apply_zone() -> void:
 	for y in range(y0, y1 + 1):
 		for x in range(x0, x1 + 1):
 			cells.append(Vector2i(x, y))
-	# этап 2, аспект 3: поле засеивается целиком одной культурой — сперва выбор
+	# поле ставится СРАЗУ с репой (правки v1.20: обязательный диалог выбора
+	# культуры путал игроков — «ставлю поле, ничего нет»); культуру меняют
+	# кликом по готовой грядке
+	var crop := "turnip"
 	if zone_mode == "field":
-		_pending_field = cells
-		_open_crop_picker(Loc.t("city.crop_pick_hint") % cells.size())
-		return
-	var added: int = sim.add_zone(zone_mode, cells)
+		var zf: Dictionary = sim.field_at(_drag_from)
+		if not zf.is_empty():
+			crop = String(zf.get("crop", "turnip"))   # расширяем поле его культурой
+	var added: int = sim.add_zone(zone_mode, cells, crop)
 	if added > 0:
-		hud.toast(Loc.t("city.zone_added") % [Loc.t("zone." + zone_mode), added])
-	elif sim._zone_type_overlay(zone_mode):
-		hud.toast(Loc.t("city.zone_overlay_bad"))
+		if zone_mode == "field":
+			hud.toast(Loc.t("city.zone_field_added") % [added,
+					Loc.t(String(sim.crop_def(crop).get("loc", crop)))])
+		else:
+			hud.toast(Loc.t("city.zone_added") % [Loc.t("zone." + zone_mode), added])
 	else:
 		hud.toast(Loc.t("city.zone_bad"))
 
 
-## Кнопки культур (этап 2, аспект 3): при создании поля и при смене культуры.
+## Кнопки культур (этап 2, аспект 3): смена культуры готового поля кликом.
 func _open_crop_picker(title: String) -> void:
 	var defs: Array = []
 	for cid in cfg.get("farming", {}).get("crops", {}):
@@ -935,14 +984,7 @@ func _open_crop_picker(title: String) -> void:
 
 
 func _on_crop_picked(crop: String) -> void:
-	if _pending_field.size() > 0:
-		var added: int = sim.add_zone("field", _pending_field, crop)
-		_pending_field = []
-		if added > 0:
-			hud.toast(Loc.t("city.crop_changed") % Loc.t(String(sim.crop_def(crop).get("loc", crop))))
-		else:
-			hud.toast(Loc.t("city.zone_bad"))
-	elif _pick_zone_id >= 0:
+	if _pick_zone_id >= 0:
 		var z: Dictionary = sim.zone_by_id(_pick_zone_id)
 		_pick_zone_id = -1
 		if sim.set_field_crop(z, crop):
@@ -951,7 +993,6 @@ func _on_crop_picked(crop: String) -> void:
 
 
 func _cancel_crop_pick() -> void:
-	_pending_field = []
 	_pick_zone_id = -1
 	hud.hide_crop_pick()
 
@@ -1033,14 +1074,31 @@ func set_zone_mode(type_id: String) -> void:
 		view.plant_mode = false
 		if move_mode:
 			set_move_mode(false)
+		if plaza_mode:
+			set_plaza_mode(false)
 		if build_mode != "":
 			set_build_mode("")
-		# зоны-слои (этап 2, аспект 6) обустраивания не требуют — своя подсказка
-		if sim._zone_type_overlay(zone_mode):
-			hud.set_hint(Loc.t("city.zone_overlay_hint") % Loc.t("zone." + zone_mode))
-		else:
-			hud.set_hint(Loc.t("city.zone_hint") % Loc.t("zone." + zone_mode))
+		hud.set_hint(Loc.t("city.zone_hint") % Loc.t("zone." + zone_mode))
 	elif build_mode == "" and not road_mode and not plant_mode:
+		hud.set_hint(_default_hint())
+	_sync_view_tools()
+
+
+## Перенос главной площади (правки v1.20): клик по новому месту — площадь 2×2
+## переезжает, вокруг неё по-прежнему нельзя строить.
+func set_plaza_mode(on: bool) -> void:
+	plaza_mode = on
+	if plaza_mode:
+		zone_mode = ""
+		road_mode = false
+		plant_mode = false
+		view.plant_mode = false
+		if move_mode:
+			set_move_mode(false)
+		if build_mode != "":
+			set_build_mode("")
+		hud.set_hint(Loc.t("city.plaza_pick"))
+	elif build_mode == "" and zone_mode == "" and not road_mode and not plant_mode:
 		hud.set_hint(_default_hint())
 	_sync_view_tools()
 

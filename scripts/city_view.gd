@@ -17,6 +17,27 @@ var road_mode := false          # инструмент дороги (M6): рис
 var plant_mode := false         # инструмент посадки леса (M11)
 var move_mode := false          # инструмент переноса зданий (этап 2, аспект 5)
 var move_bld_id := -1           # здание, снятое для переноса (id), -1 — не выбрано
+var plaza_mode := false         # перенос главной площади (правки v1.20)
+
+
+## Призрак площади 2×2 под курсором: зелёный — годное место, красный — нет.
+func _draw_plaza_ghost() -> void:
+	var ts := float(map.ts)
+	var tile: Vector2i = map.tile_of_px(get_global_mouse_position())
+	if not map.in_bounds(tile):
+		return
+	# проверка без переноса: границы + здания на клетках
+	var ok := true
+	for dy in 2:
+		for dx in 2:
+			var c: Vector2i = tile + Vector2i(dx, dy)
+			if not map.in_bounds(c) or c == map.anomaly_tile \
+					or not sim.building_at(c).is_empty():
+				ok = false
+	var col := Color(0.6, 0.9, 1.0, 0.4) if ok else Color(1.0, 0.3, 0.3, 0.4)
+	var rect := Rect2(Vector2(tile) * ts, Vector2(ts * 2.0, ts * 2.0))
+	draw_rect(rect, col)
+	draw_rect(rect.grow(-2), Color(col.r, col.g, col.b, 0.9), false, 2.0)
 var dragging := false           # ЛКМ зажата — идёт выделение/рисование
 var drag_from := Vector2i(-1, -1)
 var drag_to := Vector2i(-1, -1)
@@ -74,13 +95,35 @@ func _draw() -> void:
 	if map == null:
 		return
 	# ландшафт рисует отдельный статический слой city_terrain.gd (M9)
+	_draw_plaza()
 	_draw_zones()
 	_draw_roads()
 	_draw_anomaly()
 	_draw_world_exit()
 	_draw_world_sorted()
-	_draw_quarters()
 	_draw_ghost()
+
+
+## Главная площадь 2×2 (правки v1.20): каменные плиты, место сбора и планёрки.
+func _draw_plaza() -> void:
+	if sim.plaza == Vector2i(-1, -1):
+		return
+	var ts := float(map.ts)
+	var origin := Vector2(sim.plaza) * ts
+	var rect := Rect2(origin, Vector2(ts * 2.0, ts * 2.0))
+	var stone := Color("#9aa0a8")
+	var stone2 := Color("#8a9098")
+	draw_rect(rect, stone)
+	for i in 4:
+		var cx := origin.x + ts * (0.5 + float(i % 2))
+		var cy := origin.y + ts * (0.5 + float(i / 2))
+		draw_rect(Rect2(cx - ts * 0.42, cy - ts * 0.42, ts * 0.84, ts * 0.84), stone2)
+	draw_rect(rect, Color("#5d6470"), false, 2.0)
+	# центральный круг — «место сбора», пульсирует утром
+	var center := origin + Vector2(ts, ts)
+	var pulse := 0.5 + 0.5 * sin(_anim_time * 2.0)
+	draw_circle(center, ts * 0.34, Color(0.98, 0.95, 0.85, 0.25 + 0.2 * pulse))
+	draw_circle(center, ts * 0.16, Color("#e8e2d0"))
 
 
 var _anim_time := 0.0
@@ -394,19 +437,12 @@ func _draw_wanderer(w: Dictionary) -> void:
 		_draw_speech_bubble(pos, Loc.t(key))
 
 
-## Зоны (M6): заливка по типу, прогресс обустройства в незаполненных клетках.
-## Этап 2, аспект 6: зоны-слои (пром/магия/склад/отдых) — ровная заливка
-## без обустройства, ложатся поверх зданий и дорог.
+## Зоны (M6): заливка по типу (Поле/Пастбище), прогресс обустройства
+## в незаполненных клетках (правки v1.20: слои и жилая убраны).
 func _draw_zones() -> void:
 	var fill_work: float = float(sim.cfg.get("zones", {}).get("fill_work", 4.0))
 	for z in sim.zones:
 		var col: Color = _zone_colors.get(String(z["type"]), Color(0.7, 0.7, 0.4))
-		if sim._zone_type_overlay(String(z["type"])):
-			for c in z["cells"]:
-				var orect := Rect2(Vector2(c) * map.ts, Vector2(map.ts, map.ts))
-				draw_rect(orect, Color(col.r, col.g, col.b, 0.20))
-				draw_rect(orect.grow(-1.5), Color(col.r, col.g, col.b, 0.5), false, 1.0)
-			continue
 		for i in (z["cells"] as Array).size():
 			var tile: Vector2i = z["cells"][i]
 			var rect := Rect2(Vector2(tile) * map.ts, Vector2(map.ts, map.ts))
@@ -426,8 +462,7 @@ func _draw_zones() -> void:
 				match String(z["type"]):
 					"field":
 						# посев (M10): стадия роста культуры — спрайт растения;
-						# этап 2, аспект 3: вид культуры — из культуры поля
-						# (борозды рисуются и вспаханным, и нет — см. выше)
+						# вид культуры — из культуры поля
 						var crops: Array = z.get("crops", [])
 						var crop_vis: int = int(sim.crop_def(String(z.get("crop", "turnip"))).get("sprite", 0))
 						if i < crops.size() and not (crops[i] as Dictionary).is_empty():
@@ -440,12 +475,6 @@ func _draw_zones() -> void:
 					"pasture":
 						draw_circle(rect.position + Vector2(10, 20), 3.0, col.darkened(0.35))
 						draw_circle(rect.position + Vector2(22, 12), 3.0, col.darkened(0.35))
-					"living":
-						# шалаш: треугольник
-						var p := rect.position
-						draw_colored_polygon(PackedVector2Array([
-							Vector2(p.x + 6, p.y + 26), Vector2(p.x + 16, p.y + 8),
-							Vector2(p.x + 26, p.y + 26)]), col.darkened(0.3))
 			else:
 				var frac := clampf(float(z["progress"][i]) / maxf(0.1, fill_work), 0.0, 1.0)
 				draw_rect(Rect2(rect.position + Vector2(4, map.ts - 8), Vector2((map.ts - 8) * frac, 4)),
@@ -749,52 +778,53 @@ func _bld_max_hp(type_id: String) -> float:
 ## Житель (M12: per-object для общего сортированного слоя). Айдл без «марша на
 ## месте»: движение читается из состояния и пути — раньше флаг moving,
 ## выставленный в дороге, не сбрасывался у стоящих, и они «маршировали».
+## Житель — кружок (правки v1.20): убрали графику, цвет кружка = основная
+## специальность; голем-староста — белый; дети — маленькие серо-бежевые.
 func _draw_resident(r: Dictionary) -> void:
-	var child_ref := "k:88"  # рыжий мальчик — дети
 	var pos: Vector2 = r["pos"]
 	var prof := String(r["prof"])
 	var child := prof == ""
-	# M11 по замечанию заказчика: жители НЕ меньше героя-«великана» —
-	# кадры граждан 48px с полями, видимое тело ~30px при высоте 50px
-	var size := 26.0 if child else 50.0
-	var tint := Color.WHITE
-	var ail := String(r.get("ail", ""))
-	if ail == "sick":
-		tint = Color(0.75, 0.95, 0.65)
-	elif ail == "wounded":
-		tint = Color(1.0, 0.6, 0.6)
-	# некромант (M11): тайный — после раскрытия читается по лиловой тени
-	if String(r.get("secret", "")) == "necromancer" and sim.necro_known:
-		tint = tint.lerp(Color(0.75, 0.6, 0.95), 0.45)
+	var col: Color = sim.resident_color(r)
 	var sleeping: bool = r["state"] == "sleep" or r["state"] == "rest"
-	if sleeping:
-		tint = tint.darkened(0.45)
-	# движение — по пути, не по флагу (M12): стоящий стоит на кадре покоя
+	# лёгкое покачивание при движении — кружок «живой»
 	var pth: PackedVector2Array = r.get("path", PackedVector2Array())
 	var moving: bool = not sleeping and not pth.is_empty() \
 			and pos.distance_to(pth[pth.size() - 1]) > 2.0
-	var dir := String(r.get("dir", "front"))
-	if child:
-		# дети — кеноувский спрайт с бобингом
-		var phase := float(pos.x * 0.7 + pos.y * 1.3)
-		var bob := absf(sin(phase + Time.get_ticks_msec() / (1000.0 / 9.0))) * (2.0 if moving else 0.4)
-		Assets.draw_ref(self, child_ref, pos + Vector2(0, -bob), size, dir == "left", tint)
+	var phase := float(r["id"]) * 1.7 + _anim_time * (7.0 if moving else 1.5)
+	var bob := absf(sin(phase)) * (1.6 if moving else 0.4)
+	var radius := 7.0 if child else 9.0
+	var ail := String(r.get("ail", ""))
+	if ail == "sick":
+		col = col.lerp(Color(0.7, 0.95, 0.6), 0.5)
+	elif ail == "wounded":
+		col = col.lerp(Color(1.0, 0.45, 0.45), 0.5)
+	if sleeping:
+		col = col.darkened(0.4)
+	var center := pos + Vector2(0, -3.0 - bob)
+	# тень и кайма читаются на любом фоне
+	draw_circle(center + Vector2(0.0, 2.5), radius, Color(0, 0, 0, 0.25))
+	draw_circle(center, radius, col.darkened(0.55))
+	draw_circle(center, radius - 1.5, col)
+	# голем-староста: белое «лицо» камня; житель — тёмный центр-силуэт
+	if _is_elder_golem(r):
+		draw_circle(center, radius - 3.0, Color(1.0, 1.0, 1.0, 0.95))
+		draw_circle(center + Vector2(-2.0, -1.5), 1.1, Color("#3a3f4a"))
+		draw_circle(center + Vector2(2.0, -1.5), 1.1, Color("#3a3f4a"))
 	else:
-		# взрослые — craftpix-граждане (M10): 4 направления, кадры ходьбы/idle;
-		# профессия читается по лёгкой подкраске одежды
-		var prof_color: Color = _prof_colors.get(prof, Color.WHITE)
-		var ctint := tint.lerp(prof_color, 0.22) if prof != "" else tint
-		Assets.draw_citizen(self, 1 + int(r["id"]) % 4, dir, moving, pos, size,
-				_anim_time + float(r["id"]) * 0.41, ctint)
+		draw_circle(center, radius * 0.42, col.darkened(0.5))
 	# груз носильщика (M6): узел цвета ресурса
 	if float(r.get("carry", 0.0)) > 0.0:
 		var bag: Color = _pile_colors.get(String(r.get("carry_res", "")), Color(0.8, 0.7, 0.5))
-		draw_circle(pos + Vector2(11.0, -6.0), 4.0, bag.darkened(0.1))
-		draw_circle(pos + Vector2(10.0, -7.0), 2.0, bag.lightened(0.15))
+		draw_circle(pos + Vector2(radius + 2.0, -4.0), 3.4, bag.darkened(0.1))
+		draw_circle(pos + Vector2(radius + 1.2, -4.8), 1.6, bag.lightened(0.15))
 	# разговор-облачко (M12): реплика над головой болтающих
 	var chat_key := String(r.get("chat_key", ""))
 	if chat_key != "" and String(r["state"]) == "chat":
 		_draw_speech_bubble(pos, Loc.t(chat_key))
+
+
+func _is_elder_golem(r: Dictionary) -> bool:
+	return String(r.get("prof", "")) == "elder"
 
 
 ## Облачко реплики (M12, имитация жизни): плашка с текстом и хвостиком.
@@ -854,6 +884,9 @@ func _draw_ghost() -> void:
 		return
 	if move_mode:
 		_draw_move_ghost()
+		return
+	if plaza_mode:
+		_draw_plaza_ghost()
 		return
 	if build_mode == "":
 		return
@@ -921,40 +954,11 @@ func _draw_zone_preview() -> void:
 			if not map.in_bounds(tile):
 				continue
 			var rect := Rect2(Vector2(tile) * map.ts, Vector2(map.ts, map.ts))
-			# зоны-слои ложатся поверх зданий и дорог (этап 2, аспект 6)
-			var ok: bool = sim._overlay_zone_cell_ok(tile) if sim._zone_type_overlay(zone_mode) \
-					else sim._zone_cell_ok(tile)
+			var ok: bool = sim._zone_cell_ok(tile)
 			if ok:
 				draw_rect(rect, Color(col.r, col.g, col.b, 0.35))
 			else:
 				draw_rect(rect, Color(1.0, 0.3, 0.3, 0.3))
-
-
-## Кварталы (этап 2, аспект 6): подпись над центром масс зданий квартала —
-## город сам показывает, где сложился ремесленный/торговый/магический район.
-func _draw_quarters() -> void:
-	var ts := float(map.ts)
-	var font := ThemeDB.fallback_font
-	for spec in ["craft", "trade", "magic"]:
-		var cx := 0.0
-		var cy := 0.0
-		var n := 0
-		for b in sim.buildings:
-			if String(b.get("quarter", "")) != spec:
-				continue
-			n += 1
-			var t: Vector2i = b["tile"]
-			cx += float(t.x)
-			cy += float(t.y)
-		if n == 0:
-			continue
-		var center := Vector2(cx / float(n), cy / float(n)) * ts + Vector2(ts, -ts * 0.4)
-		var text := Loc.t("quarter." + spec)
-		var fsize := 13
-		draw_string_outline(font, center - Vector2(text.length() * fsize * 0.28, 0), text,
-				HORIZONTAL_ALIGNMENT_LEFT, -1, fsize, 3, Color(0.1, 0.08, 0.05, 0.85))
-		draw_string(font, center - Vector2(text.length() * fsize * 0.28, 0), text,
-				HORIZONTAL_ALIGNMENT_LEFT, -1, fsize, Color(1.0, 0.95, 0.8, 0.95))
 
 
 func _center(x: int, y: int) -> Vector2:

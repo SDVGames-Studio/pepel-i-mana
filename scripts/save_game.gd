@@ -177,7 +177,8 @@ static func _city_sim_block(sim) -> Dictionary:
 		"buildings": sim.buildings,
 		"zones": sim.zones,
 		"_zone_id": int(sim._zone_id),
-		"_quarter_formed": sim._quarter_formed,
+		"plaza": [int(sim.plaza.x), int(sim.plaza.y)],
+		"day_plans": sim.day_plans,
 		"_next_id": int(sim._next_id),
 		"animals": sim.animals,
 		"livestock": sim.livestock,
@@ -391,12 +392,17 @@ static func _apply_city(game, cd: Variant) -> String:
 		for k in pile:
 			pile[k] = float(pile[k])
 	sim.zones = _dec(sd.get("zones", []))
+	var kept_zones: Array = []
 	for z in sim.zones:
-		z["id"] = int(z.get("id", 0))
+		# правки v1.20: остались только Поле и Пастбище — старые зоны вычищаем
+		if String(z.get("type", "")) in ["field", "pasture"]:
+			z["id"] = int(z.get("id", 0))
+			kept_zones.append(z)
+	sim.zones = kept_zones
 	sim._zone_id = int(sd.get("_zone_id", 1))
-	# кварталы (этап 2, аспект 6): флаги летописи и пометки зданий
-	sim._quarter_formed = _dec(sd.get("_quarter_formed", {}))
-	sim.recompute_quarters()
+	var pz: Array = sd.get("plaza", [-1, -1])
+	sim.plaza = Vector2i(int(pz[0]), int(pz[1]))
+	sim.day_plans = _dec(sd.get("day_plans", []))
 	sim.events = []   # пересчёт не переигрывает тосты прошлой сессии
 	sim._next_id = int(sd.get("_next_id", 1))
 	sim.animals = _dec(sd.get("animals", []))
@@ -496,8 +502,10 @@ static func _apply_city(game, cd: Variant) -> String:
 			r["goal_prev"] = ""
 		if not r.has("tavern_visited"):
 			r["tavern_visited"] = false
-		if not r.has("leisure_day"):
-			r["leisure_day"] = 0   # вечер в зоне отдыха (этап 2, аспект 6)
+		if not r.has("parents"):
+			r["parents"] = []   # родители-жители (жильё v1.20)
+		if not r.has("golem"):
+			r["golem"] = false   # голем-староста (правки v1.20)
 	# события-тосты прошлой сессии не переигрываем; ландшафт перерисовать
 	sim.events = []
 	sim.hero_alive = false
@@ -510,6 +518,11 @@ static func _apply_city(game, cd: Variant) -> String:
 		if bool(b["done"]):
 			sim._set_bld_solid(b, true)
 	sim._update_gates()
+	# утренний тик после загрузки (правки v1.20): площадь и голем на месте,
+	# староста раздаёт план заново — город не «застызает» между сессиями
+	sim._ensure_plaza()
+	sim._spawn_golem()
+	sim.morning_plan()
 	game.city_sim = sim
 	return ""
 
