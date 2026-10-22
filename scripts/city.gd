@@ -504,6 +504,9 @@ func _process_events() -> void:
 				hud.toast(Loc.t("city.golem_toast"))
 			"morning_plan":
 				hud.toast(Loc.t("city.morning_plan_toast"))
+			"hauled":
+				hud.toast(Loc.t("city.hauled_toast") % [String(ev["name"]), int(ev["n"]),
+						Loc.t("res." + String(ev["res"]))])
 			"promoted":
 				hud.toast(Loc.t("city.promoted_toast") % String(ev["name"]))
 			"autonomy":

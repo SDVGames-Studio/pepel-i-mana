@@ -263,6 +263,7 @@ func _initialize() -> void:
 	_test_stage2_aspect6()
 	_test_fixes_v1191()
 	_test_fixes_v120()
+	_test_fixes_v1201()
 	if _fails == 0:
 		print("OK: все тесты пройдены")
 		quit(0)
@@ -6889,3 +6890,139 @@ func _test_fixes_v120() -> void:
 func _homeless_t(r: Dictionary) -> bool:
 	var h = r.get("home", null)
 	return h == null or (h is Dictionary and (h as Dictionary).is_empty())
+
+
+## Правки приёмки v1.20.1: видимый рост поля (дни вместо секунд, растения
+## рисуются сами), вечерний снос продукции работником, саженцы из деревьев
+## и автопосадка у лесопилки, липкие цели против «перебора действий».
+func _test_fixes_v1201() -> void:
+	print("[Правки v1.20.1: рост поля, снос куч, саженцы, липкие цели]")
+	var city: Variant = _read_json("res://data/city.json")
+	var loc: Variant = _read_json("res://loc/ru.json")
+	_check(float(city["farming"]["crops"]["turnip"]["stage_days"]) >= 0.3,
+			"культура растёт днями (stage_days в конфиге)")
+	for key in ["res.saplings", "chron.sapling_planted", "city.hauled_toast"]:
+		_check(String(loc.get(key, "")) != "", "ключ локализации есть: " + key)
+
+	# --- рост поля: стадия не прыгает за секунды ---
+	var sim := _make_sim()
+	sim._last_daily_day = 999
+	sim.cfg["food_per_resident_day"] = 0.0
+	var cells: Array = _grass_tiles(sim, sim.map.spawn_tile + Vector2i(8, 8), 4)
+	_check(sim.add_zone("field", cells) == 4, "поле разбито")
+	var z: Dictionary = sim.zones[0]
+	for i in 4:
+		z["progress"][i] = 99.0   # вспахано
+	sim.tick(2.0)   # пара секунд — только засеять
+	var c0: Dictionary = (z["crops"] as Array)[0]
+	_check(not c0.is_empty() and int(c0["stage"]) == 0 and not bool(c0["ripe"]),
+			"после посева стадия 0 — рост не мгновенный (v1.20.1)")
+	var stage_days: float = float(sim.crop_def("turnip")["stage_days"])
+	var day_len: float = float(sim.cfg["day_length"])
+	var food_a: float = float(sim.res["food"])
+	var ripe_or_harvested := false
+	for i in 6:   # стадия растёт раз в тик — дробим полный цикл репы в днях
+		sim.tick(day_len * stage_days)
+		var cc: Dictionary = (z["crops"] as Array)[0]
+		if bool(cc.get("ripe", false)) or float(sim.res["food"]) > food_a:
+			ripe_or_harvested = true
+			break
+	_check(ripe_or_harvested, "через полный цикл (дни) репа созрела")
+
+	# --- вечерний снос: работник уносит кучу своего здания ---
+	var sim_e := _make_sim()
+	sim_e._last_daily_day = 999
+	sim_e.cfg["food_per_resident_day"] = 0.0
+	var farmer_e: Dictionary = _resident_by_prof(sim_e, "farmer")
+	farmer_e["traits"] = []
+	farmer_e["mood"] = 100.0
+	var farm_e: Dictionary = _build_now(sim_e, "farm", sim_e.map.spawn_tile + Vector2i(14, 8))
+	farm_e["pile"] = {"food": 9.0}
+	farmer_e["bld"] = farm_e
+	farm_e["worker"] = int(farmer_e["id"])
+	_teleport(sim_e, farmer_e, farm_e["tile"])
+	var food0: float = float(sim_e.res["food"])
+	sim_e.time = day_len * 0.75   # вечер
+	for i in 300:
+		sim_e._evening_haul(farmer_e, 0.5)
+		if int(farmer_e.get("hauled_day", 0)) == sim_e.day:
+			break
+	_check(int(farmer_e.get("hauled_day", 0)) == sim_e.day, "вечером работник снёс кучу")
+	_check(float(sim_e.res["food"]) >= food0 + 9.0 - 0.01, "продукция из кучи — в общем пуле")
+	_check(float(sim_e._pile_total(farm_e)) < 0.5, "куча у здания пуста")
+	var hauled_ev := false
+	for e in sim_e.events:
+		if String(e["type"]) == "hauled":
+			hauled_ev = true
+	_check(hauled_ev, "снос пришёл событием (тост)")
+	_check(not sim_e._evening_haul(farmer_e, 0.1), "за вечер одна ходка — дальше отдых")
+
+	# --- саженцы: падают из срубленных деревьев ---
+	var sim_s := _make_sim()
+	sim_s._last_daily_day = 999
+	sim_s.cfg["forest"]["sapling_drop_chance"] = 1.0
+	var tree_t := Vector2i(-1, -1)
+	for radius in range(1, 25):
+		for dy in range(-radius, radius + 1):
+			for dx in range(-radius, radius + 1):
+				if maxi(absi(dx), absi(dy)) != radius:
+					continue
+				var t: Vector2i = sim_s.map.spawn_tile + Vector2i(dx, dy)
+				if sim_s.map.in_bounds(t) and sim_s.map.grid[t.y][t.x] == sim_s.map.TILE_TREE:
+					tree_t = t
+					break
+			if tree_t != Vector2i(-1, -1):
+				break
+		if tree_t != Vector2i(-1, -1):
+			break
+	_check(tree_t != Vector2i(-1, -1), "у города есть дерево")
+	var hits_need: int = int(sim_s.cfg["hero_work"]["chop_hits"])
+	var fell := ""
+	for i in hits_need:
+		fell = sim_s.hero_chop(sim_s.map.tile_center_px(tree_t))
+	_check(fell == "fell", "герой повалил дерево")
+	_check(float(sim_s.res.get("saplings", 0.0)) >= 1.0, "из дерева выпали саженцы (шанс 100%)")
+	_check(float(sim_s.res.get("saplings", 0.0)) <= 2.0, "не больше двух саженцев с дерева")
+
+	# --- лесоруб сажает саженцы у лесопилки (гнев леса растёт) ---
+	var sim_p := _make_sim()
+	sim_p._last_daily_day = 999
+	sim_p.cfg["food_per_resident_day"] = 0.0
+	sim_p.res["saplings"] = 5.0
+	sim_p.forest_anger = 0.0
+	var saw_p: Dictionary = _build_now(sim_p, "sawmill")
+	_check(not saw_p.is_empty(), "лесопилка построена")
+	var lumber_p: Dictionary = {}
+	for r in sim_p.residents:
+		if r["bld"] == saw_p:
+			lumber_p = r
+	_check(not lumber_p.is_empty() and String(lumber_p["prof"]) == "lumberjack",
+			"за лесопилкой закреплён лесоруб")
+	lumber_p["traits"] = []
+	lumber_p["mood"] = 100.0
+	_teleport(sim_p, lumber_p, saw_p["tile"])
+	sim_p.time = 10.0   # утро дня
+	for i in 240:   # дойти до саженца и посадить (до 2 в день)
+		sim_p.tick(0.5)
+		if (sim_p.map.saplings as Dictionary).size() >= 1 \
+				and int(lumber_p.get("plant_n", 0)) >= 1:
+			break
+	_check((sim_p.map.saplings as Dictionary).size() >= 1, "лесоруб посадил саженец у лесопилки")
+	_check(float(sim_p.res.get("saplings", 0.0)) < 5.0, "саженец списан из пула")
+	_check(sim_p.forest_anger > 0.0, "плантация у пилы злит лес (гнев растёт)")
+
+	# --- липкие цели: начатую клетку не меняют на «поближе» ---
+	var sim_t := _make_sim()
+	sim_t._last_daily_day = 999
+	var res_t: Dictionary = sim_t.residents[0]
+	var far_cells: Array = _grass_tiles(sim_t, sim_t.map.spawn_tile + Vector2i(9, 9), 1)
+	_check(sim_t.add_zone("pasture", far_cells) == 1, "зона с дальней клеткой")
+	var first: Dictionary = sim_t._nearest_zone_cell(res_t)
+	_check(not first.is_empty(), "цель обустройства выбрана")
+	var near_cells: Array = _grass_tiles(sim_t, sim_t.map.spawn_tile + Vector2i(-9, 9), 1)
+	sim_t.add_zone("pasture", near_cells)
+	var again: Dictionary = sim_t._nearest_zone_cell(res_t)
+	_check(int(again["idx"]) == int(first["idx"]) \
+			and int((again["zone"] as Dictionary)["id"]) == int((first["zone"] as Dictionary)["id"]),
+			"цель липкая: ближе появившуюся клетку не перебирает на ходу")
+	print("[Правки v1.20.1] готово")

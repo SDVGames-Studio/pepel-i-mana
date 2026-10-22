@@ -909,6 +909,9 @@
 	"world.storage_full": "Склад города полон",
 
 	"res.seeds": "Семена",
+	"res.saplings": "Саженцы",
+	"chron.sapling_planted": "%s сажает лес у лесопилки",
+	"city.hauled_toast": "%s снёс продукцию: +%d %s",
 
 	"animal.sheep": "овца",
 	"animal.cow": "корова",

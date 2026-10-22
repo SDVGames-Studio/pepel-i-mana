@@ -72,6 +72,9 @@
 	"forest": {
 		"chop_days": 0.5, "anger_per_tree": 2.5, "calm_per_day": 0.6, "calm_per_tree": 3.0,
 		"grow_days": 1.2, "seed_cost": 1,
+		"sapling_drop_chance": 0.33, "sapling_drop_min": 1, "sapling_drop_max": 2,
+		"plant_per_day": 2, "plant_radius": 5, "resident_plant_anger": 1.5,
+		"_comment_saplings": "правки v1.20.1: срубленное дерево роняет саженцы (шанс/мин/макс); лесоруб сажает их вокруг лесопилки (plant_per_day в день, радиус plant_radius) — лес подрастёт и добыча вырастет, но плантация злит лес (resident_plant_anger за саженец)",
 		"warn_anger": 8.0, "spirit_anger": 14.0, "boss_anger": 26.0,
 		"spirit_count": 3, "boss_spirits": 5, "cooldown_days": 1.5,
 		"spirit_mood": -6.0, "boss_mood": -12.0

@@ -457,24 +457,24 @@ func _draw_zones() -> void:
 							Vector2(rect.position.x + map.ts - 4, y),
 							col.darkened(0.3 if filled else 0.15),
 							1.5 if filled else 1.0)
-			if filled:
-				draw_rect(rect.grow(-2), col.darkened(0.15), false, 1.5)
-				match String(z["type"]):
-					"field":
-						# посев (M10): стадия роста культуры — спрайт растения;
-						# вид культуры — из культуры поля
-						var crops: Array = z.get("crops", [])
-						var crop_vis: int = int(sim.crop_def(String(z.get("crop", "turnip"))).get("sprite", 0))
-						if i < crops.size() and not (crops[i] as Dictionary).is_empty():
-							var crop: Dictionary = crops[i]
-							var stage := int(crop.get("stage", 0)) + (1 if bool(crop.get("ripe", false)) else 0)
-							var ripe := bool(crop.get("ripe", false))
-							var ctint := Color.WHITE if not ripe else Color(1.15, 1.15, 0.95)
-							Assets.draw_ref(self, "e:crop%d_%d" % [crop_vis, clampi(stage, 0, 3)],
-									rect.get_center() + Vector2(0, -2), map.ts * 0.9, false, ctint)
-					"pasture":
-						draw_circle(rect.position + Vector2(10, 20), 3.0, col.darkened(0.35))
-						draw_circle(rect.position + Vector2(22, 12), 3.0, col.darkened(0.35))
+				if filled:
+					draw_rect(rect.grow(-2), col.darkened(0.15), false, 1.5)
+					match String(z["type"]):
+						"field":
+							# посев (M10): стадия роста культуры. Правки v1.20.1:
+							# готовые спрайты растений — крошечные точки в углу
+							# листа (не видно вовсе), поэтому рисуем растения
+							# сами: куст зелени, спелый — с плодом цвета культуры
+							var crops: Array = z.get("crops", [])
+							var crop_vis: int = int(sim.crop_def(String(z.get("crop", "turnip"))).get("sprite", 0))
+							if i < crops.size() and not (crops[i] as Dictionary).is_empty():
+								var crop: Dictionary = crops[i]
+								var stage := int(crop.get("stage", 0)) + (1 if bool(crop.get("ripe", false)) else 0)
+								var ripe := bool(crop.get("ripe", false))
+								_draw_crop_plant(rect.get_center(), clampi(stage, 0, 4), ripe, crop_vis)
+						"pasture":
+							draw_circle(rect.position + Vector2(10, 20), 3.0, col.darkened(0.35))
+							draw_circle(rect.position + Vector2(22, 12), 3.0, col.darkened(0.35))
 			else:
 				var frac := clampf(float(z["progress"][i]) / maxf(0.1, fill_work), 0.0, 1.0)
 				draw_rect(Rect2(rect.position + Vector2(4, map.ts - 8), Vector2((map.ts - 8) * frac, 4)),
@@ -483,6 +483,45 @@ func _draw_zones() -> void:
 		# читается с одного взгляда, скот внутри как за забором
 		if String(z["type"]) == "pasture":
 			_draw_zone_fence(z)
+
+
+## Растение на грядке (правки v1.20.1): рисуем сами — росток → куст →
+## спелый куст с плодом. crop_vis: 1 — репа (белый плод), 2 — тыква
+## (оранжевый), прочее — зелень без плода.
+func _draw_crop_plant(center: Vector2, stage: int, ripe: bool, crop_vis: int) -> void:
+	var leaf := Color("#5fae4a")
+	var leaf_dark := Color("#3f7a33")
+	var stem := Color("#4c8a3c")
+	var fruit := Color("#c9a8e8")   # репа — бледно-фиолетовая
+	if crop_vis == 2:
+		fruit = Color("#e8892c")   # тыква — оранжевая
+	var base := center + Vector2(0.0, map.ts * 0.22)
+	match clampi(stage, 0, 4):
+		0:   # росток: росток-«вилка»
+			draw_line(base, base + Vector2(0, -4), stem, 1.5)
+			draw_circle(base + Vector2(-2, -4), 1.6, leaf)
+			draw_circle(base + Vector2(2, -4), 1.6, leaf)
+		1:   # зелень растёт
+			draw_line(base, base + Vector2(0, -7), stem, 2.0)
+			draw_circle(base + Vector2(-3, -7), 2.4, leaf)
+			draw_circle(base + Vector2(3, -7), 2.4, leaf)
+			draw_circle(base + Vector2(0, -10), 2.0, leaf_dark)
+		2:   # куст
+			draw_line(base, base + Vector2(0, -9), stem, 2.2)
+			draw_circle(base + Vector2(-4, -9), 3.2, leaf)
+			draw_circle(base + Vector2(4, -9), 3.2, leaf)
+			draw_circle(base + Vector2(0, -12), 3.0, leaf_dark)
+			draw_circle(base + Vector2(0, -6), 2.2, leaf)
+		_:   # 3-4: спелый куст с плодом
+			draw_line(base, base + Vector2(0, -9), stem, 2.2)
+			draw_circle(base + Vector2(-4, -9), 3.0, leaf)
+			draw_circle(base + Vector2(4, -9), 3.0, leaf)
+			draw_circle(base + Vector2(0, -5), 4.2 if crop_vis == 2 else 3.4, fruit)
+			draw_circle(base + Vector2(-1, -6), 1.2, fruit.lightened(0.35))
+			if ripe:
+				# спелость: тёплое свечение — видно с первого взгляда
+				var glow := Color(1.0, 0.95, 0.6, 0.25 + 0.12 * sin(_anim_time * 3.0))
+				draw_circle(base + Vector2(0, -6), 7.5, glow)
 
 
 ## Забор пастбища: по внешним рёбрам клеток зоны — перекладина и столбики.

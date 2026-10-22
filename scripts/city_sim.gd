@@ -31,11 +31,11 @@ extends RefCounted
 ## Рейдер: {id, type, p(строка enemies.json), hp, max_hp, pos, target, path,
 ##          atk_cd, goal(тайл), mode(advance|break|fight|flee)}
 
-const RESOURCES := ["wood", "stone", "food", "crystal", "tools", "iron", "metal", "kits", "seeds"]
+const RESOURCES := ["wood", "stone", "food", "crystal", "tools", "iron", "metal", "kits", "seeds", "saplings"]
 
 var map = null                  # city_map.gd, нетипизированно (см. грабли GDScript)
 var cfg: Dictionary = {}
-var res: Dictionary = {"wood": 0, "stone": 0, "food": 0, "crystal": 0, "seeds": 0}
+var res: Dictionary = {"wood": 0, "stone": 0, "food": 0, "crystal": 0, "seeds": 0, "saplings": 0}
 var residents: Array = []
 var buildings: Array = []
 var time := 0.0                 # игровое время, сек (x1)
@@ -2406,9 +2406,12 @@ func _update_resident(r: Dictionary, dt: float) -> void:
 		r["fatigue"] = maxf(0.0, float(r["fatigue"]) - _restore_rate(r, false) * dt / day_len)
 		r["path"] = PackedVector2Array()
 		return
-	# вечер (M12, имитация жизни): работа кончилась — таверна, костёр, визиты к друзьям
+	# вечер (M12): работа кончилась; правки v1.20.1 — сперва работник уносит
+	# произведённую кучу своего здания на склад (или в центр), потом отдыхает
 	if not raid_active and not _raid_warned and _is_evening() \
 			and r["site"] == null and String(r["prof"]) != "elder":
+		if _evening_haul(r, dt):
+			return
 		_leisure(r, dt)
 		return
 	if r["site"] != null:
@@ -2519,6 +2522,53 @@ func fire_tile() -> Vector2i:
 	if plaza != Vector2i(-1, -1):
 		return map.nearest_walkable(plaza)
 	return map.spawn_tile
+
+
+## Вечерний снос продукции (правки v1.20.1): поработавший в здании житель
+## уносит кучу своего здания на склад (а без склада — в центр города)
+## и только потом идёт отдыхать. Одна ходка за вечер, вся куча разом.
+func _evening_haul(r: Dictionary, dt: float) -> bool:
+	if r["bld"] == null:
+		return false
+	var bld: Dictionary = r["bld"]
+	if float(r.get("carry", 0.0)) <= 0.0:
+		if int(r.get("hauled_day", 0)) == day:
+			return false   # сегодня уже снёс — отдыхаем
+		if _pile_total(bld) < 0.5:
+			return false   # производить произвёл нечего
+		if not at_bld(r, bld):
+			_move_towards(r, bld_spot(bld), dt)
+			return true
+		# забираем самую большую кучу здания целиком (как герой по E)
+		var pile: Dictionary = bld.get("pile", {})
+		var key := ""
+		var best := 0.0
+		for k in pile:
+			if float(pile[k]) > best:
+				best = float(pile[k])
+				key = String(k)
+		if key == "":
+			r["hauled_day"] = day
+			return false
+		r["carry"] = best
+		r["carry_res"] = key
+		pile.erase(key)
+		bld["pile"] = pile
+		r["state"] = "porter"
+		return true
+	# несём: склад есть — на склад, нет — в центр города (амбар)
+	var barn := _nearest_done_of_type(r["pos"], "warehouse")
+	var goal: Vector2i = bld_spot(barn) if not barn.is_empty() else map.nearest_walkable(fire_tile())
+	if not _arrived(r, goal):
+		_move_towards(r, goal, dt)
+		return true
+	_add_resource_capped(String(r["carry_res"]), float(r["carry"]))
+	events.append({"type": "hauled", "name": String(r["name"]),
+			"res": String(r["carry_res"]), "n": int(float(r["carry"]))})
+	r["carry"] = 0.0
+	r["carry_res"] = ""
+	r["hauled_day"] = day
+	return false
 
 
 ## Вечерний досуг: таверна (если стоит), визит к другу, костёр в центре.
@@ -2995,6 +3045,10 @@ func _gather_work(r: Dictionary, bld: Dictionary, dt: float) -> void:
 	if float(bld.get("stun_left", 0.0)) > 0.0:
 		r["state"] = "idle"
 		return
+	# лесопилка (правки v1.20.1): лесоруб сперва высаживает саженцы вокруг —
+	# лес подрастёт и добыча дерева вырастет (лес при этом гневается)
+	if String(bld["type"]) == "sawmill" and _sawmill_plant(r, bld, dt):
+		return
 	var res_tile: Vector2i = _gather_target(r, bld)
 	if res_tile == Vector2i(-1, -1):
 		_produce_tick(r, bld, dt)
@@ -3005,6 +3059,72 @@ func _gather_work(r: Dictionary, bld: Dictionary, dt: float) -> void:
 	if String(bld["type"]) == "sawmill":
 		_chop_tree(r, dt)
 	_produce_tick(r, bld, dt)
+
+
+## Посадка саженцев у лесопилки (правки v1.20.1): житель носит саженцы
+## из пула (они выпадают из срубленных деревьев) и сажает лес вокруг
+## лесопилки — будущая добыча дерева; плантация злит лес.
+func _sawmill_plant(r: Dictionary, bld: Dictionary, dt: float) -> bool:
+	var fcfg: Dictionary = cfg.get("forest", {})
+	var per_day := int(fcfg.get("plant_per_day", 2))
+	if int(r.get("plant_day", 0)) != day:
+		r["plant_day"] = day
+		r["plant_n"] = 0
+	if int(r.get("plant_n", 0)) >= per_day or float(res.get("saplings", 0.0)) < 1.0:
+		return false
+	var tile: Vector2i = r.get("plant_tile", Vector2i(-1, -1))
+	if tile == Vector2i(-1, -1):
+		tile = _plant_tile_near(bld)
+		if tile == Vector2i(-1, -1):
+			return false   # места нет — просто работаем
+		r["plant_tile"] = tile
+	if not _arrived(r, tile):
+		_move_towards(r, tile, dt)
+		return true
+	res["saplings"] = float(res["saplings"]) - 1.0
+	map.saplings[tile] = {"t": 0.0, "grow_days": float(fcfg.get("grow_days", 1.2))}
+	terrain_dirty = true
+	forest_anger = clampf(forest_anger + float(fcfg.get("resident_plant_anger", 1.5)), 0.0, 100.0)
+	r["plant_n"] = int(r.get("plant_n", 0)) + 1
+	r["plant_tile"] = Vector2i(-1, -1)
+	r["state"] = "fill"
+	_chron("chron.sapling_planted", String(r["name"]))
+	events.append({"type": "sapling_planted", "name": String(r["name"])})
+	return false
+
+
+## Свободная трава у здания под саженец: без зданий, пней, саженцев, зон
+## и запретного радиуса площади.
+func _plant_tile_near(bld: Dictionary) -> Vector2i:
+	var fcfg: Dictionary = cfg.get("forest", {})
+	var radius := int(fcfg.get("plant_radius", 5))
+	var bc: Vector2i = bld["tile"]
+	var best := Vector2i(-1, -1)
+	var best_d := INF
+	for dy in range(-radius, radius + 1):
+		for dx in range(-radius, radius + 1):
+			var t: Vector2i = bc + Vector2i(dx, dy)
+			if not map.in_bounds(t) or map.grid[t.y][t.x] != map.TILE_GRASS:
+				continue
+			if map.saplings.has(t) or map.stumps.has(t) or not map.is_walkable(t):
+				continue
+			if near_plaza(t) or not building_at(t).is_empty() or _tile_in_fill_zone(t):
+				continue
+			var d: float = Vector2(t).distance_to(Vector2(bc))
+			if d < best_d:
+				best_d = d
+				best = t
+	return best
+
+
+## Срубленное дерево с шансом роняет саженцы в общий пул (правки v1.20.1).
+func _drop_saplings() -> void:
+	var fcfg: Dictionary = cfg.get("forest", {})
+	if _event_rng.randf() >= float(fcfg.get("sapling_drop_chance", 0.33)):
+		return
+	var n := _event_rng.randi_range(int(fcfg.get("sapling_drop_min", 1)), int(fcfg.get("sapling_drop_max", 2)))
+	_add_resource_capped("saplings", float(n))
+	events.append({"type": "saplings_dropped", "n": n})
 
 
 ## Рубка (M11): накопив chop_days на тайле дерева, лесоруб валит его.
@@ -3023,6 +3143,7 @@ func _chop_tree(r: Dictionary, dt: float) -> void:
 	map.stumps[tile] = true
 	terrain_dirty = true
 	forest_anger = clampf(forest_anger + float(fcfg.get("anger_per_tree", 2.5)), 0.0, 100.0)
+	_drop_saplings()   # из поваленного дерева выпадают саженцы (v1.20.1)
 	events.append({"type": "tree_felled"})
 	_chron("chron.tree_felled")
 	r["gath_tile"] = Vector2i(-1, -1)
@@ -3584,6 +3705,15 @@ func _zone_fill_work(r: Dictionary, dt: float) -> bool:
 
 ## Ближайшая незаполненная клетка зоны: {zone, idx, tile} или {}.
 func _nearest_zone_cell(r: Dictionary) -> Dictionary:
+	# липкая цель (правки v1.20.1): начатую клетку доводим до конца —
+	# даже если рядом появилась «поближе», мечтаться между клетками нельзя
+	var sticky_z: Dictionary = zone_by_id(int(r.get("_fill_zone", -1)))
+	if not sticky_z.is_empty():
+		var si := int(r.get("_fill_idx", -1))
+		if si >= 0 and si < (sticky_z["cells"] as Array).size() \
+				and not _cell_filled(sticky_z, si) \
+				and building_at(sticky_z["cells"][si]).is_empty():
+			return {"zone": sticky_z, "idx": si, "tile": sticky_z["cells"][si]}
 	var best: Dictionary = {}
 	var best_d := INF
 	for z in zones:
@@ -3594,6 +3724,12 @@ func _nearest_zone_cell(r: Dictionary) -> Dictionary:
 			if d < best_d:
 				best_d = d
 				best = {"zone": z, "idx": i, "tile": z["cells"][i]}
+	if not best.is_empty():
+		r["_fill_zone"] = int((best["zone"] as Dictionary)["id"])
+		r["_fill_idx"] = int(best["idx"])
+	else:
+		r["_fill_zone"] = -1
+		r["_fill_idx"] = -1
 	return best
 
 
@@ -3653,8 +3789,10 @@ func _update_zones(dt: float, day_len: float) -> void:
 					res["seeds"] = float(res["seeds"]) - float(fcfg.get("seed_sow", 1))
 					crops[i] = {"stage": 0, "t": 0.0, "ripe": false}
 			elif not bool(crop.get("ripe", false)):
-				crop["t"] = float(crop.get("t", 0.0)) + dt
-				if crop["t"] >= crop_stage_days:
+				# рост В ДНЯХ (правки v1.20.1: раньше t копил секунды и сравнивался
+				# с днями — культура «зрела» за секунды, роста не видно)
+				crop["t"] = float(crop.get("t", 0.0)) + dt / maxf(1.0, day_len)
+				if float(crop["t"]) >= crop_stage_days:
 					crop["t"] = 0.0
 					crop["stage"] = int(crop.get("stage", 0)) + 1
 					if int(crop["stage"]) >= stages:
@@ -7070,8 +7208,17 @@ func _farm_work(r: Dictionary, bld: Dictionary, dt: float) -> void:
 	_do_work(r, bld, dt)
 
 
-## Ближайшая спелая клетка поля: {zone, idx, tile} или {}.
+## Ближайшая спелая клетка поля: {zone, idx, tile} или {}. Правки v1.20.1:
+## цель «липкая» — житель (и голем) доводит начатую грядку до конца
+## и не мечется между клетками, если рядом спелых много.
 func _nearest_ripe_field_cell(r: Dictionary) -> Dictionary:
+	var sticky_z: Dictionary = zone_by_id(int(r.get("_ripe_zone", -1)))
+	if not sticky_z.is_empty():
+		var si := int(r.get("_ripe_idx", -1))
+		var scrops: Array = sticky_z.get("crops", [])
+		if si >= 0 and si < (sticky_z["cells"] as Array).size() \
+				and scrops.size() > si and bool((scrops[si] as Dictionary).get("ripe", false)):
+			return {"zone": sticky_z, "idx": si, "tile": sticky_z["cells"][si]}
 	var best := {}
 	var best_d := INF
 	for z in zones:
@@ -7087,6 +7234,12 @@ func _nearest_ripe_field_cell(r: Dictionary) -> Dictionary:
 			if d < best_d:
 				best_d = d
 				best = {"zone": z, "idx": i, "tile": z["cells"][i]}
+	if not best.is_empty():
+		r["_ripe_zone"] = int((best["zone"] as Dictionary)["id"])
+		r["_ripe_idx"] = int(best["idx"])
+	else:
+		r["_ripe_zone"] = -1
+		r["_ripe_idx"] = -1
 	return best
 
 
@@ -7132,6 +7285,7 @@ func hero_chop(px: Vector2) -> String:
 	terrain_dirty = true
 	forest_anger = clampf(forest_anger + float(fcfg.get("anger_per_tree", 2.5)), 0.0, 100.0)
 	_add_resource_capped("wood", float(_hero_work_cfg().get("wood_per_tree", 6)))
+	_drop_saplings()   # из поваленного дерева выпадают саженцы (v1.20.1)
 	events.append({"type": "tree_felled"})
 	_chron("chron.tree_felled")
 	return "fell"
