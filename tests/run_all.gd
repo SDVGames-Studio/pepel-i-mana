@@ -72,14 +72,26 @@ const BLOCKS := [
 
 func _initialize() -> void:
 	var total := 0
+	var oks := 0
 	var mods := {}
 	for b in BLOCKS:
 		if not mods.has(b[0]):
-			mods[b[0]] = load(b[0]).new()
+			var script: Script = load(b[0])
+			if script == null or not script.can_instantiate():
+				print("FAIL: модуль не загрузился: " + b[0])
+				quit(1)
+				return
+			mods[b[0]] = script.new()
 			mods[b[0]].tree = self
 		for fname in b[1]:
 			mods[b[0]].call(fname)
 		total += int(mods[b[0]]._fails)
+		oks += int(mods[b[0]]._oks)
+	# страховка от «мгновенного зелёного»: ни одной проверки — это провал
+	if oks < 100:
+		print("FAIL: проверок слишком мало (%d) — раннер упал раньше тестов" % oks)
+		quit(1)
+		return
 	if total == 0:
 		print("OK: все тесты пройдены")
 		quit(0)

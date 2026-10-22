@@ -220,10 +220,12 @@ func _collect_scripts(dir_path: String) -> Array:
 	return out
 
 var _fails := 0
+var _oks := 0
 
 
 func _check(cond: bool, what: String) -> void:
 	if cond:
+		_oks += 1
 		print("  ok: " + what)
 	else:
 		_fails += 1
