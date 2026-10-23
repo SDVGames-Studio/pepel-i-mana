@@ -666,7 +666,7 @@ func _next_wall_tile() -> Vector2i:
 ## бесконечно строил бы фермы, пока поле не вспахано.
 func _food_deficit() -> bool:
 	var fcfg: Dictionary = cfg.get("farming", {})
-	var est: float = float(fcfg.get("est_per_farm", 14.0))
+	var est: float = float(fcfg.get("est_per_farm", 16.0))
 	var production := 0.0
 	var farms := {}
 	for b in buildings:

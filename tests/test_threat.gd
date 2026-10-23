@@ -323,9 +323,9 @@ func _test_defense() -> void:
 	# город сыт (голод резал бы работу), майнера ставим прямо у жилы
 	sim.time = 10.0
 	sim.res["food"] = 500.0
-	var mine_pair: Dictionary = sim._vein_target(_resident_by_id(int(mine["worker"])), mine)
+	var mine_pair: Dictionary = sim._vein_target(sim._resident_by_id(int(mine["worker"])), mine)
 	if not mine_pair.is_empty():
-		_teleport(sim, _resident_by_id(int(mine["worker"])), mine_pair["stand"])
+		_teleport(sim, sim._resident_by_id(int(mine["worker"])), mine_pair["stand"])
 	for i in 60:
 		sim.tick(10.0)
 		sim.time = 10.0   # держим утро — шахтёр не спит
@@ -337,7 +337,7 @@ func _test_defense() -> void:
 	sim.res["stone"] = 40.0
 	var smelt := _build_at(sim, "smelter", _find_free_tile(sim, sim.map.spawn_tile))
 	if not smelt.is_empty() and int(smelt["worker"]) != int(smelter_r["id"]):
-		var prev_sm := sim._resident_by_id(int(smelt["worker"]))
+		var prev_sm: Dictionary = sim._resident_by_id(int(smelt["worker"]))
 		if not prev_sm.is_empty():
 			prev_sm["bld"] = null
 		smelt["worker"] = int(smelter_r["id"])
@@ -379,7 +379,7 @@ func _test_defense() -> void:
 	var armory := _build_at(sim, "armory", armory_tile)
 	_check(bool(armory["done"]), "оружейная построена у кузни")
 	if int(armory["worker"]) != int(armorer_r["id"]):
-		var prev_ar := sim._resident_by_id(int(armory["worker"]))
+		var prev_ar: Dictionary = sim._resident_by_id(int(armory["worker"]))
 		if not prev_ar.is_empty():
 			prev_ar["bld"] = null
 		armory["worker"] = int(armorer_r["id"])

@@ -164,7 +164,7 @@
 		"stage_days": 0.8,
 		"harvest_food": 4.0,
 		"field_radius": 2,
-		"est_per_farm": 14.0,
+		"est_per_farm": 16.0,
 		"seed_sow": 1,
 		"seed_return": 1,
 		"seed_bonus_chance": 0.15,
