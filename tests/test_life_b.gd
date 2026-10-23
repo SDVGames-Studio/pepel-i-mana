@@ -716,7 +716,7 @@ func _test_hero_work() -> void:
 	_check(tree.x >= 0, "на карте есть дерево для героя")
 	var wood0 := int(sim.res["wood"])
 	var anger0 := float(sim.forest_anger)
-	var tree_size := sim.map.tree_kind(tree)
+	var tree_size: int = sim.map.tree_kind(tree)
 	var res := ""
 	for i in maxi(1, sim._hero_chop_hits(tree_size)):
 		res = sim.hero_chop(sim.map.tile_center_px(tree))

@@ -46,20 +46,20 @@ func _draw() -> void:
 		for x in map.w:
 			var tile: int = map.grid[y][x]
 			var rect := Rect2(x * map.ts, y * map.ts, map.ts, map.ts)
-		var base := _grass_at(x, y)
-		match tile:
-			map.TILE_GRASS, map.TILE_TREE:
-				draw_rect(rect, base)
-				_draw_grass_detail(x, y, rect, base, ts)
-			map.TILE_WATER:
-				draw_rect(rect, colors["water"])
-				_draw_water_detail(x, y, rect, ts)
-			map.TILE_DEADROCK:
-				_draw_deadrock(x, y, rect, ts)
-			map.TILE_ROCK, map.TILE_ORE:
-				draw_rect(rect, base)
-				_draw_grass_detail(x, y, rect, base, ts)
-				_draw_rock(x, y, tile == map.TILE_ORE, ts)
+			var base := _grass_at(x, y)
+			match tile:
+				map.TILE_GRASS, map.TILE_TREE:
+					draw_rect(rect, base)
+					_draw_grass_detail(x, y, rect, base, ts)
+				map.TILE_WATER:
+					draw_rect(rect, colors["water"])
+					_draw_water_detail(x, y, rect, ts)
+				map.TILE_DEADROCK:
+					_draw_deadrock(x, y, rect, ts)
+				map.TILE_ROCK, map.TILE_ORE:
+					draw_rect(rect, base)
+					_draw_grass_detail(x, y, rect, base, ts)
+					_draw_rock(x, y, tile == map.TILE_ORE, ts)
 
 
 ## Пустая порода выработанного массива (v1.21): тёмная осыпь щебня — по ней

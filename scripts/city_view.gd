@@ -261,7 +261,7 @@ func _draw_tree_at(tile: Vector2i) -> void:
 	if map.saplings.has(key):
 		_draw_sapling(key, bottom, ts)
 	elif map.grid[tile.y][tile.x] == map.TILE_TREE:
-		var size := map.tree_kind(tile)
+		var size: int = map.tree_kind(tile)
 		var scale := ts * 1.9 if size == map.TREE_SMALL \
 				else (ts * 2.4 if size == map.TREE_MEDIUM else ts * 3.0)
 		_draw_shadow(bottom + Vector2(0, 2), ts * (0.4 if size == map.TREE_SMALL

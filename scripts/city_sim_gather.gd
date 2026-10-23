@@ -163,7 +163,7 @@ func _chop_tree(r: Dictionary, dt: float) -> void:
 		r["chop_t"] = 0.0
 		return
 	var fcfg: Dictionary = cfg.get("forest", {})
-	var size := map.tree_kind(tile)
+	var size: int = map.tree_kind(tile)
 	var need := _chop_days_for(size) * float(cfg["day_length"])
 	r["chop_t"] = float(r.get("chop_t", 0.0)) + dt * work_mult(r)
 	r["state"] = "chop"
