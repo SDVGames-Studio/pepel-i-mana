@@ -117,6 +117,29 @@ func _roll_porter() -> void:
 		return
 
 
+## Разбор готовых куч руками раз в день, когда носильщика в городе нет
+## (v1.21, соло-экономика): доски с лесопилки и камень с каменоломни
+## раньше гнили в кучах — самострой не мог платить за дома. Есть житель-
+## носильщик — физическая логистика работает как прежде.
+func _pull_idle_piles() -> void:
+	for r in residents:
+		if String(r["prof"]) == "porter":
+			return
+	var moved := 0
+	for b in buildings:
+		if not bool(b.get("done", false)) or not b.has("pile"):
+			continue
+		var pile: Dictionary = b["pile"]
+		if pile.is_empty():
+			continue
+		for k in pile.keys():
+			_add_resource_capped(String(k), float(pile[k]))
+			moved += 1
+		b["pile"] = {}
+	if moved > 0:
+		events.append({"type": "piles_hauled_hands", "n": moved})
+
+
 # --- зоны (M6): поле, пастбище, жилая ----------------------------------------
 
 ## Разбить зону из клеток (сцена выделяет мышью). Возвращает число годных клеток.

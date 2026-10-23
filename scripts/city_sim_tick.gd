@@ -78,6 +78,7 @@ func tick(dt_raw: float) -> void:
 		_roll_guards()
 		_roll_hunter()
 		_roll_porter()
+		_pull_idle_piles()   # без носильщика кучи разносятся руками (v1.21)
 		_roll_auto_roads()
 		_roll_animals()
 		_roll_storm()

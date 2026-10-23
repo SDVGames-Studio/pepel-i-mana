@@ -475,6 +475,9 @@ func _new_animal() -> Dictionary:
 func _porter_work(r: Dictionary, dt: float) -> void:
 	pass
 
+func _pull_idle_piles() -> void:
+	pass
+
 func _random_traits() -> Array:
 	return []
 

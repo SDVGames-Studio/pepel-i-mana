@@ -710,7 +710,7 @@ func _test_people() -> void:
 	_check(String(elder_r["state"]) == "manage", "староста обходит город")
 	_check(bool(sim_e.elder_present()), "староста на ногах — город может строить сам")
 	sim_e.people["refugees"]["chance_per_day"] = 0.0
-	_build_now(sim_e, "farm")   # баланс еды положительный — дефицит не перебивает кризис дома
+	_build_now(sim_e, "farm", sim_e.map.spawn_tile + Vector2i(14, 8))   # v1.21: подальше — поле непустое, дефицит еды не перебивает кризис дома
 	var buildings_before: int = sim_e.buildings.size()
 	sim_e._roll_autobuild()
 	_check(sim_e.buildings.size() == buildings_before + 1, "староста заложил дом: мест жителям не хватает")

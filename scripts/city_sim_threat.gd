@@ -735,18 +735,22 @@ func _update_forest(dt: float, day_len: float) -> void:
 			map.saplings.erase(tile)
 			if map.grid[tile.y][tile.x] == map.TILE_GRASS and building_at(tile).is_empty():
 				map.grid[tile.y][tile.x] = map.TILE_TREE
-				map.tree_size[tile] = map.TREE_SMALL
-				map.tree_growth[tile] = 0.0
+				map.tree_size[tile] = map.TREE_SMALL   # роста в этом тике не будет
 				forest_anger = maxf(0.0, forest_anger - float(fcfg.get("calm_per_tree", 2.0)))
 				events.append({"type": "tree_grown"})
 				_chron("chron.tree_grown")
 			terrain_dirty = true
-	# растут и дикие деревья: малое → среднее (5 дней), среднее → большое (10)
+	# растут и дикие деревья: малое → среднее (5 дней), среднее → большое (10).
+	# Первый тик жизни нового дерева не считается (оно выросло из саженца
+	# посреди тика — полный dt роста был бы двойным учётом, v1.21)
 	for tile: Vector2i in map.tree_size.keys():
 		if int(map.tree_size[tile]) >= map.TREE_LARGE:
 			continue
 		if not map.in_bounds(tile) or map.grid[tile.y][tile.x] != map.TILE_TREE:
 			map.tree_growth.erase(tile)
+			continue
+		if not map.tree_growth.has(tile):
+			map.tree_growth[tile] = 0.0
 			continue
 		var t_days: float = float(map.tree_growth.get(tile, 0.0)) + dt / day_len
 		var size := int(map.tree_size[tile])
