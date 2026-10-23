@@ -105,14 +105,14 @@ func _test_v121_trees() -> void:
 	sim.res["saplings"] = 3.0
 	_check(sim.plant_sapling(tile) == "", "герой посадил саженец из пула")
 	var day_len: float = float(sim.cfg["day_length"])
-	sim.tick(day_len * 5.2)
+	sim.tick(day_len * 5.05)
 	_check(sim.map.grid[tile.y][tile.x] == sim.map.TILE_TREE \
 			and int(sim.map.tree_size.get(tile, 0)) == sim.map.TREE_SMALL,
 			"через 5 дней саженец — малое дерево")
-	sim.tick(day_len * 5.2)
+	sim.tick(day_len * 5.05)
 	_check(int(sim.map.tree_size.get(tile, 0)) == sim.map.TREE_MEDIUM,
 			"ещё 5 дней — среднее")
-	sim.tick(day_len * 10.5)
+	sim.tick(day_len * 10.05)
 	_check(int(sim.map.tree_size.get(tile, 0)) == sim.map.TREE_LARGE,
 			"ещё 10 дней — большое")
 
@@ -191,6 +191,8 @@ func _test_v21_golem_commit() -> void:
 	var field_cells: Array = _grass_tiles(sim, sim.map.spawn_tile + Vector2i(1, 1), 2)
 	sim.add_zone("field", field_cells)
 	var zfield: Dictionary = sim.zones[sim.zones.size() - 1]
+	if not zfield.has("crops"):
+		zfield["crops"] = []
 	for i in (zfield["cells"] as Array).size():
 		zfield["progress"][i] = 99.0
 	while (zfield["crops"] as Array).size() < (zfield["cells"] as Array).size():

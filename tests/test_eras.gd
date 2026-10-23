@@ -57,29 +57,37 @@ func _test_m6() -> void:
 		_teleport(sim_f, worker_f, zfield["cells"][i])
 		sim_f.tick(6.0)
 	var food0: float = float(sim_f.res["food"])
-	# M10 + этап 2/аспект 3: поле работает циклами посев→рост→урожай; культура
-	# по умолчанию — репа (stage_days 0.4 → зреет за ~1.6 дня)
+	# M10 + этап 2/аспект 3: поле работает циклами посев→рост→урожай.
+	# v1.21: репа зреет 3.2 дня (стадии 4 × 0.8) — даём до двух циклов
 	sim_f.cfg["food_per_resident_day"] = 0.0   # меряем чистый урожай без трат
 	var food1: float = float(sim_f.res["food"])
-	for i in 12:   # 6 дней: репа зреет за ~1.6 дня — по 2–3 цикла на клетку
-		sim_f.tick(float(sim_f.cfg["day_length"]) / 2.0)
 	var expected: float = fcells.size() * float(sim_f.crop_def("turnip")["harvest"])
-	var grown: float = float(sim_f.res["food"]) - food1
+	var grown := 0.0
+	for i in 24:
+		sim_f.tick(float(sim_f.cfg["day_length"]) / 2.0)
+		grown = float(sim_f.res["food"]) - food1
+		if grown >= expected - 0.6:
+			break
 	_check(grown >= expected - 0.6 or float(sim_f.res["food"]) >= food0 + expected - 0.6,
 			"поле собрало урожай: %d клетки × %.1f" % [fcells.size(), expected])
 	_check(float(sim_f.res["seeds"]) >= 1.0 or (sim_f.zones[0]["crops"] as Array).size() > 0,
 			"урожай вернул семена — цикл поля замкнулся")
 
-	# --- здание на клетке зоны вытесняет её из зоны ---
+	# --- зона и стройка (v1.21): пастбище уступает клетку, поле — нет ---
 	# (v1.20: у спавна площадь с запретом стройки — зона подальше)
 	var sim_z2 := _make_sim()
 	sim_z2._last_daily_day = 999
 	var zcells: Array = _grass_tiles(sim_z2, sim_z2.map.spawn_tile + Vector2i(7, 7), 4)
-	sim_z2.add_zone("field", zcells)
+	sim_z2.add_zone("pasture", zcells)
 	var before_n: int = (sim_z2.zones[0]["cells"] as Array).size()
 	sim_z2.place_building("wall", zcells[0])
 	_check((sim_z2.zones[0]["cells"] as Array).size() == before_n - 1,
-			"здание на клетке зоны убирает клетку из зоны")
+			"здание на клетке пастбища убирает клетку из зоны")
+	# клетки поля фермы (и ручного поля) стройке запрещены (v1.21)
+	var fcells_z: Array = _grass_tiles(sim_z2, sim_z2.map.spawn_tile + Vector2i(-7, 7), 2)
+	sim_z2.add_zone("field", fcells_z)
+	_check(sim_z2.placement_block("wall", fcells_z[0]) == "city.placement_field",
+			"на клетке поля строить нельзя (v1.21)")
 
 	# --- дороги: камень за тайл, ускорение по дороге ---
 	var sim_r := _make_sim()
@@ -240,6 +248,8 @@ func _test_m6() -> void:
 	var sim_l := _make_sim()
 	sim_l._last_daily_day = 999
 	sim_l.res["iron"] = 50.0
+	sim_l.res["wood"] = 60.0   # v1.21: на склад и две плавильни хватает дерева
+	sim_l.res["stone"] = 60.0
 	var barn_l := _build_now(sim_l, "warehouse")
 	# этап 2: зазор 1 — плавильня в трёх клетках от склада (в радиусе бонуса 4)
 	var smelt_tile_l: Vector2i = sim_l.map.nearest_walkable((barn_l["tile"] as Vector2i) + Vector2i(3, 0))

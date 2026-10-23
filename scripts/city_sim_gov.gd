@@ -661,8 +661,12 @@ func _next_wall_tile() -> Vector2i:
 
 ## Еда идёт в минус: ожидаемый урожай полей меньше дневного расхода города.
 ## Правки v1.21: ферма больше не даёт пассивную еду — считаем по грядкам
-## действующих ферм (устойчивая скорость: урожай / полный цикл роста).
+## действующих ферм. Вспаханные клетки — по устойчивой скорости урожая,
+## невспаханные — ограниченным потенциалом (фермер ведь пашет), иначе город
+## бесконечно строил бы фермы, пока поле не вспахано.
 func _food_deficit() -> bool:
+	var fcfg: Dictionary = cfg.get("farming", {})
+	var est: float = float(fcfg.get("est_per_farm", 14.0))
 	var production := 0.0
 	var farms := {}
 	for b in buildings:
@@ -672,12 +676,15 @@ func _food_deficit() -> bool:
 		if String(z["type"]) != "field" or not farms.has(int(z.get("farm", -1))):
 			continue
 		var cdef: Dictionary = crop_def(String(z.get("crop", "turnip")))
-		var fcfg: Dictionary = cfg.get("farming", {})
 		var cycle: float = maxf(0.1, float(cdef.get("stage_days", 0.8))) * maxf(1, int(fcfg.get("stages", 4)))
 		var rate: float = float(cdef.get("harvest", 4.0)) / cycle
+		var filled := 0
+		var total := 0
 		for i in (z["cells"] as Array).size():
+			total += 1
 			if _cell_filled(z, i) and building_at(z["cells"][i]).is_empty():
-				production += rate
+				filled += 1
+		production += rate * float(filled) + minf(est, rate * float(total - filled))
 	return production < float(residents.size()) * float(cfg["food_per_resident_day"])
 
 
@@ -714,6 +721,14 @@ func _find_autobuild_tile(type_id: String) -> Vector2i:
 		var rock_t := _find_gather_tile(type_id, [map.TILE_ROCK, map.TILE_ORE], false)
 		if not rock_t == Vector2i(-1, -1):
 			return rock_t
+	if type_id == "sawmill":
+		# v1.21: правило «только у леса» снято (заказчик: ставится где угодно),
+		# но САМОСТРОЙ ищет место с деревьями в радиусе сбора — иначе лесоруб
+		# останется без работы и город без досок
+		var forest_t := _find_tile_near_nature("sawmill", [map.TILE_TREE],
+				float(cfg.get("gather_range", 6)))
+		if not forest_t == Vector2i(-1, -1):
+			return forest_t
 	var district := "work"
 	for d in cfg["buildings"]:
 		if String(d["id"]) == type_id:
@@ -728,6 +743,27 @@ func _find_autobuild_tile(type_id: String) -> Vector2i:
 	if not tile == Vector2i(-1, -1):
 		return tile
 	return _ring_buildable(map.spawn_tile, 8, type_id)
+
+
+## Ближайший к центру города билдабл-тайл рядом с природой заданных видов
+## (радиус от прямоугольника здания). Для самостроя добытчиков (v1.21).
+func _find_tile_near_nature(type_id: String, kinds: Array, radius: float) -> Vector2i:
+	var best := Vector2i(-1, -1)
+	var best_d := INF
+	for y in map.h:
+		for x in map.w:
+			var t := Vector2i(x, y)
+			if not is_buildable_rect(type_id, t) or not placement_gap_ok(type_id, t):
+				continue
+			if placement_block(type_id, t) != "":
+				continue
+			if _nature_near_rect(type_id, t, kinds, radius) == Vector2i(-1, -1):
+				continue
+			var d: float = Vector2(t).distance_to(Vector2(map.spawn_tile))
+			if d < best_d:
+				best_d = d
+				best = t
+	return best
 
 
 ## Ближайший к центру города тайл рядом с ресурсом, куда можно поставить здание.

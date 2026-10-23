@@ -318,11 +318,18 @@ func _test_defense() -> void:
 
 	# цепочка металла: руда → металл → инструменты/комплекты
 	# (тики копят время: тест уходит в ночь — возвращаем утро, иначе рабочие спят)
-	# M6: всё производство оседает кучами у зданий, в пул его сносит носильщик
+	# M6: всё производство оседает кучами у зданий, в пул его сносит носильщик.
+	# v1.21: шахта копит руду медленно (жила ~104 hp по 35/день) — ждём ходку
 	sim.time = 10.0
-	sim.tick(20.0)
+	for i in 50:
+		sim.tick(10.0)
+		sim.time = 10.0   # держим утро — шахтёр не спит
+		if float((mine["pile"] as Dictionary).get("iron", 0.0)) > 0.0:
+			break
 	_check(float((mine["pile"] as Dictionary).get("iron", 0.0)) > 0.0, "шахта добывает руду в кучу у здания")
 	var smelter_r := _add_resident(sim, "Ада", "smelter")
+	sim.res["wood"] = 60.0   # цепочке нужны ресурсы на плавильню (v1.21)
+	sim.res["stone"] = 40.0
 	var smelt := _build_at(sim, "smelter", _find_free_tile(sim, sim.map.spawn_tile))
 	_check(bool(smelt["done"]) and int(smelt["worker"]) == int(smelter_r["id"]), "плавильщик в плавильне")
 	sim.time = 10.0

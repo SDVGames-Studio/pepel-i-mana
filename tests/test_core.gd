@@ -304,6 +304,10 @@ func _test_city_sim() -> void:
 	sim.cfg["piles"] = {"chunk": 2.0, "max": 20.0, "carry": 10.0}   # мелкие кучи — тест не ждёт целый день
 	var farmer: Dictionary = _resident_by_prof(sim, "farmer")
 	_check(not farmer.is_empty(), "среди жителей есть фермер")
+	farmer["traits"] = []
+	farmer["mood"] = 100.0
+	farmer["ail"] = ""
+	farmer["skill"] = 0.0
 	_teleport(sim, farmer, sim.map.spawn_tile + Vector2i(2, 2))
 	sim.cfg["food_per_resident_day"] = 0.0
 	var food_before: float = float(sim.res["food"])
@@ -318,10 +322,14 @@ func _test_city_sim() -> void:
 			"на клетках поля строить нельзя")
 	_teleport(sim, farmer, farm["tile"])
 	sim.time = 10.0   # утро: длинные стройки выше съели полдня — не уходить в ночь
-	for i in 40:
+	sim._last_daily_day = 99   # дневные броски не мешают проверке поля
+	var farmer_state := ""
+	for i in 60:
 		sim.tick(1.0)
-	_check(String(farmer["state"]) in ["fill", "harvest", "going"],
-			"фермер вспахивает поле своей фермы")
+		if String(farmer["state"]) in ["fill", "harvest", "going"]:
+			farmer_state = String(farmer["state"])
+			break
+	_check(farmer_state != "", "фермер вспахивает поле своей фермы")
 	# урожай лежит в куче у фермы — урожай с грядок уходит в общий пул сразу,
 	# поэтому кучу для носильщика даём руками (как тестируется и в M6)
 	farm["pile"] = {"food": 4.0}
@@ -796,10 +804,16 @@ func _test_people() -> void:
 	_check(int(quarry["worker"]) == int(miner_q["id"]), "шахтёр работает в каменоломне")
 	_teleport(sim_st, miner_q, quarry["tile"])
 	sim_st.cfg["food_per_resident_day"] = 0.0
-	for i in 4:   # выйти из сплошной каменоломни (2×2), дойти до скалы, добыть
-		sim_st.tick(5.0)
+	miner_q["traits"] = []
+	miner_q["mood"] = 100.0
+	miner_q["ail"] = ""
+	for i in 45:   # v1.21: гряда 80 hp по 55/день + ходьба — держим утро, ждём кучу
+		sim_st.tick(10.0)
+		sim_st.time = 10.0
+		if float((quarry["pile"] as Dictionary).get("stone", 0.0)) > 0.0:
+			break
 	_check(float((quarry["pile"] as Dictionary).get("stone", 0.0)) > 0.0,
-			"каменоломня добывает камень в кучу у здания (M6)")
+			"каменоломня добывает камень в кучу у здания (v1.21: сырьём на себе)")
 	# v1.20: стартовых жителей теперь ШЕСТЬ (староста — отдельный голем) — среди
 	# них есть крафтер; для чистоты проверки новичка уводим стартового с профессии
 	for r in sim_st.residents:

@@ -430,12 +430,15 @@ func _test_fixes_v120() -> void:
 			meeting_n += 1
 	_check(meeting_n > 0, "утро: жители получили зов на планёрку")
 	var plaza_center: Vector2i = sim_m.plaza + Vector2i(1, 1)
-	for i in 60:
-		sim_m.tick(0.5)
 	var at_plaza := 0
-	for r in sim_m.residents:
-		if (r["pos"] as Vector2).distance_to(sim_m.map.tile_center_px(plaza_center)) < float(sim_m.map.ts) * 3.5:
-			at_plaza += 1
+	for i in 20:   # планёрка короткая (7 сек) — ловим момент сбора в окне
+		sim_m.tick(0.5)
+		at_plaza = 0
+		for r in sim_m.residents:
+			if (r["pos"] as Vector2).distance_to(sim_m.map.tile_center_px(plaza_center)) < float(sim_m.map.ts) * 3.5:
+				at_plaza += 1
+		if at_plaza > 0:
+			break
 	_check(at_plaza > 0, "жители собрались у главной площади на планёрку")
 
 	# --- мысли жителей: строка для тултипа и журнал наведения ---
