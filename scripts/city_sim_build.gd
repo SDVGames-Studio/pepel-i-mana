@@ -689,10 +689,11 @@ func _active(b: Dictionary) -> bool:
 	return bool(b["done"]) and not bool(b.get("razed", false))
 
 
-## Цена мгновенного ремонта (этап 2, аспект 5): cost_frac от стоимости
-## постройки, каждый ресурс округляется вверх (минимум 1, если был в цене).
-func repair_cost(type_id: String) -> Dictionary:
-	var frac: float = float(cfg.get("repair", {}).get("cost_frac", 0.4))
+## Цена ремонта (доля стоимости постройки; frac_v < 0 — доля героя из
+## конфига): каждый ресурс округляется вверх (минимум 1, если был в цене).
+func repair_cost(type_id: String, frac_v := -1.0) -> Dictionary:
+	var frac: float = float(cfg.get("repair", {}).get("cost_frac", 0.4)) \
+			if frac_v < 0.0 else frac_v
 	var out: Dictionary = {}
 	for d in cfg["buildings"]:
 		if String(d["id"]) == type_id:
@@ -702,17 +703,18 @@ func repair_cost(type_id: String) -> Dictionary:
 	return out
 
 
-## Мгновенный ремонт за 40% стоимости (этап 2, аспект 5): чинит и повреждённое
-## здание, и руины (поднимает, клетки снова преграждают путь).
-## "" — успех | "bad" | "full" | "no_res".
-func repair_building(b: Dictionary) -> String:
+## Мгновенный ремонт за долю стоимости: чинит и повреждённое здание, и
+## руины (поднимает, клетки снова преграждают путь). Доля героя — cost_frac
+## (40%); город чинит сам — строитель за builder_frac, непрофильный житель
+## за other_frac (v1.21.3). "" — успех | "bad" | "full" | "no_res".
+func repair_building(b: Dictionary, frac_v := -1.0) -> String:
 	if b.is_empty() or not bool(b.get("done", false)):
 		return "bad"
 	var max_hp := float(_bld_max_hp(String(b["type"])))
 	var was_razed := bool(b.get("razed", false))
 	if not was_razed and float(b.get("hp", max_hp)) >= max_hp:
 		return "full"   # чинить нечего
-	var cost := repair_cost(String(b["type"]))
+	var cost := repair_cost(String(b["type"]), frac_v)
 	if not can_afford(cost):
 		return "no_res"
 	for key in cost:
@@ -732,6 +734,83 @@ func repair_building(b: Dictionary) -> String:
 	_chron("chron.repaired", String(b["type"]))
 	_assign_jobs()
 	return ""
+
+
+## Дневной бросок (v1.21.3): город чинит сам. Самое битое здание (сперва
+## руины, затем минимум прочности) получает мастера: свободный строитель
+## чинит за 50% стоимости, строителя нет — любой непрофильный взрослый
+## за 70%. Не по карману — завтра (мастерская лечит медленно бесплатно).
+func _roll_city_repair() -> void:
+	var rcfg: Dictionary = cfg.get("repair", {})
+	var worst: Dictionary = {}
+	var worst_rank := 0.0
+	for b in buildings:
+		if not bool(b.get("done", false)):
+			continue
+		var max_hp := float(_bld_max_hp(String(b["type"])))
+		var hp := float(b.get("hp", max_hp))
+		if not bool(b.get("razed", false)) and hp >= max_hp:
+			continue   # целое
+		var rank := 0.0 if bool(b.get("razed", false)) else 1.0 + hp / maxf(1.0, max_hp)
+		if worst.is_empty() or rank < worst_rank:
+			worst = b
+			worst_rank = rank
+	if worst.is_empty():
+		return
+	var repairer := {}
+	var frac := 0.0
+	for r in residents:
+		if String(r["prof"]) == "builder" and r["site"] == null and r["bld"] == null \
+				and String(r.get("ail", "")) == "" and int(r.get("repair_bld", 0)) <= 0:
+			repairer = r
+			frac = float(rcfg.get("builder_frac", 0.5))
+			break
+	if repairer.is_empty():
+		for r in residents:
+			var prof := String(r["prof"])
+			if prof != "" and prof != "elder" and prof != "builder" \
+					and r["site"] == null and r["bld"] == null \
+					and String(r.get("ail", "")) == "" and int(r.get("repair_bld", 0)) <= 0:
+				repairer = r
+				frac = float(rcfg.get("other_frac", 0.7))
+				break
+	if repairer.is_empty():
+		return
+	if not can_afford(repair_cost(String(worst["type"]), frac)):
+		return   # не по карману — завтра
+	repairer["repair_bld"] = int(worst["id"])
+	repairer["repair_frac"] = frac
+
+
+## Поручение города (v1.21.3): житель идёт с инструментом к битому зданию,
+## по приходе поднимает его за долю стоимости. False — поручения нет.
+func _repair_errand(r: Dictionary, dt: float) -> bool:
+	var bid := int(r.get("repair_bld", 0))
+	if bid <= 0:
+		return false
+	var b: Dictionary = {}
+	for bb in buildings:
+		if int(bb["id"]) == bid:
+			b = bb
+			break
+	var max_hp := float(_bld_max_hp(String(b["type"]))) if not b.is_empty() else 0.0
+	if b.is_empty() or not bool(b.get("done", false)) \
+			or (not bool(b.get("razed", false)) and float(b.get("hp", max_hp)) >= max_hp):
+		r["repair_bld"] = 0   # исчезло или уже починили (герой/мастерская)
+		return false
+	if not at_bld(r, b):
+		r["state"] = "repair"
+		_move_towards(r, bld_spot(b), dt)
+		return true
+	var frac := float(r.get("repair_frac", 0.7))
+	r["repair_bld"] = 0
+	if not can_afford(repair_cost(String(b["type"]), frac)):
+		return true   # дошёл, денег не хватает — завтра снова
+	repair_building(b, frac)
+	events.append({"type": "city_repaired", "bld": String(b["type"]),
+			"name": String(r["name"]), "frac": frac})
+	_chron("chron.city_repaired", String(r["name"]), String(b["type"]))
+	return true
 
 
 ## Ближайшее к герою готовое здание, которое можно чинить (повреждено или руины).
