@@ -199,23 +199,26 @@ func _test_stage2_aspect3() -> void:
 
 ## Правка приёмки v1.15.1: соседняя постройка 2×2 перекрыла вход здания —
 ## работник не должен простаивать вечно, вход пересчитывается.
+## v1.21: ферма больше не производит у входа (она на грядках) — проверяем
+## на плавильне: копит кучу металла, стоя у входа.
 func _test_stage2_entrance_recalc() -> void:
 	print("[Этап 2: перекрытый вход]")
 	var sim_e := _make_sim()
 	sim_e._last_daily_day = 999
 	sim_e.cfg["food_per_resident_day"] = 0.0
-	var farmer_e: Dictionary = _resident_by_prof(sim_e, "farmer")
-	farmer_e["traits"] = []
-	farmer_e["mood"] = 100.0
-	# v1.20: у спавна площадь с запретным радиусом — ферму строим вдали,
-	# чтобы стены у её входа не упирались в запрет стройки
-	var farm_e := _build_now(sim_e, "farm", sim_e.map.spawn_tile + Vector2i(14, 8))
-	var spot0: Vector2i = sim_e.bld_spot(farm_e)
-	_teleport(sim_e, farmer_e, spot0)
+	var smelter_e_res := _add_resident(sim_e, "Огнь", "smelter")
+	smelter_e_res["traits"] = []
+	smelter_e_res["mood"] = 100.0
+	sim_e.res["iron"] = 50.0
+	var smelt_e := _build_now(sim_e, "smelter", sim_e.map.spawn_tile + Vector2i(14, 8))
+	smelt_e["worker"] = int(smelter_e_res["id"])
+	smelter_e_res["bld"] = smelt_e
+	var spot0: Vector2i = sim_e.bld_spot(smelt_e)
+	_teleport(sim_e, smelter_e_res, spot0)
 	for i in 4:
 		sim_e.tick(2.0)
-	var pile0: float = sim_e._pile_total(farm_e)
-	_check(pile0 > 0.0, "фермер работает у входа фермы")
+	var pile0: float = sim_e._pile_total(smelt_e)
+	_check(pile0 > 0.0, "плавильщик работает у входа плавильни")
 	# ставим стену 1×1 поверх текущего входа: стена — сплошное кольцо, зазора
 	# не держит и может перекрыть вход (правило зазоров — для обычных зданий)
 	var placed := false
@@ -224,14 +227,14 @@ func _test_stage2_entrance_recalc() -> void:
 		if sim_e.place_building("wall", a):
 			placed = true
 			break
-	_check(placed, "вход фермы перекрыт стеной")
-	var spot1: Vector2i = sim_e.bld_spot(farm_e)
+	_check(placed, "вход плавильни перекрыт стеной")
+	var spot1: Vector2i = sim_e.bld_spot(smelt_e)
 	_check(spot1 != spot0 and sim_e.map.is_walkable(spot1),
 			"вход пересчитан на свободную сторону")
-	_teleport(sim_e, farmer_e, spot1)
+	_teleport(sim_e, smelter_e_res, spot1)
 	for i in 5:
 		sim_e.tick(2.0)
-	_check(sim_e._pile_total(farm_e) > pile0, "фермер вернулся к работе через новый вход")
+	_check(sim_e._pile_total(smelt_e) > pile0, "плавильщик вернулся к работе через новый вход")
 	print("[Этап 2: перекрытый вход] готово")
 
 

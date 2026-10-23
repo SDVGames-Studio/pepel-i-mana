@@ -1,7 +1,7 @@
-# Часть: носильщик и кучи, зоны (поле/пастбище), рост культур, саженцы лесопилки.
+# Часть: носильщик и кучи, зоны (поля ферм/пастбища), рост культур.
 # Правки структуры v1.20.2: огромный city_sim.gd разбит на extends-цепочку
 # частей; это один класс, разложенный по файлам — поведение не меняется.
-extends "res://scripts/city_sim_tick.gd"
+extends "res://scripts/city_sim_gather.gd"
 
 # --- носильщик и физический склад (M6, ответ №20) ---------------------------
 
@@ -309,7 +309,13 @@ func _magic_pollution_mult() -> float:
 
 ## Свободный житель обустраивает ближайшую незаполненную клетку зоны;
 ## спелые грядки полей собирает (этап 2, аспект 3). False — зон нет.
+## Правка v1.21 (голем-староста «менял цель очень быстро»): начатая клетка
+## доводится до конца — спелые грядки и новые «ближние» цели её не перебивают.
 func _zone_fill_work(r: Dictionary, dt: float) -> bool:
+	var sticky: Dictionary = _zone_fill_sticky(r)
+	if not sticky.is_empty():
+		_zone_fill_do(r, sticky, dt)
+		return true
 	var ripe := _nearest_ripe_field_cell(r)
 	if not ripe.is_empty():
 		var rt: Vector2i = ripe["tile"]
@@ -325,6 +331,27 @@ func _zone_fill_work(r: Dictionary, dt: float) -> bool:
 	var target := _nearest_zone_cell(r)
 	if target.is_empty():
 		return false
+	r["_fill_zone"] = int((target["zone"] as Dictionary)["id"])
+	r["_fill_idx"] = int(target["idx"])
+	_zone_fill_do(r, target, dt)
+	return true
+
+
+## Липкая цель обустройства: начатая клетка, пока она не заполнена.
+func _zone_fill_sticky(r: Dictionary) -> Dictionary:
+	var sticky_z: Dictionary = zone_by_id(int(r.get("_fill_zone", -1)))
+	if sticky_z.is_empty():
+		return {}
+	var si := int(r.get("_fill_idx", -1))
+	if si < 0 or si >= (sticky_z["cells"] as Array).size():
+		return {}
+	if _cell_filled(sticky_z, si) or not building_at(sticky_z["cells"][si]).is_empty():
+		return {}
+	return {"zone": sticky_z, "idx": si, "tile": sticky_z["cells"][si]}
+
+
+## Шаг обустройства клетки зоны (дойти → копить прогресс → закрыть клетку).
+func _zone_fill_do(r: Dictionary, target: Dictionary, dt: float) -> void:
 	var tile: Vector2i = target["tile"]
 	if _arrived(r, tile):
 		r["state"] = "fill"
@@ -334,11 +361,12 @@ func _zone_fill_work(r: Dictionary, dt: float) -> bool:
 		r["fatigue"] += dt / float(cfg["day_length"])
 		_grow_skill(r, dt)
 		if _cell_filled(z, i):
+			r["_fill_zone"] = -1
+			r["_fill_idx"] = -1
 			events.append({"type": "zone_cell", "zone": String(z["type"])})
 			_zone_check_done(z, r)
 	else:
 		_move_towards(r, tile, dt)
-	return true
 
 
 ## Ближайшая незаполненная клетка зоны: {zone, idx, tile} или {}.

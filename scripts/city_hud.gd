@@ -68,12 +68,13 @@ func refresh() -> void:
 	if sim == null:
 		return
 	var cap: int = sim.storage_cap()
-	_res_label.text = "%s %d/%d   %s %d/%d   %s %d   %s %d   %s %d\n%s %d/%d   %s %d   %s %d   %s %d   %s %d   %s %d" % [
+	_res_label.text = "%s %d/%d   %s %d/%d   %s %d   %s %d   %s %d\n%s %d   %s %d/%d   %s %d   %s %d   %s %d   %s %d   %s %d" % [
 		Loc.t("res.wood"), int(sim.res["wood"]), cap,
 		Loc.t("res.stone"), int(sim.res["stone"]), cap,
 		Loc.t("res.food"), int(sim.res["food"]),
 		Loc.t("res.crystal"), int(sim.res["crystal"]),
 		Loc.t("res.tools"), int(sim.res.get("tools", 0)),
+		Loc.t("res.gems"), int(sim.res.get("gems", 0)),
 		Loc.t("res.iron"), int(sim.res.get("iron", 0)), cap,
 		Loc.t("res.metal"), int(sim.res.get("metal", 0)),
 		Loc.t("res.kits"), int(sim.res.get("kits", 0)),
@@ -122,11 +123,18 @@ func refresh() -> void:
 
 
 func toast(msg: String) -> void:
+	if _toast_label.text == msg and _toast_time > 0.0:
+		_toast_time = 3.0
+		return
 	_toast_label.text = msg
 	_toast_time = 3.0
 
 
+## Подсказка под панелью зданий. Правка v1.21: одинаковый текст не перезаписываем —
+## присвоение text каждый кадр форсит переразметку лейбла и режет FPS.
 func set_hint(msg: String) -> void:
+	if _hint_label.text == msg:
+		return
 	_hint_label.text = msg
 
 
@@ -151,12 +159,15 @@ func set_enchant_colors(colors: Dictionary) -> void:
 
 
 ## Подсказка у курсора: название здания под мышью (пустой текст — скрыть).
+## Правка v1.21: тот же текст не пересобираем — reset_size() каждый кадр дорог.
 func set_hover_info(text: String, screen_pos: Vector2) -> void:
 	if text == "":
-		_hover_panel.visible = false
+		if _hover_panel.visible:
+			_hover_panel.visible = false
 		return
-	_hover_label.text = text
-	_hover_panel.reset_size()
+	if _hover_label.text != text:
+		_hover_label.text = text
+		_hover_panel.reset_size()
 	var viewport_size: Vector2 = _hover_panel.get_viewport_rect().size
 	var pos: Vector2 = screen_pos + Vector2(14, 18)
 	pos = pos.min(viewport_size - _hover_panel.size - Vector2(4, 4))
@@ -767,15 +778,17 @@ func _build() -> void:
 	var sep := VSeparator.new()
 	row.add_child(sep)
 
-	# --- инструменты зон, дорог и посадки (M6/M11; правки v1.20: только
-	# Поле и Пастбище, жилая зона и слои убраны по приёмке) ---
+	# --- инструменты зон, дорог и посадки (M6/M11; правки v1.21: поле
+	# распахивает ферма, инструмент «Поле» остался для смены культуры кликом
+	# по готовой грядке; размечается вручную только пастбище) ---
 	var tools := [["field", func() -> void: city.set_zone_mode("field")],
 			["pasture", func() -> void: city.set_zone_mode("pasture")]]
 	for t in tools:
 		var zone_type: String = t[0]
 		var zbtn := Button.new()
 		zbtn.text = Loc.t("zone." + zone_type)
-		zbtn.tooltip_text = Loc.t("city.zone_tooltip") % Loc.t("zone." + zone_type)
+		zbtn.tooltip_text = Loc.t("city.zone_tooltip_field" if zone_type == "field" else "city.zone_tooltip") \
+				% Loc.t("zone." + zone_type)
 		zbtn.custom_minimum_size = Vector2(104, 52)
 		zbtn.add_theme_font_size_override("font_size", 17)
 		zbtn.focus_mode = Control.FOCUS_NONE

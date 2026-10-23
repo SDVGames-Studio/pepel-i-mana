@@ -251,6 +251,10 @@ func _leftover_line() -> String:
 	return " ".join(parts)
 
 
+var _hud_refresh_accum := 0.0     # троттлинг HUD (v1.21): панели не чаще 4 раз/сек
+var _terrain_redraw_accum := 0.0  # ландшафт перерисовывается не чаще 2 раз/сек
+
+
 func _process(delta: float) -> void:
 	# герой в городе: мутанты могут гнаться за ним (M5)
 	if not hero.dead:
@@ -260,12 +264,24 @@ func _process(delta: float) -> void:
 	hero.queue_redraw()
 	# болотная зона города (M14-I): тайлы у воды вязнут — герой медленнее
 	hero.city_speed_mult = 0.7 if _near_water(hero.position) else 1.0
+	# правки v1.21 (фризы/FPS): полная перерисовка ландшафта — событие редкое,
+	# но раньше рубка каждого дерева роняла кадр; теперь не чаще 2 раз/сек
 	if sim.terrain_dirty:
-		sim.terrain_dirty = false
-		_terrain.queue_redraw()
-		view.mark_trees_dirty()   # деревья ушли в сортированный слой (M12)
+		_terrain_redraw_accum += delta
+		if _terrain_redraw_accum >= 0.5:
+			_terrain_redraw_accum = 0.0
+			sim.terrain_dirty = false
+			_terrain.queue_redraw()
+			view.mark_trees_dirty()   # деревья ушли в сортированный слой (M12)
+	else:
+		_terrain_redraw_accum = 0.0
 	view.queue_redraw()
-	hud.refresh()
+	# HUD (v1.21): refresh каждый кадр перелопачивал тексты лейблов и ронял
+	# FPS — обновляем панели 4 раза в секунду, подсказка у курсора — как раньше
+	_hud_refresh_accum += delta
+	if _hud_refresh_accum >= 0.25:
+		_hud_refresh_accum = 0.0
+		hud.refresh()
 	_update_daylight()
 	if _weather_fx != null:
 		_weather_fx.weather = sim.weather
@@ -612,6 +628,16 @@ func _process_events() -> void:
 			# --- вишлист M11: лес, скала, некромант ---
 			"tree_felled":
 				pass   # тихо: летопись знает, спиливать — работа
+			"tree_sawed":
+				pass   # тихо: доски упали в кучу лесопилки (v1.21)
+			"quarry_processed":
+				pass   # тихо: камень лежит в куче каменоломни (v1.21)
+			"quarry_bonus":
+				hud.toast(Loc.t("city.quarry_bonus_toast") % Loc.t("res." + String(ev["res"])))
+			"mine_hauled":
+				pass   # тихо: шахта копит руду и камень (v1.21)
+			"farm_field":
+				hud.toast(Loc.t("city.farm_field_toast") % int(ev["cells"]))
 			"sapling_planted":
 				hud.toast(Loc.t("city.sapling_toast"))
 			"tree_grown":
@@ -948,7 +974,12 @@ func _sync_view_tools() -> void:
 
 
 ## Выделение зоны применено: все клетки прямоугольника уходят в симуляцию.
+## Правки v1.21: поле вручную больше не размечается — его распахивает ферма
+## (клик по готовой грядке по-прежнему меняет культуру поля).
 func _apply_zone() -> void:
+	if zone_mode == "field":
+		hud.toast(Loc.t("city.zone_field_farm"))
+		return
 	var cells: Array = []
 	var x0 := mini(_drag_from.x, _drag_to.x)
 	var x1 := maxi(_drag_from.x, _drag_to.x)
@@ -957,21 +988,9 @@ func _apply_zone() -> void:
 	for y in range(y0, y1 + 1):
 		for x in range(x0, x1 + 1):
 			cells.append(Vector2i(x, y))
-	# поле ставится СРАЗУ с репой (правки v1.20: обязательный диалог выбора
-	# культуры путал игроков — «ставлю поле, ничего нет»); культуру меняют
-	# кликом по готовой грядке
-	var crop := "turnip"
-	if zone_mode == "field":
-		var zf: Dictionary = sim.field_at(_drag_from)
-		if not zf.is_empty():
-			crop = String(zf.get("crop", "turnip"))   # расширяем поле его культурой
-	var added: int = sim.add_zone(zone_mode, cells, crop)
+	var added: int = sim.add_zone(zone_mode, cells)
 	if added > 0:
-		if zone_mode == "field":
-			hud.toast(Loc.t("city.zone_field_added") % [added,
-					Loc.t(String(sim.crop_def(crop).get("loc", crop)))])
-		else:
-			hud.toast(Loc.t("city.zone_added") % [Loc.t("zone." + zone_mode), added])
+		hud.toast(Loc.t("city.zone_added") % [Loc.t("zone." + zone_mode), added])
 	else:
 		hud.toast(Loc.t("city.zone_bad"))
 
@@ -1338,7 +1357,7 @@ func _hero_act() -> bool:
 	_hero_work_cd = float(hw.get("cooldown", 0.35))
 	match res:
 		"fell":
-			hud.toast(Loc.t("city.hero_tree_felled") % int(hw.get("wood_per_tree", 6)))
+			hud.toast(Loc.t("city.hero_tree_felled") % int(sim._last_fell_planks))
 		"ore":
 			hud.toast(Loc.t("city.hero_ore_found"))
 		"gem":

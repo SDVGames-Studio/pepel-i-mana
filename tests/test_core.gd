@@ -113,7 +113,8 @@ func _test_data() -> void:
 	_check(speeds_ok, "city.json — есть супер-скорость x10 (M4)")
 	for b in city.get("buildings", []):
 		if b is Dictionary and String(b.get("id", "")) == "farm":
-			_check(int(b["produce"]["per_day"]) == 16, "поле эффективнее: 16 еды в день с работника")
+			_check(not b.has("produce") and bool(b.get("field", false)),
+					"ферма не даёт пассивную еду — распахивает поле (v1.21)")
 	var residents_data: Variant = _read_json("res://data/residents.json")
 	_check(residents_data is Dictionary, "residents.json — валидный JSON-словарь")
 	if residents_data is Dictionary:
@@ -297,8 +298,9 @@ func _test_city_sim() -> void:
 	var wall_site := _build_now(sim, "wall")
 	_check(not sim.map.is_walkable(wall_site["tile"]), "построенный частокол — преграда")
 
-	# ферма: фермер работает, еда копится КУЧЕЙ у фермы — в пул попадает
-	# только через носильщика (M6: физическая логистика, ответ №20)
+	# ферма (v1.21): при постройке распахивает поле, фермер вспахивает грядки;
+	# еда приходит урожаем в кучу у фермы — в пул попадает только носильщиком
+	# (M6: физическая логистика, ответ №20)
 	sim.cfg["piles"] = {"chunk": 2.0, "max": 20.0, "carry": 10.0}   # мелкие кучи — тест не ждёт целый день
 	var farmer: Dictionary = _resident_by_prof(sim, "farmer")
 	_check(not farmer.is_empty(), "среди жителей есть фермер")
@@ -306,17 +308,25 @@ func _test_city_sim() -> void:
 	sim.cfg["food_per_resident_day"] = 0.0
 	var food_before: float = float(sim.res["food"])
 	var farm := _build_now(sim, "farm")
+	var farm_zone: Dictionary = {}
+	for z in sim.zones:
+		if int(z.get("farm", -1)) == int(farm["id"]):
+			farm_zone = z
+	_check(not farm_zone.is_empty() and (farm_zone["cells"] as Array).size() > 0,
+			"ферма распахала поле вокруг себя (v1.21)")
+	_check(sim.placement_block("house", farm_zone["cells"][0]) == "city.placement_field",
+			"на клетках поля строить нельзя")
 	_teleport(sim, farmer, farm["tile"])
 	sim.time = 10.0   # утро: длинные стройки выше съели полдня — не уходить в ночь
-	# этап 2, аспект 2: житель подходит ко входу фермы 2×2 — даём время дойти
-	# и накопить кучу до порога chunk (2.0), чтобы носильщику было что унести
 	for i in 40:
 		sim.tick(1.0)
-	_check(String(farmer["state"]) == "work", "фермер работает на ферме")
-	_check(float((farm["pile"] as Dictionary).get("food", 0.0)) > 0.0,
-			"ферма складывает еду в кучу у здания")
+	_check(String(farmer["state"]) in ["fill", "harvest", "going"],
+			"фермер вспахивает поле своей фермы")
+	# урожай лежит в куче у фермы — урожай с грядок уходит в общий пул сразу,
+	# поэтому кучу для носильщика даём руками (как тестируется и в M6)
+	farm["pile"] = {"food": 4.0}
 	_check(absf(float(sim.res["food"]) - food_before) < 0.001,
-			"без носильщика еда в общий пул не попадает")
+			"без носильщика куча у фермы не попадает в общий пул")
 	# носильщик: забрал кучу и снёс на склад — пул вырос
 	var porter: Dictionary = sim._new_resident("Тар", "porter", sim.map.spawn_tile)
 	sim.residents.append(porter)
@@ -345,7 +355,8 @@ func _test_city_sim() -> void:
 	var starving_mult: float = sim.work_mult(farmer)
 	_check(starving_mult <= 0.75, "голод режет работу почти вдвое (%.2f)" % starving_mult)
 	sim.tick(0.5)
-	_check(String(farmer["state"]) == "work", "голодный фермер не бросает ферму (анти-тупик M4)")
+	_check(String(farmer["state"]) in ["fill", "harvest", "going"],
+			"голодный фермер не бросает поле (анти-тупик M4)")
 	var sim_h := _make_sim()
 	sim_h.res["food"] = 0.0
 	sim_h.tick(0.5)

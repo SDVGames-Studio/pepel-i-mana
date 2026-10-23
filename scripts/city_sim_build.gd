@@ -299,7 +299,7 @@ func _try_expand_bld(b: Dictionary) -> bool:
 			return false
 		var type_id := String(b["type"])
 		var ok_nature: bool = map.is_nature_walkable(c) \
-				or (type_id == "mine" and map.grid[c.y][c.x] == map.TILE_ORE)
+				or (type_id == "mine" and int(map.grid[c.y][c.x]) in [map.TILE_ORE, map.TILE_DEADROCK])
 		if not ok_nature or not building_at(c).is_empty():
 			return false
 		if map.bridges.has(c):
@@ -349,8 +349,10 @@ func is_buildable_tile(tile: Vector2i, type_id := "") -> bool:
 	if type_id != "bridge" and near_plaza(tile):
 		return false
 	if not map.is_nature_walkable(tile):
-		# шахту ставим прямо на рудную жилу (заказчик: место под шахту)
-		if type_id == "mine" and map.grid[tile.y][tile.x] == map.TILE_ORE:
+		# шахту ставим и на рудную жилу, и на пустую породу выработанного
+		# массива (v1.21); поле фермы под шахтой не вспахано — до шахты ей дела нет
+		if type_id == "mine" and (map.grid[tile.y][tile.x] == map.TILE_ORE \
+				or map.grid[tile.y][tile.x] == map.TILE_DEADROCK):
 			pass
 		# мост (M14-I) ставится прямо на воду
 		elif type_id == "bridge" and map.grid[tile.y][tile.x] == map.TILE_WATER:
@@ -498,8 +500,9 @@ func placement_block(type_id: String, tile: Vector2i, skip_count := false) -> St
 	if not skip_count and max_count > 0 and _count_type(type_id) >= max_count:
 		return "city.tent_limit"   # лимит построек типа (этап 2, аспект 4)
 	match place:
-		"ore":
-			if map.in_bounds(tile) and map.grid[tile.y][tile.x] != map.TILE_ORE:
+		"ore", "veins":
+			# шахта (v1.21) — у рудной жилы или выработанного массива (радиус 2)
+			if _nature_near_rect(type_id, tile, [map.TILE_ORE, map.TILE_DEADROCK], 2.0) == Vector2i(-1, -1):
 				return "city.placement_ore"
 		"water":
 			if not _water_near(tile):
@@ -517,15 +520,26 @@ func placement_block(type_id: String, tile: Vector2i, skip_count := false) -> St
 					break
 			if not near_f:
 				return "city.placement_forge"
-		"forest":
-			# лесопилка — только у леса: лесоруб добывает именно деревья (заказчик)
-			if _nature_near(tile, [map.TILE_TREE], 2.0) == Vector2i(-1, -1):
-				return "city.placement_forest"
 		"rock":
 			# каменоломня — только у скал (заказчик)
-			if _nature_near(tile, [map.TILE_ROCK, map.TILE_ORE], 2.0) == Vector2i(-1, -1):
+			if _nature_near_rect(type_id, tile, [map.TILE_ROCK, map.TILE_ORE], 2.0) == Vector2i(-1, -1):
 				return "city.placement_rock"
+	# клетки поля фермы (v1.21) — строить нельзя; сама ферма на своё поле не попадает
+	if type_id != "farm":
+		var w := bld_w_of_type(type_id)
+		for dy in w:
+			for dx in w:
+				if _tile_in_field_zone(tile + Vector2i(dx, dy)):
+					return "city.placement_field"
 	return ""
+
+
+## Клетка занята полем фермы (не любой зоной — пастбище стройке не мешает).
+func _tile_in_field_zone(tile: Vector2i) -> bool:
+	for z in zones:
+		if String(z["type"]) == "field" and (z["cells"] as Array).has(tile):
+			return true
+	return false
 
 
 ## Сколько построек этого типа стоит (включая стройплощадки).
@@ -546,6 +560,18 @@ func _nature_near(tile: Vector2i, kinds: Array, radius: float) -> Vector2i:
 			if map.in_bounds(t) and Vector2(t).distance_to(Vector2(tile)) <= radius \
 					and map.grid[t.y][t.x] in kinds:
 				return t
+	return Vector2i(-1, -1)
+
+
+## Тайл природы у прямоугольника здания (радиус от КАЖДОЙ клетки, v1.21) —
+## так «в радиусе 2 клеток от шахты» честно считается от всего здания.
+func _nature_near_rect(type_id: String, tile: Vector2i, kinds: Array, radius: float) -> Vector2i:
+	var w := bld_w_of_type(type_id)
+	for dy in w:
+		for dx in w:
+			var found: Vector2i = _nature_near(tile + Vector2i(dx, dy), kinds, radius)
+			if found != Vector2i(-1, -1):
+				return found
 	return Vector2i(-1, -1)
 
 
@@ -721,7 +747,7 @@ func move_spot_ok(b: Dictionary, tile: Vector2i) -> bool:
 			if not map.in_bounds(cell) or cell == map.anomaly_tile:
 				return false
 			var ok_nature: bool = map.is_nature_walkable(cell) \
-					or (type_id == "mine" and map.grid[cell.y][cell.x] == map.TILE_ORE)
+					or (type_id == "mine" and int(map.grid[cell.y][cell.x]) in [map.TILE_ORE, map.TILE_DEADROCK])
 			if not ok_nature:
 				return false
 			var other := building_at(cell)
@@ -793,7 +819,44 @@ func _complete_site(site: Dictionary) -> void:
 	if _def(site).get("effect", "") == "gate":
 		_update_gates()   # ворота при достройке сразу закрываются/открываются
 	events.append({"type": "built", "bld": String(site["type"])})
+	if String(site["type"]) == "farm":
+		_make_farm_field(site)   # вокруг фермы распахивается поле (v1.21)
 	_assign_jobs()
+
+
+## Поле фермы (правки v1.21): при достройке фермы вокруг неё распахивается
+## поле радиусом farming.field_radius клеток — трава без посторонних строений,
+## дорог, пней и чужих зон. На клетках поля строить нельзя; сама ферма может
+## стоять вплотную к стене — полю это не мешает.
+func _make_farm_field(b: Dictionary) -> void:
+	var fcfg: Dictionary = cfg.get("farming", {})
+	var radius := int(fcfg.get("field_radius", 2))
+	var cells: Array = []
+	var progress: Array = []
+	var w := bld_w(b)
+	var t: Vector2i = b["tile"]
+	for dy in range(-radius, w + radius):
+		for dx in range(-radius, w + radius):
+			var c: Vector2i = t + Vector2i(dx, dy)
+			if dx >= 0 and dy >= 0 and dx < w and dy < w:
+				continue   # прямоугольник самой фермы
+			if not map.in_bounds(c) or c == map.anomaly_tile:
+				continue
+			if map.grid[c.y][c.x] != map.TILE_GRASS:
+				continue   # мешает сторона: вода, скала, дерево, порода
+			if map.stumps.has(c) or map.saplings.has(c) or map.has_road(c) or map.bridges.has(c):
+				continue
+			if not building_at(c).is_empty() or _tile_in_zone(c):
+				continue
+			cells.append(c)
+			progress.append(0.0)
+	if cells.is_empty():
+		return
+	zones.append({"id": _zone_id, "type": "field", "cells": cells,
+			"progress": progress, "crop": "turnip", "crops": [], "farm": int(b["id"])})
+	_zone_id += 1
+	events.append({"type": "farm_field", "cells": cells.size()})
+	_chron("chron.farm_field", str(cells.size()))
 
 
 ## Клетки готового здания сплошные/проходимые (кроме ворот — ими ведёт страж).

@@ -718,28 +718,47 @@ func _roll_hunter() -> void:
 
 # --- M11: духи леса ---------------------------------------------------------
 
-## Лес живёт: саженцы растут в деревья, гнев спадает; переполнение гнева —
-## духи нападают на рубящих, при долгом злодействе — Древень с армией леса.
+## Лес живёт (правки v1.21): саженец 5 дней растёт до малого дерева (гнев −),
+## малое +5 дней — до среднего, среднее +10 дней — до большого (любое дерево
+## на карте растёт); гнев спадает медленно; переполнение — духи, потом Древень.
 func _update_forest(dt: float, day_len: float) -> void:
 	var fcfg: Dictionary = cfg.get("forest", {})
 	if fcfg.is_empty():
 		return
-	# посаженное растёт
+	# посаженное растёт до малого дерева
 	if not map.saplings.is_empty():
 		for tile: Vector2i in map.saplings.keys():
 			var s: Dictionary = map.saplings[tile]
 			s["t"] = float(s.get("t", 0.0)) + dt
-			if float(s["t"]) < float(s.get("grow_days", fcfg.get("grow_days", 1.2))) * day_len:
+			if float(s["t"]) < float(s.get("grow_days", fcfg.get("grow_days", 5.0))) * day_len:
 				continue
 			map.saplings.erase(tile)
 			if map.grid[tile.y][tile.x] == map.TILE_GRASS and building_at(tile).is_empty():
 				map.grid[tile.y][tile.x] = map.TILE_TREE
-				forest_anger = maxf(0.0, forest_anger - float(fcfg.get("calm_per_tree", 3.0)))
+				map.tree_size[tile] = map.TREE_SMALL
+				map.tree_growth[tile] = 0.0
+				forest_anger = maxf(0.0, forest_anger - float(fcfg.get("calm_per_tree", 2.0)))
 				events.append({"type": "tree_grown"})
 				_chron("chron.tree_grown")
 			terrain_dirty = true
+	# растут и дикие деревья: малое → среднее (5 дней), среднее → большое (10)
+	for tile: Vector2i in map.tree_size.keys():
+		if int(map.tree_size[tile]) >= map.TREE_LARGE:
+			continue
+		if not map.in_bounds(tile) or map.grid[tile.y][tile.x] != map.TILE_TREE:
+			map.tree_growth.erase(tile)
+			continue
+		var t_days: float = float(map.tree_growth.get(tile, 0.0)) + dt / day_len
+		var size := int(map.tree_size[tile])
+		var need := float(fcfg.get("grow_days_medium", 5.0)) if size == map.TREE_SMALL \
+				else float(fcfg.get("grow_days_large", 10.0))
+		if t_days >= need:
+			map.tree_size[tile] = size + 1
+			t_days = 0.0
+			terrain_dirty = true
+		map.tree_growth[tile] = t_days
 	# гнев леса медленно уходит сам
-	forest_anger = maxf(0.0, forest_anger - float(fcfg.get("calm_per_day", 0.6)) * dt / day_len)
+	forest_anger = maxf(0.0, forest_anger - float(fcfg.get("calm_per_day", 0.35)) * dt / day_len)
 	if raid_active:
 		return
 	if forest_anger >= float(fcfg.get("warn_anger", 8.0)) and not _forest_warned:
@@ -872,16 +891,15 @@ func can_plant_at(tile: Vector2i) -> bool:
 	return true
 
 
-## Посадить саженец (семя из пула). "" — успех, иначе ключ ошибки.
+## Посадить саженец (из пула саженцев — выпадают из деревьев). "" — успех.
 func plant_sapling(tile: Vector2i) -> String:
 	var fcfg: Dictionary = cfg.get("forest", {})
 	if not can_plant_at(tile):
 		return "bad"
-	var cost := int(fcfg.get("seed_cost", 1))
-	if float(res.get("seeds", 0.0)) < float(cost):
+	if float(res.get("saplings", 0.0)) < 1.0:
 		return "no_seeds"
-	res["seeds"] = float(res["seeds"]) - float(cost)
-	map.saplings[tile] = {"t": 0.0, "grow_days": float(fcfg.get("grow_days", 1.2))}
+	res["saplings"] = float(res["saplings"]) - 1.0
+	map.saplings[tile] = {"t": 0.0, "grow_days": float(fcfg.get("grow_days", 5.0))}
 	terrain_dirty = true
 	events.append({"type": "sapling_planted"})
 	_chron("chron.sapling_planted")
@@ -891,50 +909,18 @@ func plant_sapling(tile: Vector2i) -> String:
 # --- M11: добыча скалы -------------------------------------------------------
 
 ## Тайл гряды рядом с добытчиком (свой тайл непроходим — берём соседний).
+## Пустая порода (deadrock) герою не по зубам — её медленно доит шахта (v1.21).
 func _rock_tile_near(px: Vector2) -> Vector2i:
 	var base: Vector2i = map.tile_of_px(px)
 	for d in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1),
 			Vector2i(1, 1), Vector2i(-1, -1), Vector2i(1, -1), Vector2i(-1, 1)]:
 		var t: Vector2i = base + d
-		if map.in_bounds(t) and map.rock_hp.has(t):
-			return t
+		if not map.in_bounds(t) or not map.rock_hp.has(t):
+			continue
+		if int(map.grid[t.y][t.x]) not in [map.TILE_ROCK, map.TILE_ORE]:
+			continue
+		return t
 	return Vector2i(-1, -1)
-
-
-## Каменотёс вырабатывает тайл гряды: истощённая скала вскрывает рудную жилу,
-## изредка попадается кристалл, иначе тайл осыпается в траву (камень — в кучу).
-func _deplete_rock(r: Dictionary, bld: Dictionary, portion: float) -> void:
-	var mcfg: Dictionary = cfg.get("mountain", {})
-	if mcfg.is_empty():
-		return
-	var tile := _rock_tile_near(r["pos"])
-	if tile == Vector2i(-1, -1):
-		return
-	var hp: float = float(map.rock_hp.get(tile, float(mcfg.get("hp", 80.0))))
-	hp -= float(mcfg.get("rate", 55.0)) * portion * work_mult(r)
-	var kind := int(map.grid[tile.y][tile.x])
-	if hp > 0.0:
-		map.rock_hp[tile] = hp
-		return
-	var roll := _event_rng.randf()
-	map.rock_hp.erase(tile)
-	if kind == map.TILE_ROCK and roll < float(mcfg.get("ore_reveal", 0.35)):
-		map.grid[tile.y][tile.x] = map.TILE_ORE
-		map.refresh_tile_solid(tile)   # вскрытая руда непроходима (этап 2)
-		map.rock_hp[tile] = float(mcfg.get("hp", 80.0)) * 1.3
-		events.append({"type": "ore_revealed"})
-		_chron("chron.ore_revealed")
-	elif roll < float(mcfg.get("ore_reveal", 0.35)) + float(mcfg.get("crystal_chance", 0.06)):
-		_add_pile(bld, "crystal", 1.0)
-		events.append({"type": "gem_found"})
-		_chron("chron.gem_found")
-	else:
-		_add_pile(bld, "stone", float(mcfg.get("bonus_stone", 6)))
-		map.grid[tile.y][tile.x] = map.TILE_GRASS
-		map.refresh_tile_solid(tile)   # скала выработана — клетка открылась
-		events.append({"type": "rock_gone"})
-		_chron("chron.rock_gone")
-	terrain_dirty = true
 
 
 # --- ручной труд героя (правки v1.12.2): E у дерева/скалы/стройки -----------
@@ -944,15 +930,24 @@ func _hero_work_cfg() -> Dictionary:
 
 
 ## Дерево у ног героя (свой тайл тоже — деревья проходимы):
-## {tile, hits, need} — для подсказки и добивки.
+## {tile, hits, need} — для подсказки и добивки. Правки v1.21: число ударов
+## зависит от размера дерева (малое/среднее/большое).
 func hero_tree_near(px: Vector2) -> Dictionary:
 	var base: Vector2i = map.tile_of_px(px)
 	for t in [base, base + Vector2i(1, 0), base + Vector2i(-1, 0),
 			base + Vector2i(0, 1), base + Vector2i(0, -1)]:
 		if map.in_bounds(t) and map.grid[t.y][t.x] == map.TILE_TREE:
 			return {"tile": t, "hits": int(_chop_progress.get(t, 0)),
-					"need": maxi(1, int(_hero_work_cfg().get("chop_hits", 5)))}
+					"size": map.tree_kind(t),
+					"need": maxi(1, _hero_chop_hits(map.tree_kind(t)))}
 	return {}
+
+
+## Ударов героя на валку дерева размера size.
+func _hero_chop_hits(size: int) -> int:
+	var table: Dictionary = _hero_work_cfg().get("chop_hits", {})
+	var key := "small" if size == map.TREE_SMALL else ("medium" if size == map.TREE_MEDIUM else "large")
+	return int(table.get(key, 7))
 
 
 ## Спелая грядка в шаге от героя (этап 2, аспект 3): {zone, idx, tile, crop}.
@@ -1059,15 +1054,17 @@ func hero_sow(px: Vector2) -> String:
 	return "sow"
 
 
-## Работа фермера (этап 2, аспект 3): сперва собирает спелые клетки полей,
-## затем обустраивает незаполненные, и только потом работает на ферме —
-## поля живут visibly, а не «сами собой».
+## Работа фермера (правки v1.21): ферма при постройке распахивает поле вокруг
+## себя — грядки стали её собственностью. Фермер сперва собирает спелые клетки
+## СВОЕГО поля, затем вспахивает его незаполненные клетки; своё поле в порядке —
+## помогает чужим полям и пастбищам. Пассивной еды ферма больше не даёт.
 func _farm_work(r: Dictionary, bld: Dictionary, dt: float) -> void:
 	if float(bld.get("stun_left", 0.0)) > 0.0:
 		r["state"] = "idle"
 		return
-	# 1) спелая клетка поля — собрать
-	var ripe := _nearest_ripe_field_cell(r)
+	var farm_id := int(bld["id"])
+	# 1) спелая клетка поля — собрать (сначала своё поле)
+	var ripe := _nearest_ripe_field_cell(r, farm_id)
 	if not ripe.is_empty():
 		var tile: Vector2i = ripe["tile"]
 		if _arrived(r, tile):
@@ -1078,27 +1075,14 @@ func _farm_work(r: Dictionary, bld: Dictionary, dt: float) -> void:
 		else:
 			_move_towards(r, tile, dt)
 		return
-	# 2) незаполненная клетка поля — обустроить (посев на заполненной клетке)
-	var zcfg: Dictionary = cfg.get("zones", {})
-	var fill_work: float = float(zcfg.get("fill_work", 4.0))
-	var best := {}
-	var best_d := INF
-	for z in zones:
-		if String(z["type"]) != "field":
-			continue
-		for i in (z["cells"] as Array).size():
-			if _cell_filled(z, i) or not building_at(z["cells"][i]).is_empty():
-				continue
-			var d: float = map.tile_center_px(z["cells"][i]).distance_to(r["pos"])
-			if d < best_d:
-				best_d = d
-				best = {"zone": z, "idx": i, "tile": z["cells"][i]}
-	if not best.is_empty():
-		var tile2: Vector2i = best["tile"]
+	# 2) незаполненная клетка поля — вспахать (сначала своё)
+	var fill := _nearest_field_cell(r, farm_id)
+	if not fill.is_empty():
+		var tile2: Vector2i = fill["tile"]
 		if _arrived(r, tile2):
 			r["state"] = "fill"
-			var zz: Dictionary = best["zone"]
-			var i2 := int(best["idx"])
+			var zz: Dictionary = fill["zone"]
+			var i2 := int(fill["idx"])
 			zz["progress"][i2] = float(zz["progress"][i2]) + dt * work_mult(r)
 			r["fatigue"] += dt / float(cfg["day_length"])
 			_grow_skill(r, dt)
@@ -1108,14 +1092,18 @@ func _farm_work(r: Dictionary, bld: Dictionary, dt: float) -> void:
 		else:
 			_move_towards(r, tile2, dt)
 		return
-	# 3) поля в порядке — производство на ферме (куча еды)
-	_do_work(r, bld, dt)
+	# 3) своё поле в порядке — помочь чужим полям и пастбищам, иначе стоит у фермы
+	if _zone_fill_work(r, dt):
+		return
+	if at_bld(r, bld):
+		r["state"] = "idle"
+	else:
+		_move_towards(r, bld_spot(bld), dt)
 
 
-## Ближайшая спелая клетка поля: {zone, idx, tile} или {}. Правки v1.20.1:
-## цель «липкая» — житель (и голем) доводит начатую грядку до конца
-## и не мечется между клетками, если рядом спелых много.
-func _nearest_ripe_field_cell(r: Dictionary) -> Dictionary:
+## Ближайшая спелая клетка поля (сначала поля фермы farm_id, потом любые).
+## Правки v1.20.1: цель «липкая» — начатую грядку доводят до конца.
+func _nearest_ripe_field_cell(r: Dictionary, farm_id := -1) -> Dictionary:
 	var sticky_z: Dictionary = zone_by_id(int(r.get("_ripe_zone", -1)))
 	if not sticky_z.is_empty():
 		var si := int(r.get("_ripe_idx", -1))
@@ -1125,9 +1113,12 @@ func _nearest_ripe_field_cell(r: Dictionary) -> Dictionary:
 			return {"zone": sticky_z, "idx": si, "tile": sticky_z["cells"][si]}
 	var best := {}
 	var best_d := INF
+	var fallback := {}
+	var fallback_d := INF
 	for z in zones:
 		if String(z["type"]) != "field":
 			continue
+		var own := farm_id > 0 and int(z.get("farm", -1)) == farm_id
 		var crops: Array = z.get("crops", [])
 		for i in (z["cells"] as Array).size():
 			if not _cell_filled(z, i) or not building_at(z["cells"][i]).is_empty():
@@ -1135,15 +1126,60 @@ func _nearest_ripe_field_cell(r: Dictionary) -> Dictionary:
 			if crops.size() <= i or not bool((crops[i] as Dictionary).get("ripe", false)):
 				continue
 			var d: float = map.tile_center_px(z["cells"][i]).distance_to(r["pos"])
-			if d < best_d:
+			if own and d < best_d:
 				best_d = d
 				best = {"zone": z, "idx": i, "tile": z["cells"][i]}
+			elif not own and d < fallback_d:
+				fallback_d = d
+				fallback = {"zone": z, "idx": i, "tile": z["cells"][i]}
+	if best.is_empty():
+		best = fallback
 	if not best.is_empty():
 		r["_ripe_zone"] = int((best["zone"] as Dictionary)["id"])
 		r["_ripe_idx"] = int(best["idx"])
 	else:
 		r["_ripe_zone"] = -1
 		r["_ripe_idx"] = -1
+	return best
+
+
+## Незаполненная клетка поля: сначала поле своей фермы (липкая цель).
+func _nearest_field_cell(r: Dictionary, farm_id := -1) -> Dictionary:
+	# липкая цель (правки v1.20.1): начатую клетку доводим до конца
+	var sticky_z: Dictionary = zone_by_id(int(r.get("_fill_zone", -1)))
+	if not sticky_z.is_empty():
+		var si := int(r.get("_fill_idx", -1))
+		if si >= 0 and si < (sticky_z["cells"] as Array).size() \
+				and String(sticky_z["type"]) == "field" \
+				and not _cell_filled(sticky_z, si) \
+				and building_at(sticky_z["cells"][si]).is_empty():
+			return {"zone": sticky_z, "idx": si, "tile": sticky_z["cells"][si]}
+	var best := {}
+	var best_d := INF
+	var fallback := {}
+	var fallback_d := INF
+	for z in zones:
+		if String(z["type"]) != "field":
+			continue
+		var own := farm_id > 0 and int(z.get("farm", -1)) == farm_id
+		for i in (z["cells"] as Array).size():
+			if _cell_filled(z, i) or not building_at(z["cells"][i]).is_empty():
+				continue
+			var d: float = map.tile_center_px(z["cells"][i]).distance_to(r["pos"])
+			if own and d < best_d:
+				best_d = d
+				best = {"zone": z, "idx": i, "tile": z["cells"][i]}
+			elif not own and d < fallback_d:
+				fallback_d = d
+				fallback = {"zone": z, "idx": i, "tile": z["cells"][i]}
+	if best.is_empty():
+		best = fallback
+	if not best.is_empty():
+		r["_fill_zone"] = int((best["zone"] as Dictionary)["id"])
+		r["_fill_idx"] = int(best["idx"])
+	else:
+		r["_fill_zone"] = -1
+		r["_fill_idx"] = -1
 	return best
 
 
@@ -1170,9 +1206,11 @@ func hero_site_near(px: Vector2) -> Dictionary:
 	return best
 
 
-## Удар топором: chop_hits ударов — дерево валится по правилам лесоруба
-## (пень, гнев леса), дрова сразу в общий пул. "" — рядом нет дерева,
-## "hit" — удар засчитан, "fell" — дерево повалено.
+## Удар топором: hits зависят от размера — малое 4, среднее 7, большое 11.
+## Поваленное даёт доски в общий пул по размеру (10/20/35), пень и гнев леса;
+## из дерева выпадают саженцы (v1.21: герой рубит так же, как лесоруб,
+## но без распилки на лесопилке).
+## "" — рядом нет дерева, "hit" — удар засчитан, "fell" — дерево повалено.
 func hero_chop(px: Vector2) -> String:
 	var tree: Dictionary = hero_tree_near(px)
 	if tree.is_empty():
@@ -1186,19 +1224,22 @@ func hero_chop(px: Vector2) -> String:
 	var fcfg: Dictionary = cfg.get("forest", {})
 	map.grid[tile.y][tile.x] = map.TILE_GRASS
 	map.stumps[tile] = true
+	map.tree_size.erase(tile)
+	map.tree_growth.erase(tile)
 	terrain_dirty = true
-	forest_anger = clampf(forest_anger + float(fcfg.get("anger_per_tree", 2.5)), 0.0, 100.0)
-	_add_resource_capped("wood", float(_hero_work_cfg().get("wood_per_tree", 6)))
-	_drop_saplings()   # из поваленного дерева выпадают саженцы (v1.20.1)
+	forest_anger = clampf(forest_anger + float(fcfg.get("anger_per_tree", 1.0)), 0.0, 100.0)
+	_last_fell_planks = int(_planks_for(int(tree["size"])))
+	_add_resource_capped("wood", _planks_for(int(tree["size"])))
+	_drop_saplings()   # из поваленного дерева выпадают саженцы
 	events.append({"type": "tree_felled"})
 	_chron("chron.tree_felled")
 	return "fell"
 
 
-## Удар киркой: камень в общий пул, жила вырабатывается по общим правилам
-## каменотёса — вскрытие руды, кристалл или осыпание с бонусом.
-## "" — рядом нет скалы, "hit" — удар засчитан, "ore"/"gem"/"stone" — жила
-## выработана с соответствующим исходом.
+## Удар киркой: герою — только строительный камень (железо и кристаллы
+## добывают каменоломня и шахта, v1.21). Выработанный тайл не исчезает:
+## под ним жила (шанс) или пустая порода — место под шахту.
+## "" — рядом нет скалы, "hit" — удар засчитан, "ore"/"stone" — тайл выработан.
 func hero_mine(px: Vector2) -> String:
 	var rock: Dictionary = hero_rock_near(px)
 	if rock.is_empty():
@@ -1206,33 +1247,28 @@ func hero_mine(px: Vector2) -> String:
 	var mcfg: Dictionary = cfg.get("mountain", {})
 	var tile: Vector2i = rock["tile"]
 	_add_resource_capped("stone", float(_hero_work_cfg().get("stone_per_hit", 2)))
-	var max_hp := float(mcfg.get("hp", 80.0))
-	if int(map.grid[tile.y][tile.x]) == map.TILE_ORE:
-		max_hp *= 1.3   # жила жирнее скалы — как при генерации карты
+	var max_hp := _rock_max_hp(tile)
 	var hp := float(map.rock_hp.get(tile, max_hp)) \
 			- max_hp / float(maxi(1, int(_hero_work_cfg().get("mine_hits", 4))))
 	if hp > 0.0:
 		map.rock_hp[tile] = hp
 		return "hit"
-	# тайл выработан — тот же бросок, что у каменотёса (M11)
+	# тайл выработан: жила или пустая порода (v1.21 — травы больше нет)
+	var kind := int(map.grid[tile.y][tile.x])
 	var roll := _event_rng.randf()
 	map.rock_hp.erase(tile)
 	terrain_dirty = true
-	if int(map.grid[tile.y][tile.x]) == map.TILE_ROCK and roll < float(mcfg.get("ore_reveal", 0.35)):
+	if kind == map.TILE_ROCK and roll < float(mcfg.get("ore_reveal", 0.25)):
 		map.grid[tile.y][tile.x] = map.TILE_ORE
-		map.refresh_tile_solid(tile)   # вскрытая руда непроходима (этап 2)
-		map.rock_hp[tile] = max_hp * 1.3
+		map.refresh_tile_solid(tile)
+		map.rock_hp[tile] = _rock_max_hp(tile)
 		events.append({"type": "ore_revealed"})
 		_chron("chron.ore_revealed")
 		return "ore"
-	if roll < float(mcfg.get("ore_reveal", 0.35)) + float(mcfg.get("crystal_chance", 0.06)):
-		_add_resource_capped("crystal", 1.0)
-		events.append({"type": "gem_found"})
-		_chron("chron.gem_found")
-		return "gem"
 	_add_resource_capped("stone", float(mcfg.get("bonus_stone", 6)))
-	map.grid[tile.y][tile.x] = map.TILE_GRASS
-	map.refresh_tile_solid(tile)   # скала выработана — клетка открылась
+	map.grid[tile.y][tile.x] = map.TILE_DEADROCK
+	map.rock_hp[tile] = float(mcfg.get("deadrock_hp", 60.0))
+	map.refresh_tile_solid(tile)
 	events.append({"type": "rock_gone"})
 	_chron("chron.rock_gone")
 	return "stone"
