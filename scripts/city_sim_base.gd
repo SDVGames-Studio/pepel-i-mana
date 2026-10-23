@@ -495,6 +495,15 @@ func _roll_animals() -> void:
 func _roll_autobuild() -> void:
 	pass
 
+func _roll_city_repair() -> void:
+	pass
+
+func _repair_errand(r: Dictionary, dt: float) -> bool:
+	return false
+
+func _move_towards(r: Dictionary, tile: Vector2i, dt: float) -> void:
+	pass
+
 func _roll_births() -> void:
 	pass
 

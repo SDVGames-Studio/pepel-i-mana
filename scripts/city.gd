@@ -571,6 +571,11 @@ func _process_events() -> void:
 				hud.toast(Loc.t("city.restored_toast" if bool(ev.get("razed", false))
 						else "city.repaired_toast") % [bld_name, _cost_str(ev.get("cost", {}))])
 				_rebuild_collision()
+			"city_repaired":
+				# город чинит сам: строитель 50%, непрофильный житель 70% (v1.21.3)
+				hud.toast(Loc.t("city.city_repaired_toast") % [String(ev.get("name", "")),
+						_bld_name(String(ev["bld"])), int(round(float(ev.get("frac", 0.7)) * 100.0))])
+				_rebuild_collision()
 			"bld_moved":
 				hud.toast(Loc.t("city.moved_toast") % bld_name)
 				_rebuild_collision()

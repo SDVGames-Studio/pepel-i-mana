@@ -73,6 +73,7 @@ const BLOCKS := [
 		"_test_v121_quarry",
 		"_test_v21_golem_commit",
 		"_test_v121_district",
+		"_test_v121_city_repair",
 		"_test_v21_fps_counter",
 	]],
 ]

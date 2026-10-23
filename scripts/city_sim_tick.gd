@@ -68,6 +68,7 @@ func tick(dt_raw: float) -> void:
 		# утро старосты (правки v1.20): размещает требуемые здания, затем
 		# собирает жителей на площади и раздаёт план по цветам и приоритетам
 		_roll_autobuild()
+		_roll_city_repair()   # город чинит сам: строитель 50%, непрофильный 70% (v1.21.3)
 		morning_plan()
 		_roll_ailments()
 		_roll_refugees()
@@ -286,6 +287,8 @@ func _update_resident(r: Dictionary, dt: float) -> void:
 	if String(r["prof"]) == "porter":
 		_porter_work(r, dt)   # носит кучи со зданий на склад (M6)
 		return
+	if _repair_errand(r, dt):
+		return   # город послал с инструментом чинить (v1.21.3)
 	if String(r["prof"]) == "elder":
 		# староста при деле: пока есть незаполненные клетки зон и спелые
 		# грядки — работает ими (иначе в соло-городе поле стоит пустым),
