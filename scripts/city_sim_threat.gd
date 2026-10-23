@@ -888,7 +888,7 @@ func _spirit_update(r: Dictionary, dt: float) -> bool:
 func can_plant_at(tile: Vector2i) -> bool:
 	if not map.in_bounds(tile) or map.grid[tile.y][tile.x] != map.TILE_GRASS:
 		return false
-	if map.stumps.has(tile) or map.saplings.has(tile):
+	if map.stumps.has(tile) or map.saplings.has(tile) or map.logs.has(tile):
 		return false
 	if not building_at(tile).is_empty() or _tile_in_fill_zone(tile):
 		return false
@@ -1211,9 +1211,9 @@ func hero_site_near(px: Vector2) -> Dictionary:
 
 
 ## Удар топором: hits зависят от размера — малое 4, среднее 7, большое 11.
-## Поваленное даёт доски в общий пул по размеру (10/20/35), пень и гнев леса;
-## из дерева выпадают саженцы (v1.21: герой рубит так же, как лесоруб,
-## но без распилки на лесопилке).
+## Поваленное дерево ложится БРЕВНОМ на землю (v1.21.2: доски даёт только
+## лесопилка) — лесоруб подберёт и распилит; пень и гнев леса как у всех,
+## из дерева выпадают саженцы.
 ## "" — рядом нет дерева, "hit" — удар засчитан, "fell" — дерево повалено.
 func hero_chop(px: Vector2) -> String:
 	var tree: Dictionary = hero_tree_near(px)
@@ -1230,12 +1230,11 @@ func hero_chop(px: Vector2) -> String:
 	map.stumps[tile] = true
 	map.tree_size.erase(tile)
 	map.tree_growth.erase(tile)
+	map.logs[tile] = {"size": int(tree["size"])}   # бревно ждёт лесопилку (v1.21.2)
 	terrain_dirty = true
 	forest_anger = clampf(forest_anger + float(fcfg.get("anger_per_tree", 1.0)), 0.0, 100.0)
-	_last_fell_planks = int(_planks_for(int(tree["size"])))
-	_add_resource_capped("wood", _planks_for(int(tree["size"])))
 	_drop_saplings()   # из поваленного дерева выпадают саженцы
-	events.append({"type": "tree_felled"})
+	events.append({"type": "tree_felled", "log": true})
 	_chron("chron.tree_felled")
 	return "fell"
 

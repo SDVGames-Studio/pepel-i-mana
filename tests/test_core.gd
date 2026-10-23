@@ -888,7 +888,7 @@ func _test_people() -> void:
 		if String(b["type"]) == String(plan[0]):
 			has_first = true
 	_check(has_first, "план начинается с первого строения")
-	_check(sim_pl.buildings.size() - count_before == 2, "стройка идёт сразу: два здания за день")
+	_check(sim_pl.buildings.size() - count_before == 3, "стройка идёт сразу: три здания за день (v1.21.2)")
 	sim_pl._roll_autobuild()
 	sim_pl._roll_autobuild()
 	var first_type := String(plan[0])
@@ -926,7 +926,7 @@ func _test_people() -> void:
 	for b in sim_w2.buildings:
 		if String(b["type"]) == "wall":
 			walls_after += 1
-	_check(walls_after == 2, "все строения готовы — началась защита: кольцо (два звена в день)")
+	_check(walls_after == 3, "все строения готовы — началась защита: кольцо (три звена в день, v1.21.2)")
 
 
 # --- M3: магия ------------------------------------------------------------

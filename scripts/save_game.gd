@@ -157,6 +157,7 @@ static func _city_block(sim) -> Dictionary:
 			"saplings": _tile_vals(m.saplings),
 			"tree_size": _tile_vals(m.tree_size),
 			"tree_growth": _tile_vals(m.tree_growth),
+			"logs": _tile_vals(m.logs),
 			"bridges": _tile_keys(m.bridges),
 		},
 		"residents": _residents_save(sim),
@@ -580,6 +581,9 @@ static func _apply_city_map(map, md: Variant, cfg: Dictionary) -> String:
 	map.tree_growth = {}
 	for e in md.get("tree_growth", []):
 		map.tree_growth[Vector2i(int(e[0]), int(e[1]))] = float(e[2])
+	map.logs = {}   # поваленные брёвна (v1.21.2)
+	for e in md.get("logs", []):
+		map.logs[Vector2i(int(e[0]), int(e[1]))] = {"size": int(e[2].get("size", 1))}
 	# миграция старых сейвов (v1.21): лес без размеров — назначаем по хэшу тайла
 	if map.tree_size.is_empty():
 		for y in map.h:

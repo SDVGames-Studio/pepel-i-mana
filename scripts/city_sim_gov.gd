@@ -87,9 +87,10 @@ func _roll_autobuild() -> void:
 		if not tile_h == Vector2i(-1, -1) and place_building("house", tile_h):
 			_announce_autobuild("house", true)
 			return
-	# план города: сразу строим всё нужное по порядку, до двух зданий в день
+	# план города: сразу строим всё нужное по порядку — город растёт
+	# интенсивно (v1.21.2: до трёх зданий в день)
 	var built := 0
-	for i in 2:
+	for i in 3:
 		var need := _next_plan_need()
 		if need == "":
 			break
@@ -108,10 +109,10 @@ func _roll_autobuild() -> void:
 		return
 	if float(res["wood"]) < 12:
 		return
-	# кольцо ещё не замкнуто — два звена в день
+	# кольцо ещё не замкнуто — три звена в день (v1.21.2: интенсивнее)
 	if not _next_wall_tile() == Vector2i(-1, -1):
 		var walls := 0
-		for i in 2:
+		for i in 3:
 			var wtile := _next_wall_tile()
 			if wtile == Vector2i(-1, -1):
 				break

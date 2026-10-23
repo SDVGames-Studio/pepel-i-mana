@@ -386,7 +386,7 @@
 	"city.hint_chop": "E — рубить дерево (%d из %d)",
 	"city.hint_mine": "E — добыть камень",
 	"city.hint_mine_ore": "E — добыть железо",
-	"city.hero_tree_felled": "Дерево повалено: +%d дерева в общий пул",
+	"city.hero_tree_felled": "Дерево повалено — бревно у пня: лесопилка распилит его на доски",
 	"city.hero_rock_done": "Скала выработана: камень в общий пул",
 	"city.hero_ore_found": "В скале вскрылась рудная жила!",
 	"city.hero_gem_found": "Найден кристалл маны!",

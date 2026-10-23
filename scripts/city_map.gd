@@ -25,6 +25,8 @@ var stumps := {}                # Vector2i -> true: пни на месте ср�
 var saplings := {}              # Vector2i -> {t: float}: посаженные деревья, растут (M11)
 var tree_size := {}             # Vector2i -> int (TREE_SMALL/MEDIUM/LARGE): размер дерева (v1.21)
 var tree_growth := {}           # Vector2i -> float: дни роста дерева до следующего размера (v1.21)
+var logs := {}                  # Vector2i -> {size: int}: поваленные брёвна на земле (v1.21.2) —
+                                # герой валит, лесопилка подбирает и пилит
 var bridges := {}               # Vector2i -> true: мосты через воду (M14-I)
 var anomaly_tile := Vector2i.ZERO   # вход в данж (у аномалии)
 var spawn_tile := Vector2i.ZERO     # старт героя и жителей
@@ -44,6 +46,7 @@ func generate(seed_value: int, params: Dictionary) -> void:
 	saplings = {}
 	tree_size = {}
 	tree_growth = {}
+	logs = {}
 	bridges = {}
 	for attempt in 20:
 		_generate_once(seed_value + attempt * 1013, params)

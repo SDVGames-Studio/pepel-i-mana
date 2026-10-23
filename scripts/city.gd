@@ -1357,7 +1357,7 @@ func _hero_act() -> bool:
 	_hero_work_cd = float(hw.get("cooldown", 0.35))
 	match res:
 		"fell":
-			hud.toast(Loc.t("city.hero_tree_felled") % int(sim._last_fell_planks))
+			hud.toast(Loc.t("city.hero_tree_felled"))
 		"ore":
 			hud.toast(Loc.t("city.hero_ore_found"))
 		"gem":

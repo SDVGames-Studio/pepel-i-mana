@@ -165,6 +165,9 @@ func _draw_world_sorted() -> void:
 					_trees_cache.append(Vector2i(x, y))
 	for tile: Vector2i in _trees_cache:
 		entries.append([float(tile.y) * ts + ts * 0.92, "tree", tile])
+	# поваленные брёвна (v1.21.2): герой валит — лесопилка унесёт и распилит
+	for tile: Vector2i in map.logs.keys():
+		entries.append([float(tile.y) * ts + ts * 0.78, "log", tile])
 	for b in sim.buildings:
 		# Y-якорь — нижняя линия прямоугольника здания (2×2: tile.y + 1)
 		var bw: int = sim.bld_w(b)
@@ -193,6 +196,8 @@ func _draw_world_sorted() -> void:
 		match String(e[1]):
 			"tree":
 				_draw_tree_at(e[2])
+			"log":
+				_draw_log_at(e[2])
 			"bld":
 				_draw_building(e[2])
 			"pile":
@@ -270,6 +275,22 @@ func _draw_tree_at(tile: Vector2i) -> void:
 				bottom + Vector2(0, -2), scale)
 	else:
 		_draw_stump(bottom, ts, _hash(tile.x, tile.y, STUMP_PALS.size()))
+
+
+## Поваленное бревно на земле (v1.21.2): толщина по размеру дерева —
+## малое/среднее/большое; лесоруб унесёт его на лесопилку.
+func _draw_log_at(tile: Vector2i) -> void:
+	var ts := float(map.ts)
+	var c: Vector2 = map.tile_center_px(tile) + Vector2(0, ts * 0.2)
+	var size: int = int((map.logs[tile] as Dictionary).get("size", 1))
+	var w := ts * 0.55 + ts * 0.18 * float(size)
+	var col := Color("#8d6e63") if size < 3 else Color("#6d4c33")
+	_draw_shadow(c + Vector2(0, 5), ts * 0.42)
+	draw_rect(Rect2(c.x - w * 0.5, c.y - 5.0, w, 10.0), col)
+	draw_circle(Vector2(c.x - w * 0.5, c.y), 5.0, col.lightened(0.15))
+	draw_circle(Vector2(c.x + w * 0.5, c.y), 5.0, col.lightened(0.15))
+	draw_line(Vector2(c.x - w * 0.5 + 2.0, c.y), Vector2(c.x + w * 0.5 - 2.0, c.y),
+			col.darkened(0.25), 1.5)
 
 
 ## Пень: срез с годовыми кольцами и кора в палитре своего дерева.

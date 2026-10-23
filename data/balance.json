@@ -6,7 +6,7 @@
 		"field_zone_per_day": 1.5,
 		"pasture_zone_per_day": 1.0,
 		"pier_per_day": 10,
-		"start_normal": 50,
+		"start_normal": 55,
 		"days_of_start_food_at_10_pop": 2.5
 	},
 	"pollution": {
