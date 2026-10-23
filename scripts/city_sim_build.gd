@@ -77,20 +77,36 @@ func _take_item(inventory: Array, item_id: String, count: int) -> void:
 				continue
 		i += 1
 
-## Определение здания по типу.
+## Определение здания по типу. v1.21.4: кэш по type_id — конфиги неизменны,
+## а _def зовётся из настроения/производства/добытчиков десятки раз за кадр.
 func _def(b: Dictionary) -> Dictionary:
+	var key := String(b["type"])
+	if _def_cache.has(key):
+		return _def_cache[key]
 	for d in cfg["buildings"]:
-		if String(d["id"]) == String(b["type"]):
+		if String(d["id"]) == key:
+			_def_cache[key] = d
 			return d
 	return {}
 
 
 ## Здание по тайлу (прямоугольник 2×2: попадание в любую клетку).
+## v1.21.4: индекс клеток вместо скана списка — building_at зовётся из зон,
+## героев и входов постоянно; индекс пересобирается при мутации списка
+## (_spots_dirty/place_building/сейв инкрементируют _bld_ver).
 func building_at(tile: Vector2i) -> Dictionary:
-	for b in buildings:
-		if bld_has_cell(b, tile):
-			return b
-	return {}
+	if _bld_tiles_ver != _bld_ver:
+		_bld_tiles_ver = _bld_ver
+		_bld_tiles = {}
+		for b in buildings:
+			var t := Vector2i(b["tile"])
+			var w := bld_w(b)
+			for dy in w:
+				for dx in w:
+					var cell := t + Vector2i(dx, dy)
+					if not _bld_tiles.has(cell):
+						_bld_tiles[cell] = b   # первое здание в списке выигрывает — как в старом скане
+	return _bld_tiles.get(tile, {})
 
 # --- здания 2×2 (этап 2, аспект 2) -----------------------------------------
 
@@ -191,18 +207,20 @@ func at_bld(r: Dictionary, b: Dictionary) -> bool:
 
 ## Здание занимает тайл? (в отличие от building_at — по прямоугольнику)
 func building_at_rect(tile: Vector2i) -> Dictionary:
-	for b in buildings:
-		if bld_has_cell(b, tile):
-			return b
-	return {}
+	return building_at(tile)
 
 
 ## Ширина здания типа из конфига (без конкретного здания).
 func bld_w_of_type(type_id: String) -> int:
+	if _bld_w_cache.has(type_id):
+		return int(_bld_w_cache[type_id])
+	var w := 1
 	for d in cfg["buildings"]:
 		if String(d["id"]) == type_id:
-			return int(d.get("w", 1))
-	return 1
+			w = int(d.get("w", 1))
+			break
+	_bld_w_cache[type_id] = w
+	return w
 
 
 ## Прямоугольник w×w с углом в tile годен под здание типа type_id?
@@ -261,9 +279,11 @@ func placement_gap_ok(type_id: String, tile: Vector2i, skip_id := -1) -> bool:
 	return true
 
 
-## Сбросить кэш входов (при переносе/сносе зданий).
+## Сбросить кэш входов и индекс клеток (при любой мутации зданий; v1.21.4 —
+## сюда же садится версионирование building_at).
 func _spots_dirty() -> void:
 	_spot_cache.clear()
+	_bld_ver += 1
 
 
 ## Миграция старых сейвов (этап 2, аспект 2): здания без поля "w" — 1×1.
@@ -390,6 +410,7 @@ func place_building(type_id: String, tile: Vector2i) -> bool:
 		"pile": {},
 	})
 	_next_id += 1
+	_bld_ver += 1   # новое здание — индекс клеток перестроится (v1.21.4)
 	# здание занимает прямоугольник: дороги и клетки зон под ним уступают место
 	for dy in w:
 		for dx in w:
@@ -627,14 +648,23 @@ func _nearest_building_type(tile: Vector2i, types: Array, radius: float) -> Dict
 ## Запас прочности здания (M5): стены/ворота крепче, остальное — базовое.
 ## Дисциплина «Оборона» (M7) умножает прочность стен и ворот.
 func _bld_max_hp(type_id: String) -> int:
+	# v1.21.4: скан конфига закэширован (заводится много раз за кадр из зон,
+	# героев и ремонта); исследования меняют только множитель стен — он живой.
 	var hp_cfg: Dictionary = cfg.get("threat", {}).get("bld_hp", {})
-	for d in cfg["buildings"]:
-		if String(d["id"]) == type_id:
-			var hp := int(hp_cfg.get(String(d.get("effect", "default")), hp_cfg.get("default", 20)))
-			if String(d.get("effect", "")) in ["wall", "gate"]:
-				hp = int(round(float(hp) * research_mult("wall_hp_mult", 1.0)))
-			return hp
-	return int(hp_cfg.get("default", 20))
+	if not _bld_hp_cache.has(type_id):
+		var def := _def({"type": type_id})
+		var base: int = int(hp_cfg.get("default", 20))
+		var wall := false
+		if not def.is_empty():
+			var eff := String(def.get("effect", "default"))
+			base = int(hp_cfg.get(eff, base))
+			wall = eff == "wall" or eff == "gate"
+		_bld_hp_cache[type_id] = [base, wall]
+	var cached: Array = _bld_hp_cache[type_id]
+	var hp := int(cached[0])
+	if bool(cached[1]):
+		hp = int(round(float(hp) * research_mult("wall_hp_mult", 1.0)))
+	return hp
 
 
 ## Урон зданию от мутантов и бури; на нуле прочности здание разрушается.
@@ -647,6 +677,9 @@ func _damage_building(b: Dictionary, amount: float) -> bool:
 	if float(b["hp"]) > 0.0:
 		return false
 	# разрушено: рабочее место освобождается, стена перестаёт быть преградой
+	# v1.21.4: входы и индекс клеток устаревают при любом исходе (снос площадки
+	# раньше не сбрасывал кэши — индекс держал здание-призрак на клетках)
+	_spots_dirty()
 	if int(b["worker"]) > 0:
 		for r in residents:
 			if int(r["id"]) == int(b["worker"]):
@@ -667,7 +700,6 @@ func _damage_building(b: Dictionary, amount: float) -> bool:
 		# руины не преграждают путь (обломки), но клетки остаются за зданием
 		for cell in bld_cells(b):
 			map.set_solid(cell, false)
-		_spots_dirty()
 	if not bool(b.get("done", false)):
 		buildings.erase(b)   # стройплощадка — просто снос
 		return true

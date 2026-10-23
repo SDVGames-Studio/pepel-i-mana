@@ -570,10 +570,17 @@ func _random_traits() -> Array:
 
 
 func _read_json_file(path: String) -> Variant:
+	# v1.21.4: без кэша погода/законы/вера читались с диска и парсились по
+	# 3–5 раз на жителя в кадре из _mood_target — главный убийца FPS к 70-му дню.
+	# res:// в сессии неизменен, кэшируем навсегда.
+	if _json_cache.has(path):
+		return _json_cache[path]
 	var f := FileAccess.open(path, FileAccess.READ)
 	if f == null:
 		return null
-	return JSON.parse_string(f.get_as_text())
+	var parsed: Variant = JSON.parse_string(f.get_as_text())
+	_json_cache[path] = parsed
+	return parsed
 
 
 # --- запросы для HUD и тестов -------------------------------------------

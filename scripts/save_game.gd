@@ -388,6 +388,7 @@ static func _apply_city(game, cd: Variant) -> String:
 	sim.base_pop = int(sd.get("base_pop", 0))
 	sim.conflicts = bool(sd.get("conflicts", true))
 	sim.buildings = _dec(sd.get("buildings", []))
+	sim._bld_ver += 1   # список зданий заменён целиком — индекс клеток устарел (v1.21.4)
 	for b in sim.buildings:
 		b["id"] = int(b.get("id", 0))
 		b["done"] = bool(b.get("done", false))

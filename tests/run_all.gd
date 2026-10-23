@@ -76,6 +76,9 @@ const BLOCKS := [
 		"_test_v121_city_repair",
 		"_test_v21_fps_counter",
 	]],
+	["res://tests/test_v1214.gd", [
+		"_test_v1214_caches",
+	]],
 ]
 
 

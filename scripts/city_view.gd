@@ -44,6 +44,9 @@ var drag_to := Vector2i(-1, -1)
 
 var _prof_colors: Dictionary = {}
 var _prof_sprites: Dictionary = {}
+var _label_cache: Dictionary = {}   # type_id -> [текст, ширина] (v1.21.4)
+var _hp_max_cache: Dictionary = {}  # type_id -> запас прочности (v1.21.4)
+var _work_cache: Dictionary = {}    # type_id -> build_work (v1.21.4)
 var _bld_fill: Dictionary = {}      # тип здания → цвет категории (схематичный режим)
 var _bld_short: Dictionary = {}     # тип здания → ключ краткой подписи (bld.short.*)
 var _bld_loc: Dictionary = {}       # тип здания → ключ полного названия (bld.*)
@@ -756,19 +759,24 @@ func _draw_bld_label(b: Dictionary, rect: Rect2) -> void:
 	var key: String = _bld_short.get(type_id, "")
 	if key == "":
 		return
-	var text := Loc.t(key)
-	if text == key:
-		# краткой подписи нет — падаем на полное название, затем на id
-		var full_key: String = _bld_loc.get(type_id, "")
-		var full := Loc.t(full_key) if full_key != "" else ""
-		text = full if full != full_key and full != "" else type_id
-	var font := ThemeDB.fallback_font
-	var fsize := 8
-	var pos := rect.get_center() - Vector2(
-			font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, fsize).x * 0.5, -3.0)
-	draw_string_outline(font, pos, text, HORIZONTAL_ALIGNMENT_LEFT, -1, fsize, 3,
-			Color(0.12, 0.09, 0.05, 0.9))
-	draw_string(font, pos, text, HORIZONTAL_ALIGNMENT_LEFT, -1, fsize, Color(1, 1, 0.96, 0.97))
+	# v1.21.4: текст и ширина кэшируются по типу — замер шрифта на каждое
+	# здание каждый кадр стоил дороже всей остальной отрисовки подписи
+	if not _label_cache.has(type_id):
+		var text := Loc.t(key)
+		if text == key:
+			# краткой подписи нет — падаем на полное название, затем на id
+			var full_key: String = _bld_loc.get(type_id, "")
+			var full := Loc.t(full_key) if full_key != "" else ""
+			text = full if full != full_key and full != "" else type_id
+		var font := ThemeDB.fallback_font
+		_label_cache[type_id] = [text, font.get_string_size(text,
+				HORIZONTAL_ALIGNMENT_LEFT, -1, 8).x]
+	var cached: Array = _label_cache[type_id]
+	var pos := rect.get_center() - Vector2(float(cached[1]) * 0.5, -3.0)
+	draw_string_outline(ThemeDB.fallback_font, pos, cached[0],
+			HORIZONTAL_ALIGNMENT_LEFT, -1, 8, 3, Color(0.12, 0.09, 0.05, 0.9))
+	draw_string(ThemeDB.fallback_font, pos, cached[0],
+			HORIZONTAL_ALIGNMENT_LEFT, -1, 8, Color(1, 1, 0.96, 0.97))
 
 
 ## Дверной проём (этап 2, аспект 2): тёмная метка на кайме со стороны входа.
@@ -834,11 +842,16 @@ func _draw_raider(r: Dictionary) -> void:
 
 
 func _bld_max_hp(type_id: String) -> float:
+	if _hp_max_cache.has(type_id):
+		return float(_hp_max_cache[type_id])
 	var hp_cfg: Dictionary = sim.cfg.get("threat", {}).get("bld_hp", {})
+	var hp := float(hp_cfg.get("default", 20))
 	for d in sim.cfg["buildings"]:
 		if String(d["id"]) == type_id:
-			return float(hp_cfg.get(String(d.get("effect", "default")), hp_cfg.get("default", 20)))
-	return float(hp_cfg.get("default", 20))
+			hp = float(hp_cfg.get(String(d.get("effect", "default")), hp))
+			break
+	_hp_max_cache[type_id] = hp
+	return hp
 
 
 ## Житель (M12: per-object для общего сортированного слоя). Айдл без «марша на
@@ -1041,10 +1054,15 @@ func _center(x: int, y: int) -> Vector2:
 
 
 func _build_work(type_id: String) -> float:
+	if _work_cache.has(type_id):
+		return float(_work_cache[type_id])
+	var work := 1.0
 	for d in sim.cfg["buildings"]:
 		if String(d["id"]) == type_id:
-			return float(d["build_work"])
-	return 1.0
+			work = float(d["build_work"])
+			break
+	_work_cache[type_id] = work
+	return work
 
 
 func _cost_of(type_id: String) -> Dictionary:

@@ -94,6 +94,16 @@ var _last_event_day := 0
 var _last_daily_day := 0        # дневные броски M4: беженцы/рождения/болезни/истории
 var _gate_state := {}           # id ворот -> открыты? (страж на ближней вышке)
 var _spot_cache := {}           # id здания -> {key, spot}: кэш входа (этап 2, аспект 2)
+# --- кэши производительности (правки приёмки v1.21.4: FPS падал к 70-му дню) ---
+var _json_cache := {}           # path -> разобранный JSON: res:// в сессии не меняется,
+                                # а _weather_cfg/_laws_cfg/_religion_cfg зовутся из
+                                # _mood_target на каждого жителя каждый кадр
+var _def_cache := {}            # type_id -> конфиг здания (_def сканировал cfg на каждый вызов)
+var _bld_w_cache := {}          # type_id -> ширина здания в клетках
+var _bld_hp_cache := {}         # type_id -> запас прочности
+var _bld_tiles := {}            # Vector2i -> здание: индекс клеток для building_at O(1)
+var _bld_tiles_ver := -1        # версия индекса (перестраивается при _bld_ver)
+var _bld_ver := 0               # версия списка зданий (растёт при любой мутации)
 var _next_raid_at := 0.0        # время следующей волны, сек
 var _raid_gap_days := 10.0      # длительность текущего интервала между волнами
 var _raid_not_before := 0.0     # волна не раньше этого времени: зачистка данжа у города сдвигает атаки (2026-10-21)
@@ -131,6 +141,14 @@ func setup(city_map, city_cfg: Dictionary, residents_count: int, level: String) 
 	residents = []
 	buildings = []
 	events = []
+	# кэши производительности (v1.21.4): новая игра — чистые кэши
+	_json_cache = {}
+	_def_cache = {}
+	_bld_w_cache = {}
+	_bld_hp_cache = {}
+	_bld_tiles = {}
+	_bld_ver += 1
+	_spot_cache = {}
 	autonomous = false
 	time = 0.0
 	day = 1
