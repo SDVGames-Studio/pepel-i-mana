@@ -872,7 +872,7 @@ func _make_farm_field(b: Dictionary) -> void:
 				continue
 			if map.grid[c.y][c.x] != map.TILE_GRASS:
 				continue   # мешает сторона: вода, скала, дерево, порода
-			if map.stumps.has(c) or map.saplings.has(c) or map.has_road(c) or map.bridges.has(c):
+			if map.stumps.has(c) or map.saplings.has(c) or map.logs.has(c) or map.has_road(c) or map.bridges.has(c):
 				continue
 			if not building_at(c).is_empty() or _tile_in_zone(c):
 				continue

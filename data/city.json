@@ -68,20 +68,20 @@
 		"auto_per_day": 3, "auto_reserve_stone": 15 },
 	"piles": { "chunk": 8.0, "max": 20.0, "carry": 10.0 },
 	"mountain": {
-		"_comment": "правки v1.21: шахтёр добывает СЫРОЙ камень у гряды и несёт на каменоломню; переработка даёт стройкамень и с шансом железо/самоцветы/кристалл. Выработанный тайл не исчезает: под ним пустая порода (deadrock) или вскрытая жила — туда ставится шахта",
-		"hp": 80.0, "rate": 55.0,
-		"raw_per_tile": 10.0, "carry_raw": 8.0, "carry_slow": 0.8,
+		"_comment": "правки v1.21: шахтёр добывает СЫРОЙ камень у гряды и несёт на каменоломню; переработка даёт стройкамень и с шансом железо/самоцветы/кристалл. Выработанный тайл не исчезает: под ним пустая порода (deadrock) или вскрытая жила — туда ставится шахта. v1.21.2: темп интенсивнее (rate 70, ходка 10)",
+		"hp": 80.0, "rate": 70.0,
+		"raw_per_tile": 10.0, "carry_raw": 10.0, "carry_slow": 0.8,
 		"ore_reveal": 0.25, "crystal_chance": 0.06, "bonus_stone": 6,
 		"by_iron": 0.35, "by_gems": 0.12, "by_crystal": 0.08,
 		"deadrock_hp": 60.0, "deadrock_stone": 6.0,
-		"mine": { "rate": 35.0, "ore_iron": 8.0, "ore_stone": 2.0, "range": 2, "carry": 8.0, "carry_slow": 0.8 }
+		"mine": { "rate": 45.0, "ore_iron": 8.0, "ore_stone": 2.0, "range": 2, "carry": 8.0, "carry_slow": 0.8 }
 	},
 	"forest": {
-		"_comment": "правки v1.21: три размера деревьев (small/medium/large) — доски 10/20/35, рубить дольше, тащить тяжелее; сруб +1 гнев, распилка +0.5; любое дерево растёт: саженец 5 дней до малого, +5 до среднего, +10 до большого; выросшее посаженное успокаивает лес",
+		"_comment": "правки v1.21: три размера деревьев (small/medium/large) — доски 10/20/35, рубить дольше, тащить тяжелее; сруб +1 гнев, распилка +0.5; любое дерево растёт: саженец 5 дней до малого, +5 до среднего, +10 до большого; выросшее посаженное успокаивает лес. v1.21.2: подготовка и распилка быстрее — лесопилка интенсивнее; поваленное героем дерево лежит бревном (logs) — лесоруб подбирает и пилит, доски даёт ТОЛЬКО лесопилка",
 		"chop_days": { "small": 0.4, "medium": 0.75, "large": 1.2 },
 		"planks_per_tree": { "small": 10, "medium": 20, "large": 35 },
 		"carry_mult": { "small": 1.0, "medium": 0.75, "large": 0.5 },
-		"prep_days": 0.1, "saw_days": 0.1,
+		"prep_days": 0.05, "saw_days": 0.05,
 		"anger_per_tree": 1.0, "anger_per_sawing": 0.5,
 		"calm_per_day": 0.35, "calm_per_tree": 2.0,
 		"grow_days": 5.0, "grow_days_medium": 5.0, "grow_days_large": 10.0,
@@ -245,9 +245,10 @@
 		"residents_max": 12,
 		"professions": ["farmer", "lumberjack", "builder", "guard", "acolyte", "crafter", "healer", "porter", "bartender", "miner", "smelter", "smith", "armorer", "hunter", "fisher", "trader"],
 		"levels": {
-			"low": {"wood": 25, "stone": 10, "food": 25, "crystal": 0},
-			"normal": {"wood": 50, "stone": 20, "food": 50, "crystal": 0},
-			"high": {"wood": 100, "stone": 40, "food": 100, "crystal": 2}
+			"_comment_l": "v1.21.2: старта хватает на дом (12) + лесопилку (10) + каменоломню (12) + ферму (8) = 42 доски даже на «бедном»",
+			"low": {"wood": 45, "stone": 10, "food": 25, "crystal": 0},
+			"normal": {"wood": 55, "stone": 20, "food": 50, "crystal": 0},
+			"high": {"wood": 110, "stone": 40, "food": 100, "crystal": 2}
 		}
 	},
 	"professions": [

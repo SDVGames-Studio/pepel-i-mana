@@ -723,8 +723,10 @@ func _test_hero_work() -> void:
 	_check(res == "fell", "герой валит дерево за %d ударов" % sim._hero_chop_hits(tree_size))
 	_check(sim.map.grid[tree.y][tree.x] == sim.map.TILE_GRASS and sim.map.stumps.has(tree),
 			"на месте дерева остался пень")
-	_check(int(sim.res["wood"]) == wood0 + int(sim._planks_for(tree_size)),
-			"доски по размеру дерева легли в общий пул (v1.21)")
+	_check(int(sim.res["wood"]) == wood0,
+			"доски в пул не падают — герой только валит (v1.21.2)")
+	_check(sim.map.logs.has(tree) and int(sim.map.logs[tree]["size"]) == tree_size,
+			"поваленное дерево — бревно своего размера, ждёт лесопилку")
 	_check(absf(sim.forest_anger - anger0 - float(sim.cfg["forest"]["anger_per_tree"])) < 0.001,
 			"гнев леса растёт по тем же правилам, что у лесоруба")
 	# вдали от леса герой не рубит (ищем тайл без деревьев вокруг)

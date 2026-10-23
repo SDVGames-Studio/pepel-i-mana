@@ -66,6 +66,19 @@ func _sawmill_work(r: Dictionary, bld: Dictionary, dt: float) -> void:
 			r["log_size"] = int(r.get("fell_size", map.TREE_SMALL))
 			r["carry_slow"] = _carry_mult(int(r["log_size"]))
 		return
+	# бревно на земле (валка героя, v1.21.2) — подбираем: рубить не надо
+	var log_t := _log_target(r, bld)
+	if log_t != Vector2i(-1, -1):
+		if map.tile_of_px(r["pos"]) != log_t:
+			_move_towards(r, log_t, dt)
+			return
+		var lsize: int = int((map.logs[log_t] as Dictionary).get("size", map.TREE_SMALL))
+		map.logs.erase(log_t)
+		r["log_size"] = lsize
+		r["fell_size"] = lsize
+		r["carry_slow"] = _carry_mult(lsize)
+		r["gath_tile"] = Vector2i(-1, -1)
+		return
 	# ищем дерево в радиусе сбора от лесопилки
 	var res_tile: Vector2i = _gather_target(r, bld)
 	if res_tile == Vector2i(-1, -1):
@@ -134,7 +147,7 @@ func _plant_tile_near(bld: Dictionary) -> Vector2i:
 			var t: Vector2i = bc + Vector2i(dx, dy)
 			if not map.in_bounds(t) or map.grid[t.y][t.x] != map.TILE_GRASS:
 				continue
-			if map.saplings.has(t) or map.stumps.has(t) or not map.is_walkable(t):
+			if map.saplings.has(t) or map.stumps.has(t) or map.logs.has(t) or not map.is_walkable(t):
 				continue
 			if near_plaza(t) or not building_at(t).is_empty() or _tile_in_fill_zone(t):
 				continue
@@ -217,6 +230,23 @@ func _gather_target(r: Dictionary, bld: Dictionary) -> Vector2i:
 				best_d = d
 				best = t
 	r["gath_tile"] = best
+	return best
+
+
+## Бревно на земле ближе к лесорубу (в радиусе сбора от лесопилки).
+## Валеные героем деревья (v1.21.2) лесопилка подбирает раньше, чем рубить новые.
+func _log_target(r: Dictionary, bld: Dictionary) -> Vector2i:
+	var radius := float(cfg.get("gather_range", 6))
+	var bc: Vector2i = bld["tile"]
+	var best := Vector2i(-1, -1)
+	var best_d := INF
+	for t: Vector2i in map.logs.keys():
+		if Vector2(t).distance_to(Vector2(bc)) > radius:
+			continue
+		var d: float = Vector2(t).distance_to(Vector2(r["pos"]))
+		if d < best_d:
+			best_d = d
+			best = t
 	return best
 
 

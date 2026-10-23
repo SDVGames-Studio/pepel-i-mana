@@ -695,6 +695,35 @@ func _test_gathering() -> void:
 	_check(felled_seen, "дерево реально повалено")
 	_check(sim_sg.forest_anger >= 1.0, "валка дерева злит лес (+1)")
 
+	# бревно с валки героя (v1.21.2): лежит на земле — лесопилка подбирает
+	# и пилит; доски в общем пуле не появляются
+	var log_t := Vector2i(-1, -1)
+	for dy in range(-4, 5):
+		for dx in range(-4, 5):
+			var t: Vector2i = near_trees + Vector2i(dx, dy)
+			if sim_sg.map.in_bounds(t) and sim_sg.map.grid[t.y][t.x] == sim_sg.map.TILE_GRASS \
+					and sim_sg.map.is_walkable(t) and sim_sg.building_at(t).is_empty() \
+					and not sim_sg.map.stumps.has(t) and not sim_sg.map.saplings.has(t):
+				log_t = t
+				break
+		if log_t != Vector2i(-1, -1):
+			break
+	_check(log_t != Vector2i(-1, -1), "нашлась трава под тестовое бревно")
+	if log_t != Vector2i(-1, -1):
+		var wood_pool0 := int(sim_sg.res["wood"])
+		saw["pile"] = {}   # куча переполнена капом — меряем именно это бревно
+		sim_sg.map.logs[log_t] = {"size": sim_sg.map.TREE_LARGE}
+		var picked := false
+		for i in 40:   # дойти до бревна, принести, распилить (без рубки)
+			sim_sg.tick(12.0)
+			if not sim_sg.map.logs.has(log_t) \
+					and float((saw["pile"] as Dictionary).get("wood", 0.0)) >= 20.0:
+				picked = true   # большое бревно 35, влезает в кап кучи 20
+				break
+		_check(picked, "бревно с земли — на лесопилку и в доски (v1.21.2)")
+		_check(int(sim_sg.res["wood"]) == wood_pool0,
+				"доски лежат кучей у лесопилки — в пул их снесёт носильщик/вечер")
+
 	# шахта (v1.21): у жилы/выработанного массива, медленно даёт железо и камень
 	var sim_mi := _make_sim()
 	sim_mi._last_daily_day = 999
