@@ -98,7 +98,11 @@ func setup(city_map, city_sim, city_cfg: Dictionary) -> void:
 func _draw() -> void:
 	if map == null:
 		return
-	# ландшафт рисует отдельный статический слой city_terrain.gd (M9)
+	# видимая область мира (v1.21.5): за камерой не рисуем — раньше деревья
+	# и дороги всей карты уходили в кадр даже за экраном
+	var xf := get_viewport_transform()
+	_vis = (xf.affine_inverse() * get_viewport_rect()).grow(float(map.ts) * 3.0)
+	# ландшафт рисует отдельный запечённый слой city_terrain.gd (M9, v1.21.5)
 	_draw_plaza()
 	_draw_zones()
 	_draw_roads()
@@ -106,6 +110,10 @@ func _draw() -> void:
 	_draw_world_exit()
 	_draw_world_sorted()
 	_draw_ghost()
+
+
+## Прямоугольник карты, видимый камерой (запас 3 тайла на высокие деревья).
+var _vis := Rect2(-1e9, -1e9, 2e9, 2e9)
 
 
 ## Главная площадь 2×2 (правки v1.20): каменные плиты, место сбора и планёрки.
@@ -133,7 +141,9 @@ func _draw_plaza() -> void:
 var _anim_time := 0.0
 
 # кэш тайлов деревьев/пней/саженцев (M12): ландшафт меняется редко —
-# список пересобирается по флагу, который ставит сцена при sim.terrain_dirty
+# список пересобирается по флагу, который ставит сцена при sim.terrain_dirty.
+# v1.21.5: кэш предрасчитан до готовых дескрипторов отрисовки (текстура,
+# прямоугольники, тень) и отсортирован по Y — в кадре только выдача команд.
 var _trees_dirty := true
 var _trees_cache: Array = []
 
@@ -145,6 +155,31 @@ func _process(delta: float) -> void:
 ## Пересобрать кэш деревьев (вызывает city.gd при sim.terrain_dirty).
 func mark_trees_dirty() -> void:
 	_trees_dirty = true
+
+
+## Дескриптор дерева/пня/саженца: всё, что не меняется между кадрами.
+## [y_px, kind, tile, tex, src, dst, тень-центр, тень-радиус]
+func _build_tree_desc(tile: Vector2i, ts: float) -> Array:
+	var bottom := Vector2(tile.x * ts + ts / 2.0, tile.y * ts + ts * 0.92)
+	if map.saplings.has(tile):
+		return [bottom.y, "sapling", tile, null, Rect2(), Rect2(), bottom, 0.0]
+	var kind: int = map.tree_kind(tile)
+	if map.grid[tile.y][tile.x] != map.TILE_TREE:
+		return [bottom.y, "stump", tile, null, Rect2(), Rect2(), bottom, ts * 0.3]
+	var scale := ts * 1.9 if kind == map.TREE_SMALL \
+			else (ts * 2.4 if kind == map.TREE_MEDIUM else ts * 3.0)
+	var ref: String = TREE_REFS[_hash(tile.x, tile.y, TREE_REFS.size())]
+	var t: Texture2D = Assets.sprite(ref)
+	var src := Rect2(Vector2.ZERO, t.get_size())
+	if t is AtlasTexture:
+		src = (t as AtlasTexture).region
+	var s := scale / float(t.get_height())
+	var w := t.get_width() * s
+	var pos := bottom + Vector2(0, -2)
+	var dst := Rect2(pos - Vector2(w, scale) * 0.5, Vector2(w, scale))
+	var shadow_r := ts * (0.4 if kind == map.TREE_SMALL
+			else (0.55 if kind == map.TREE_MEDIUM else 0.7)) * 0.5
+	return [bottom.y, "tree", tile, t, src, dst, bottom + Vector2(0, 2), shadow_r]
 
 
 ## Единый Y-сортированный слой (M12): деревья, пни, саженцы, здания, кучи,
@@ -165,9 +200,12 @@ func _draw_world_sorted() -> void:
 			for x in map.w:
 				var t: int = map.grid[y][x]
 				if t == map.TILE_TREE or map.stumps.has(Vector2i(x, y)) or map.saplings.has(Vector2i(x, y)):
-					_trees_cache.append(Vector2i(x, y))
-	for tile: Vector2i in _trees_cache:
-		entries.append([float(tile.y) * ts + ts * 0.92, "tree", tile])
+					_trees_cache.append(_build_tree_desc(Vector2i(x, y), ts))
+		_trees_cache.sort_custom(func(a, b) -> bool: return float(a[0]) < float(b[0]))
+	for desc: Array in _trees_cache:
+		if desc[1] == "tree" and not _vis.intersects(desc[5]):
+			continue   # за экраном — дерево целиком пропускаем (v1.21.5)
+		entries.append(desc)
 	# поваленные брёвна (v1.21.2): герой валит — лесопилка унесёт и распилит
 	for tile: Vector2i in map.logs.keys():
 		entries.append([float(tile.y) * ts + ts * 0.78, "log", tile])
@@ -198,7 +236,13 @@ func _draw_world_sorted() -> void:
 	for e in entries:
 		match String(e[1]):
 			"tree":
-				_draw_tree_at(e[2])
+				# v1.21.5: дескриптор из кэша — тень и спрайт без математики
+				draw_circle(e[6], e[7], Color(0, 0, 0, 0.18))
+				draw_texture_rect_region(e[3], e[5], e[4])
+			"sapling":
+				_draw_sapling(e[2], e[6], ts)
+			"stump":
+				_draw_stump(e[6], ts, _hash(e[2].x, e[2].y, STUMP_PALS.size()))
 			"log":
 				_draw_log_at(e[2])
 			"bld":
@@ -258,26 +302,10 @@ func _draw_graves(anchor: Vector2) -> void:
 		draw_line(pos + Vector2(-3, 0), pos + Vector2(3, 0), Color(0.55, 0.52, 0.45), 2.0)
 
 
-## Дерево/пень/саженец в тайле (переехали из статического слоя в M12).
-## Пень подбирается под тип дерева (замечание 2026-10-20): тот же хеш,
-## что выбрал спрайт дерева, выбирает вариант пня.
-## Правки v1.21: три размера — малое/среднее/большое (спрайт масштабом).
-func _draw_tree_at(tile: Vector2i) -> void:
-	var ts := float(map.ts)
-	var bottom := Vector2(tile.x * ts + ts / 2.0, tile.y * ts + ts * 0.92)
-	var key := Vector2i(tile)
-	if map.saplings.has(key):
-		_draw_sapling(key, bottom, ts)
-	elif map.grid[tile.y][tile.x] == map.TILE_TREE:
-		var size: int = map.tree_kind(tile)
-		var scale := ts * 1.9 if size == map.TREE_SMALL \
-				else (ts * 2.4 if size == map.TREE_MEDIUM else ts * 3.0)
-		_draw_shadow(bottom + Vector2(0, 2), ts * (0.4 if size == map.TREE_SMALL
-				else (0.55 if size == map.TREE_MEDIUM else 0.7)))
-		Assets.draw_ref(self, TREE_REFS[_hash(tile.x, tile.y, TREE_REFS.size())],
-				bottom + Vector2(0, -2), scale)
-	else:
-		_draw_stump(bottom, ts, _hash(tile.x, tile.y, STUMP_PALS.size()))
+## Дерево/пень/саженец (M12 — из статического слоя; v1.21.5 — деревья
+## выдаются готовыми дескрипторами из _trees_cache, пень и саженец —
+## редкие, рисуются как раньше). Пень подбирается под тип дерева тем же
+## хешом, что выбрал спрайт. Правки v1.21: три размера дерева.
 
 
 ## Поваленное бревно на земле (v1.21.2): толщина по размеру дерева —
@@ -476,6 +504,8 @@ func _draw_zones() -> void:
 		for i in (z["cells"] as Array).size():
 			var tile: Vector2i = z["cells"][i]
 			var rect := Rect2(Vector2(tile) * map.ts, Vector2(map.ts, map.ts))
+			if not _vis.intersects(rect):
+				continue   # клетка зоны за камерой (v1.21.5)
 			var filled: bool = float(z["progress"][i]) >= fill_work
 			# невыделенные клетки заметны сразу (замечание 2026-10-21:
 			# «ставлю поле — ничего нет»): заливка плотнее, у поля — борозды
@@ -494,9 +524,12 @@ func _draw_zones() -> void:
 							# посев (M10): стадия роста культуры. Правки v1.20.1:
 							# готовые спрайты растений — крошечные точки в углу
 							# листа (не видно вовсе), поэтому рисуем растения
-							# сами: куст зелени, спелый — с плодом цвета культуры
+							# сами (v1.21.5 — печёные текстуры стадий)
 							var crops: Array = z.get("crops", [])
-							var crop_vis: int = int(sim.crop_def(String(z.get("crop", "turnip"))).get("sprite", 0))
+							var crop_id := String(z.get("crop", "turnip"))
+							if not _crop_vis_cache.has(crop_id):
+								_crop_vis_cache[crop_id] = int(sim.crop_def(crop_id).get("sprite", 0))
+							var crop_vis: int = int(_crop_vis_cache[crop_id])
 							if i < crops.size() and not (crops[i] as Dictionary).is_empty():
 								var crop: Dictionary = crops[i]
 								var stage := int(crop.get("stage", 0)) + (1 if bool(crop.get("ripe", false)) else 0)
@@ -516,42 +549,72 @@ func _draw_zones() -> void:
 
 
 ## Растение на грядке (правки v1.20.1): рисуем сами — росток → куст →
-## спелый куст с плодом. crop_vis: 1 — репа (белый плод), 2 — тыква
-## (оранжевый), прочее — зелень без плода.
-func _draw_crop_plant(center: Vector2, stage: int, ripe: bool, crop_vis: int) -> void:
+## спелый куст с плодом. v1.21.5: стадии растения печатаются в маленькие
+## текстуры (кэш по типу и стадии) — было 5–7 кружков на клетку в кадре,
+## стала одна текстура; свечение спелости остаётся живым (пульсирует).
+var _crop_sprites: Dictionary = {}
+var _crop_vis_cache: Dictionary = {}   # культура -> вид спрайта (v1.21.5)
+
+
+func _px_circle(img: Image, c: Vector2, r: float, col: Color) -> void:
+	var x0 := maxi(0, int(floor(c.x - r - 1.0)))
+	var x1 := mini(img.get_width() - 1, int(ceil(c.x + r + 1.0)))
+	var y0 := maxi(0, int(floor(c.y - r - 1.0)))
+	var y1 := mini(img.get_height() - 1, int(ceil(c.y + r + 1.0)))
+	for py in range(y0, y1 + 1):
+		for px in range(x0, x1 + 1):
+			if Vector2(px + 0.5, py + 0.5).distance_to(c) <= r:
+				img.set_pixel(px, py, col)
+
+
+func _crop_sprite(crop_vis: int, stage: int) -> ImageTexture:
+	var key := "%d|%d" % [crop_vis, stage]
+	if _crop_sprites.has(key):
+		return _crop_sprites[key]
 	var leaf := Color("#5fae4a")
 	var leaf_dark := Color("#3f7a33")
 	var stem := Color("#4c8a3c")
-	var fruit := Color("#c9a8e8")   # репа — бледно-фиолетовая
+	var fruit := Color("#c9a8e8")
 	if crop_vis == 2:
-		fruit = Color("#e8892c")   # тыква — оранжевая
-	var base := center + Vector2(0.0, map.ts * 0.22)
+		fruit = Color("#e8892c")
+	var img := Image.create(22, 22, false, Image.FORMAT_RGBA8)
+	var base := Vector2(11.0, 17.0)
 	match clampi(stage, 0, 4):
-		0:   # росток: росток-«вилка»
-			draw_line(base, base + Vector2(0, -4), stem, 1.5)
-			draw_circle(base + Vector2(-2, -4), 1.6, leaf)
-			draw_circle(base + Vector2(2, -4), 1.6, leaf)
-		1:   # зелень растёт
-			draw_line(base, base + Vector2(0, -7), stem, 2.0)
-			draw_circle(base + Vector2(-3, -7), 2.4, leaf)
-			draw_circle(base + Vector2(3, -7), 2.4, leaf)
-			draw_circle(base + Vector2(0, -10), 2.0, leaf_dark)
-		2:   # куст
-			draw_line(base, base + Vector2(0, -9), stem, 2.2)
-			draw_circle(base + Vector2(-4, -9), 3.2, leaf)
-			draw_circle(base + Vector2(4, -9), 3.2, leaf)
-			draw_circle(base + Vector2(0, -12), 3.0, leaf_dark)
-			draw_circle(base + Vector2(0, -6), 2.2, leaf)
-		_:   # 3-4: спелый куст с плодом
-			draw_line(base, base + Vector2(0, -9), stem, 2.2)
-			draw_circle(base + Vector2(-4, -9), 3.0, leaf)
-			draw_circle(base + Vector2(4, -9), 3.0, leaf)
-			draw_circle(base + Vector2(0, -5), 4.2 if crop_vis == 2 else 3.4, fruit)
-			draw_circle(base + Vector2(-1, -6), 1.2, fruit.lightened(0.35))
-			if ripe:
-				# спелость: тёплое свечение — видно с первого взгляда
-				var glow := Color(1.0, 0.95, 0.6, 0.25 + 0.12 * sin(_anim_time * 3.0))
-				draw_circle(base + Vector2(0, -6), 7.5, glow)
+		0:
+			_px_circle(img, base + Vector2(-2, -4), 1.6, leaf)
+			_px_circle(img, base + Vector2(2, -4), 1.6, leaf)
+			_px_circle(img, base + Vector2(0, -2), 1.0, stem)
+		1:
+			_px_circle(img, base + Vector2(-3, -7), 2.4, leaf)
+			_px_circle(img, base + Vector2(3, -7), 2.4, leaf)
+			_px_circle(img, base + Vector2(0, -10), 2.0, leaf_dark)
+			_px_circle(img, base + Vector2(0, -4), 1.2, stem)
+		2:
+			_px_circle(img, base + Vector2(-4, -9), 3.2, leaf)
+			_px_circle(img, base + Vector2(4, -9), 3.2, leaf)
+			_px_circle(img, base + Vector2(0, -12), 3.0, leaf_dark)
+			_px_circle(img, base + Vector2(0, -6), 2.2, leaf)
+			_px_circle(img, base + Vector2(0, -3), 1.2, stem)
+		_:
+			_px_circle(img, base + Vector2(-4, -9), 3.0, leaf)
+			_px_circle(img, base + Vector2(4, -9), 3.0, leaf)
+			_px_circle(img, base + Vector2(0, -5), 4.2 if crop_vis == 2 else 3.4, fruit)
+			_px_circle(img, base + Vector2(-1, -6), 1.2, fruit.lightened(0.35))
+			_px_circle(img, base + Vector2(0, -3), 1.2, stem)
+	var tex := ImageTexture.create_from_image(img)
+	_crop_sprites[key] = tex
+	return tex
+
+
+func _draw_crop_plant(center: Vector2, stage: int, ripe: bool, crop_vis: int) -> void:
+	var tex := _crop_sprite(crop_vis, clampi(stage, 0, 4))
+	# якорь растения: низ текстуры встаёт туда, где была «земля» под кустом
+	var base := center + Vector2(0.0, map.ts * 0.22)
+	draw_texture_rect(tex, Rect2(base - Vector2(11.0, 17.0), Vector2(22.0, 22.0)), false)
+	if ripe and clampi(stage, 0, 4) >= 3:
+		# спелость: тёплое свечение — видно с первого взгляда
+		var glow := Color(1.0, 0.95, 0.6, 0.25 + 0.12 * sin(_anim_time * 3.0))
+		draw_circle(base + Vector2(0, -6), 7.5, glow)
 
 
 ## Забор пастбища: по внешним рёбрам клеток зоны — перекладина и столбики.
@@ -584,6 +647,8 @@ func _draw_roads() -> void:
 	var col: Color = colors.get("road", Color("#6e5f4a"))
 	for tile: Vector2i in map.road:
 		var rect := Rect2(Vector2(tile) * map.ts, Vector2(map.ts, map.ts))
+		if not _vis.intersects(rect):
+			continue   # за камерой не рисуем (v1.21.5)
 		draw_rect(rect, col)
 		draw_circle(rect.position + Vector2(map.ts * 0.3, map.ts * 0.4), 2.0, col.lightened(0.2))
 		draw_circle(rect.position + Vector2(map.ts * 0.65, map.ts * 0.65), 1.6, col.lightened(0.15))
@@ -854,6 +919,41 @@ func _bld_max_hp(type_id: String) -> float:
 	return hp
 
 
+## Кэш кружков жителей (v1.21.5): тело жителя — тень+кайма+заливка+центр —
+## рисовалось пятью командами на каждого; теперь печётся в маленькую
+## текстуру по цвету и размеру и рисуется одной командой.
+var _res_sprites: Dictionary = {}
+
+
+func _res_sprite(col: Color, radius: float) -> ImageTexture:
+	var key := "%s|%.0f" % [col.to_html(false), radius]
+	if _res_sprites.has(key):
+		return _res_sprites[key]
+	var size := int(ceil(radius * 2.0)) + 6
+	var img := Image.create(size, size, false, Image.FORMAT_RGBA8)
+	var c := Vector2(size / 2.0, size / 2.0)
+	var shadow_c := c + Vector2(0.0, 2.5)
+	var border := col.darkened(0.55)
+	var dot := col.darkened(0.5)
+	for py in size:
+		for px in size:
+			var p := Vector2(px + 0.5, py + 0.5)
+			var px_col := Color(0, 0, 0, 0)
+			if p.distance_to(shadow_c) <= radius:
+				px_col = Color(0, 0, 0, 0.25)
+			var d := p.distance_to(c)
+			if d <= radius:
+				px_col = border
+			if d <= radius - 1.5:
+				px_col = col
+			if d <= radius * 0.42:
+				px_col = dot
+			img.set_pixel(px, py, px_col)
+	var tex := ImageTexture.create_from_image(img)
+	_res_sprites[key] = tex
+	return tex
+
+
 ## Житель (M12: per-object для общего сортированного слоя). Айдл без «марша на
 ## месте»: движение читается из состояния и пути — раньше флаг moving,
 ## выставленный в дороге, не сбрасывался у стоящих, и они «маршировали».
@@ -880,17 +980,16 @@ func _draw_resident(r: Dictionary) -> void:
 	if sleeping:
 		col = col.darkened(0.4)
 	var center := pos + Vector2(0, -3.0 - bob)
-	# тень и кайма читаются на любом фоне
-	draw_circle(center + Vector2(0.0, 2.5), radius, Color(0, 0, 0, 0.25))
-	draw_circle(center, radius, col.darkened(0.55))
-	draw_circle(center, radius - 1.5, col)
-	# голем-староста: белое «лицо» камня; житель — тёмный центр-силуэт
+	# тело — готовая текстурка (v1.21.5): одна команда вместо пяти
+	var body := _res_sprite(col, radius)
+	var half := float(body.get_width()) * 0.5
+	draw_texture_rect(body, Rect2(center - Vector2(half, half),
+			Vector2(float(body.get_width()), float(body.get_width()))), false)
+	# голем-староста: белое «лицо» камня поверх кружка (он один на город)
 	if _is_elder_golem(r):
 		draw_circle(center, radius - 3.0, Color(1.0, 1.0, 1.0, 0.95))
 		draw_circle(center + Vector2(-2.0, -1.5), 1.1, Color("#3a3f4a"))
 		draw_circle(center + Vector2(2.0, -1.5), 1.1, Color("#3a3f4a"))
-	else:
-		draw_circle(center, radius * 0.42, col.darkened(0.5))
 	# груз носильщика (M6): узел цвета ресурса; бревно/сырой камень (v1.21) —
 	# покрупнее: видно, что тащит лесоруб и шахтёр
 	if float(r.get("carry", 0.0)) > 0.0:

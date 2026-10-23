@@ -271,7 +271,7 @@ func _process(delta: float) -> void:
 		if _terrain_redraw_accum >= 0.5:
 			_terrain_redraw_accum = 0.0
 			sim.terrain_dirty = false
-			_terrain.queue_redraw()
+			_terrain.rebake()   # перевыпечь текстуру ландшафта (v1.21.5)
 			view.mark_trees_dirty()   # деревья ушли в сортированный слой (M12)
 	else:
 		_terrain_redraw_accum = 0.0

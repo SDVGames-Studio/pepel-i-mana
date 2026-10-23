@@ -78,6 +78,7 @@ const BLOCKS := [
 	]],
 	["res://tests/test_v1214.gd", [
 		"_test_v1214_caches",
+		"_test_v1215_pop_max",
 	]],
 ]
 

@@ -54,3 +54,24 @@ func _test_v1214_caches() -> void:
 	var hp_cfg: Dictionary = sim.cfg.get("threat", {}).get("bld_hp", {})
 	_check(sim._bld_max_hp("house") == int(hp_cfg.get("pop", hp_cfg.get("default", 20))),
 			"_bld_max_hp: прочность дома из кэша верна")
+
+
+func _test_v1215_pop_max() -> void:
+	# v1.21.5: жёсткий потолок населения из city.json -> pop_max (0 = нет)
+	var sim = _make_sim()
+	print("[v1.21.5: потолок населения]")
+	var cap_free: int = sim.pop_cap()
+	_check(cap_free > 0, "pop_cap без потолка положительный (%d)" % cap_free)
+	sim.cfg["pop_max"] = 40
+	_check(sim.pop_cap() == mini(40, cap_free), "pop_max=40 клэмпит потолок")
+	sim.cfg["pop_max"] = 0
+	_check(sim.pop_cap() == cap_free, "pop_max=0 — потолка нет (старые конфиги)")
+	# беженцы не приходят сверх потолка: накидываем жителей до 40 и крутим дни
+	sim.cfg["pop_max"] = 40
+	while sim.residents.size() < 40:
+		var r: Dictionary = sim._new_resident("Тест", "farmer", sim.map.spawn_tile)
+		sim.residents.append(r)
+		sim._next_id += 1
+	for i in 10:
+		sim._roll_refugees()
+	_check(sim.residents.size() == 40, "сверх 40 беженцы не приходят (%d)" % sim.residents.size())

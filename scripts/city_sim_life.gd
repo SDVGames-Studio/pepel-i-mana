@@ -613,7 +613,10 @@ func pop_cap() -> int:
 	for r in residents:
 		if _is_golem(r):
 			golems += 1
-	return base_pop + houses * int(cfg["pop_per_house"]) + golems
+	# жёсткий потолок населения (v1.21.5, просьба заказчика): 0 = без потолка
+	var cap := base_pop + houses * int(cfg["pop_per_house"]) + golems
+	var hard := int(cfg.get("pop_max", 0))
+	return mini(cap, hard) if hard > 0 else cap
 
 
 func is_night() -> bool:

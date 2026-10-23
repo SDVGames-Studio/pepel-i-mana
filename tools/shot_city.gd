@@ -131,7 +131,32 @@ func _on_frame() -> void:
 	_frames += 1
 	if _frames < 45:
 		return
+	if OS.get_environment("SHOT_AB") != "":
+		# A/B в одном прогоне (v1.21.5): кадр с запечённым ландшафтом,
+		# затем та же сцена с прямой отрисовкой тайлов — один мир, одна камера
+		if _frames == 45:
+			root.get_texture().get_image().save_png("res://tools/shot_ab_baked.png")
+			print("shot: A (запечённый) сохранён")
+			OS.set_environment("TERRAIN_DIRECT", "1")
+			_find_terrain(root).queue_redraw()
+			return
+		if _frames >= 60:
+			root.get_texture().get_image().save_png("res://tools/shot_ab_direct.png")
+			print("shot: B (прямой) сохранён")
+			quit(0)
+		return
 	var img: Image = root.get_texture().get_image()
 	img.save_png("res://tools/shot_city.png")
 	print("shot: сохранён tools/shot_city.png")
 	quit(0)
+
+
+func _find_terrain(node: Node) -> Node:
+	if node.get_script() != null \
+			and String((node.get_script() as Script).resource_path).ends_with("city_terrain.gd"):
+		return node
+	for child in node.get_children():
+		var found := _find_terrain(child)
+		if found != null:
+			return found
+	return null
