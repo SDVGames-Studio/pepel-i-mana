@@ -781,12 +781,12 @@ func _district_anchor(type_id: String) -> Vector2i:
 	var best := Vector2i(-1, -1)
 	var best_d := INF
 	var cat := _cat_of(type_id)
-	for pass in 2:   # 0 — тот же тип, 1 — та же цветовая ветка
+	for pass_n in 2:   # 0 — тот же тип, 1 — та же цветовая ветка
 		for b in buildings:
 			if not _active(b):
 				continue
 			var ok := false
-			if pass == 0:
+			if pass_n == 0:
 				ok = String(b["type"]) == type_id
 			else:
 				ok = cat != "" and _cat_of(String(b["type"])) == cat
