@@ -19,6 +19,7 @@ config/icon="res://icon.png"
 
 Loc="*res://scripts/loc.gd"
 Game="*res://scripts/game.gd"
+godot_mcp_runtime="*res://addons/godot-mcp/runtime_bridge.gd"
 
 [display]
 
@@ -71,3 +72,6 @@ inventory={
 [rendering]
 
 textures/canvas_textures/default_texture_filter=0
+
+[editor_plugins]
+enabled=PackedStringArray("res://addons/godot-mcp/plugin.cfg")
