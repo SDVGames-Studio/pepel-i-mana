@@ -531,6 +531,34 @@ func placement_block(type_id: String, tile: Vector2i, skip_count := false) -> St
 			for dx in w:
 				if _tile_in_field_zone(tile + Vector2i(dx, dy)):
 					return "city.placement_field"
+	# районы (v1.21.1): капитальное здание цветовой ветки строится рядом
+	# с уже стоящими той же ветки — город растёт кварталами. Первое здание
+	# ветки — где угодно; тайловые стены/ворота/мосты — вне правила
+	var dcfg: Dictionary = cfg.get("district", {})
+	var cat_id := _cat_of(type_id)
+	if not dcfg.is_empty() and cat_id != "" and bld_w_of_type(type_id) >= 2 \
+			and (dcfg.get("cats", []) as Array).has(cat_id):
+		var radius := int(dcfg.get("radius", 4))
+		var has_cluster := false
+		var near_cluster := false
+		var new_rect := {"type": type_id, "tile": tile}
+		for b in buildings:
+			if not _active(b) or _cat_of(String(b["type"])) != cat_id:
+				continue
+			has_cluster = true
+			if rects_gap(new_rect, b) <= radius:
+				near_cluster = true
+				break
+		if has_cluster and not near_cluster:
+			return "city.placement_district"
+	return ""
+
+
+## Цветовая ветка здания (cat из конфига: living/resource/craft/...).
+func _cat_of(type_id: String) -> String:
+	for d in cfg.get("buildings", []):
+		if String(d.get("id", "")) == type_id:
+			return String(d.get("cat", ""))
 	return ""
 
 

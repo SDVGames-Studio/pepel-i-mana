@@ -908,9 +908,9 @@ func _test_people() -> void:
 	_build_now(sim_w2, "farm")   # баланс еды положительный — стены, а не ферма
 	_build_now(sim_w2, "house")
 	_build_now(sim_w2, "house")
-	var wtile: Vector2i = sim_w2.map.spawn_tile + Vector2i(7, 0)
-	while not sim_w2.is_buildable_tile(wtile):
-		wtile += Vector2i(1, 0)
+	# v1.21.1: колодец — жилая ветка, ставим рядом с домами (районы)
+	var wtile: Vector2i = _find_free_tile(sim_w2, sim_w2.map.spawn_tile, "well")
+	_check(wtile != Vector2i(-1, -1), "колодцу нашлось место у жилого района")
 	sim_w2.place_building("well", wtile)
 	sim_w2._roll_autobuild()
 	var walls_mid := 0

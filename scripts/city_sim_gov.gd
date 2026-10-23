@@ -703,8 +703,9 @@ func _autobuild_site_exists(type_id: String) -> bool:
 	return false
 
 
-## Тайл под самострой: добытчики — у своего ресурса (заказчик), остальные —
-## по районам (жилые к западу, производственные к востоку). Своё место занято — общий поиск.
+## Тайл под самострой: добытчики — у своего ресурса (заказчик), следующие —
+## максимально близко к своему типу/ветке (районы, v1.21.1), иначе — по
+## районам от центра (жилые к западу, производственные к востоку).
 ## Правки v1.21: лесопилка ставится где угодно; шахта — у жил/выработанного
 ## массива (ставится рядом, не на тайл).
 func _find_autobuild_tile(type_id: String) -> Vector2i:
@@ -729,6 +730,13 @@ func _find_autobuild_tile(type_id: String) -> Vector2i:
 				float(cfg.get("gather_range", 6)))
 		if not forest_t == Vector2i(-1, -1):
 			return forest_t
+	# районы (v1.21.1): якорь — ближайшее к центру готовое здание того же
+	# типа (затем — той же цветовой ветки); место ищем кольцами от якоря
+	var anchor := _district_anchor(type_id)
+	if anchor != Vector2i(-1, -1):
+		var cluster_t := _tile_near_cluster(type_id, anchor)
+		if not cluster_t == Vector2i(-1, -1):
+			return cluster_t
 	var district := "work"
 	for d in cfg["buildings"]:
 		if String(d["id"]) == type_id:
@@ -764,6 +772,53 @@ func _find_tile_near_nature(type_id: String, kinds: Array, radius: float) -> Vec
 				best_d = d
 				best = t
 	return best
+
+
+## Якорь района (v1.21.1): ближайшее к центру города ГОТОВОЕ здание того же
+## типа («дом к дому»); своего типа нет — ближайшее здание той же цветовой
+## ветки. Пусто — района ещё нет ({} нет и тайла: Vector2i(-1,-1)).
+func _district_anchor(type_id: String) -> Vector2i:
+	var best := Vector2i(-1, -1)
+	var best_d := INF
+	var cat := _cat_of(type_id)
+	for pass in 2:   # 0 — тот же тип, 1 — та же цветовая ветка
+		for b in buildings:
+			if not _active(b):
+				continue
+			var ok := false
+			if pass == 0:
+				ok = String(b["type"]) == type_id
+			else:
+				ok = cat != "" and _cat_of(String(b["type"])) == cat
+			if not ok:
+				continue
+			var d: float = Vector2(b["tile"]).distance_to(Vector2(map.spawn_tile))
+			if d < best_d:
+				best_d = d
+				best = b["tile"]
+		if best != Vector2i(-1, -1):
+			return best
+	return best
+
+
+## Место у кластера (v1.21.1): кольцами от якоря, ближайшее годное
+## (все правила размещения, включая зазоры и поля ферм).
+func _tile_near_cluster(type_id: String, anchor: Vector2i) -> Vector2i:
+	var radius := int(cfg.get("district", {}).get("search", 6))
+	for r in range(1, radius + 1):
+		for dy in range(-r, r + 1):
+			for dx in range(-r, r + 1):
+				if maxi(absi(dx), absi(dy)) != r:
+					continue   # только кольцо радиуса r — ближе сперва сами здания
+				var t: Vector2i = anchor + Vector2i(dx, dy)
+				if not is_buildable_rect(type_id, t):
+					continue
+				if placement_block(type_id, t) != "":
+					continue
+				if not placement_gap_ok(type_id, t):
+					continue
+				return t
+	return Vector2i(-1, -1)
 
 
 ## Ближайший к центру города тайл рядом с ресурсом, куда можно поставить здание.

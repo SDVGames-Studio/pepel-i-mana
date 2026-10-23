@@ -313,6 +313,13 @@ func _find_free_tile(sim: Object, near: Vector2i, type_id: String = "") -> Vecto
 				if sim.is_buildable_rect(type_id, tile) and sim.placement_block(type_id, tile) == "" \
 						and sim.placement_gap_ok(type_id, tile):
 					return tile
+	# районы (v1.21.1): рядом не вышло (правило цветовой ветки) — ищем у кластера
+	if type_id != "":
+		var anchor: Vector2i = sim._district_anchor(type_id)
+		if anchor != Vector2i(-1, -1):
+			var t_c: Vector2i = sim._tile_near_cluster(type_id, anchor)
+			if t_c != Vector2i(-1, -1):
+				return t_c
 	return Vector2i(-1, -1)
 
 
@@ -369,6 +376,13 @@ func _build_at(sim: Object, type_id: String, tile: Vector2i) -> Dictionary:
 			if not g == Vector2i(-1, -1) and sim.place_building(type_id, g):
 				tile = g
 				placed = true
+	if not placed:
+		# районы (v1.21.1): заданный тайл не прошёл правило ветки — место
+		# ищет сам симулятор (кластер своего типа, затем ветка)
+		var auto_t: Vector2i = sim._find_autobuild_tile(type_id)
+		if not auto_t == Vector2i(-1, -1) and sim.place_building(type_id, auto_t):
+			tile = auto_t
+			placed = true
 	if not placed and String(type_id) == "armory":
 		# оружейная: ищем 2×2 вокруг готовой кузни
 		for b in sim.buildings:
