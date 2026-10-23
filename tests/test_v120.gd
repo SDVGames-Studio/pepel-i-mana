@@ -48,6 +48,13 @@ func _test_fixes_v1191() -> void:
 	print("DBG solo: [", ", ".join(dbg_types), "] wood=", int(solo.res["wood"]),
 			" food=", int(solo.res["food"]), " stone=", int(solo.res["stone"]),
 			" anger=", solo.forest_anger, " zones=", solo.zones.size())
+	for r in solo.residents:
+		var hm: Variant = r.get("home", null)
+		print("DBG res: ", String(r["name"]), " prof=", String(r["prof"]),
+				" state=", String(r["state"]), " home=", "yes" if hm is Dictionary and not (hm as Dictionary).is_empty() else "none",
+				" bld=", String(r["bld"]["type"]) if r["bld"] != null else "-",
+				" site=", String(r["site"]["type"]) if r["site"] != null else "-",
+				" inside=", int(r.get("inside", 0)))
 	_check(housed > 0, "жители заселяют дома (с homeless %d чел.)" % housed)
 
 	# --- 2. расписание волн: раз в 10 дней, зачистка данжа сдвигает на 20 -----
