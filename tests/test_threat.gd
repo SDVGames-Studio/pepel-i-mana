@@ -711,14 +711,14 @@ func _test_gathering() -> void:
 	_check(log_t != Vector2i(-1, -1), "нашлась трава под тестовое бревно")
 	if log_t != Vector2i(-1, -1):
 		var wood_pool0 := int(sim_sg.res["wood"])
-		var pile0 := float((saw["pile"] as Dictionary).get("wood", 0.0))
+		saw["pile"] = {}   # куча переполнена капом — меряем именно это бревно
 		sim_sg.map.logs[log_t] = {"size": sim_sg.map.TREE_LARGE}
 		var picked := false
 		for i in 40:   # дойти до бревна, принести, распилить (без рубки)
 			sim_sg.tick(12.0)
 			if not sim_sg.map.logs.has(log_t) \
-					and float((saw["pile"] as Dictionary).get("wood", 0.0)) >= pile0 + 35.0:
-				picked = true
+					and float((saw["pile"] as Dictionary).get("wood", 0.0)) >= 20.0:
+				picked = true   # большое бревно 35, влезает в кап кучи 20
 				break
 		_check(picked, "бревно с земли — на лесопилку и в доски (v1.21.2)")
 		_check(int(sim_sg.res["wood"]) == wood_pool0,
