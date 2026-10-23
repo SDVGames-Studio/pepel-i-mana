@@ -31,6 +31,9 @@ func _test_fixes_v1191() -> void:
 	# это честная игра, но не предмет этой проверки
 	solo.people["ailments"]["sick_chance"] = 0.0
 	solo.people["ailments"]["wounded_on_surge"] = 0
+	# гигиена теста: шторм с фиксированным сидом методично рушил дом —
+	# заселение проверяем без погодных ЧП (буря — отдельная механика M14-J)
+	solo.cfg["storm"]["base_chance"] = 0.0
 	var step := day_len / 4.0
 	for i in 25 * 4:
 		solo.tick(step)

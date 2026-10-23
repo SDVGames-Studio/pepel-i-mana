@@ -48,6 +48,19 @@ func _assign_jobs() -> void:
 			taken[int(worker["id"])] = true
 	# 3. держатели подмен возвращаются на основную профессию, если она нужна
 	_substitutes_to_primary(taken)
+	# 3.5 стройка важнее подмены (v1.21): встала стройка без работника —
+	# голем-староста оставляет временное рабочее место и идёт строить,
+	# иначе в маленьком городе площадки висели вечно
+	for b in buildings:
+		if bool(b["done"]) or int(b["worker"]) > 0:
+			continue
+		for r in residents:
+			if _is_golem(r) and r["site"] == null and r["bld"] != null:
+				(r["bld"] as Dictionary)["worker"] = -1
+				r["bld"] = null
+				r["sub_prof"] = ""
+				break
+		break
 	# 4. подмена строек и зданий свободными жителями (с обучением)
 	for b in buildings:
 		if not bool(b["done"]) and (int(b["worker"]) <= 0 or not taken.has(int(b["worker"]))):
