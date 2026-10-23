@@ -57,29 +57,37 @@ func _test_m6() -> void:
 		_teleport(sim_f, worker_f, zfield["cells"][i])
 		sim_f.tick(6.0)
 	var food0: float = float(sim_f.res["food"])
-	# M10 + этап 2/аспект 3: поле работает циклами посев→рост→урожай; культура
-	# по умолчанию — репа (stage_days 0.4 → зреет за ~1.6 дня)
+	# M10 + этап 2/аспект 3: поле работает циклами посев→рост→урожай.
+	# v1.21: репа зреет 3.2 дня (стадии 4 × 0.8) — даём до двух циклов
 	sim_f.cfg["food_per_resident_day"] = 0.0   # меряем чистый урожай без трат
 	var food1: float = float(sim_f.res["food"])
-	for i in 12:   # 6 дней: репа зреет за ~1.6 дня — по 2–3 цикла на клетку
-		sim_f.tick(float(sim_f.cfg["day_length"]) / 2.0)
 	var expected: float = fcells.size() * float(sim_f.crop_def("turnip")["harvest"])
-	var grown: float = float(sim_f.res["food"]) - food1
+	var grown := 0.0
+	for i in 24:
+		sim_f.tick(float(sim_f.cfg["day_length"]) / 2.0)
+		grown = float(sim_f.res["food"]) - food1
+		if grown >= expected - 0.6:
+			break
 	_check(grown >= expected - 0.6 or float(sim_f.res["food"]) >= food0 + expected - 0.6,
 			"поле собрало урожай: %d клетки × %.1f" % [fcells.size(), expected])
 	_check(float(sim_f.res["seeds"]) >= 1.0 or (sim_f.zones[0]["crops"] as Array).size() > 0,
 			"урожай вернул семена — цикл поля замкнулся")
 
-	# --- здание на клетке зоны вытесняет её из зоны ---
+	# --- зона и стройка (v1.21): пастбище уступает клетку, поле — нет ---
 	# (v1.20: у спавна площадь с запретом стройки — зона подальше)
 	var sim_z2 := _make_sim()
 	sim_z2._last_daily_day = 999
 	var zcells: Array = _grass_tiles(sim_z2, sim_z2.map.spawn_tile + Vector2i(7, 7), 4)
-	sim_z2.add_zone("field", zcells)
+	sim_z2.add_zone("pasture", zcells)
 	var before_n: int = (sim_z2.zones[0]["cells"] as Array).size()
 	sim_z2.place_building("wall", zcells[0])
 	_check((sim_z2.zones[0]["cells"] as Array).size() == before_n - 1,
-			"здание на клетке зоны убирает клетку из зоны")
+			"здание на клетке пастбища убирает клетку из зоны")
+	# клетки поля фермы (и ручного поля) стройке запрещены (v1.21)
+	var fcells_z: Array = _grass_tiles(sim_z2, sim_z2.map.spawn_tile + Vector2i(-7, 7), 2)
+	sim_z2.add_zone("field", fcells_z)
+	_check(sim_z2.placement_block("wall", fcells_z[0]) == "city.placement_field",
+			"на клетке поля строить нельзя (v1.21)")
 
 	# --- дороги: камень за тайл, ускорение по дороге ---
 	var sim_r := _make_sim()
@@ -183,12 +191,13 @@ func _test_m6() -> void:
 	farmer_pg["traits"] = []
 	farmer_pg["mood"] = 100.0
 	# ферма — подальше от спавна (амбара): близкая запечатывает спавн-клетку и
-	# носильщик «без склада» не может дойти до цели (этап 2, аспект 2)
+	# носильщик «без склада» не может дойти до цели (этап 2, аспект 2).
+	# v1.21: ферма на грядках — готовую кучу еды даём руками (как раньше
+	# выращивал пассив), носильщику всё равно, откуда носить
 	var farm_pg := _build_now(sim_pg, "farm", sim_pg.map.spawn_tile + Vector2i(6, 4))
 	_teleport(sim_pg, farmer_pg, farm_pg["tile"])
-	for i in 25:   # выйти из сплошной фермы (2×2) и работать на входе
-		sim_pg.tick(1.0)
-	_check(float(sim_pg._pile_total(farm_pg)) >= 2.0, "куча у фермы доросла до готовой")
+	farm_pg["pile"] = {"food": 9.0}
+	_check(float(sim_pg._pile_total(farm_pg)) >= 2.0, "куча у фермы готова к переносу")
 	var food_pg0: float = float(sim_pg.res["food"])
 	# день настал — город сам обучает носильщика, раз кучам некомусть некому носить
 	sim_pg._last_daily_day = 0
@@ -233,36 +242,41 @@ func _test_m6() -> void:
 		sim_pg.tick(1.0)
 	_check(float(porter_pg2.get("carry", 0.0)) > 0.0, "полное хранилище: носильщик ждёт с грузом")
 
-	# --- бонус планировки: склад рядом с фермой ускоряет её ---
+	# --- бонус планировки: склад рядом с производством ускоряет его ---
+	# v1.21: ферма больше не «производит» (её урожай — грядки), бонус планировки
+	# проверяем на плавильне
 	var sim_l := _make_sim()
 	sim_l._last_daily_day = 999
+	sim_l.res["iron"] = 50.0
+	sim_l.res["wood"] = 60.0   # v1.21: на склад и две плавильни хватает дерева
+	sim_l.res["stone"] = 60.0
 	var barn_l := _build_now(sim_l, "warehouse")
-	# этап 2: зазор 1 — ферма в трёх клетках от склада (в радиусе бонуса 4)
-	var farm_tile_l: Vector2i = sim_l.map.nearest_walkable((barn_l["tile"] as Vector2i) + Vector2i(3, 0))
-	var farm_l := _build_at(sim_l, "farm", farm_tile_l)
-	_check(bool(farm_l["done"]), "ферма у склада построена")
-	_check(absf(float(sim_l.production_mult(farm_l)) - float(sim_l.cfg["layout"]["warehouse_mult"])) < 0.001,
-			"склад рядом с фермой даёт +25% скорости (бонус планировки)")
-	# дальняя ферма: заведомо за пределами радиуса склада
-	var farm_far := Vector2i(-1, -1)
+	# этап 2: зазор 1 — плавильня в трёх клетках от склада (в радиусе бонуса 4)
+	var smelt_tile_l: Vector2i = sim_l.map.nearest_walkable((barn_l["tile"] as Vector2i) + Vector2i(3, 0))
+	var smelt_l := _build_at(sim_l, "smelter", smelt_tile_l)
+	_check(bool(smelt_l["done"]), "плавильня у склада построена")
+	_check(absf(float(sim_l.production_mult(smelt_l)) - float(sim_l.cfg["layout"]["warehouse_mult"])) < 0.001,
+			"склад рядом с производством даёт +25% скорости (бонус планировки)")
+	# дальняя плавильня: заведомо за пределами радиуса склада
+	var smelt_far := Vector2i(-1, -1)
 	for radius in range(8, 14):
 		for dy in range(-radius, radius + 1):
 			for dx in range(-radius, radius + 1):
 				if maxi(absi(dx), absi(dy)) != radius:
 					continue
 				var t: Vector2i = sim_l.map.spawn_tile + Vector2i(dx, dy)
-				if sim_l.is_buildable_rect("farm", t) \
+				if sim_l.is_buildable_rect("smelter", t) \
 						and Vector2(t).distance_to(Vector2(barn_l["tile"])) > 5.0:
-					farm_far = t
+					smelt_far = t
 					break
-			if farm_far != Vector2i(-1, -1):
+			if smelt_far != Vector2i(-1, -1):
 				break
-		if farm_far != Vector2i(-1, -1):
+		if smelt_far != Vector2i(-1, -1):
 			break
-	_check(farm_far != Vector2i(-1, -1), "нашлось место под дальнюю ферму")
-	var farm_l2 := _build_at(sim_l, "farm", farm_far)
-	var mult_far: float = float(sim_l.production_mult(farm_l2))
-	_check(mult_far < 1.2, "далёкая от склада ферма без бонуса (%.2f)" % mult_far)
+	_check(smelt_far != Vector2i(-1, -1), "нашлось место под дальнюю плавильню")
+	var smelt_l2 := _build_at(sim_l, "smelter", smelt_far)
+	var mult_far: float = float(sim_l.production_mult(smelt_l2))
+	_check(mult_far < 1.2, "далёкая от склада плавильня без бонуса (%.2f)" % mult_far)
 
 	# --- декор: сад и статуя поднимают мораль городу ---
 	var sim_d := _make_sim()
@@ -532,7 +546,7 @@ func _test_m7() -> void:
 	var hero_b: Dictionary = balance.get("hero", {})
 	var balance_ok: bool = \
 			absf(float(food_b.get("per_resident_day", 0)) - float(city_cfg["food_per_resident_day"])) < 0.001 \
-			and int(food_b.get("farm_per_day", 0)) == 16 \
+			and int(food_b.get("farm_per_day", 0)) == 12 \
 			and absf(float(pol_b.get("decay_per_day", 0)) - float(pol_cfg.get("decay_per_day", 0))) < 0.001 \
 			and int(pol_b.get("max", 0)) == 100 \
 			and absf(float(threat_b.get("start_day", 0)) - float(threat_cfg.get("start_day", 0))) < 0.001 \

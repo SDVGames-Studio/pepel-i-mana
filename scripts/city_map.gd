@@ -7,6 +7,12 @@ const TILE_WATER := 1
 const TILE_ROCK := 2
 const TILE_TREE := 3
 const TILE_ORE := 4       # скала с железной рудой — под ней можно поставить шахту (M5+)
+const TILE_DEADROCK := 5  # выработанный массив (правки v1.21): пустая порода/жилы —
+                          # стоит на месте выработанной скалы, добывается шахтой
+
+const TREE_SMALL := 1     # размеры деревьев (правки v1.21): малое/среднее/большое
+const TREE_MEDIUM := 2
+const TREE_LARGE := 3
 
 var w := 0
 var h := 0
@@ -17,6 +23,8 @@ var wear := {}                  # Vector2i -> float: износ троп (M6) �
 var rock_hp := {}               # Vector2i -> float: запас скалы (M11) — добыча истощает тайл
 var stumps := {}                # Vector2i -> true: пни на месте срубленных деревьев (M11)
 var saplings := {}              # Vector2i -> {t: float}: посаженные деревья, растут (M11)
+var tree_size := {}             # Vector2i -> int (TREE_SMALL/MEDIUM/LARGE): размер дерева (v1.21)
+var tree_growth := {}           # Vector2i -> float: дни роста дерева до следующего размера (v1.21)
 var bridges := {}               # Vector2i -> true: мосты через воду (M14-I)
 var anomaly_tile := Vector2i.ZERO   # вход в данж (у аномалии)
 var spawn_tile := Vector2i.ZERO     # старт героя и жителей
@@ -34,6 +42,8 @@ func generate(seed_value: int, params: Dictionary) -> void:
 	rock_hp = {}
 	stumps = {}
 	saplings = {}
+	tree_size = {}
+	tree_growth = {}
 	bridges = {}
 	for attempt in 20:
 		_generate_once(seed_value + attempt * 1013, params)
@@ -93,7 +103,8 @@ func _generate_once(seed_value: int, params: Dictionary) -> void:
 				rock_hp[Vector2i(x, y)] = hp
 			elif grid[y][x] == TILE_ORE:
 				rock_hp[Vector2i(x, y)] = hp * 1.3
-	# деревья поодиночке на траве — лес гуще (M5+)
+	# деревья поодиночке на траве — лес гуще (M5+); размер — детерминированный
+	# бросок (v1.21): лес в основном средний, реже малый и большой
 	var placed := 0
 	var guard := 0
 	while placed < int(params["trees"]) and guard < int(params["trees"]) * 20:
@@ -101,6 +112,7 @@ func _generate_once(seed_value: int, params: Dictionary) -> void:
 		var p := Vector2i(rng.randi_range(1, w - 2), rng.randi_range(1, h - 2))
 		if grid[p.y][p.x] == TILE_GRASS:
 			grid[p.y][p.x] = TILE_TREE
+			tree_size[p] = _roll_tree_size(rng.randf())
 			placed += 1
 	# старт в центре, аномалия — у правого края, выход на карту мира — у левого;
 	# вокруг них чистая трава
@@ -201,13 +213,29 @@ func nearest_walkable(tile: Vector2i) -> Vector2i:
 	return spawn_tile
 
 
-## Проходимость ландшафта (без учёта зданий). Руда — как скала: непроходима.
-## Мост (M14-I) делает водный тайл проходимым.
+## Размер дерева по броску 0..1: 30% малое, 45% среднее, 25% большое (v1.21).
+static func _roll_tree_size(roll: float) -> int:
+	if roll < 0.30:
+		return TREE_SMALL
+	if roll < 0.75:
+		return TREE_MEDIUM
+	return TREE_LARGE
+
+
+## Размер дерева на тайле (без дерева — малое, фолбэк для старых сейвов).
+func tree_kind(tile: Vector2i) -> int:
+	return int(tree_size.get(tile, TREE_SMALL))
+
+
+## Проходимость ландшафта (без учёта зданий). Руда и выработанный массив —
+## как скала: непроходимы. Мост (M14-I) делает водный тайл проходимым.
 func is_nature_walkable(p: Vector2i) -> bool:
 	if in_bounds(p) and bridges.has(p):
 		return true
-	return in_bounds(p) and grid[p.y][p.x] != TILE_WATER and grid[p.y][p.x] != TILE_ROCK \
-			and grid[p.y][p.x] != TILE_ORE
+	if not in_bounds(p):
+		return false
+	var t: int = grid[p.y][p.x]
+	return t != TILE_WATER and t != TILE_ROCK and t != TILE_ORE and t != TILE_DEADROCK
 
 
 func _setup_astar() -> void:

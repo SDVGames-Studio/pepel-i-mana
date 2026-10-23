@@ -298,7 +298,7 @@ func _find_free_tile(sim: Object, near: Vector2i, type_id: String = "") -> Vecto
 			var on_resource := false
 			match String(type_id):
 				"mine":
-					kinds = [sim.map.TILE_ORE]
+					kinds = [sim.map.TILE_ORE, sim.map.TILE_DEADROCK]
 					on_resource = true
 				"sawmill":
 					kinds = [sim.map.TILE_TREE]
@@ -358,7 +358,7 @@ func _build_at(sim: Object, type_id: String, tile: Vector2i) -> Dictionary:
 		var on_resource := false
 		match String(type_id):
 			"mine":
-				kinds = [sim.map.TILE_ORE]
+				kinds = [sim.map.TILE_ORE, sim.map.TILE_DEADROCK]
 				on_resource = true
 			"sawmill":
 				kinds = [sim.map.TILE_TREE]

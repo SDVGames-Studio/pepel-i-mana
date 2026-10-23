@@ -31,6 +31,9 @@ func _test_fixes_v1191() -> void:
 	# это честная игра, но не предмет этой проверки
 	solo.people["ailments"]["sick_chance"] = 0.0
 	solo.people["ailments"]["wounded_on_surge"] = 0
+	# гигиена теста: шторм с фиксированным сидом методично рушил дом —
+	# заселение проверяем без погодных ЧП (буря — отдельная механика M14-J)
+	solo.cfg["storm"]["base_chance"] = 0.0
 	var step := day_len / 4.0
 	for i in 25 * 4:
 		solo.tick(step)
@@ -430,12 +433,15 @@ func _test_fixes_v120() -> void:
 			meeting_n += 1
 	_check(meeting_n > 0, "утро: жители получили зов на планёрку")
 	var plaza_center: Vector2i = sim_m.plaza + Vector2i(1, 1)
-	for i in 60:
-		sim_m.tick(0.5)
 	var at_plaza := 0
-	for r in sim_m.residents:
-		if (r["pos"] as Vector2).distance_to(sim_m.map.tile_center_px(plaza_center)) < float(sim_m.map.ts) * 3.5:
-			at_plaza += 1
+	for i in 20:   # планёрка короткая (7 сек) — ловим момент сбора в окне
+		sim_m.tick(0.5)
+		at_plaza = 0
+		for r in sim_m.residents:
+			if (r["pos"] as Vector2).distance_to(sim_m.map.tile_center_px(plaza_center)) < float(sim_m.map.ts) * 3.5:
+				at_plaza += 1
+		if at_plaza > 0:
+			break
 	_check(at_plaza > 0, "жители собрались у главной площади на планёрку")
 
 	# --- мысли жителей: строка для тултипа и журнал наведения ---
@@ -544,7 +550,7 @@ func _test_fixes_v1201() -> void:
 		if tree_t != Vector2i(-1, -1):
 			break
 	_check(tree_t != Vector2i(-1, -1), "у города есть дерево")
-	var hits_need: int = int(sim_s.cfg["hero_work"]["chop_hits"])
+	var hits_need: int = sim_s._hero_chop_hits(sim_s.map.tree_kind(tree_t))
 	var fell := ""
 	for i in hits_need:
 		fell = sim_s.hero_chop(sim_s.map.tile_center_px(tree_t))
@@ -552,7 +558,7 @@ func _test_fixes_v1201() -> void:
 	_check(float(sim_s.res.get("saplings", 0.0)) >= 1.0, "из дерева выпали саженцы (шанс 100%)")
 	_check(float(sim_s.res.get("saplings", 0.0)) <= 2.0, "не больше двух саженцев с дерева")
 
-	# --- лесоруб сажает саженцы у лесопилки (гнев леса растёт) ---
+	# --- лесоруб сажает саженцы у лесопилки (v1.21: посадка лес не злит) ---
 	var sim_p := _make_sim()
 	sim_p._last_daily_day = 999
 	sim_p.cfg["food_per_resident_day"] = 0.0
@@ -577,7 +583,20 @@ func _test_fixes_v1201() -> void:
 			break
 	_check((sim_p.map.saplings as Dictionary).size() >= 1, "лесоруб посадил саженец у лесопилки")
 	_check(float(sim_p.res.get("saplings", 0.0)) < 5.0, "саженец списан из пула")
-	_check(sim_p.forest_anger > 0.0, "плантация у пилы злит лес (гнев растёт)")
+	_check(sim_p.forest_anger == 0.0, "посадка леса не гневит лес (v1.21)")
+	# выросшее посаженное дерево успокаивает лес (v1.21); рубку исключаем,
+	# чтобы гнев меняли только рост и успокоение
+	saw_p["worker"] = -1
+	lumber_p["bld"] = null
+	sim_p.forest_anger = 5.0
+	var day_len_p: float = float(sim_p.cfg["day_length"])
+	sim_p.tick(day_len_p * 5.5)   # 5 дней роста саженца
+	var grown := false
+	for e in sim_p.events:
+		if String(e["type"]) == "tree_grown":
+			grown = true
+	_check(grown, "посаженное дерево выросло")
+	_check(sim_p.forest_anger < 3.0, "выросшее дерево гасит гнев леса")
 
 	# --- липкие цели: начатую клетку не меняют на «поближе» ---
 	var sim_t := _make_sim()

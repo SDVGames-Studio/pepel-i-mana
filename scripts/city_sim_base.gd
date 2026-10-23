@@ -31,11 +31,11 @@ extends RefCounted
 ## Рейдер: {id, type, p(строка enemies.json), hp, max_hp, pos, target, path,
 ##          atk_cd, goal(тайл), mode(advance|break|fight|flee)}
 
-const RESOURCES := ["wood", "stone", "food", "crystal", "tools", "iron", "metal", "kits", "seeds", "saplings"]
+const RESOURCES := ["wood", "stone", "food", "crystal", "tools", "iron", "metal", "kits", "seeds", "saplings", "gems"]
 
 var map = null                  # city_map.gd, нетипизированно (см. грабли GDScript)
 var cfg: Dictionary = {}
-var res: Dictionary = {"wood": 0, "stone": 0, "food": 0, "crystal": 0, "seeds": 0, "saplings": 0}
+var res: Dictionary = {"wood": 0, "stone": 0, "food": 0, "crystal": 0, "seeds": 0, "saplings": 0, "gems": 0}
 var residents: Array = []
 var buildings: Array = []
 var time := 0.0                 # игровое время, сек (x1)
@@ -53,6 +53,7 @@ var people: Dictionary = {}     # data/residents.json — черты, настр
 var autonomous := false         # автономная деревня (правки v1.12.0): с 10 жителей
                                 # деревня живёт сама — строит без старосты, зовёт поселенцев
 var _chop_progress := {}        # недоруб героем: тайл -> удары (правки v1.12.2, транзитно)
+var _last_fell_planks := 0      # досок с последнего дерева, сваленного героем (v1.21)
 
 # --- M5: угрозы -----------------------------------------------------------
 var raiders: Array = []         # мутанты текущей волны
@@ -417,6 +418,18 @@ func _farm_work(r: Dictionary, bld: Dictionary, dt: float) -> void:
 func _grow_skill(r: Dictionary, dt: float) -> void:
 	pass
 
+func _gather_work(r: Dictionary, bld: Dictionary, dt: float) -> void:
+	pass
+
+func _gather_target(r: Dictionary, bld: Dictionary) -> Vector2i:
+	return Vector2i(-1, -1)
+
+func _planks_for(size: int) -> float:
+	return 0.0
+
+func _hero_chop_hits(size: int) -> int:
+	return 1
+
 func _grow_up(r: Dictionary) -> void:
 	pass
 
@@ -450,7 +463,7 @@ func _nearest_done_of_type(from_px: Vector2, type_id: String) -> Dictionary:
 func _nearest_raider(from_px: Vector2, radius_px: float) -> Dictionary:
 	return {}
 
-func _nearest_ripe_field_cell(r: Dictionary) -> Dictionary:
+func _nearest_ripe_field_cell(r: Dictionary, farm_id: int = -1) -> Dictionary:
 	return {}
 
 func _necro_purge() -> void:
@@ -460,6 +473,9 @@ func _new_animal() -> Dictionary:
 	return {}
 
 func _porter_work(r: Dictionary, dt: float) -> void:
+	pass
+
+func _pull_idle_piles() -> void:
 	pass
 
 func _random_traits() -> Array:

@@ -78,6 +78,7 @@ func tick(dt_raw: float) -> void:
 		_roll_guards()
 		_roll_hunter()
 		_roll_porter()
+		_pull_idle_piles()   # без носильщика кучи разносятся руками (v1.21)
 		_roll_auto_roads()
 		_roll_animals()
 		_roll_storm()
@@ -259,16 +260,17 @@ func _update_resident(r: Dictionary, dt: float) -> void:
 		if bld_type == "tent":
 			_tent_tend(r, r["bld"], dt)   # торговец за прилавком (этап 2, аспект 4)
 			return
+		if bld_type == "workshop":
+			_workshop_work(r, r["bld"], dt)   # сперва ремонт повреждённых, потом переработка (M6)
+			return
+		if bld_type == "farm":
+			_farm_work(r, r["bld"], dt)   # грядки своей фермы: сбор спелых, вспашка (v1.21)
+			return
+		if bld_type == "sawmill" or bld_type == "quarry" or bld_type == "mine":
+			_gather_work(r, r["bld"], dt)   # добытчики у источника (v1.21: без пассива)
+			return
 		if _def(r["bld"]).has("produce"):
-			# добытчики работают у источника: лесоруб — у дерева, каменотёс — у скалы (заказчик)
-			if bld_type == "workshop":
-				_workshop_work(r, r["bld"], dt)   # сперва ремонт повреждённых, потом переработка (M6)
-			elif bld_type == "farm":
-				_farm_work(r, r["bld"], dt)   # поля: сбор спелого, обустройство, потом ферма (этап 2)
-			elif bld_type == "sawmill" or bld_type == "quarry":
-				_gather_work(r, r["bld"], dt)
-			else:
-				_do_work(r, r["bld"], dt)
+			_do_work(r, r["bld"], dt)
 		elif guard_on_duty:
 			_guard_post(r, dt)   # на смене — стоит на посту (вышка рядом открывает ворота)
 		elif String(r["prof"]) == "guard" and _help_build(r, dt):
@@ -368,6 +370,11 @@ func _evening_haul(r: Dictionary, dt: float) -> bool:
 	if r["bld"] == null:
 		return false
 	var bld: Dictionary = r["bld"]
+	# несёт бревно или сырой камень (v1.21) — груз продолжит путь утром,
+	# вечернюю кучу поверх груза не берём
+	if int(r.get("log_size", 0)) > 0 or float(r.get("raw", 0.0)) > 0.0 \
+			or float(r.get("carry_iron", 0.0)) > 0.0 or float(r.get("carry_stone", 0.0)) > 0.0:
+		return false
 	if float(r.get("carry", 0.0)) <= 0.0:
 		if int(r.get("hauled_day", 0)) == day:
 			return false   # сегодня уже снёс — отдыхаем
@@ -875,154 +882,9 @@ func _do_work(r: Dictionary, bld: Dictionary, dt: float) -> void:
 		_move_towards(r, bld_spot(bld), dt)
 
 
-## Добытчик (лесоруб/каменотёс) работает у источника: ходит к дереву или скале
-## рядом со зданием и добывает именно там (заказчик). Источника нет — работает у здания.
-## M11: лесоруб РУБИТ дерево — за chop_days оно падает (пень + гнев леса).
-func _gather_work(r: Dictionary, bld: Dictionary, dt: float) -> void:
-	if float(bld.get("stun_left", 0.0)) > 0.0:
-		r["state"] = "idle"
-		return
-	# лесопилка (правки v1.20.1): лесоруб сперва высаживает саженцы вокруг —
-	# лес подрастёт и добыча дерева вырастет (лес при этом гневается)
-	if String(bld["type"]) == "sawmill" and _sawmill_plant(r, bld, dt):
-		return
-	var res_tile: Vector2i = _gather_target(r, bld)
-	if res_tile == Vector2i(-1, -1):
-		_produce_tick(r, bld, dt)
-		return
-	if map.tile_of_px(r["pos"]) != res_tile:
-		_move_towards(r, res_tile, dt)
-		return
-	if String(bld["type"]) == "sawmill":
-		_chop_tree(r, dt)
-	_produce_tick(r, bld, dt)
-
-
-## Посадка саженцев у лесопилки (правки v1.20.1): житель носит саженцы
-## из пула (они выпадают из срубленных деревьев) и сажает лес вокруг
-## лесопилки — будущая добыча дерева; плантация злит лес.
-func _sawmill_plant(r: Dictionary, bld: Dictionary, dt: float) -> bool:
-	var fcfg: Dictionary = cfg.get("forest", {})
-	var per_day := int(fcfg.get("plant_per_day", 2))
-	if int(r.get("plant_day", 0)) != day:
-		r["plant_day"] = day
-		r["plant_n"] = 0
-	if int(r.get("plant_n", 0)) >= per_day or float(res.get("saplings", 0.0)) < 1.0:
-		return false
-	var tile: Vector2i = r.get("plant_tile", Vector2i(-1, -1))
-	if tile == Vector2i(-1, -1):
-		tile = _plant_tile_near(bld)
-		if tile == Vector2i(-1, -1):
-			return false   # места нет — просто работаем
-		r["plant_tile"] = tile
-	if not _arrived(r, tile):
-		_move_towards(r, tile, dt)
-		return true
-	res["saplings"] = float(res["saplings"]) - 1.0
-	map.saplings[tile] = {"t": 0.0, "grow_days": float(fcfg.get("grow_days", 1.2))}
-	terrain_dirty = true
-	forest_anger = clampf(forest_anger + float(fcfg.get("resident_plant_anger", 1.5)), 0.0, 100.0)
-	r["plant_n"] = int(r.get("plant_n", 0)) + 1
-	r["plant_tile"] = Vector2i(-1, -1)
-	r["state"] = "fill"
-	_chron("chron.sapling_planted", String(r["name"]))
-	events.append({"type": "sapling_planted", "name": String(r["name"])})
-	return false
-
-
-## Свободная трава у здания под саженец: без зданий, пней, саженцев, зон
-## и запретного радиуса площади.
-func _plant_tile_near(bld: Dictionary) -> Vector2i:
-	var fcfg: Dictionary = cfg.get("forest", {})
-	var radius := int(fcfg.get("plant_radius", 5))
-	var bc: Vector2i = bld["tile"]
-	var best := Vector2i(-1, -1)
-	var best_d := INF
-	for dy in range(-radius, radius + 1):
-		for dx in range(-radius, radius + 1):
-			var t: Vector2i = bc + Vector2i(dx, dy)
-			if not map.in_bounds(t) or map.grid[t.y][t.x] != map.TILE_GRASS:
-				continue
-			if map.saplings.has(t) or map.stumps.has(t) or not map.is_walkable(t):
-				continue
-			if near_plaza(t) or not building_at(t).is_empty() or _tile_in_fill_zone(t):
-				continue
-			var d: float = Vector2(t).distance_to(Vector2(bc))
-			if d < best_d:
-				best_d = d
-				best = t
-	return best
-
-
-## Срубленное дерево с шансом роняет саженцы в общий пул (правки v1.20.1).
-func _drop_saplings() -> void:
-	var fcfg: Dictionary = cfg.get("forest", {})
-	if _event_rng.randf() >= float(fcfg.get("sapling_drop_chance", 0.33)):
-		return
-	var n := _event_rng.randi_range(int(fcfg.get("sapling_drop_min", 1)), int(fcfg.get("sapling_drop_max", 2)))
-	_add_resource_capped("saplings", float(n))
-	events.append({"type": "saplings_dropped", "n": n})
-
-
-## Рубка (M11): накопив chop_days на тайле дерева, лесоруб валит его.
-func _chop_tree(r: Dictionary, dt: float) -> void:
-	var tile: Vector2i = map.tile_of_px(r["pos"])
-	if map.grid[tile.y][tile.x] != map.TILE_TREE:
-		r["chop_t"] = 0.0
-		return
-	var fcfg: Dictionary = cfg.get("forest", {})
-	r["chop_t"] = float(r.get("chop_t", 0.0)) + dt
-	var need := float(fcfg.get("chop_days", 0.5)) * float(cfg["day_length"])
-	if float(r["chop_t"]) < need:
-		return
-	r["chop_t"] = 0.0
-	map.grid[tile.y][tile.x] = map.TILE_GRASS
-	map.stumps[tile] = true
-	terrain_dirty = true
-	forest_anger = clampf(forest_anger + float(fcfg.get("anger_per_tree", 2.5)), 0.0, 100.0)
-	_drop_saplings()   # из поваленного дерева выпадают саженцы (v1.20.1)
-	events.append({"type": "tree_felled"})
-	_chron("chron.tree_felled")
-	r["gath_tile"] = Vector2i(-1, -1)
-
-
-## Тайл, у которого добытчик работает: ближайший к зданию подходящий тайл природы
-## (для дерева — само дерево, для скалы — проходимый сосед). Кэшируется на жителе.
-func _gather_target(r: Dictionary, bld: Dictionary) -> Vector2i:
-	var kinds: Array = [map.TILE_TREE] if String(bld["type"]) == "sawmill" else [map.TILE_ROCK, map.TILE_ORE]
-	var cached: Vector2i = r.get("gath_tile", Vector2i(-1, -1))
-	if cached != Vector2i(-1, -1) and map.in_bounds(cached) and map.is_walkable(cached) \
-			and cached != (bld["tile"] as Vector2i) \
-			and not (String(bld["type"]) == "sawmill" and map.grid[cached.y][cached.x] != map.TILE_TREE):
-		return cached
-	var radius := int(cfg.get("gather_range", 6))
-	var best_kind := Vector2i(-1, -1)
-	var kind_d := INF
-	var best_near := Vector2i(-1, -1)
-	var near_d := INF
-	var bc: Vector2i = bld["tile"]
-	for dy in range(-radius, radius + 1):
-		for dx in range(-radius, radius + 1):
-			var t: Vector2i = bc + Vector2i(dx, dy)
-			if not map.in_bounds(t) or not map.is_walkable(t) or t == bc:
-				continue
-			var d: float = Vector2(t).distance_to(Vector2(bc))
-			if map.grid[t.y][t.x] in kinds:
-				# источник проходим (дерево) — стоим прямо на нём
-				if d < kind_d:
-					kind_d = d
-					best_kind = t
-			else:
-				# непроходимый источник (скала, руда) — стоим на соседнем тайле
-				for n in [t + Vector2i(1, 0), t + Vector2i(-1, 0), t + Vector2i(0, 1), t + Vector2i(0, -1)]:
-					if map.in_bounds(n) and map.grid[n.y][n.x] in kinds:
-						if d < near_d:
-							near_d = d
-							best_near = t
-						break
-	var best := best_kind if best_kind != Vector2i(-1, -1) else best_near
-	r["gath_tile"] = best
-	return best
+## Добытчики у источников (лесопилка/каменоломня/шахта) — правки v1.21
+## переехали в city_sim_gather.gd: лесоруб валит и пилит, шахтёр носит
+## сырой камень на переработку. Ниже — мастерская и производство.
 
 
 ## Мастерская (M6, перепрофилирование): сперва чинит повреждённые здания,
@@ -1089,10 +951,6 @@ func _produce_tick(r: Dictionary, bld: Dictionary, dt: float) -> void:
 	if prod.has("res2"):
 		var amount2: float = float(prod["per_day2"]) * portion * boost * production_mult(bld) * work_mult(r)
 		_add_pile(bld, String(prod["res2"]), amount2)
-	# каменотёс вырабатывает тайл гряды (M11): на месте истощённой скалы
-	# вскрывается рудная жила или попадается кристалл — полезные материалы
-	if String(bld["type"]) == "quarry":
-		_deplete_rock(r, bld, portion)
 
 
 ## Куча у здания (M6): производство копится здесь, пока её не унесёт носильщик.
@@ -1172,7 +1030,7 @@ func _move_towards(r: Dictionary, tile: Vector2i, dt: float) -> void:
 		r["state"] = "idle"
 		return
 	var pos: Vector2 = r["pos"]
-	var step: float = float(cfg["resident_speed"]) * dt
+	var step: float = float(cfg["resident_speed"]) * dt * float(r.get("carry_slow", 1.0))
 	# дорога под ногами ускоряет; носильщику — сильнее всех (M6)
 	if map.has_road(map.tile_of_px(pos)):
 		var rcfg: Dictionary = cfg.get("roads", {})

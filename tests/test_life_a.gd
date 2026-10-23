@@ -68,8 +68,9 @@ func _test_wishlist() -> void:
 	_check(float(sim_f.forest_anger) > 0.0, "гнев леса вырос от вырубки")
 	_check(bool(sim_f.terrain_dirty), "ландшафт помечен к перерисовке")
 
-	# посадка: семя -> саженец -> дерево, гнев спадает
-	sim_f.res["seeds"] = 5.0
+	# посадка: саженец из пула -> дерево, гнев спадает (v1.21: саженцы
+	# выпадают из срубленных деревьев; семена остались для грядок)
+	sim_f.res["saplings"] = 5.0
 	var anger_before := float(sim_f.forest_anger)
 	var plant_tile := tree_tile
 	for i in 40:
@@ -77,11 +78,12 @@ func _test_wishlist() -> void:
 			break
 		plant_tile += Vector2i(1, 0)
 	_check(sim_f.can_plant_at(plant_tile), "рядом есть место под саженец")
-	_check(String(sim_f.plant_sapling(plant_tile)) == "", "саженец посажен за семя")
+	_check(String(sim_f.plant_sapling(plant_tile)) == "", "саженец посажен из пула")
 	_check(sim_f.map.saplings.has(plant_tile), "саженец отмечен на карте")
-	var seed_after: float = float(sim_f.res["seeds"])
-	_check(seed_after == 4.0, "посадка потратила семя")
-	sim_f.map.saplings[plant_tile]["t"] = 9999.0
+	var seed_after: float = float(sim_f.res["saplings"])
+	_check(seed_after == 4.0, "посадка потратила саженец")
+	sim_f.map.saplings[plant_tile]["t"] = float(sim_f.cfg["forest"]["grow_days"]) \
+			* float(sim_f.cfg["day_length"]) + 1.0
 	sim_f.tick(0.5)
 	_check(sim_f.map.grid[plant_tile.y][plant_tile.x] == sim_f.map.TILE_TREE, "саженец вырос в дерево")
 	_check(float(sim_f.forest_anger) < anger_before, "выросший лес успокоил гнев")

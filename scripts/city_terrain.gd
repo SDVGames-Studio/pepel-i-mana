@@ -54,10 +54,31 @@ func _draw() -> void:
 				map.TILE_WATER:
 					draw_rect(rect, colors["water"])
 					_draw_water_detail(x, y, rect, ts)
+				map.TILE_DEADROCK:
+					_draw_deadrock(x, y, rect, ts)
 				map.TILE_ROCK, map.TILE_ORE:
 					draw_rect(rect, base)
 					_draw_grass_detail(x, y, rect, base, ts)
 					_draw_rock(x, y, tile == map.TILE_ORE, ts)
+
+
+## Пустая порода выработанного массива (v1.21): тёмная осыпь щебня — по ней
+## видно, что гряда вычерпана, и сюда можно ставить шахту.
+func _draw_deadrock(x: int, y: int, rect: Rect2, ts: float) -> void:
+	var base := Color("#4a463f").lightened(0.03 * float(_hash(x, y, 3) - 1))
+	draw_rect(rect, base)
+	# щебень: крупные тёмные глыбы и мелкая крошка по хэшу
+	for i in 5:
+		var h := _hash(x * 7 + i, y * 13 + i, 100)
+		var cx := rect.position.x + 4.0 + float(h % int(ts - 8.0))
+		var cy := rect.position.y + 5.0 + float((h / 4) % int(ts - 10.0))
+		var r := 1.4 + float(h % 3) * 0.7
+		draw_circle(Vector2(cx, cy), r, base.darkened(0.18 if i % 2 == 0 else 0.08))
+	# блик блужающего металла — намёк на жилы под породой
+	var hx := _hash(x, y * 3, 4)
+	if hx == 0:
+		draw_circle(rect.get_center() + Vector2(3.0, -4.0), 1.4, Color("#8a7f6a"))
+	draw_rect(rect, Color("#2e2b26"), false, 1.0)
 
 
 ## Трава: плавные пятна (билинейный шум, без прямых краёв блоков) + зерно яркости.

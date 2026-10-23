@@ -155,6 +155,8 @@ static func _city_block(sim) -> Dictionary:
 			"rock_hp": _tile_vals(m.rock_hp),
 			"stumps": _tile_keys(m.stumps),
 			"saplings": _tile_vals(m.saplings),
+			"tree_size": _tile_vals(m.tree_size),
+			"tree_growth": _tile_vals(m.tree_growth),
 			"bridges": _tile_keys(m.bridges),
 		},
 		"residents": _residents_save(sim),
@@ -367,6 +369,11 @@ static func _apply_city(game, cd: Variant) -> String:
 	if sd.is_empty():
 		return "save.load_failed"
 	sim.res = _num_dict(sd.get("res", {}))
+	# v1.21: новые ресурсы (gems) и всё, что могло не попасть в старый сейв, —
+	# ключи должны существовать: _add_resource_capped читает их напрямую
+	for key in sim.RESOURCES:
+		if not sim.res.has(key):
+			sim.res[key] = 0
 	sim.time = float(sd.get("time", 0.0))
 	sim.day = int(sd.get("day", 1))
 	sim.speed = 1
@@ -567,6 +574,20 @@ static func _apply_city_map(map, md: Variant, cfg: Dictionary) -> String:
 	map.saplings = {}
 	for e in md.get("saplings", []):
 		map.saplings[Vector2i(int(e[0]), int(e[1]))] = {"t": float(e[2].get("t", 0.0))}
+	map.tree_size = {}   # размеры деревьев (v1.21); старые сейвы — малые
+	for e in md.get("tree_size", []):
+		map.tree_size[Vector2i(int(e[0]), int(e[1]))] = int(e[2])
+	map.tree_growth = {}
+	for e in md.get("tree_growth", []):
+		map.tree_growth[Vector2i(int(e[0]), int(e[1]))] = float(e[2])
+	# миграция старых сейвов (v1.21): лес без размеров — назначаем по хэшу тайла
+	if map.tree_size.is_empty():
+		for y in map.h:
+			for x in map.w:
+				if map.grid[y][x] == map.TILE_TREE:
+					var roll := float((int((x * 73856093) ^ (y * 19349663)) % 100 + 100) % 100)
+					map.tree_size[Vector2i(x, y)] = map.TREE_SMALL if roll < 30.0 \
+							else (map.TREE_MEDIUM if roll < 75.0 else map.TREE_LARGE)
 	map._setup_astar()
 	map.mark_terrain_solid()   # вода/скалы/руда сплошные (этап 2); мосты учтены выше
 	var weight := float(cfg.get("roads", {}).get("astar_weight", 0.4))

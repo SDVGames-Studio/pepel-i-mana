@@ -45,8 +45,7 @@
 		"mood": 5.0
 	},
 	"hero_work": {
-		"chop_hits": 5,
-		"wood_per_tree": 6,
+		"chop_hits": { "small": 4, "medium": 7, "large": 11 },
 		"mine_hits": 4,
 		"stone_per_hit": 2,
 		"build_per_hit": 2.5,
@@ -62,19 +61,33 @@
 			"field": { "color": "#d9b83c", "food": 1.5 },
 			"pasture": { "color": "#66bb6a", "food": 1.0 }
 		},
-		"_comment2": "правки v1.20: остались только Поле и Пастбище; зоны-слои (промышленная/магическая/складская/отдыха), жилая зона и кварталы убраны по приёмке"
+		"_comment2": "правки v1.21: поле создаётся только фермой (радиус farming.field_radius); вручную мышью размечается лишь пастбище"
 	},
 	"roads": { "cost_stone": 1, "mult": 1.4, "porter_mult": 1.8, "astar_weight": 0.4,
 		"wear_per_tile": 1.0, "wear_threshold": 25.0,
 		"auto_per_day": 3, "auto_reserve_stone": 15 },
 	"piles": { "chunk": 8.0, "max": 20.0, "carry": 10.0 },
-	"mountain": { "hp": 80.0, "rate": 55.0, "ore_reveal": 0.35, "crystal_chance": 0.06, "bonus_stone": 6 },
+	"mountain": {
+		"_comment": "правки v1.21: шахтёр добывает СЫРОЙ камень у гряды и несёт на каменоломню; переработка даёт стройкамень и с шансом железо/самоцветы/кристалл. Выработанный тайл не исчезает: под ним пустая порода (deadrock) или вскрытая жила — туда ставится шахта",
+		"hp": 80.0, "rate": 55.0,
+		"raw_per_tile": 10.0, "carry_raw": 8.0, "carry_slow": 0.8,
+		"ore_reveal": 0.25, "crystal_chance": 0.06, "bonus_stone": 6,
+		"by_iron": 0.35, "by_gems": 0.12, "by_crystal": 0.08,
+		"deadrock_hp": 60.0, "deadrock_stone": 6.0,
+		"mine": { "rate": 35.0, "ore_iron": 8.0, "ore_stone": 2.0, "range": 2, "carry": 8.0, "carry_slow": 0.8 }
+	},
 	"forest": {
-		"chop_days": 0.5, "anger_per_tree": 2.5, "calm_per_day": 0.6, "calm_per_tree": 3.0,
-		"grow_days": 1.2, "seed_cost": 1,
-		"sapling_drop_chance": 0.33, "sapling_drop_min": 1, "sapling_drop_max": 2,
-		"plant_per_day": 2, "plant_radius": 5, "resident_plant_anger": 1.5,
-		"_comment_saplings": "правки v1.20.1: срубленное дерево роняет саженцы (шанс/мин/макс); лесоруб сажает их вокруг лесопилки (plant_per_day в день, радиус plant_radius) — лес подрастёт и добыча вырастет, но плантация злит лес (resident_plant_anger за саженец)",
+		"_comment": "правки v1.21: три размера деревьев (small/medium/large) — доски 10/20/35, рубить дольше, тащить тяжелее; сруб +1 гнев, распилка +0.5; любое дерево растёт: саженец 5 дней до малого, +5 до среднего, +10 до большого; выросшее посаженное успокаивает лес",
+		"chop_days": { "small": 0.4, "medium": 0.75, "large": 1.2 },
+		"planks_per_tree": { "small": 10, "medium": 20, "large": 35 },
+		"carry_mult": { "small": 1.0, "medium": 0.75, "large": 0.5 },
+		"prep_days": 0.1, "saw_days": 0.1,
+		"anger_per_tree": 1.0, "anger_per_sawing": 0.5,
+		"calm_per_day": 0.35, "calm_per_tree": 2.0,
+		"grow_days": 5.0, "grow_days_medium": 5.0, "grow_days_large": 10.0,
+		"seed_cost": 1,
+		"sapling_drop_chance": 0.5, "sapling_drop_min": 1, "sapling_drop_max": 2,
+		"plant_per_day": 2, "plant_radius": 5,
 		"warn_anger": 8.0, "spirit_anger": 14.0, "boss_anger": 26.0,
 		"spirit_count": 3, "boss_spirits": 5, "cooldown_days": 1.5,
 		"spirit_mood": -6.0, "boss_mood": -12.0
@@ -146,16 +159,19 @@
 	"gather_range": 6,
 	"hunting": { "animals": 8, "respawn_chance": 0.35, "hunt_food": 6.0, "hunt_time": 2.0, "roam_range": 15 },
 	"farming": {
+		"_comment": "правки v1.21: поле и ферма едины — при постройке фермы вокруг распахивается поле радиусом field_radius клеток (там строить нельзя); еда только с грядок, ферма кормит ~5 жителей; город копит запас и растёт",
 		"stages": 4,
-		"stage_days": 0.5,
-		"harvest_food": 6.0,
+		"stage_days": 0.8,
+		"harvest_food": 4.0,
+		"field_radius": 2,
+		"est_per_farm": 16.0,
 		"seed_sow": 1,
 		"seed_return": 1,
 		"seed_bonus_chance": 0.15,
 		"start_seeds": 16,
 		"crops": {
-			"turnip": { "loc": "crop.turnip", "desc": "crop.turnip.desc", "stage_days": 0.4, "harvest": 5.0, "sprite": 1 },
-			"pumpkin": { "loc": "crop.pumpkin", "desc": "crop.pumpkin.desc", "stage_days": 0.9, "harvest": 13.0, "sprite": 2 }
+			"turnip": { "loc": "crop.turnip", "desc": "crop.turnip.desc", "stage_days": 0.8, "harvest": 4.0, "sprite": 1 },
+			"pumpkin": { "loc": "crop.pumpkin", "desc": "crop.pumpkin.desc", "stage_days": 1.3, "harvest": 10.0, "sprite": 2 }
 		}
 	},
 	"livestock": {
@@ -180,15 +196,16 @@
 			{ "res": "food", "amount": 40, "days": 3, "coins": 70, "dest": "traders" },
 			{ "res": "wood", "amount": 30, "days": 3, "coins": 55, "dest": "traders" },
 			{ "res": "stone", "amount": 25, "days": 4, "coins": 70, "dest": "traders" },
-			{ "res": "tools", "amount": 8, "days": 4, "coins": 90, "dest": "cult" }
+			{ "res": "tools", "amount": 8, "days": 4, "coins": 90, "dest": "cult" },
+			{ "res": "gems", "amount": 4, "days": 5, "coins": 110, "dest": "traders" }
 		],
-		"caravan_buy": { "seeds": 4, "food": 2, "wood": 2, "stone": 3, "tools": 6, "crystal": 9 },
+		"caravan_buy": { "seeds": 4, "food": 2, "wood": 2, "stone": 3, "tools": 6, "crystal": 9, "gems": 18 },
 		"caravan_sell_mult": 0.5
 	},
 	"tent": {
 		"need_days_food": 2.0,
-		"need": { "wood": 20, "stone": 15, "tools": 4, "crystal": 3, "metal": 4, "iron": 4, "seeds": 8, "kits": 2 },
-		"coin_per_unit": { "wood": 0.10, "stone": 0.12, "food": 0.08, "tools": 0.5, "crystal": 0.9, "metal": 0.4, "iron": 0.3, "seeds": 0.12, "kits": 0.4 },
+		"need": { "wood": 20, "stone": 15, "tools": 4, "crystal": 3, "metal": 4, "iron": 4, "seeds": 8, "kits": 2, "gems": 1 },
+		"coin_per_unit": { "wood": 0.10, "stone": 0.12, "food": 0.08, "tools": 0.5, "crystal": 0.9, "metal": 0.4, "iron": 0.3, "seeds": 0.12, "kits": 0.4, "gems": 2.0 },
 		"max_coins_per_day": 8,
 		"wander": { "every_days": 3, "stay_days": 0.6, "income_mult": 2.0 },
 		"scene": { "visit_chance_per_day": 6.0, "visit_cd": 30.0, "buy_seconds": 3.0, "buy_lines": 6, "wander_visit_mult": 2.5 }
@@ -215,6 +232,7 @@
 		"water": "#2e5f7a",
 		"rock": "#6e6a63",
 		"rock_deep": "#565248",
+		"deadrock": "#4a463f",
 		"tree": "#3e5a2a",
 		"anomaly": "#b46ee0",
 		"site": "#c8b07a",
@@ -227,9 +245,9 @@
 		"residents_max": 12,
 		"professions": ["farmer", "lumberjack", "builder", "guard", "acolyte", "crafter", "healer", "porter", "bartender", "miner", "smelter", "smith", "armorer", "hunter", "fisher", "trader"],
 		"levels": {
-			"low": {"wood": 30, "stone": 15, "food": 30, "crystal": 0},
-			"normal": {"wood": 60, "stone": 30, "food": 60, "crystal": 0},
-			"high": {"wood": 120, "stone": 60, "food": 120, "crystal": 2}
+			"low": {"wood": 25, "stone": 10, "food": 25, "crystal": 0},
+			"normal": {"wood": 50, "stone": 20, "food": 50, "crystal": 0},
+			"high": {"wood": 100, "stone": 40, "food": 100, "crystal": 2}
 		}
 	},
 	"professions": [
@@ -260,30 +278,30 @@
 		"special": { "loc": "cat.special", "color": "#4db6ac" }
 	},
 	"buildings": [
-		{"id": "house", "w": 2, "sprite": "dom_house", "short": "bld.short.house", "loc": "bld.house", "desc": "bld.desc.house", "color": "#c78d5b", "cost": {"wood": 15}, "build_work": 20, "effect": "pop", "district": "living", "cat": "living"},
-		{"id": "farm", "w": 2, "sprite": "b:dom6", "short": "bld.short.farm", "loc": "bld.farm", "desc": "bld.desc.farm", "color": "#7cb342", "cost": {"wood": 10}, "build_work": 20, "worker": "farmer", "produce": {"res": "food", "per_day": 16}, "district": "work", "cat": "resource"},
-		{"id": "sawmill", "w": 2, "sprite": "b:dom4", "short": "bld.short.sawmill", "loc": "bld.sawmill", "desc": "bld.desc.sawmill", "color": "#8d6e63", "cost": {"wood": 5, "stone": 5}, "place": "forest", "build_work": 25, "worker": "lumberjack", "produce": {"res": "wood", "per_day": 6}, "district": "work", "cat": "resource"},
-		{"id": "well", "w": 2, "sprite": "b:well", "short": "bld.short.well", "loc": "bld.well", "desc": "bld.desc.well", "color": "#4fc3f7", "cost": {"stone": 10}, "build_work": 15, "effect": "sleep", "district": "living", "cat": "living"},
-		{"id": "quarry", "w": 2, "sprite": "b:dom9", "short": "bld.short.quarry", "loc": "bld.quarry", "desc": "bld.desc.quarry", "color": "#757575", "cost": {"wood": 10}, "place": "rock", "build_work": 25, "worker": "miner", "produce": {"res": "stone", "per_day": 6}, "district": "work", "cat": "resource"},
-		{"id": "warehouse", "w": 2, "sprite": "b:dom8", "short": "bld.short.warehouse", "loc": "bld.warehouse", "desc": "bld.desc.warehouse", "color": "#ffb74d", "cost": {"wood": 15, "stone": 5}, "build_work": 25, "effect": "storage", "district": "work", "cat": "resource"},
-		{"id": "workshop", "w": 2, "sprite": "b:dom11", "short": "bld.short.workshop", "loc": "bld.workshop", "desc": "bld.desc.workshop", "color": "#78909c", "cost": {"wood": 10, "stone": 10}, "build_work": 30, "worker": "crafter", "produce": {"res": "tools", "per_day": 3, "inputs": {"wood": 2, "stone": 2}}, "district": "work", "cat": "craft"},
-		{"id": "wall", "w": 1, "sprite": "b:wall", "short": "bld.short.wall", "loc": "bld.wall", "desc": "bld.desc.wall", "color": "#9e9e9e", "cost": {"wood": 3}, "build_work": 5, "effect": "wall", "district": "work", "cat": "defence"},
-		{"id": "gate", "w": 1, "sprite": "b:gate", "short": "bld.short.gate", "loc": "bld.gate", "desc": "bld.desc.gate", "color": "#c9a227", "cost": {"wood": 8, "stone": 2}, "build_work": 15, "effect": "gate", "district": "work", "cat": "defence"},
-		{"id": "tower", "w": 2, "sprite": "b:tower", "short": "bld.short.tower", "loc": "bld.tower", "desc": "bld.desc.tower", "color": "#e57373", "cost": {"wood": 10, "stone": 15}, "build_work": 30, "worker": "guard", "effect": "guard", "district": "work", "cat": "defence"},
-		{"id": "altar", "w": 2, "sprite": "b:altar", "short": "bld.short.altar", "loc": "bld.altar", "desc": "bld.desc.altar", "color": "#ce93d8", "cost": {"stone": 10, "crystal": 2}, "build_work": 30, "worker": "acolyte", "effect": "altar", "district": "work", "cat": "magic"},
-		{"id": "healer_hut", "w": 2, "sprite": "b:dom15", "short": "bld.short.healer_hut", "loc": "bld.healer_hut", "desc": "bld.desc.healer_hut", "color": "#80cbc4", "cost": {"wood": 10}, "build_work": 20, "worker": "healer", "effect": "heal", "district": "work", "cat": "special"},
-		{"id": "tavern", "w": 2, "sprite": "b:dom1", "short": "bld.short.tavern", "loc": "bld.tavern", "desc": "bld.desc.tavern", "color": "#d4a017", "cost": {"wood": 20, "stone": 10}, "build_work": 30, "worker": "bartender", "effect": "tavern", "district": "work", "cat": "special"},
-		{"id": "mine", "w": 2, "sprite": "b:dom13", "short": "bld.short.mine", "loc": "bld.mine", "desc": "bld.desc.mine", "color": "#8d6e63", "cost": {"wood": 12}, "build_work": 30, "worker": "miner", "produce": {"res": "iron", "per_day": 4, "res2": "stone", "per_day2": 4}, "place": "ore", "district": "work", "cat": "resource"},
-		{"id": "smelter", "w": 2, "sprite": "b:dom12", "short": "bld.short.smelter", "loc": "bld.smelter", "desc": "bld.desc.smelter", "color": "#ff7043", "cost": {"stone": 15, "wood": 5}, "build_work": 35, "worker": "smelter", "produce": {"res": "metal", "per_day": 3, "inputs": {"iron": 2}}, "district": "work", "cat": "craft"},
-		{"id": "forge", "w": 2, "sprite": "b:dom14", "short": "bld.short.forge", "loc": "bld.forge", "desc": "bld.desc.forge", "color": "#e57373", "cost": {"stone": 15, "wood": 10}, "build_work": 35, "worker": "smith", "produce": {"res": "tools", "per_day": 4, "inputs": {"metal": 1}}, "district": "work", "cat": "craft"},
-		{"id": "armory", "w": 2, "sprite": "b:dom17", "short": "bld.short.armory", "loc": "bld.armory", "desc": "bld.desc.armory", "color": "#bcaaa4", "cost": {"stone": 15, "wood": 10, "metal": 2}, "build_work": 40, "worker": "armorer", "produce": {"res": "kits", "per_day": 1, "inputs": {"metal": 2}}, "place": "near_forge", "district": "work", "cat": "craft"},
-		{"id": "pier", "w": 2, "sprite": "b:pier", "short": "bld.short.pier", "loc": "bld.pier", "desc": "bld.desc.pier", "color": "#4dd0e1", "cost": {"wood": 12}, "build_work": 25, "worker": "fisher", "produce": {"res": "food", "per_day": 10}, "place": "water", "district": "work", "cat": "resource"},
-		{"id": "garden", "w": 2, "sprite": "b:garden", "short": "bld.short.garden", "loc": "bld.garden", "desc": "bld.desc.garden", "color": "#66bb6a", "cost": {"wood": 8}, "build_work": 15, "effect": "decor", "mood": 5, "district": "living", "cat": "living"},
-		{"id": "statue", "w": 2, "sprite": "b:statue", "short": "bld.short.statue", "loc": "bld.statue", "desc": "bld.desc.statue", "color": "#b0b0b0", "cost": {"stone": 12}, "build_work": 20, "effect": "decor", "mood": 8, "district": "living", "cat": "living"},
-		{"id": "orchard", "w": 2, "sprite": "e:tree_fruit2", "short": "bld.short.orchard", "loc": "bld.orchard", "desc": "bld.desc.orchard", "color": "#7cb342", "cost": {"wood": 15, "seeds": 2}, "build_work": 25, "effect": "orchard", "district": "work", "cat": "resource"},
-		{"id": "market", "w": 2, "sprite": "e:tent", "short": "bld.short.market", "loc": "bld.market", "desc": "bld.desc.market", "color": "#ffd54f", "cost": {"wood": 25, "stone": 15}, "build_work": 35, "worker": "trader", "effect": "market", "district": "work", "cat": "special"},
-		{"id": "cemetery", "w": 2, "sprite": "e:cemetery", "short": "bld.short.cemetery", "loc": "bld.cemetery", "desc": "bld.desc.cemetery", "color": "#6b7a5a", "cost": {"stone": 12, "wood": 6}, "build_work": 25, "effect": "cemetery", "district": "living", "cat": "special"},
-		{"id": "temple", "w": 2, "sprite": "b:temple", "short": "bld.short.temple", "loc": "bld.temple", "desc": "bld.desc.temple", "color": "#ffb74d", "cost": {"wood": 20, "stone": 15, "crystal": 3}, "build_work": 35, "worker": "acolyte", "effect": "temple", "district": "living", "cat": "special"},
+		{"id": "house", "w": 2, "sprite": "dom_house", "short": "bld.short.house", "loc": "bld.house", "desc": "bld.desc.house", "color": "#c78d5b", "cost": {"wood": 12}, "build_work": 20, "effect": "pop", "district": "living", "cat": "living"},
+		{"id": "farm", "w": 2, "sprite": "b:dom6", "short": "bld.short.farm", "loc": "bld.farm", "desc": "bld.desc.farm", "color": "#7cb342", "cost": {"wood": 8}, "build_work": 20, "worker": "farmer", "field": true, "district": "work", "cat": "resource"},
+		{"id": "sawmill", "w": 2, "sprite": "b:dom4", "short": "bld.short.sawmill", "loc": "bld.sawmill", "desc": "bld.desc.sawmill", "color": "#8d6e63", "cost": {"wood": 10}, "build_work": 25, "worker": "lumberjack", "district": "work", "cat": "resource"},
+		{"id": "well", "w": 2, "sprite": "b:well", "short": "bld.short.well", "loc": "bld.well", "desc": "bld.desc.well", "color": "#4fc3f7", "cost": {"stone": 8}, "build_work": 15, "effect": "sleep", "district": "living", "cat": "living"},
+		{"id": "quarry", "w": 2, "sprite": "b:dom9", "short": "bld.short.quarry", "loc": "bld.quarry", "desc": "bld.desc.quarry", "color": "#757575", "cost": {"wood": 12}, "place": "rock", "build_work": 25, "worker": "miner", "district": "work", "cat": "resource"},
+		{"id": "warehouse", "w": 2, "sprite": "b:dom8", "short": "bld.short.warehouse", "loc": "bld.warehouse", "desc": "bld.desc.warehouse", "color": "#ffb74d", "cost": {"wood": 14, "stone": 4}, "build_work": 25, "effect": "storage", "district": "work", "cat": "resource"},
+		{"id": "workshop", "w": 2, "sprite": "b:dom11", "short": "bld.short.workshop", "loc": "bld.workshop", "desc": "bld.desc.workshop", "color": "#78909c", "cost": {"wood": 10, "stone": 8}, "build_work": 30, "worker": "crafter", "produce": {"res": "tools", "per_day": 3, "inputs": {"wood": 2, "stone": 2}}, "district": "work", "cat": "craft"},
+		{"id": "wall", "w": 1, "sprite": "b:wall", "short": "bld.short.wall", "loc": "bld.wall", "desc": "bld.desc.wall", "color": "#9e9e9e", "cost": {"wood": 2}, "build_work": 5, "effect": "wall", "district": "work", "cat": "defence"},
+		{"id": "gate", "w": 1, "sprite": "b:gate", "short": "bld.short.gate", "loc": "bld.gate", "desc": "bld.desc.gate", "color": "#c9a227", "cost": {"wood": 6, "stone": 2}, "build_work": 15, "effect": "gate", "district": "work", "cat": "defence"},
+		{"id": "tower", "w": 2, "sprite": "b:tower", "short": "bld.short.tower", "loc": "bld.tower", "desc": "bld.desc.tower", "color": "#e57373", "cost": {"wood": 8, "stone": 12}, "build_work": 30, "worker": "guard", "effect": "guard", "district": "work", "cat": "defence"},
+		{"id": "altar", "w": 2, "sprite": "b:altar", "short": "bld.short.altar", "loc": "bld.altar", "desc": "bld.desc.altar", "color": "#ce93d8", "cost": {"stone": 8, "crystal": 2}, "build_work": 30, "worker": "acolyte", "effect": "altar", "district": "work", "cat": "magic"},
+		{"id": "healer_hut", "w": 2, "sprite": "b:dom15", "short": "bld.short.healer_hut", "loc": "bld.healer_hut", "desc": "bld.desc.healer_hut", "color": "#80cbc4", "cost": {"wood": 8}, "build_work": 20, "worker": "healer", "effect": "heal", "district": "work", "cat": "special"},
+		{"id": "tavern", "w": 2, "sprite": "b:dom1", "short": "bld.short.tavern", "loc": "bld.tavern", "desc": "bld.desc.tavern", "color": "#d4a017", "cost": {"wood": 16, "stone": 8}, "build_work": 30, "worker": "bartender", "effect": "tavern", "district": "work", "cat": "special"},
+		{"id": "mine", "w": 2, "sprite": "b:dom13", "short": "bld.short.mine", "loc": "bld.mine", "desc": "bld.desc.mine", "color": "#8d6e63", "cost": {"wood": 12}, "build_work": 30, "worker": "miner", "place": "veins", "district": "work", "cat": "resource"},
+		{"id": "smelter", "w": 2, "sprite": "b:dom12", "short": "bld.short.smelter", "loc": "bld.smelter", "desc": "bld.desc.smelter", "color": "#ff7043", "cost": {"stone": 12, "wood": 6}, "build_work": 35, "worker": "smelter", "produce": {"res": "metal", "per_day": 3, "inputs": {"iron": 2}}, "district": "work", "cat": "craft"},
+		{"id": "forge", "w": 2, "sprite": "b:dom14", "short": "bld.short.forge", "loc": "bld.forge", "desc": "bld.desc.forge", "color": "#e57373", "cost": {"stone": 12, "wood": 8}, "build_work": 35, "worker": "smith", "produce": {"res": "tools", "per_day": 4, "inputs": {"metal": 1}}, "district": "work", "cat": "craft"},
+		{"id": "armory", "w": 2, "sprite": "b:dom17", "short": "bld.short.armory", "loc": "bld.armory", "desc": "bld.desc.armory", "color": "#bcaaa4", "cost": {"stone": 12, "wood": 8, "metal": 2}, "build_work": 40, "worker": "armorer", "produce": {"res": "kits", "per_day": 1, "inputs": {"metal": 2}}, "place": "near_forge", "district": "work", "cat": "craft"},
+		{"id": "pier", "w": 2, "sprite": "b:pier", "short": "bld.short.pier", "loc": "bld.pier", "desc": "bld.desc.pier", "color": "#4dd0e1", "cost": {"wood": 10}, "build_work": 25, "worker": "fisher", "produce": {"res": "food", "per_day": 10}, "place": "water", "district": "work", "cat": "resource"},
+		{"id": "garden", "w": 2, "sprite": "b:garden", "short": "bld.short.garden", "loc": "bld.garden", "desc": "bld.desc.garden", "color": "#66bb6a", "cost": {"wood": 6}, "build_work": 15, "effect": "decor", "mood": 5, "district": "living", "cat": "living"},
+		{"id": "statue", "w": 2, "sprite": "b:statue", "short": "bld.short.statue", "loc": "bld.statue", "desc": "bld.desc.statue", "color": "#b0b0b0", "cost": {"stone": 10}, "build_work": 20, "effect": "decor", "mood": 8, "district": "living", "cat": "living"},
+		{"id": "orchard", "w": 2, "sprite": "e:tree_fruit2", "short": "bld.short.orchard", "loc": "bld.orchard", "desc": "bld.desc.orchard", "color": "#7cb342", "cost": {"wood": 12, "seeds": 2}, "build_work": 25, "effect": "orchard", "district": "work", "cat": "resource"},
+		{"id": "market", "w": 2, "sprite": "e:tent", "short": "bld.short.market", "loc": "bld.market", "desc": "bld.desc.market", "color": "#ffd54f", "cost": {"wood": 20, "stone": 12}, "build_work": 35, "worker": "trader", "effect": "market", "district": "work", "cat": "special"},
+		{"id": "cemetery", "w": 2, "sprite": "e:cemetery", "short": "bld.short.cemetery", "loc": "bld.cemetery", "desc": "bld.desc.cemetery", "color": "#6b7a5a", "cost": {"stone": 10, "wood": 5}, "build_work": 25, "effect": "cemetery", "district": "living", "cat": "special"},
+		{"id": "temple", "w": 2, "sprite": "b:temple", "short": "bld.short.temple", "loc": "bld.temple", "desc": "bld.desc.temple", "color": "#ffb74d", "cost": {"wood": 16, "stone": 12, "crystal": 3}, "build_work": 35, "worker": "acolyte", "effect": "temple", "district": "living", "cat": "special"},
 		{"id": "bridge", "w": 1, "sprite": "b:bridge", "short": "bld.short.bridge", "loc": "bld.bridge", "desc": "bld.desc.bridge", "color": "#a1662f", "cost": {"wood": 4}, "build_work": 6, "effect": "bridge", "district": "living", "cat": "special"},
 		{"id": "tent", "w": 1, "sprite": "e:tent", "short": "bld.short.tent", "loc": "bld.tent", "desc": "bld.desc.tent", "color": "#ffd54f", "cost": {"wood": 6}, "build_work": 12, "worker": "trader", "max_count": 3, "district": "work", "cat": "special"}
 	],

@@ -2,12 +2,12 @@
 	"_note": "Сводная таблица баланса M7. Значения сверяются автотестом с рабочими конфигами — при правке баланса менять здесь и в конфиге вместе.",
 	"food": {
 		"per_resident_day": 2.0,
-		"farm_per_day": 16,
+		"farm_per_day": 12,
 		"field_zone_per_day": 1.5,
 		"pasture_zone_per_day": 1.0,
 		"pier_per_day": 10,
-		"start_normal": 60,
-		"days_of_start_food_at_10_pop": 3.0
+		"start_normal": 50,
+		"days_of_start_food_at_10_pop": 2.5
 	},
 	"pollution": {
 		"max": 100.0,

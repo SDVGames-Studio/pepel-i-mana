@@ -716,13 +716,15 @@ func _test_hero_work() -> void:
 	_check(tree.x >= 0, "на карте есть дерево для героя")
 	var wood0 := int(sim.res["wood"])
 	var anger0 := float(sim.forest_anger)
+	var tree_size: int = sim.map.tree_kind(tree)
 	var res := ""
-	for i in maxi(1, int(hw.get("chop_hits", 5))):
+	for i in maxi(1, sim._hero_chop_hits(tree_size)):
 		res = sim.hero_chop(sim.map.tile_center_px(tree))
-	_check(res == "fell", "герой валит дерево за %d ударов" % int(hw.get("chop_hits", 5)))
+	_check(res == "fell", "герой валит дерево за %d ударов" % sim._hero_chop_hits(tree_size))
 	_check(sim.map.grid[tree.y][tree.x] == sim.map.TILE_GRASS and sim.map.stumps.has(tree),
 			"на месте дерева остался пень")
-	_check(int(sim.res["wood"]) == wood0 + int(hw.get("wood_per_tree", 6)), "дрова легли в общий пул")
+	_check(int(sim.res["wood"]) == wood0 + int(sim._planks_for(tree_size)),
+			"доски по размеру дерева легли в общий пул (v1.21)")
 	_check(absf(sim.forest_anger - anger0 - float(sim.cfg["forest"]["anger_per_tree"])) < 0.001,
 			"гнев леса растёт по тем же правилам, что у лесоруба")
 	# вдали от леса герой не рубит (ищем тайл без деревьев вокруг)

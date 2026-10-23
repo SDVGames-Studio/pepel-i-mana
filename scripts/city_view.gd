@@ -55,12 +55,13 @@ var _pile_colors := {
 	"wood": Color("#8d6e63"), "stone": Color("#9e9e9e"), "food": Color("#8bc34a"),
 	"iron": Color("#b0684a"), "metal": Color("#cfd8dc"), "tools": Color("#78909c"),
 	"kits": Color("#ffb74d"), "crystal": Color("#b46ee0"), "seeds": Color("#c9b458"),
+	"gems": Color("#e0b13e"),
 }
 # спрайты куч (M9): мешок/брёвна/камень — по главному ресурсу
 const PILE_SPRITES := {
 	"wood": "k:75", "stone": "k:102", "food": "k:126", "iron": "k:102",
 	"metal": "k:102", "tools": "k:104", "kits": "k:103", "crystal": "k:116",
-	"seeds": "k:126",
+	"seeds": "k:126", "gems": "k:116",
 }
 
 
@@ -252,6 +253,7 @@ func _draw_graves(anchor: Vector2) -> void:
 ## Дерево/пень/саженец в тайле (переехали из статического слоя в M12).
 ## Пень подбирается под тип дерева (замечание 2026-10-20): тот же хеш,
 ## что выбрал спрайт дерева, выбирает вариант пня.
+## Правки v1.21: три размера — малое/среднее/большое (спрайт масштабом).
 func _draw_tree_at(tile: Vector2i) -> void:
 	var ts := float(map.ts)
 	var bottom := Vector2(tile.x * ts + ts / 2.0, tile.y * ts + ts * 0.92)
@@ -259,9 +261,13 @@ func _draw_tree_at(tile: Vector2i) -> void:
 	if map.saplings.has(key):
 		_draw_sapling(key, bottom, ts)
 	elif map.grid[tile.y][tile.x] == map.TILE_TREE:
-		_draw_shadow(bottom + Vector2(0, 2), ts * 0.6)
+		var size: int = map.tree_kind(tile)
+		var scale := ts * 1.9 if size == map.TREE_SMALL \
+				else (ts * 2.4 if size == map.TREE_MEDIUM else ts * 3.0)
+		_draw_shadow(bottom + Vector2(0, 2), ts * (0.4 if size == map.TREE_SMALL
+				else (0.55 if size == map.TREE_MEDIUM else 0.7)))
 		Assets.draw_ref(self, TREE_REFS[_hash(tile.x, tile.y, TREE_REFS.size())],
-				bottom + Vector2(0, -2), ts * 2.6)
+				bottom + Vector2(0, -2), scale)
 	else:
 		_draw_stump(bottom, ts, _hash(tile.x, tile.y, STUMP_PALS.size()))
 
@@ -851,11 +857,20 @@ func _draw_resident(r: Dictionary) -> void:
 		draw_circle(center + Vector2(2.0, -1.5), 1.1, Color("#3a3f4a"))
 	else:
 		draw_circle(center, radius * 0.42, col.darkened(0.5))
-	# груз носильщика (M6): узел цвета ресурса
+	# груз носильщика (M6): узел цвета ресурса; бревно/сырой камень (v1.21) —
+	# покрупнее: видно, что тащит лесоруб и шахтёр
 	if float(r.get("carry", 0.0)) > 0.0:
 		var bag: Color = _pile_colors.get(String(r.get("carry_res", "")), Color(0.8, 0.7, 0.5))
 		draw_circle(pos + Vector2(radius + 2.0, -4.0), 3.4, bag.darkened(0.1))
 		draw_circle(pos + Vector2(radius + 1.2, -4.8), 1.6, bag.lightened(0.15))
+	if int(r.get("log_size", 0)) > 0:
+		var log_col := Color("#8d6e63") if int(r["log_size"]) < 3 else Color("#6d4c33")
+		draw_circle(pos + Vector2(radius + 3.0, -4.0), 4.2, log_col.darkened(0.2))
+		draw_circle(pos + Vector2(radius + 1.8, -5.2), 1.8, log_col.lightened(0.2))
+	elif float(r.get("raw", 0.0)) > 0.0 or float(r.get("carry_iron", 0.0)) > 0.0 \
+			or float(r.get("carry_stone", 0.0)) > 0.0:
+		draw_circle(pos + Vector2(radius + 3.0, -4.0), 4.2, Color("#9e9e9e").darkened(0.15))
+		draw_circle(pos + Vector2(radius + 1.8, -5.2), 1.8, Color("#bdbdbd"))
 	# разговор-облачко (M12): реплика над головой болтающих
 	var chat_key := String(r.get("chat_key", ""))
 	if chat_key != "" and String(r["state"]) == "chat":

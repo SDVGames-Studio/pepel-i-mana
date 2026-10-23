@@ -63,10 +63,17 @@ const BLOCKS := [
 	"_test_stage2_aspect6",
 ]],
 	["res://tests/test_v120.gd", [
-	"_test_fixes_v1191",
-	"_test_fixes_v120",
-	"_test_fixes_v1201",
-]],
+		"_test_fixes_v1191",
+		"_test_fixes_v120",
+		"_test_fixes_v1201",
+	]],
+	["res://tests/test_v121.gd", [
+		"_test_v121_balance",
+		"_test_v121_trees",
+		"_test_v121_quarry",
+		"_test_v21_golem_commit",
+		"_test_v21_fps_counter",
+	]],
 ]
 
 

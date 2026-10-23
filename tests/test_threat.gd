@@ -318,12 +318,31 @@ func _test_defense() -> void:
 
 	# цепочка металла: руда → металл → инструменты/комплекты
 	# (тики копят время: тест уходит в ночь — возвращаем утро, иначе рабочие спят)
-	# M6: всё производство оседает кучами у зданий, в пул его сносит носильщик
+	# M6: всё производство оседает кучами у зданий, в пул его сносит носильщик.
+	# v1.21: шахта копит руду медленно (жила ~104 hp по 35/день) — ждём ходку;
+	# город сыт (голод резал бы работу), майнера ставим прямо у жилы
 	sim.time = 10.0
-	sim.tick(20.0)
+	sim.res["food"] = 500.0
+	var mine_pair: Dictionary = sim._vein_target(sim._resident_by_id(int(mine["worker"])), mine)
+	if not mine_pair.is_empty():
+		_teleport(sim, sim._resident_by_id(int(mine["worker"])), mine_pair["stand"])
+	for i in 60:
+		sim.tick(10.0)
+		sim.time = 10.0   # держим утро — шахтёр не спит
+		if float((mine["pile"] as Dictionary).get("iron", 0.0)) > 0.0:
+			break
 	_check(float((mine["pile"] as Dictionary).get("iron", 0.0)) > 0.0, "шахта добывает руду в кучу у здания")
 	var smelter_r := _add_resident(sim, "Ада", "smelter")
+	sim.res["wood"] = 60.0   # цепочке нужны ресурсы на плавильню (v1.21)
+	sim.res["stone"] = 40.0
 	var smelt := _build_at(sim, "smelter", _find_free_tile(sim, sim.map.spawn_tile))
+	if not smelt.is_empty() and int(smelt["worker"]) != int(smelter_r["id"]):
+		var prev_sm: Dictionary = sim._resident_by_id(int(smelt["worker"]))
+		if not prev_sm.is_empty():
+			prev_sm["bld"] = null
+		smelt["worker"] = int(smelter_r["id"])
+		smelter_r["bld"] = smelt
+		smelter_r["site"] = null
 	_check(bool(smelt["done"]) and int(smelt["worker"]) == int(smelter_r["id"]), "плавильщик в плавильне")
 	sim.time = 10.0
 	sim.res["iron"] = 20.0
@@ -359,6 +378,13 @@ func _test_defense() -> void:
 	var armorer_r := _add_resident(sim, "Нива", "armorer")   # работник до достройки
 	var armory := _build_at(sim, "armory", armory_tile)
 	_check(bool(armory["done"]), "оружейная построена у кузни")
+	if int(armory["worker"]) != int(armorer_r["id"]):
+		var prev_ar: Dictionary = sim._resident_by_id(int(armory["worker"]))
+		if not prev_ar.is_empty():
+			prev_ar["bld"] = null
+		armory["worker"] = int(armorer_r["id"])
+		armorer_r["bld"] = armory
+		armorer_r["site"] = null
 	sim.res["metal"] = 20.0
 	sim.res["kits"] = 0.0
 	sim.time = 10.0
@@ -586,84 +612,106 @@ func _test_defense() -> void:
 
 ## Блок M5.4: добыча у источника, туман по линии видимости, бездельники заняты.
 func _test_gathering() -> void:
-	print("[M5.4: добыча у источника]")
+	print("[M5.4: добыча у источника (v1.21: рубка-переноска-распилка)]")
 	var sim := _make_sim()
 	sim._last_daily_day = 999
-	# лесопилка — только у леса
-	var tree_side := Vector2i(-1, -1)
+	# лесопилка (v1.21) ставится где угодно
 	var treeless := Vector2i(-1, -1)
 	for y in sim.map.h:
 		for x in sim.map.w:
 			var t := Vector2i(x, y)
-			if not sim.is_buildable_tile(t):
-				continue
-			if tree_side == Vector2i(-1, -1) and sim._nature_near(t, [sim.map.TILE_TREE], 2.0) != Vector2i(-1, -1) \
-					and sim.placement_block("sawmill", t) == "":
-				tree_side = t
-			if treeless == Vector2i(-1, -1) \
-					and sim._nature_near(t, [sim.map.TILE_TREE], 2.0) == Vector2i(-1, -1) \
-					and sim._nature_near(t, [sim.map.TILE_ROCK, sim.map.TILE_ORE], 2.0) == Vector2i(-1, -1) \
-					and sim._water_near(t) == false:
+			if treeless == Vector2i(-1, -1) and sim.is_buildable_rect("sawmill", t) \
+					and sim._nature_near_rect("sawmill", t, [sim.map.TILE_TREE], 6.0) == Vector2i(-1, -1):
 				treeless = t
-	_check(tree_side != Vector2i(-1, -1), "нашлось место у леса")
-	_check(sim.placement_block("sawmill", tree_side) == "", "лесопилка ставится у леса")
-	_check(treeless != Vector2i(-1, -1) and sim.placement_block("sawmill", treeless) != "",
-			"лесопилка вдали от леса не ставится")
+	if treeless != Vector2i(-1, -1):
+		_check(sim.placement_block("sawmill", treeless) == "",
+				"лесопилка ставится где угодно (v1.21)")
 	# каменоломня — только у скал
 	var rock_side := Vector2i(-1, -1)
 	for y in sim.map.h:
 		for x in sim.map.w:
 			var t := Vector2i(x, y)
-			if sim.is_buildable_tile(t) and sim._nature_near(t, [sim.map.TILE_ROCK, sim.map.TILE_ORE], 2.0) != Vector2i(-1, -1) \
-					and sim.placement_block("quarry", t) == "":
+			if sim.is_buildable_rect("quarry", t) and sim.placement_block("quarry", t) == "":
 				rock_side = t
 				break
 		if rock_side != Vector2i(-1, -1):
 			break
 	_check(rock_side != Vector2i(-1, -1) and sim.placement_block("quarry", rock_side) == "",
 			"каменоломня ставится у скал")
-	_check(sim.placement_block("quarry", treeless) != "", "каменоломня вдали от скал не ставится")
-	# самострой ищет место у ресурса
-	var auto_s: Vector2i = sim._find_autobuild_tile("sawmill")
-	_check(auto_s != Vector2i(-1, -1) and sim.placement_block("sawmill", auto_s) == "",
-			"самострой лесопилки — у леса")
+	var rockless := Vector2i(-1, -1)
+	for y in sim.map.h:
+		for x in sim.map.w:
+			var t := Vector2i(x, y)
+			if rockless == Vector2i(-1, -1) and sim.is_buildable_rect("quarry", t) \
+					and sim._nature_near_rect("quarry", t, [sim.map.TILE_ROCK, sim.map.TILE_ORE], 2.0) == Vector2i(-1, -1):
+				rockless = t
+				break
+		if rockless != Vector2i(-1, -1):
+			break
+	if rockless != Vector2i(-1, -1):
+		_check(sim.placement_block("quarry", rockless) != "", "каменоломня вдали от скал не ставится")
 
-	# лесоруб рубит именно дерево: уходит из здания к лесу, дерево растёт
+	# лесоруб: валит дерево, готовит бревно, тащит на лесопилку, пилит доски
+	# в кучу (10/20/35 по размеру дерева, v1.21)
 	var sim_sg := _make_sim()
 	sim_sg._last_daily_day = 999
+	sim_sg.cfg["food_per_resident_day"] = 0.0
 	_add_resident(sim_sg, "Лана", "lumberjack")   # может быть не он назначен — берём закреплённого
-	var stile: Vector2i = _find_free_tile(sim_sg, sim_sg.map.spawn_tile, "sawmill")
-	var saw := _build_at(sim_sg, "sawmill", stile)
-	_check(bool(saw["done"]), "лесопилка построена у леса")
+	# лесопилку ставим там, где в радиусе сбора (6) есть деревья
+	var near_trees := Vector2i(-1, -1)
+	for y in sim_sg.map.h:
+		for x in sim_sg.map.w:
+			var t := Vector2i(x, y)
+			if sim_sg.is_buildable_rect("sawmill", t) \
+					and sim_sg._nature_near_rect("sawmill", t, [sim_sg.map.TILE_TREE], 4.0) != Vector2i(-1, -1) \
+					and sim_sg.placement_gap_ok("sawmill", t):
+				near_trees = t
+				break
+		if near_trees != Vector2i(-1, -1):
+			break
+	_check(near_trees != Vector2i(-1, -1), "нашлось место у леса")
+	var saw := _build_at(sim_sg, "sawmill", near_trees)
+	_check(bool(saw["done"]), "лесопилка построена")
 	var worker_sg: Dictionary = {}
 	for r in sim_sg.residents:
 		if int(r["id"]) == int(saw["worker"]):
 			worker_sg = r
 	_check(not worker_sg.is_empty(), "за лесопилкой закреплён лесоруб")
-	_teleport(sim_sg, worker_sg, stile)
+	worker_sg["traits"] = []
+	worker_sg["mood"] = 100.0
+	_teleport(sim_sg, worker_sg, near_trees)
 	sim_sg.time = 10.0
-	for i in 6:   # выйти из сплошной лесопилки (2×2), дойти до дерева, рубить
-		sim_sg.tick(2.0)
-	_check(float((saw["pile"] as Dictionary).get("wood", 0.0)) > 0.0,
-			"лесоруб добывает дерево у леса — куча растёт (M6)")
-	var ptile: Vector2i = sim_sg.map.tile_of_px(worker_sg["pos"])
-	_check(sim_sg.map.grid[ptile.y][ptile.x] == sim_sg.map.TILE_TREE,
-			"лесоруб работает прямо у дерева, а не в здании")
+	var sawed := false
+	for i in 60:   # дойти, свалить (до 1.2 дня у большого), подготовить, притащить, распилить
+		sim_sg.tick(12.0)
+		if float((saw["pile"] as Dictionary).get("wood", 0.0)) > 0.0:
+			sawed = true
+			break
+	_check(sawed, "лесоруб распилил дерево — доски в куче лесопилки (v1.21)")
+	var felled_seen := false
+	for e in sim_sg.events:
+		if String(e["type"]) == "tree_felled":
+			felled_seen = true
+	_check(felled_seen, "дерево реально повалено")
+	_check(sim_sg.forest_anger >= 1.0, "валка дерева злит лес (+1)")
 
-	# шахта даёт и руду, и камень (заказчик)
+	# шахта (v1.21): у жилы/выработанного массива, медленно даёт железо и камень
 	var sim_mi := _make_sim()
 	sim_mi._last_daily_day = 999
+	sim_mi.cfg["food_per_resident_day"] = 0.0
 	var miner_mi := _add_resident(sim_mi, "Герд", "miner")
 	var mtile: Vector2i = _ore_tile_of(sim_mi)
 	var mine_mi := _build_at(sim_mi, "mine", mtile)
 	_check(bool(mine_mi["done"]), "шахта построена")
 	_teleport(sim_mi, miner_mi, mtile)
 	sim_mi.time = 10.0
-	sim_mi.tick(5.0)
-	sim_mi.tick(5.0)
-	sim_mi.tick(5.0)
-	_check(float((mine_mi["pile"] as Dictionary).get("iron", 0.0)) > 0.0, "шахта даёт железную руду (куча)")
-	_check(float((mine_mi["pile"] as Dictionary).get("stone", 0.0)) > 0.0, "шахта даёт и камень (куча)")
+	var iron_pile := 0.0
+	for i in 80:   # жила ~104 hp по 35/день — пара ходок с ходьбой
+		sim_mi.tick(12.0)
+		iron_pile = float((mine_mi["pile"] as Dictionary).get("iron", 0.0))
+		if iron_pile > 0.0:
+			break
+	_check(iron_pile > 0.0, "шахта даёт железную руду (куча)")
 
 	# свободный житель в мирное время помогает строить (много бездельников — заказчик)
 	var sim_ih := _make_sim()

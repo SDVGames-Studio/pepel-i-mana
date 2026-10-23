@@ -88,7 +88,32 @@ func _init() -> void:
 func _process(delta: float) -> void:
 	if city_sim != null:
 		city_sim.tick(delta)
-		_autosave_tick()
+	_autosave_tick()
+	_update_fps(delta)
+
+
+# --- FPS-счётчик (правки v1.21): маленькая метка в правом верхнем углу ------
+# Живёт в автозагрузке — виден в любой сцене; обновляется 4 раза в секунду,
+# чтобы сам счётчик не мешал кадру. Создаётся в _ready (внизу файла).
+var _fps_label: Label = null
+var _fps_accum := 0.0
+
+
+func _update_fps(delta: float) -> void:
+	if _fps_label == null:
+		return
+	_fps_accum += delta
+	if _fps_accum < 0.25:
+		return
+	_fps_accum = 0.0
+	var fps := Engine.get_frames_per_second()
+	_fps_label.text = "%d FPS" % fps
+	if fps >= 55:
+		_fps_label.add_theme_color_override("font_color", Color("#7ddf64"))
+	elif fps >= 30:
+		_fps_label.add_theme_color_override("font_color", Color("#ffd54f"))
+	else:
+		_fps_label.add_theme_color_override("font_color", Color("#ff8a65"))
 
 
 ## Автосейв каждое утро города (M14-A): герой в городе (не в данже и не в пути
@@ -175,6 +200,31 @@ func _ready() -> void:
 		fullscreen = bool(cf.get_value("video", "fullscreen", false))
 	if fullscreen:
 		_apply_window_mode()
+	_setup_fps_counter()   # метка FPS в правом верхнем углу (v1.21)
+
+
+## Слой с FPS-меткой: поверх всего, мышь не перехватывает.
+func _setup_fps_counter() -> void:
+	var layer := CanvasLayer.new()
+	layer.layer = 100
+	add_child(layer)
+	var root := Control.new()
+	root.set_anchors_preset(Control.PRESET_FULL_RECT)
+	root.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	layer.add_child(root)
+	_fps_label = Label.new()
+	_fps_label.set_anchors_preset(Control.PRESET_TOP_RIGHT)
+	_fps_label.offset_left = -110.0
+	_fps_label.offset_right = -8.0
+	_fps_label.offset_top = 6.0
+	_fps_label.offset_bottom = 30.0
+	_fps_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	_fps_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_fps_label.add_theme_font_size_override("font_size", 14)
+	_fps_label.add_theme_color_override("font_color", Color(1.0, 0.9, 0.5, 0.85))
+	_fps_label.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.8))
+	_fps_label.add_theme_constant_override("outline_size", 3)
+	root.add_child(_fps_label)
 
 
 func set_fullscreen(on: bool) -> void:
