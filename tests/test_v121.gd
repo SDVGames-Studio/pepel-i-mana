@@ -214,6 +214,61 @@ func _test_v21_golem_commit() -> void:
 			"свободный житель собирает спелую грядку")
 
 
+## Районы (v1.21.1): новое здание цветовой ветки — рядом со своими;
+## самострой ведёт стройку к своему типу/ветке.
+func _test_v121_district() -> void:
+	print("[v1.21.1: районы — стройка цветовыми ветками]")
+	var city: Variant = _read_json("res://data/city.json")
+	var loc: Variant = _read_json("res://loc/ru.json")
+	_check(city is Dictionary and loc is Dictionary, "конфиги читаются")
+	if not (city is Dictionary):
+		return
+	var dcfg: Dictionary = city.get("district", {})
+	_check(int(dcfg.get("radius", 0)) >= 1, "радиус района задан (в клетках)")
+	_check((dcfg.get("cats", []) as Array).has("living"), "жилая ветка подчиняется районам")
+	_check(String(loc.get("city.placement_district", "")) != "", "ключ локализации есть")
+	var sim := _make_sim()
+	sim._last_daily_day = 999
+	var h1: Dictionary = _build_now(sim, "house")
+	var radius := int(sim.cfg["district"]["radius"])
+	# место вдали от жилого района (зазор до дома больше радиуса)
+	var far := Vector2i(-1, -1)
+	for y in range(2, sim.map.h - 2):
+		for x in range(2, sim.map.w - 2):
+			var t := Vector2i(x, y)
+			if sim.is_buildable_rect("house", t) and sim.placement_gap_ok("house", t) \
+					and sim.rects_gap({"type": "house", "tile": t}, h1) > radius:
+				far = t
+				break
+		if far != Vector2i(-1, -1):
+			break
+	_check(far != Vector2i(-1, -1), "нашлось место вдали от жилья")
+	_check(sim.placement_block("house", far) == "city.placement_district",
+			"дом вдали от жилой ветки не ставится (районы, v1.21.1)")
+	_check(sim.placement_block("wall", far) == "", "стена — вне правила районов")
+	_check(sim.placement_block("farm", far) == "", "ферма — вне правила (у неё поле)")
+	# рядом со своим — можно; якорь района — построенный дом
+	var anchor: Vector2i = sim._district_anchor("house")
+	_check(anchor == Vector2i(h1["tile"]), "якорь жилого района — построенный дом")
+	var near_t: Vector2i = sim._tile_near_cluster("house", anchor)
+	_check(near_t != Vector2i(-1, -1) and sim.placement_block("house", near_t) == "",
+			"дом рядом со своим районом ставится")
+	var auto_t: Vector2i = sim._find_autobuild_tile("house")
+	_check(auto_t != Vector2i(-1, -1) \
+			and sim.rects_gap({"type": "house", "tile": auto_t}, h1) <= radius + 2,
+			"самострой строит дом у дома (кластер своего типа)")
+	# сад — та же цветовая ветка (living): тоже к дому
+	_check(sim.placement_block("garden", far) == "city.placement_district",
+			"сад — та же ветка, вдали не ставится")
+	# руины район не держат
+	h1["razed"] = true
+	_check(sim.placement_block("house", far) == "" and sim.placement_block("garden", far) == "",
+			"разрушенное здание не держит район")
+	h1["razed"] = false
+	# первое здание другой ветки — где угодно
+	_check(sim.placement_block("tavern", far) == "", "первое здание ветки — где угодно")
+
+
 func _test_v21_fps_counter() -> void:
 	print("[v1.21: FPS-счётчик и лёгкий HUD]")
 	var f := FileAccess.open("res://scripts/game.gd", FileAccess.READ)

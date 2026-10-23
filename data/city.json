@@ -306,6 +306,12 @@
 		{"id": "tent", "w": 1, "sprite": "e:tent", "short": "bld.short.tent", "loc": "bld.tent", "desc": "bld.desc.tent", "color": "#ffd54f", "cost": {"wood": 6}, "build_work": 12, "worker": "trader", "max_count": 3, "district": "work", "cat": "special"}
 	],
 	"placement": { "build_gap": 1, "wall_house_gap": 3 },
+	"district": {
+		"_comment": "правки v1.21.1: районы — капитальное здание цветовой ветки (cats) ставится не дальше radius клеток от уже стоящего здания той же ветки (первое в ветке — где угодно; тайловые стены/ворота/мосты и добытчики у природы — вне правила); search — радиус поиска места у кластера для самостроя",
+		"radius": 4,
+		"search": 6,
+		"cats": ["living", "craft", "magic", "special"]
+	},
 	"loot_to_pool": {
 		"stone_chip": "stone",
 		"echo_crystal": "crystal",
