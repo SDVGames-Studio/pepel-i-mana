@@ -44,20 +44,6 @@ func _test_fixes_v1191() -> void:
 	for r in solo.residents:
 		if not solo._homeless(r):
 			housed += 1
-	# временная диагностика соло-экономики v1.21 (убрать после стабилизации)
-	var dbg_types := PackedStringArray()
-	for b in solo.buildings:
-		dbg_types.append(String(b["type"]) + ("" if bool(b["done"]) else "+"))
-	print("DBG solo: [", ", ".join(dbg_types), "] wood=", int(solo.res["wood"]),
-			" food=", int(solo.res["food"]), " stone=", int(solo.res["stone"]),
-			" anger=", solo.forest_anger, " zones=", solo.zones.size())
-	for r in solo.residents:
-		var hm: Variant = r.get("home", null)
-		print("DBG res: ", String(r["name"]), " prof=", String(r["prof"]),
-				" state=", String(r["state"]), " home=", "yes" if hm is Dictionary and not (hm as Dictionary).is_empty() else "none",
-				" bld=", String(r["bld"]["type"]) if r["bld"] != null else "-",
-				" site=", String(r["site"]["type"]) if r["site"] != null else "-",
-				" inside=", int(r.get("inside", 0)))
 	_check(housed > 0, "жители заселяют дома (с homeless %d чел.)" % housed)
 
 	# --- 2. расписание волн: раз в 10 дней, зачистка данжа сдвигает на 20 -----
