@@ -94,8 +94,37 @@
 		"spirit_mood": -6.0, "boss_mood": -12.0
 	},
 	"necro": {
+		"_comment": "v1.23: зов слышит один житель, только когда на кладбище есть закопанный прах; тьма питается закопанными (сожжённые чисты); армия растёт от ночных ритуалов некроманта у могил — увидят горожане или герой, тайна раскрыта",
 		"dark_per_night": 0.06, "reveal_dark": 0.45, "summon_chance": 0.6,
-		"rise_at": 8, "wave_max": 8, "mood_hit": -8.0
+		"rise_at": 8, "wave_max": 8, "mood_hit": -8.0,
+		"call_chance": 0.05, "dark_base": 0.4, "dark_grave_factor": 0.15,
+		"dark_decay": 0.03, "night_ritual_frac": 0.6, "sight_radius": 4.0,
+		"army_per_ritual_chance": 0.5, "ritual_dark": 0.02
+	},
+	"attributes": {
+		"_comment": "статы и навыки v1.23: чем занимается житель — то и растёт; сила бьёт и тащит, ловкость ускоряет шаг, выносливость сдерживает усталость, интеллект ускоряет обучение; навык даёт производству, статы — своему делу",
+		"stat_rate": 0.3, "stat_max": 5.0,
+		"skill_bonus_per_stat": 0.02,
+		"agi_speed": 0.02, "end_fatigue": 0.06, "int_skill_rate": 0.1,
+		"combat_skill_dmg": 0.06, "combat_str_dmg": 0.04, "str_carry": 0.05
+	},
+	"spar": {
+		"_comment": "спарринг стражей v1.23: нет другой работы — двое тренируются друг с другом; растут боевой навык, сила и ловкость, дружба и настроение",
+		"len": 0.18, "cd": 0.4, "hit_cd": 1.5, "fatigue": 0.35,
+		"max_fatigue": 0.75, "radius": 1.5, "seek": 40.0,
+		"mood": 2.0, "rel": 2.0
+	},
+	"cemetery": {
+		"_comment": "кладбище v1.23: первая могила основывает место — трава в ~found_dist клетках от ближайших строений; могилы растут спиралями до grow_radius; павшие с телом (кроме bodiless — духи, призраки, элементали) остаются останками и их несут на кладбище; похороны: закопать — быстро и дёшево, сжечь — дрова или магия алтаря и burn_days дней, зато прах не кормит тьму; божество склоняет выбор (см. religion.json, rite)",
+		"found_dist": 10.0, "max_dist": 22.0, "grow_radius": 5,
+		"burn_days": 2.0, "burn_cost_wood": 3, "burn_cost_crystal": 1,
+		"burn_share_no_god": 0.25, "burn_mood": 2.0,
+		"corpse_rot_days": 3.0,
+		"bodiless": ["wisp", "shardling", "cinder", "dust_stalker", "forest_spirit", "forest_boss", "wraith"]
+	},
+	"logs": {
+		"_comment": "вывоз брёвен v1.23: прохожий со свободными руками подбирает поваленное дерево в passer_radius клетках и тащит на лесопилку; лесопилка сама не держит радиуса поиска — брёвна носят ей; claim — бревно уже разобрали, claim_stale сек — носильчик пропал",
+		"passer_radius": 3, "check_every": 2.0, "claim_stale": 60.0
 	},
 	"layout": { "warehouse_radius": 4, "warehouse_mult": 1.25 },
 	"repair": { "_comment": "per_day — медленный бесплатный ремонт мастерской (hp/день); cost_frac — мгновенный ремонт героем (40% стоимости); v1.21.3: город чинит сам — строитель ходит с инструментом и чинит за builder_frac (50%), без строителя — любой непрофильный житель за other_frac (70%) стоимости из общего пула",
@@ -177,7 +206,7 @@
 			"wheat": { "loc": "crop.wheat", "desc": "crop.wheat.desc", "stage_days": 1.0, "harvest": 8.0, "sprite": 3,
 				"seasons": ["spring", "summer", "autumn"] }
 		},
-		"winter_prep_days": 4,
+		"winter_prep_days": 4
 	},
 	"livestock": {
 		"cells_per_animal": 4,

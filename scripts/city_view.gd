@@ -357,11 +357,15 @@ func _draw_world_sorted() -> void:
 			var bw: int = sim.bld_w(b)
 			_static_sorted.append([float(Vector2(b["tile"]).y + bw - 1) * ts + ts - 2.0, "bld", b])
 		_static_sorted.sort_custom(func(a, b) -> bool: return float(a[0]) < float(b[0]))
-	# динамический набор — короткий: брёвна, кучи, звери, скот, люди, герой
+	# динамический набор — короткий: брёвна, останки, кучи, звери, скот, люди, герой
 	var dyn: Array = []
 	# поваленные брёвна (v1.21.2): герой валит — лесопилка унесёт и распилит
 	for tile: Vector2i in map.logs.keys():
 		dyn.append([float(tile.y) * ts + ts * 0.78, "log", tile])
+	# останки павших врагов (v1.23): лежат, пока кто-то не снесёт на кладбище
+	for c in sim.corpses:
+		var ct: Vector2i = c["tile"]
+		dyn.append([float(ct.y) * ts + ts * 0.7, "corpse", c])
 	for b in sim.buildings:
 		if bool(b["done"]) and (b as Dictionary).has("pile") and _pile_total(b) >= 0.5:
 			dyn.append([float(Vector2(b["tile"]).y + sim.bld_w(b) - 1) * ts + ts * 0.88, "pile", b])
@@ -381,6 +385,7 @@ func _draw_world_sorted() -> void:
 		dyn.append([city.hero.global_position.y, "hero", city.hero])
 	dyn.sort_custom(func(a, b) -> bool: return float(a[0]) < float(b[0]))
 	_draw_campfire()
+	_draw_founded_cemetery()   # могилы кладбища без здания (v1.23)
 	# слияние двух отсортированных списков: O(n+m) вместо sort всей карты
 	var si := 0
 	var di := 0
@@ -411,6 +416,8 @@ func _draw_world_sorted() -> void:
 				_draw_stump(e[6], ts, _hash(e[2].x, e[2].y, STUMP_PALS.size()))
 			"log":
 				_draw_log_at(e[2])
+			"corpse":
+				_draw_corpse(e[2])
 			"bld":
 				_draw_building(e[2])
 			"pile":
@@ -456,16 +463,61 @@ func _fire_tile() -> Vector2i:
 
 
 ## Могилки вокруг кладбища (M12): маленькие кресты, появляются после похорон.
+## v1.23: погребальный костёр горит два дня (обряд «предать огню»), прах
+## после сожжения — тёмный курган; могилы растут до grow_radius клеток.
 func _draw_graves(anchor: Vector2) -> void:
+	var radius_px: float = float(sim.cfg.get("cemetery", {}).get("grow_radius", 5)) * float(map.ts) + float(map.ts)
 	for g in sim.graves:
-		if not bool(g.get("ready", false)):
-			continue
 		var pos: Vector2 = map.tile_center_px(Vector2i(g["tile"]))
-		if pos.distance_to(anchor) > map.ts * 5.0:
+		if pos.distance_to(anchor) > radius_px:
 			continue
-		draw_line(pos + Vector2(-3, -8), pos + Vector2(3, -8), Color(0.86, 0.84, 0.78), 2.0)
-		draw_line(pos + Vector2(0, -11), pos + Vector2(0, -2), Color(0.86, 0.84, 0.78), 2.0)
-		draw_line(pos + Vector2(-3, 0), pos + Vector2(3, 0), Color(0.55, 0.52, 0.45), 2.0)
+		if String(g.get("rite", "bury")) == "burn" and not bool(g.get("ready", false)):
+			# погребальный костёр: столб и живое пламя
+			draw_line(pos + Vector2(0, 2), pos + Vector2(0, -14), Color("#5d4037"), 3.0)
+			var flame := 0.6 + 0.4 * sin(_anim_time * 8.0 + pos.x)
+			draw_circle(pos + Vector2(0, -12), 5.0 * flame, Color(1.0, 0.55, 0.2, 0.8))
+			draw_circle(pos + Vector2(0, -16), 3.0 * flame, Color(1.0, 0.75, 0.3, 0.7))
+			continue
+		if bool(g.get("ready", false)):
+			if String(g.get("rite", "bury")) == "burn":
+				# прах под тёмным курганом-плитой
+				draw_circle(pos + Vector2(0, 1), 5.0, Color("#7a6a5a"))
+				draw_circle(pos + Vector2(0, -1), 4.0, Color("#8d7d6d"))
+				continue
+			draw_line(pos + Vector2(-3, -8), pos + Vector2(3, -8), Color(0.86, 0.84, 0.78), 2.0)
+			draw_line(pos + Vector2(0, -11), pos + Vector2(0, -2), Color(0.86, 0.84, 0.78), 2.0)
+			draw_line(pos + Vector2(-3, 0), pos + Vector2(3, 0), Color(0.55, 0.52, 0.45), 2.0)
+
+
+## Кладбище без здания (v1.23): первая могила основала место — кресты
+## и оградка из колышков, пока горожане не поставят настоящее кладбище.
+func _draw_founded_cemetery() -> void:
+	if sim.cemetery_tile == Vector2i(-1, -1):
+		return
+	for b in sim.buildings:
+		if sim._active(b) and String(b["type"]) == "cemetery":
+			return   # есть настоящее кладбище — могилки рисует оно
+	var anchor: Vector2 = map.tile_center_px(sim.cemetery_tile)
+	var ts := float(map.ts)
+	for n in [Vector2i(-1, 0), Vector2i(1, 0), Vector2i(0, -1), Vector2i(0, 1)]:
+		var p: Vector2 = map.tile_center_px(sim.cemetery_tile + n) + Vector2(0, ts * 0.3)
+		draw_line(p - Vector2(3, 5), p + Vector2(3, 5), Color("#5d4037"), 2.0)
+		draw_line(p + Vector2(3, -5), p - Vector2(3, 5), Color("#5d4037"), 2.0)
+	_draw_graves(anchor)
+
+
+## Останки павшего врага (v1.23): тёмный остов и кости — контраст с травой,
+## чтобы игрок видел, что городу есть что унести на кладбище.
+func _draw_corpse(c: Dictionary) -> void:
+	var ts := float(map.ts)
+	var pos: Vector2 = map.tile_center_px(Vector2i(c["tile"])) + Vector2(0, ts * 0.15)
+	var rot := clampf(float(c.get("rot", 0.0)) / 3.0, 0.0, 1.0)
+	var col := Color(0.24, 0.2, 0.18).lerp(Color(0.42, 0.4, 0.34), rot)
+	_draw_shadow(pos + Vector2(0, 4), ts * 0.34)
+	draw_circle(pos, ts * 0.26, col)
+	draw_line(pos + Vector2(-5, -2), pos + Vector2(5, -2), Color(0.85, 0.82, 0.75), 1.5)
+	draw_circle(pos + Vector2(-6, -2), 2.0, Color(0.85, 0.82, 0.75))
+	draw_circle(pos + Vector2(6, -2), 2.0, Color(0.85, 0.82, 0.75))
 
 
 ## Дерево/пень/саженец (M12 — из статического слоя; v1.21.5 — деревья
@@ -1002,6 +1054,12 @@ func _draw_resident(r: Dictionary) -> void:
 		draw_circle(center, radius - 3.0, Color(1.0, 1.0, 1.0, 0.95))
 		draw_circle(center + Vector2(-2.0, -1.5), 1.1, Color("#3a3f4a"))
 		draw_circle(center + Vector2(2.0, -1.5), 1.1, Color("#3a3f4a"))
+	# спарринг стражей (v1.23): перекрёстные клинки над парой
+	if String(r.get("state", "")) == "spar":
+		var top := center + Vector2(0, -radius - 7.0)
+		var clash := 1.0 + 0.3 * sin(_anim_time * 10.0)
+		draw_line(top + Vector2(-4.0 * clash, -3.0), top + Vector2(4.0 * clash, 3.0), Color("#e0e0e0"), 1.5)
+		draw_line(top + Vector2(-4.0 * clash, 3.0), top + Vector2(4.0 * clash, -3.0), Color("#e0e0e0"), 1.5)
 	# груз носильщика (M6): узел цвета ресурса; бревно/сырой камень (v1.21) —
 	# покрупнее: видно, что тащит лесоруб и шахтёр
 	if float(r.get("carry", 0.0)) > 0.0:

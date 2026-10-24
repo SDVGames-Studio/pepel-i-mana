@@ -515,8 +515,13 @@ func _test_people() -> void:
 	sim_d._kill(victim, "chron.died_sick")
 	_check(sim_d.residents.size() == 6, "житель умер — его больше нет")
 	_check(float(mourner["mood"]) < mood_before_death, "смерть жителя роняет мораль остальных")
-	_check(sim_d.chronicle.size() > 0 and String(sim_d.chronicle[-1]["key"]) == "chron.died_sick",
-			"смерть попала в летопись")
+	# v1.23: за смертью в летописи может следовать запись об основании
+	# кладбища (первая могила) — проверяем вхождение, а не последнюю запись
+	var died_chron := false
+	for c in sim_d.chronicle:
+		if String(c["key"]) == "chron.died_sick":
+			died_chron = true
+	_check(died_chron, "смерть попала в летопись")
 
 	# беженцы идут сами (ответ №27), рождения дают ребёнка, ребёнок вырастает
 	var sim_r := _make_sim()

@@ -894,8 +894,10 @@ func _ring_buildable(center: Vector2i, max_radius: int, type_id := "") -> Vector
 					continue
 				var tile := center + Vector2i(dx, dy)
 				if type_id != "":
-					# этап 2: автострой учитывает зазор между зданиями
-					if is_buildable_rect(type_id, tile) and placement_gap_ok(type_id, tile):
+					# этап 2: автострой учитывает зазор между зданиями;
+					# v1.23: и запреты размещения (поля ферм) — сюда тоже
+					if is_buildable_rect(type_id, tile) and placement_gap_ok(type_id, tile) \
+							and placement_block(type_id, tile) == "":
 						return tile
 				elif is_buildable_tile(tile):
 					return tile

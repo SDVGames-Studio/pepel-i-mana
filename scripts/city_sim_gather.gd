@@ -26,7 +26,9 @@ func _gather_work(r: Dictionary, bld: Dictionary, dt: float) -> void:
 
 ## Цикл лесоруба: посадка саженцев → дерево → рубка → подготовка бревна →
 ## переноска на лесопилку (большое тащить тяжелее) → распилка в доски.
-## Деревьев в радиусе нет — лесорум стоит у лесопилки (доски сами не капают).
+## v1.23: сперва распиливается ворох брёвен, принесённый прохожими;
+## поваленные брёвна лесоруб собирает по всей карте — лесопилка не держит
+## радиуса поиска деревьев. Деревьев нет — лесоруб стоит у лесопилки.
 func _sawmill_work(r: Dictionary, bld: Dictionary, dt: float) -> void:
 	var day_len := float(cfg["day_length"])
 	# саженцы из пула — лес подрастёт (посадка лес успокаивает, v1.21)
@@ -41,7 +43,7 @@ func _sawmill_work(r: Dictionary, bld: Dictionary, dt: float) -> void:
 		var fcfg: Dictionary = cfg.get("forest", {})
 		var need_saw: float = float(fcfg.get("saw_days", 0.1)) * day_len
 		r["saw_t"] = float(r.get("saw_t", 0.0)) + dt * work_mult(r)
-		r["fatigue"] += dt / day_len
+		r["fatigue"] += dt / day_len * _fatigue_cost(r)
 		_grow_skill(r, dt)
 		if float(r["saw_t"]) < need_saw:
 			r["state"] = "saw"
@@ -56,15 +58,38 @@ func _sawmill_work(r: Dictionary, bld: Dictionary, dt: float) -> void:
 		r["saw_t"] = 0.0
 		r["carry_slow"] = 1.0
 		return
+	# ворох брёвен у лесопилки (принесли прохожие, v1.23) — пилим на месте
+	if not (bld.get("pending_logs", []) as Array).is_empty():
+		if not at_bld(r, bld):
+			r["state"] = "porter"
+			_move_towards(r, bld_spot(bld), dt)
+			return
+		var fcfg2: Dictionary = cfg.get("forest", {})
+		var need_saw2: float = float(fcfg2.get("saw_days", 0.1)) * day_len
+		r["saw_t"] = float(r.get("saw_t", 0.0)) + dt * work_mult(r)
+		r["fatigue"] += dt / day_len * _fatigue_cost(r)
+		_grow_skill(r, dt)
+		if float(r["saw_t"]) < need_saw2:
+			r["state"] = "saw"
+			return
+		var sizes: Array = bld["pending_logs"]
+		var psize := int(sizes.pop_front())
+		var planks2: float = _planks_for(psize) * blessing_boost() * production_mult(bld)
+		_add_pile(bld, "wood", planks2)
+		forest_anger = clampf(forest_anger + float(fcfg2.get("anger_per_sawing", 0.5)), 0.0, 100.0)
+		events.append({"type": "tree_sawed", "planks": int(planks2)})
+		_chron("chron.tree_sawed", str(int(planks2)))
+		r["saw_t"] = 0.0
+		return
 	# готовим поваленное бревно к переноске (закрепляем, обрубаем сучья)
 	if float(r.get("prep_left", 0.0)) > 0.0:
 		r["prep_left"] = maxf(0.0, float(r["prep_left"]) - dt * work_mult(r))
 		r["state"] = "prep"
-		r["fatigue"] += dt / day_len
+		r["fatigue"] += dt / day_len * _fatigue_cost(r)
 		_grow_skill(r, dt)
 		if float(r["prep_left"]) <= 0.0:
 			r["log_size"] = int(r.get("fell_size", map.TREE_SMALL))
-			r["carry_slow"] = _carry_mult(int(r["log_size"]))
+			r["carry_slow"] = _log_carry_slow(r, int(r["log_size"]))
 		return
 	# бревно на земле (валка героя, v1.21.2) — подбираем: рубить не надо
 	var log_t := _log_target(r, bld)
@@ -76,7 +101,7 @@ func _sawmill_work(r: Dictionary, bld: Dictionary, dt: float) -> void:
 		map.logs.erase(log_t)
 		r["log_size"] = lsize
 		r["fell_size"] = lsize
-		r["carry_slow"] = _carry_mult(lsize)
+		r["carry_slow"] = _log_carry_slow(r, lsize)
 		r["gath_tile"] = Vector2i(-1, -1)
 		return
 	# ищем дерево в радиусе сбора от лесопилки
@@ -88,6 +113,12 @@ func _sawmill_work(r: Dictionary, bld: Dictionary, dt: float) -> void:
 		_move_towards(r, res_tile, dt)
 		return
 	_chop_tree(r, dt)
+
+
+## Ноша бревна размера size (v1.23): большое тяжелее, сильный тащит бодрее.
+func _log_carry_slow(r: Dictionary, size: int) -> float:
+	var slow := _carry_mult(size) * (1.0 - float(cfg.get("attributes", {}).get("str_carry", 0.05)) * _stat(r, "str"))
+	return clampf(slow, 0.3, 1.0)
 
 
 ## Досок с дерева размера size (1/2/3 — малое/среднее/большое).
@@ -180,7 +211,7 @@ func _chop_tree(r: Dictionary, dt: float) -> void:
 	var need := _chop_days_for(size) * float(cfg["day_length"])
 	r["chop_t"] = float(r.get("chop_t", 0.0)) + dt * work_mult(r)
 	r["state"] = "chop"
-	r["fatigue"] += dt / float(cfg["day_length"])
+	r["fatigue"] += dt / float(cfg["day_length"]) * _fatigue_cost(r)
 	_grow_skill(r, dt)
 	if float(r["chop_t"]) < need:
 		return
@@ -233,21 +264,126 @@ func _gather_target(r: Dictionary, bld: Dictionary) -> Vector2i:
 	return best
 
 
-## Бревно на земле ближе к лесорубу (в радиусе сбора от лесопилки).
-## Валеные героем деревья (v1.21.2) лесопилка подбирает раньше, чем рубить новые.
+## Бревно на земле (v1.23: лесопилка больше не держит радиуса поиска —
+## лесоруб идёт за любым поваленным деревьем на карте). Ближайшее к лесорубу,
+## не разобранное другим носильщиком.
 func _log_target(r: Dictionary, bld: Dictionary) -> Vector2i:
-	var radius := float(cfg.get("gather_range", 6))
-	var bc: Vector2i = bld["tile"]
 	var best := Vector2i(-1, -1)
 	var best_d := INF
 	for t: Vector2i in map.logs.keys():
-		if Vector2(t).distance_to(Vector2(bc)) > radius:
-			continue
+		var claim := int((map.logs[t] as Dictionary).get("claim", -1))
+		if claim >= 0 and claim != int(r["id"]):
+			var stale := time - float((map.logs[t] as Dictionary).get("claim_t", 0.0)) \
+					> float(cfg.get("logs", {}).get("claim_stale", 60.0))
+			if not stale:
+				continue   # бревно уже несёт прохожий
 		var d: float = Vector2(t).distance_to(Vector2(r["pos"]))
 		if d < best_d:
 			best_d = d
 			best = t
 	return best
+
+
+# --- вывоз поваленных деревьев прохожими (v1.23) -------------------------------
+
+## Прохожий рядом с бревном: свободные руки — подберёт и отнесёт на лесопилку,
+## даже если рубил не он и бревно далеко от лесопилки (просьба заказчика).
+func _try_haul_log(r: Dictionary, dt: float) -> bool:
+	var lcfg: Dictionary = cfg.get("logs", {})
+	if lcfg.is_empty() or map.logs.is_empty():
+		return false
+	if float(r.get("log_haul_cd", 0.0)) > time:
+		return false
+	# руки заняты — не отвлекаем
+	if int(r.get("log_size", 0)) > 0 or float(r.get("carry", 0.0)) > 0.0 \
+			or float(r.get("raw", 0.0)) > 0.0 or float(r.get("carry_iron", 0.0)) > 0.0 \
+			or float(r.get("carry_stone", 0.0)) > 0.0 \
+			or not (r.get("corpse_task", {}) as Dictionary).is_empty():
+		return false
+	var st := String(r["state"])
+	if not (st in ["idle", "going", "leisure", "chat"]):
+		return false
+	# лесопилки нет — бревну пока некуда идти
+	if _nearest_done_of_type(r["pos"], "sawmill").is_empty():
+		return false
+	r["log_haul_cd"] = time + float(lcfg.get("check_every", 2.0))
+	var radius := float(lcfg.get("passer_radius", 3)) * float(map.ts)
+	var best := Vector2i(-1, -1)
+	var best_d := INF
+	for t: Vector2i in map.logs.keys():
+		var claim := int((map.logs[t] as Dictionary).get("claim", -1))
+		if claim >= 0 and claim != int(r["id"]) \
+				and time - float((map.logs[t] as Dictionary).get("claim_t", 0.0)) \
+				< float(lcfg.get("claim_stale", 60.0)):
+			continue
+		var d: float = map.tile_center_px(t).distance_to(r["pos"])
+		if d <= radius and d < best_d:
+			best_d = d
+			best = t
+	if best == Vector2i(-1, -1):
+		return false
+	map.logs[best]["claim"] = int(r["id"])
+	map.logs[best]["claim_t"] = time
+	r["haul_log_tile"] = best
+	r["haul_log"] = true
+	return _log_haul_work(r, dt)
+
+
+## Ноша бревна прохожим: дойти → поднять → дотащить до лесопилки и сдать
+## в ворох (лесоруб распилит на месте).
+func _log_haul_work(r: Dictionary, dt: float) -> bool:
+	if r.has("haul_log_tile"):
+		var tile: Vector2i = r["haul_log_tile"]
+		var ld: Dictionary = map.logs.get(tile, {})
+		if ld.is_empty() or not map.is_walkable(tile):
+			r.erase("haul_log_tile")   # бревно забрали / замуровали
+			r["haul_log"] = false
+			return false
+		if not _arrived(r, tile):
+			_move_towards(r, tile, dt)
+			return true
+		var size := int(ld.get("size", 1))
+		map.logs.erase(tile)
+		r["log_size"] = size
+		r["fell_size"] = size
+		r["carry_slow"] = _log_carry_slow(r, size)
+		r.erase("haul_log_tile")
+		_grow_skill(r, dt, "porter")
+		return true
+	# несём на ближайшую лесопилку
+	var mill := _nearest_done_of_type(r["pos"], "sawmill")
+	if mill.is_empty():
+		_drop_carried_log(r)   # лесопилку снесли — бревно обратно на землю
+		return false
+	if not at_bld(r, mill):
+		r["state"] = "porter"
+		_move_towards(r, bld_spot(mill), dt)
+		return true
+	if not mill.has("pending_logs"):
+		mill["pending_logs"] = []
+	if int(r.get("log_size", 0)) > 0:
+		(mill["pending_logs"] as Array).append(int(r["log_size"]))
+		events.append({"type": "log_hauled", "name": String(r["name"]),
+				"size": int(r["log_size"])})
+	r["log_size"] = 0
+	r["carry_slow"] = 1.0
+	r["haul_log"] = false
+	r["log_haul_cd"] = time + 20.0   # передышка после ходки
+	return false
+
+
+## Бросить несомое бревно на землю (лесопилка пропала).
+func _drop_carried_log(r: Dictionary) -> void:
+	var size := int(r.get("log_size", 0))
+	if size <= 0:
+		r["haul_log"] = false
+		return
+	var drop: Vector2i = map.nearest_walkable(map.tile_of_px(r["pos"]))
+	if drop != Vector2i(-1, -1) and not map.logs.has(drop):
+		map.logs[drop] = {"size": size}
+	r["log_size"] = 0
+	r["carry_slow"] = 1.0
+	r["haul_log"] = false
 
 
 # --- каменоломня ---------------------------------------------------------------
@@ -290,7 +426,7 @@ func _quarry_work(r: Dictionary, bld: Dictionary, dt: float) -> void:
 	r["raw"] = minf(cap, float(r.get("raw", 0.0))
 			+ drained / maxf(1.0, max_hp) * float(mcfg.get("raw_per_tile", 10.0)))
 	r["state"] = "work"
-	r["fatigue"] += dt / day_len
+	r["fatigue"] += dt / day_len * _fatigue_cost(r)
 	_grow_skill(r, dt)
 	if float(r["raw"]) >= cap:
 		r["carry_slow"] = float(mcfg.get("carry_slow", 0.8))
@@ -449,7 +585,7 @@ func _mine_work(r: Dictionary, bld: Dictionary, dt: float) -> void:
 	else:
 		r["carry_stone"] = minf(cap, float(r.get("carry_stone", 0.0)) + per_tile * frac)
 	r["state"] = "work"
-	r["fatigue"] += dt / day_len
+	r["fatigue"] += dt / day_len * _fatigue_cost(r)
 	_grow_skill(r, dt)
 	if float(r.get("carry_iron", 0.0)) + float(r.get("carry_stone", 0.0)) >= cap:
 		r["carry_slow"] = float(mcfg.get("carry_slow", 0.8))

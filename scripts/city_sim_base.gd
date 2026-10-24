@@ -109,9 +109,14 @@ var _raid_gap_days := 10.0      # длительность текущего ин
 var _raid_not_before := 0.0     # волна не раньше этого времени: зачистка данжа у города сдвигает атаки (2026-10-21)
 var _raid_warned := false       # предупреждение уже объявлено
 # имитация жизни (M12): похороны и могилки у кладбища
-var graves: Array = []                 # [{tile: Vector2i, name: String, ready: bool}]
+var graves: Array = []                 # [{tile: Vector2i, name: String, ready: bool,
+                                       #   rite: "bury"|"burn", burn_left?: float}]
 var funeral_target := Vector2i(-1, -1) # тайл сбора процессии у кладбища
 var funeral_pos := Vector2.ZERO        # где умершего взяли нести (для летописи сцены)
+# кладбище и останки (v1.23): первая могила основывает место; павшие с телом
+# (кроме духов, призраков и элементалей) ждут носильщика
+var cemetery_tile := Vector2i(-1, -1)  # место кладбища: здание или основанное первой могилой
+var corpses: Array = []                # останки врагов: [{tile: Vector2i, kind, rot, claim?}]
 var _raid_rng := RandomNumberGenerator.new()
 var _bld_id := 1                # счётчик id рейдеров/снарядов (общий с зданиями не нужен)
 var _storm_struck_at := 0.0     # время последнего удара бури по зданию
@@ -191,6 +196,8 @@ func setup(city_map, city_cfg: Dictionary, residents_count: int, level: String) 
 	necro_army = 0
 	necro_known = false
 	necro_ghosts = []
+	cemetery_tile = Vector2i(-1, -1)
+	corpses = []
 	terrain_dirty = false
 	static_dirty = false
 	_raid_kind = "mutant"
@@ -343,6 +350,8 @@ func _new_resident(res_name: String, prof: String, tile: Vector2i) -> Dictionary
 		"traits": traits, "mood": _start_mood(traits),
 		"skill": 0.0, "rank": 0, "age_days": 100.0,
 		"ail": "", "ail_days": 0.0, "friend": -1, "work_bonus": 0.0,
+		"stats": {"str": 0.0, "agi": 0.0, "end": 0.0, "int": 0.0},   # статы v1.23
+		"skills": {},                 # прикладные навыки по деятельности (v1.23)
 		"prof_extra": [], "sub_prof": "", "atk_cd": 0.0, "partner": -1,
 		"rel": {}, "mem": [], "goal": "", "goal_prev": "", "tavern_visited": false,
 		"parents": [],          # родители-жители (для детей, правки v1.20)
@@ -436,8 +445,32 @@ func _ensure_elder() -> void:
 func _farm_work(r: Dictionary, bld: Dictionary, dt: float) -> void:
 	pass
 
-func _grow_skill(r: Dictionary, dt: float) -> void:
+func _grow_skill(r: Dictionary, dt: float, kind := "") -> void:
 	pass
+
+func _grow_combat(r: Dictionary, dt: float) -> void:
+	pass
+
+func _guard_spar(r: Dictionary, dt: float) -> bool:
+	return false
+
+func _fatigue_cost(r: Dictionary) -> float:
+	return 1.0
+
+func _stat(r: Dictionary, key: String) -> float:
+	return 0.0
+
+func _try_haul_log(r: Dictionary, dt: float) -> bool:
+	return false
+
+func _log_haul_work(r: Dictionary, dt: float) -> bool:
+	return false
+
+func _necro_night_walk(r: Dictionary, dt: float) -> bool:
+	return false
+
+func _log_carry_slow(r: Dictionary, size: int) -> float:
+	return 1.0
 
 func _gather_work(r: Dictionary, bld: Dictionary, dt: float) -> void:
 	pass

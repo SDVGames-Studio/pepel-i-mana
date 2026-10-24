@@ -547,13 +547,14 @@ func placement_block(type_id: String, tile: Vector2i, skip_count := false) -> St
 			# каменоломня — только у скал (заказчик)
 			if _nature_near_rect(type_id, tile, [map.TILE_ROCK, map.TILE_ORE], 2.0) == Vector2i(-1, -1):
 				return "city.placement_rock"
-	# клетки поля фермы (v1.21) — строить нельзя; сама ферма на своё поле не попадает
-	if type_id != "farm":
-		var w := bld_w_of_type(type_id)
-		for dy in w:
-			for dx in w:
-				if _tile_in_field_zone(tile + Vector2i(dx, dy)):
-					return "city.placement_field"
+	# клетки полей ферм (v1.21) — строить нельзя; v1.23: фермы тоже — новая
+	# ферма не отбирает грядки у соседней, её поле распахивается вокруг
+	# свободной земли
+	var w := bld_w_of_type(type_id)
+	for dy in w:
+		for dx in w:
+			if _tile_in_field_zone(tile + Vector2i(dx, dy)):
+				return "city.placement_field"
 	# районы (v1.21.1): капитальное здание цветовой ветки строится рядом
 	# с уже стоящими той же ветки — город растёт кварталами. Первое здание
 	# ветки — где угодно; тайловые стены/ворота/мосты — вне правила

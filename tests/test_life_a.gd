@@ -153,25 +153,48 @@ func _test_wishlist() -> void:
 	_check(changed, "выработка скалы дала событие (жила/кристалл/осыпь)")
 
 	# некромант: кладбище темнеет, армия растёт тайно, восстание, зачистка героем
+	# v1.23: зов слышен только к закопанному праху, армия растёт от ночных
+	# ритуалов некроманта у могил (дальше — test_v123), тьму кормят закопанные
 	var sim_n := _make_sim()
 	sim_n.cfg["necro"]["dark_per_night"] = 0.5
-	sim_n.cfg["necro"]["summon_chance"] = 1.0
+	sim_n.cfg["necro"]["call_chance"] = 1.0
 	sim_n.cfg["necro"]["rise_at"] = 3
 	var cem := _build_now(sim_n, "cemetery")
 	_check(bool(cem["done"]), "кладбище построено")
 	var cem_tile: Vector2i = cem["tile"]
+	for gi in 4:   # тьму кормит закопанный прах — несколько могил
+		sim_n.graves.append({"tile": cem_tile + Vector2i(1 + gi, 1), "name": "Старик",
+				"ready": true, "rite": "bury"})
 	sim_n._roll_necro()
 	_check(float(sim_n.necro_dark) > 0.0, "тьма кладбища растёт")
-	_check(int(sim_n.necro_army) > 0, "скелеты собираются тайно")
 	_check(bool(sim_n.necro_known), "некромантия раскрыта по тьме")
 	var has_secret := false
 	for r in sim_n.residents:
 		if String(r.get("secret", "")) == "necromancer":
 			has_secret = true
 	_check(has_secret, "в городе завёлся тайный некромант")
+	# ночь у могил: армия крепнет от ритуала (шанс 1.0, ритуал мгновенный)
+	var necro: Dictionary = {}
+	for r in sim_n.residents:
+		if String(r.get("secret", "")) == "necromancer":
+			necro = r
+	necro["fatigue"] = 0.0
+	necro["bld"] = null
+	necro["site"] = null
+	necro["necro_study"] = 9999.0
+	sim_n.cfg["necro"]["army_per_ritual_chance"] = 1.0
+	for r in sim_n.residents:   # город спит по домам — некроманта не видно
+		if r != necro:
+			r["state"] = "sleep"
+			r["inside"] = 1
+	_teleport(sim_n, necro, sim_n.map.nearest_walkable(cem_tile))
+	necro["necro_phase"] = "rite"
+	sim_n._necro_night_walk(necro, 0.1)
+	_check(int(sim_n.necro_army) > 0, "скелеты собираются тайно")
 	var attempts := 0
 	while not sim_n.raid_active and attempts < 8:
 		attempts += 1
+		sim_n.necro_army = maxi(sim_n.necro_army, int(sim_n.cfg["necro"]["rise_at"]))
 		sim_n._roll_necro()
 	_check(sim_n.raid_active and String(sim_n._raid_kind) == "undead", "мертвецы восстали из кладбища")
 	var skel_seen := false
@@ -239,6 +262,9 @@ func _test_m12() -> void:
 			"на тревогу жители собираются у костра")
 	sim2._raid_warned = false   # дальше — мирные проверки
 	# похороны: кладбище, смерть жителя → процессия и могилка
+	# v1.23: горожане выбирают обряд — бог «Дом» велит хоронить в землю,
+	# иначе 25% уходит на погребальный костёр (2 дня, проверяется в v123)
+	sim2.god = "home"
 	var cem := _build_now(sim2, "cemetery")
 	_check(bool(cem["done"]), "кладбище построено")
 	var victim := _add_resident(sim2, "Гриб", "farmer")

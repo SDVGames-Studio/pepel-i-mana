@@ -1009,6 +1009,25 @@ func _residents_bbcode() -> String:
 				skill_key = "skill.expert"
 			parts.append("[color=%s]%d%%[/color]" % [mood_col, mood])
 			parts.append(Loc.t(skill_key))
+			# статы и прикладные навыки (v1.23): чем занимается — то и растёт
+			var attrs: Dictionary = r.get("stats", {})
+			if not attrs.is_empty():
+				var attr_parts := PackedStringArray()
+				for st_id in ["str", "agi", "end", "int"]:
+					attr_parts.append("%s %.1f" % [Loc.t("stat." + st_id), float(attrs.get(st_id, 0.0))])
+				parts.append("[color=#b0bec5]%s[/color]" % " · ".join(attr_parts))
+			var sk_map: Dictionary = r.get("skills", {})
+			if not sk_map.is_empty():
+				var top_ids: Array = sk_map.keys()
+				top_ids.sort_custom(func(a, b) -> bool:
+					return float(sk_map[a]) > float(sk_map[b]))
+				var top_parts := PackedStringArray()
+				for k in top_ids.slice(0, 2):
+					if float(sk_map[k]) < 0.5:
+						continue   # совсем зелёных не показываем
+					top_parts.append("%s %d" % [_skill_kind_name(String(k)), int(floor(float(sk_map[k])))])
+				if not top_parts.is_empty():
+					parts.append("[color=#a5d6a7]%s[/color]" % ", ".join(top_parts))
 		# жизнь v3 (M14-F): личная цель и отношения
 		if String(r.get("goal", "")) != "":
 			parts.append("[color=#ce93d8]Цель: %s[/color]" % Loc.t("goal." + String(r["goal"])))
@@ -1074,6 +1093,14 @@ func _prof_loc(prof_id: String) -> String:
 		if String(prof["id"]) == prof_id:
 			return Loc.t(String(prof["loc"]))
 	return prof_id
+
+
+## Название прикладного навыка (v1.23): виды совпадают с профессиями,
+## кроме «воина» — боевого навыка стражей.
+func _skill_kind_name(kind_id: String) -> String:
+	if kind_id == "warrior":
+		return Loc.t("skill.warrior")
+	return _prof_loc(kind_id)
 
 
 func _label(size: int) -> Label:
