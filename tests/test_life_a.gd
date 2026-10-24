@@ -1047,7 +1047,9 @@ func _test_m14_c() -> void:
 	# охота героя в городе: зверь в дуге умирает, дроп — предметы лута
 	var deer2 := {"id": 5003, "kind": "boar", "pos": Vector2(300, 300), "target": Vector2i(-1, -1),
 			"path": PackedVector2Array(), "idle": 99.0}
-	sim.animals.append(deer2)
+	# флейк (2026-10-25): бродячий зверь мог забежать в дугу удара ближе
+	# кабана — в дуге должен быть только он
+	sim.animals = [deer2]
 	var kill: Dictionary = sim.hero_hit_animal(Vector2(280, 300), Vector2(1, 0), 60.0, 90.0)
 	_check(String(kill.get("kind", "")) == "boar" and not kill.get("drops", []).is_empty(),
 			"удар героя в городе добывает зверя (%s)" % String(kill.get("kind", "")))

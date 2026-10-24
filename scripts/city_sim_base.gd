@@ -360,7 +360,8 @@ func _roll_start_stats() -> Dictionary:
 
 
 ## Новый житель с личностью: черты, настроение, навык с нуля.
-func _new_resident(res_name: String, prof: String, tile: Vector2i) -> Dictionary:	var traits := _random_traits()
+func _new_resident(res_name: String, prof: String, tile: Vector2i) -> Dictionary:
+	var traits := _random_traits()
 	var r := {
 		"id": _next_id, "name": res_name, "prof": prof,
 		"bld": null, "site": null, "home": null,

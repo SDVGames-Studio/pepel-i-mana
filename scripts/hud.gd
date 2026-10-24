@@ -54,7 +54,7 @@ func refresh() -> void:
 	var hp_max: int = hero.hp_max()
 	_hp_fill.size = Vector2(BAR_W * clampf(float(hero.hp) / hp_max, 0.0, 1.0), BAR_H)
 	_hp_label.text = "%s %d/%d" % [Loc.t("hud.hp"), hero.hp, hp_max]
-	var mana_max := hero.mana_cap()   # v1.24: кап маны — с мудростью героя
+	var mana_max: int = hero.mana_cap()   # v1.24: кап маны — с мудростью героя
 	_mana_fill.size = Vector2(BAR_W * clampf(float(hero.mana) / mana_max, 0.0, 1.0), BAR_H)
 	_mana_label.text = "%s %d/%d" % [Loc.t("hud.mana"), hero.mana, mana_max]
 	_dash_fill.size = Vector2(BAR_W * hero.dash_ready_fraction(), BAR_H)

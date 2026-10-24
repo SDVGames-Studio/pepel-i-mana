@@ -1001,9 +1001,12 @@ func _test_magic_sim() -> void:
 	sim.add_pollution(500.0)
 	_check(absf(float(sim.pollution) - 100.0) < 0.001, "add_pollution ограничен 100")
 	# спад загрязнения со временем (бурю и дикие события выключаем — тест не про них)
+	# флейк (2026-10-25): случайная история (мутация/метеор/кошмар) добавляет
+	# загрязнение прямо в дневном броске — гасим и их
 	sim.pollution = 50.0
 	sim.cfg["storm"]["base_chance"] = 0.0
 	sim.cfg["pollution"]["event_chance_per_day"] = 0.0
+	sim.cfg["stories"]["chance_per_day"] = 0.0
 	sim.tick(float(sim.cfg["day_length"]))
 	_check(absf(float(sim.pollution) - 48.0) < 0.1, "за день загрязнение падает на decay_per_day")
 
