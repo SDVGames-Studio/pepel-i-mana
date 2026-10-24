@@ -34,9 +34,13 @@ func _test_v124_pools() -> void:
 		sums["%.0f" % t] = true
 	_check(sums.size() >= 2, "жители рождаются разными (пулы различаются)")
 	# мудрость в карте деятельности: алтарь качает интеллект и мудрость
+	# (обнуляем оба стата — врождённый пул не должен упираться в кап)
 	var aco: Dictionary = _resident_by_prof(sim, "acolyte")
 	if aco.is_empty():
 		aco = sim.residents[0]
+	aco["traits"] = []
+	(aco.get("stats", {}) as Dictionary)["int"] = 0.0
+	(aco.get("stats", {}) as Dictionary)["wis"] = 0.0
 	var before_int: float = float((aco.get("stats", {}) as Dictionary).get("int", 0.0))
 	var before_wis: float = float((aco.get("stats", {}) as Dictionary).get("wis", 0.0))
 	sim._grow_skill(aco, float(sim.cfg["day_length"]) * 4.0, "acolyte")

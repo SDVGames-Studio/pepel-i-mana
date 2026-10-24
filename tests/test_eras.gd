@@ -449,6 +449,9 @@ func _test_m7() -> void:
 	hero.setup({"hp": 20, "damage": 2, "mana": 10, "radius": 10, "speed": 140,
 			"attack_range": 30, "attack_arc": 90, "attack_cooldown": 0.4,
 			"dash_distance": 38, "dash_time": 0.12, "dash_cooldown": 1.5}, 10)
+	# v1.24: статы героя влияют на урон/HP/броню/ману — для точных проверок
+	# обнуляем рост (тест про бонусы дерева навыков, не про статы)
+	Game.hero_stats = {"str": 0.0, "agi": 0.0, "end": 0.0, "int": 0.0, "wis": 0.0}
 	hero.apply_skill_bonuses({"damage": 1.0, "hp": 5.0, "armor": 1.0, "mana": 4.0})
 	_check(int(hero.eff_damage()) == 3, "герой: урон 2 + навык 1 = 3")
 	_check(int(hero.hp_max()) == 25, "герой: 20 HP + 5 навыка")

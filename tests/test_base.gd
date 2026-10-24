@@ -608,6 +608,9 @@ class FakeGame extends RefCounted:
 	var hero_saved_mana := -1
 	var _autosave_day := 0
 	var equipment := {"weapon": "", "armor": "", "accessory": "", "mount": ""}
+	# v1.24: статы героя (как в Game — их читает/пишет сейв)
+	const HERO_STAT_KEYS := ["str", "agi", "end", "int", "wis"]
+	var hero_stats: Dictionary = {"str": 2.0, "agi": 2.0, "end": 2.0, "int": 2.0, "wis": 2.0}
 	var codex := {"enemies": {}, "biomes": {}, "spells": {}, "items": {}, "gods": {}, "factions": {}}
 	var stats := {"days": 0, "bosses": 0, "buildings": 0, "quests": 0, "hunts": 0}
 	var city_sim = null

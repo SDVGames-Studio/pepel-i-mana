@@ -360,6 +360,7 @@ func _test_city_sim() -> void:
 	sim.cfg["food_per_resident_day"] = 2.0
 	sim.res["food"] = 0.0
 	farmer["skill"] = 0.0   # навык вырос за тест — меряем только голодный штраф
+	farmer["stats"] = {"str": 0.0, "agi": 0.0, "end": 0.0, "int": 0.0, "wis": 0.0}   # v1.24: и врождённые статы не мешают
 	var starving_mult: float = sim.work_mult(farmer)
 	_check(starving_mult <= 0.75, "голод режет работу почти вдвое (%.2f)" % starving_mult)
 	sim.tick(0.5)

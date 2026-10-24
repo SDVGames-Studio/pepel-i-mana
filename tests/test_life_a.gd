@@ -1118,9 +1118,14 @@ func _test_m14_d() -> void:
 				"враг %s назван в локализации" % id)
 
 	# --- lifesteal: вампир лечится от своих ударов ---
+	# v1.24: статы существ масштабируют их урон — для точной арифметики
+	# вампиру и личу даём нулевые статы (тест про lifesteal и снаряд)
+	var zero_stats := {"str": 0, "end": 0, "agi": 0, "int": 0, "wis": 0}
 	var EnemyS: Script = load("res://scripts/enemy.gd")
 	var vamp = EnemyS.new()
-	vamp.setup(rows["vampire"])
+	var vdef: Dictionary = (rows["vampire"] as Dictionary).duplicate()
+	vdef["stats"] = zero_stats
+	vamp.setup(vdef)
 	var fh := FakeKiteHero.new()
 	vamp.hero = fh
 	vamp.hp = 4
@@ -1135,7 +1140,9 @@ func _test_m14_d() -> void:
 	# максимальная планка respected при большом уроне
 	# снаряд лича летит в героя (target_group = hero)
 	var lich = EnemyS.new()
-	lich.setup(rows["lich"])
+	var ldef: Dictionary = (rows["lich"] as Dictionary).duplicate()
+	ldef["stats"] = zero_stats
+	lich.setup(ldef)
 	lich.hero = fh
 	lich.position = Vector2.ZERO
 	fh.global_position = Vector2(100, 0)

@@ -26,10 +26,12 @@ func _test_v123_attributes() -> void:
 	_check(float((r.get("stats", {}) as Dictionary).get("end", 0.0)) > end_before + 1.0, "…и выносливость")
 	_check(absf(float((r.get("stats", {}) as Dictionary).get("agi", 0.0)) - agi_before) < 0.001,
 			"ловкость от рубки не растёт")
-	# интеллект ускоряет обучение
+	# интеллект ускоряет обучение (v1.24: обнуляем врождённый интеллект —
+	# случайный пул не должен маскировать сравнение)
 	var smart: Dictionary = sim.residents[1]
 	smart["traits"] = []
-	smart["stats"] = {"str": 0.0, "agi": 0.0, "end": 0.0, "int": 5.0}
+	smart["stats"] = {"str": 0.0, "agi": 0.0, "end": 0.0, "int": 5.0, "wis": 0.0}
+	(r.get("stats", {}) as Dictionary)["int"] = 0.0
 	sim._grow_skill(smart, day_len * 2.0, "acolyte")
 	sim._grow_skill(r, day_len * 2.0, "acolyte")
 	_check(float((smart.get("skills", {}) as Dictionary).get("acolyte", 0.0))
@@ -64,9 +66,9 @@ func _test_v123_attributes() -> void:
 	sim._move_towards(lj, far, 0.5)
 	var slow_d: float = (lj["pos"] as Vector2).distance_to(before_px)
 	_check(fast_d > slow_d + 1.0, "ловкий житель шагает дальше (%.1f > %.1f)" % [fast_d, slow_d])
-	# выносливость сдерживает усталость
-	lj["stats"] = {"str": 0.0, "agi": 0.0, "end": 5.0, "int": 0.0}
-	_check(sim._fatigue_cost(lj) < 0.8, "выносливый устаёт медленнее (%.2f)" % sim._fatigue_cost(lj))
+	# выносливость сдерживает усталость (end 5 → цена 1/1.2 ≈ 0.83)
+	lj["stats"] = {"str": 0.0, "agi": 0.0, "end": 5.0, "int": 0.0, "wis": 0.0}
+	_check(sim._fatigue_cost(lj) < 0.85, "выносливый устаёт медленнее (%.2f)" % sim._fatigue_cost(lj))
 
 
 # --- спарринг стражей (v1.23) --------------------------------------------------

@@ -493,13 +493,13 @@ const KIND_STATS := {
 }
 
 
-## Характеристики жителя (создаются по требованию — старые сейвы без них;
-## v1.24: пять статов; заселёнцу без статов даём врождённый пул, голему — нули).
+## Характеристики жителя (создаются по требованию): у рождённых — врождённый
+## пул (см. _new_resident), у старых сейвов и голых словарей — нули
+## (детерминизм тестов), дальше растут от дела.
 func _stats(r: Dictionary) -> Dictionary:
 	var st: Dictionary = r.get("stats", {})
 	if st.is_empty():
-		st = {"str": 0.0, "agi": 0.0, "end": 0.0, "int": 0.0, "wis": 0.0} if _is_golem(r) \
-				else _roll_start_stats()
+		st = {"str": 0.0, "agi": 0.0, "end": 0.0, "int": 0.0, "wis": 0.0}
 		r["stats"] = st
 	return st
 
@@ -673,8 +673,9 @@ func _grow_skill(r: Dictionary, dt: float, kind := "") -> void:
 		var acfg: Dictionary = cfg.get("attributes", {})
 		var st := _stats(r)
 		for st_id: String in KIND_STATS.get(k, ["end"]):
-			st[st_id] = minf(float(acfg.get("stat_max", 5.0)),
-					float(st[st_id]) + float(acfg.get("stat_rate", 0.3)) * dt / float(cfg["day_length"]))
+			# рост не уменьшает даже пересыщенный врождённый стат
+			st[st_id] = maxf(float(st[st_id]), minf(float(acfg.get("stat_max", 12.0)),
+					float(st[st_id]) + float(acfg.get("stat_rate", 0.3)) * dt / float(cfg["day_length"])))
 	var expert_at: float = float(people.get("skill_expert_at", 3.0))
 	var rank := int(r.get("rank", 0))
 	if rank < 3 and float(r["skill"]) >= expert_at:
