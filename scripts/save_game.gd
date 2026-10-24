@@ -125,6 +125,7 @@ static func _game_block(game, city_tile: Vector2i, world_tile: Vector2i) -> Dict
 		"conflicts_enabled": bool(game.conflicts_enabled),
 		"world_active": bool(game.world_active),
 		"equipment": game.equipment,
+		"hero_stats": game.hero_stats,   # статы героя: рост от дел (v1.24)
 		"city_return_tile": [city_tile.x, city_tile.y],
 		"world_hero_tile": [world_tile.x, world_tile.y],
 	}
@@ -335,6 +336,11 @@ static func _apply_game(game, gd: Variant, skd: Variant, hero_d: Variant) -> voi
 		"accessory": String(eq.get("accessory", "")),
 		"mount": String(eq.get("mount", "")),
 	}
+	# статы героя (v1.24): рост от дел — переживает забеги и сейвы
+	var hs: Dictionary = _dec(g.get("hero_stats", {}))
+	for st_id in game.HERO_STAT_KEYS:
+		if hs.has(st_id):
+			game.hero_stats[st_id] = float(hs[st_id])
 	var ct: Array = g.get("city_return_tile", [-1, -1])
 	game.city_return_tile = Vector2i(int(ct[0]), int(ct[1]))
 	var wt: Array = g.get("world_hero_tile", [-1, -1])

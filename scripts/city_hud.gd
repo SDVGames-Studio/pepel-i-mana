@@ -1013,7 +1013,7 @@ func _residents_bbcode() -> String:
 			var attrs: Dictionary = r.get("stats", {})
 			if not attrs.is_empty():
 				var attr_parts := PackedStringArray()
-				for st_id in ["str", "agi", "end", "int"]:
+				for st_id in ["str", "agi", "end", "int", "wis"]:
 					attr_parts.append("%s %.1f" % [Loc.t("stat." + st_id), float(attrs.get(st_id, 0.0))])
 				parts.append("[color=#b0bec5]%s[/color]" % " · ".join(attr_parts))
 			var sk_map: Dictionary = r.get("skills", {})

@@ -16,6 +16,7 @@ const WORLD_SIM_SCRIPT := "res://scripts/world_sim.gd"
 const ITEMS_CFG_PATH := "res://data/items.json"
 const WEAPONS_CFG_PATH := "res://data/weapons.json"
 const LOOT_CFG_PATH := "res://data/loot.json"
+const BALANCE_CFG_PATH := "res://data/balance.json"
 
 var inventory: Array = []        # [{id: String, count: int}]
 var last_run_death := false      # true, если последний забег закончился гибелью
@@ -48,6 +49,9 @@ var weapons_cfg: Dictionary = {} # data/weapons.json — паттерны ата
 var loot_cfg: Dictionary = {}    # data/loot.json — редкости (цвета/веса)
 var equipment := {"weapon": "", "armor": "", "accessory": "", "mount": ""}
 const EQUIP_SLOTS := ["weapon", "armor", "accessory", "mount"]
+# --- статы героя (v1.24): растут от дел всю игру, переживают забеги --------
+const HERO_STAT_KEYS := ["str", "agi", "end", "int", "wis"]
+var hero_stats: Dictionary = {"str": 2.0, "agi": 2.0, "end": 2.0, "int": 2.0, "wis": 2.0}
 # --- сейв/загрузка (M14-A, issue #3) ----------------------------------------
 var in_dungeon := false          # герой в данже — сейв недоступен (данжи транзитны)
 var hero_saved_hp := -1          # HP героя из сейва (применится при спавне в городе)
@@ -61,6 +65,37 @@ var menu_hero_tile := Vector2i(-1, -1)
 var menu_hero_hp := -1
 var menu_hero_mana := -1
 const SAVE_SCRIPT := "res://scripts/save_game.gd"
+
+
+## Стат героя (0, если нет).
+func hero_stat(id: String) -> float:
+	return float(hero_stats.get(id, 0.0))
+
+
+## Естественный рост героя (v1.24): дело качает стат — рубка силу, бой силу
+## и ловкость, заклинания интеллект и мудрость, раны выносливость. Кап из
+## balance.json -> hero_attributes.hero_cap.
+func hero_train(stat_id: String, amount: float) -> void:
+	if amount <= 0.0:
+		return
+	var cfg2: Dictionary = _hero_attrs_cfg()
+	var cap := float(cfg2.get("hero_cap", 20.0))
+	var before := float(hero_stats.get(stat_id, 0.0))
+	if before >= cap:
+		return
+	hero_stats[stat_id] = minf(cap, before + amount)
+
+
+## Конфиг статов героя (balance.json -> hero_attributes), читается лениво.
+func _hero_attrs_cfg() -> Dictionary:
+	if _hero_attrs_cache.is_empty():
+		var data: Variant = _read_json(BALANCE_CFG_PATH)
+		if data is Dictionary:
+			_hero_attrs_cache = data.get("hero_attributes", {})
+	return _hero_attrs_cache
+
+
+var _hero_attrs_cache: Dictionary = {}
 
 
 func _init() -> void:

@@ -36,7 +36,46 @@ var _temp_dmg := 0
 var _temp_armor_left := 0.0       # каменная кожа (M7)
 var _temp_armor := 0
 
+# --- статы героя (v1.24): сила/ловкость/выносливость/интеллект/мудрость ------
+static var _ha: Dictionary = {}   # кэш balance.json -> hero_attributes (тесты подменяют)
+
 const LANTERN_ENERGY := 1.15
+
+
+## Конфиг статов героя (balance.json -> hero_attributes); читается один раз.
+static func attrs_cfg() -> Dictionary:
+	if _ha.is_empty():
+		var f := FileAccess.open("res://data/balance.json", FileAccess.READ)
+		if f != null:
+			var parsed: Variant = JSON.parse_string(f.get_as_text())
+			if parsed is Dictionary:
+				_ha = parsed.get("hero_attributes", {})
+	return _ha
+
+
+## Текущий стат героя (рост хранится в Game и переживает забеги).
+func stat(id: String) -> float:
+	return Game.hero_stat(id)
+
+
+## Сила — урон в ближнем бою (за очко str_dmg).
+static func stat_melee_bonus(cfg: Dictionary, str_v: float) -> int:
+	return int(round(str_v * float(cfg.get("str_dmg", 0.5))))
+
+
+## Выносливость — запас здоровья (за очко end_hp).
+static func stat_hp_bonus(cfg: Dictionary, end_v: float) -> int:
+	return int(round(end_v * float(cfg.get("end_hp", 2.0))))
+
+
+## Ловкость — плоская защита (за очко agi_armor).
+static func stat_armor_bonus(cfg: Dictionary, agi_v: float) -> int:
+	return int(round(agi_v * float(cfg.get("agi_armor", 0.25))))
+
+
+## Интеллект — множитель силы заклинаний (за очко int_spell).
+static func stat_spell_mult(cfg: Dictionary, int_v: float) -> float:
+	return 1.0 + float(cfg.get("int_spell", 0.04)) * int_v
 
 
 ## Вызвать до add_child: параметры героя и стартовая мана.
@@ -44,7 +83,7 @@ func setup(hero_params: Dictionary, start_mana: int) -> void:
 	p = hero_params
 	hp = int(p["hp"])
 	mana_max = int(p["mana"])
-	mana = mini(start_mana, mana_max)
+	mana = mini(start_mana, mana_cap())
 
 
 ## Постоянные бонусы узла дерева навыков (M7): damage/hp/mana/armor/speed/множители.
@@ -53,7 +92,7 @@ func apply_skill_bonuses(bonus: Dictionary) -> void:
 		_sk[key] = float(_sk.get(key, 0.0)) + float(bonus[key])
 	hp = mini(hp_max(), hp + int(bonus.get("hp", 0)))
 	mana_max += int(bonus.get("mana", 0))
-	mana = mini(mana_max, mana + int(bonus.get("mana", 0)))
+	mana = mini(mana_cap(), mana + int(bonus.get("mana", 0)))
 	queue_redraw()
 
 
@@ -81,7 +120,8 @@ func eq_mult(key: String, fallback: float) -> float:
 
 
 func hp_max() -> int:
-	return int(p["hp"]) + skill_bonus("hp") + eq_bonus("hp")
+	return int(p["hp"]) + skill_bonus("hp") + eq_bonus("hp") \
+			+ stat_hp_bonus(attrs_cfg(), stat("end"))   # выносливость — здоровье (v1.24)
 
 
 ## Урон оружия: надетый предмет (паттерн × множитель) или кулаки из dungeon.json.
@@ -92,14 +132,28 @@ func base_damage() -> int:
 	return int(wpn["damage"])
 
 
-## Эффективный урон: оружие + комплекты + навыки + экипировка + «Перегрузка».
+## Эффективный урон: оружие + комплекты + навыки + экипировка + «Перегрузка»
+## + сила героя (v1.24).
 func eff_damage() -> int:
-	return base_damage() + bonus_damage + skill_bonus("damage") + eq_bonus("damage") + _temp_dmg
+	return base_damage() + bonus_damage + skill_bonus("damage") + eq_bonus("damage") + _temp_dmg \
+			+ stat_melee_bonus(attrs_cfg(), stat("str"))
 
 
-## Эффективная броня: комплекты + навыки + экипировка + «Каменная кожа».
+## Эффективная броня: комплекты + навыки + экипировка + «Каменная кожа»
+## + ловкость героя (v1.24).
 func eff_armor() -> int:
-	return bonus_armor + skill_bonus("armor") + eq_bonus("armor") + _temp_armor
+	return bonus_armor + skill_bonus("armor") + eq_bonus("armor") + _temp_armor \
+			+ stat_armor_bonus(attrs_cfg(), stat("agi"))
+
+
+## Множитель силы заклинаний от интеллекта (v1.24).
+func spell_mult() -> float:
+	return stat_spell_mult(attrs_cfg(), stat("int"))
+
+
+## Мана: мудрость расширяет запас (v1.24) — кап считается на лету.
+func mana_cap() -> int:
+	return mana_max + int(round(stat("wis") * float(attrs_cfg().get("wis_mana", 1.0))))
 
 
 ## Временное усиление урона (заклинание, M7).
@@ -223,8 +277,9 @@ func _physics_process(delta: float) -> void:
 	if not city_mode:
 		_regen_mana(delta)
 	var dir := Input.get_vector("move_left", "move_right", "move_up", "move_down")
+	var agi_speed := stat("agi") * float(attrs_cfg().get("agi_speed", 1.5))   # ловкость — бег (v1.24)
 	if city_mode:
-		velocity = dir * float(p["speed"]) * city_speed_mult
+		velocity = dir * (float(p["speed"]) + agi_speed) * city_speed_mult
 		move_and_slide()
 		return
 	if dir != Vector2.ZERO:
@@ -238,7 +293,8 @@ func _physics_process(delta: float) -> void:
 		var dash_speed := float(p["dash_distance"]) / float(p["dash_time"])
 		velocity = facing * dash_speed
 	else:
-		velocity = dir * (float(p["speed"]) + float(_sk.get("speed", 0.0)) + float(_eq.get("speed", 0.0)))
+		velocity = dir * (float(p["speed"]) + float(_sk.get("speed", 0.0)) \
+				+ float(_eq.get("speed", 0.0)) + agi_speed)
 	move_and_slide()
 
 
@@ -267,6 +323,7 @@ func try_attack() -> void:
 		get_tree().create_timer(0.15).timeout.connect(queue_redraw)
 		return
 	var arc := float(wpn.get("arc", p["attack_arc"]))
+	var hits := 0
 	for enemy in get_tree().get_nodes_in_group("enemies"):
 		var to_enemy: Vector2 = enemy.global_position - global_position
 		if to_enemy.length() > reach + float(enemy.p["radius"]):
@@ -275,6 +332,10 @@ func try_attack() -> void:
 			continue
 		enemy.take_damage(eff_damage())
 		Game.codex_seen("enemies", String(enemy.p.get("id", enemy.p.get("type", ""))))   # кодекс (M14-K)
+		hits += 1
+	# дело качает стат (v1.24): ближний бой — сила
+	if hits > 0:
+		Game.hero_train("str", float(attrs_cfg().get("train_swing", 0.06)) * float(hits))
 	# мирная фауна данжа (замечание 2026-10-20): попадает той же дугой
 	for creature in get_tree().get_nodes_in_group("dungeon_fauna"):
 		if not is_instance_valid(creature) or bool(creature.dead):
@@ -298,6 +359,10 @@ func _fire_projectile(wpn: Dictionary, reach: float) -> void:
 			_attack_cd = 0.2
 			return
 		mana -= mana_cost
+		# посох пьёт ману — качает мудрость (v1.24)
+		Game.hero_train("wis", float(attrs_cfg().get("train_mana_wis", 0.04)) * float(mana_cost))
+	else:
+		Game.hero_train("agi", float(attrs_cfg().get("train_swing", 0.06)))   # лук — ловкость
 	var proj = load("res://scripts/projectile.gd").new()
 	var col := Color(1.0, 0.9, 0.55) if mana_cost <= 0 else Color(0.5, 0.7, 1.0)
 	proj.setup(global_position + facing * float(p["radius"]), facing,
@@ -335,6 +400,9 @@ func take_damage(dmg: int) -> void:
 		return
 	hp = maxi(0, hp - maxi(0, dmg - eff_armor()))
 	_invuln = 0.5
+	# раны закаляют (v1.24): полученный урон качает выносливость
+	if dmg > 0:
+		Game.hero_train("end", float(attrs_cfg().get("train_hurt_end", 0.1)))
 	queue_redraw()
 	if hp <= 0:
 		dead = true
@@ -374,15 +442,16 @@ func _tick_spell_cooldowns(delta: float) -> void:
 			_spell_cd.erase(id)
 
 
-## Медленная регенерация маны сама по себе (ответ №65).
+## Медленная регенерация маны сама по себе (ответ №65); мудрость ускоряет (v1.24).
 func _regen_mana(delta: float) -> void:
-	if mana >= mana_max:
+	if mana >= mana_cap():
 		_mana_regen_acc = 0.0
 		return
 	_mana_regen_acc += delta
-	if _mana_regen_acc >= mana_regen_period:
+	var period := mana_regen_period / (1.0 + float(attrs_cfg().get("wis_regen", 0.02)) * stat("wis"))
+	if _mana_regen_acc >= period:
 		_mana_regen_acc = 0.0
-		mana = mini(mana_max, mana + 1)
+		mana = mini(mana_cap(), mana + 1)
 		queue_redraw()
 
 
@@ -395,7 +464,7 @@ func drain_mana() -> bool:
 
 
 func add_mana(v: int) -> void:
-	mana = mini(mana_max, mana + v)
+	mana = mini(mana_cap(), mana + v)
 
 
 ## Доля восстановления рывка 0..1 — для полосы HUD.

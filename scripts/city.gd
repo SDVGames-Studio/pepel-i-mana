@@ -699,6 +699,8 @@ func _process_events() -> void:
 				hud.toast(Loc.t("city.spar_toast") % [String(ev.get("a", "")), String(ev.get("b", ""))])
 			"log_hauled":
 				hud.toast(Loc.t("city.log_hauled_toast") % String(ev.get("name", "")))
+			"dark_storm":
+				hud.toast(Loc.t("city.dark_storm_toast"))
 			# --- вишлист M13: пары и День основания ---
 			"wedding":
 				hud.toast(Loc.t("story.wedding_toast") % [String(ev["a"]), String(ev["b"])])
@@ -1385,6 +1387,10 @@ func _hero_act() -> bool:
 	if res == "":
 		return false
 	_hero_work_cd = float(hw.get("cooldown", 0.35))
+	# труд качает стату героя (v1.24): рубка и копилка — силу и выносливость
+	var ha: Dictionary = hero.attrs_cfg()
+	Game.hero_train("str", float(ha.get("train_work_str", 0.1)))
+	Game.hero_train("end", float(ha.get("train_work_end", 0.05)))
 	match res:
 		"fell":
 			hud.toast(Loc.t("city.hero_tree_felled"))

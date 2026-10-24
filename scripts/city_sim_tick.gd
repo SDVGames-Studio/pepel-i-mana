@@ -772,7 +772,16 @@ func _next_grave_tile(center: Vector2i) -> Vector2i:
 
 ## Кладбище живёт (v1.23): погребальные костры догорают (два дня) и прах
 ## успокаивается, останки врагов истлевают, если их не унесли.
+## v1.24: ГОТОВОЕ ЗДАНИЕ кладбища само гонит тьму — освящённая земля
+## выжигает её день за днём, и без ритуалов некроманта мёртвым не встать.
 func _update_cemetery(dt: float, day_len: float) -> void:
+	var bld_decay := 0.0
+	for b in buildings:
+		if _active(b) and String(b["type"]) == "cemetery":
+			bld_decay = float(_cemetery_cfg().get("building_decay_per_day", 0.08))
+			break
+	if bld_decay > 0.0 and necro_dark > 0.0:
+		necro_dark = maxf(0.0, necro_dark - bld_decay * dt / day_len)
 	for g in graves:
 		if bool(g.get("ready", false)) or String(g.get("rite", "bury")) != "burn":
 			continue

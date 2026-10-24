@@ -316,7 +316,7 @@ func _apply_equipment() -> void:
 		return
 	hero.set_equipment_bonuses(Game.equipment_bonuses())
 	_apply_mana_params()
-	hero.mana = mini(hero.mana, hero.mana_max)
+	hero.mana = mini(hero.mana, hero.mana_cap())
 
 
 ## Стена ли тайл под точкой — снаряды гаснут об стены данжа.
@@ -326,12 +326,13 @@ func _solid_at(pos: Vector2) -> bool:
 
 ## Мана героя (ответы №56 и №65): запас и регенерация; зачарованный алтарь
 ## в городе увеличивает запас, дисциплина «Тайное» ускоряет регенерацию (M7).
+## v1.24: мудрость героя расширяет запас поверх этого (hero.mana_cap()).
 func _apply_mana_params() -> void:
 	var mp: Dictionary = {"cap_extra": 0, "regen_period": 8.0}
 	if Game.city_sim != null:
 		mp = Game.city_sim.hero_mana_params()
 	hero.mana_max = int(params["hero"]["mana"]) + int(mp.get("cap_extra", 0)) + hero.skill_bonus("mana")
-	hero.mana = mini(hero.mana, hero.mana_max)
+	hero.mana = mini(hero.mana, hero.mana_cap())
 	hero.mana_regen_period = float(mp.get("regen_period", 8.0))
 
 
@@ -534,9 +535,18 @@ func _cast_spell(spell_id: String, free_cast := false) -> void:
 		hud.toast(Loc.t("magic.no_mana"))
 		return
 	hero.mana -= cost
+	# магия качает стату (v1.24): заклинания — интеллект, трата маны — мудрость
+	var ha2: Dictionary = hero.attrs_cfg()
+	Game.hero_train("int", float(ha2.get("train_cast_int", 0.15)))
+	if cost > 0:
+		Game.hero_train("wis", float(ha2.get("train_cast_wis", 0.05)) \
+				+ float(ha2.get("train_mana_wis", 0.04)) * float(cost))
 	# ветка мага (M7): кулдауны заклинаний короче
 	hero.set_spell_cd(spell_id, float(def.get("cooldown", 3.0)) * hero.skill_mult("spell_cd_mult", 1.0))
-	var params2: Dictionary = def.get("params", {})
+	# интеллект усиливает урон и лечение заклинания (v1.24)
+	var params2: Dictionary = def.get("params", {}).duplicate(true)
+	params2["damage"] = int(round(float(params2.get("damage", 0)) * hero.spell_mult()))
+	params2["heal"] = int(round(float(params2.get("heal", 0)) * hero.spell_mult()))
 	var school := String(def["school"])
 	var col: Color = Game.magic.school_color(school)
 	match spell_id:
@@ -965,6 +975,11 @@ func _on_enemy_died(enemy) -> void:
 		if ups > 0:
 			hud.toast(Loc.t("hud.level_up") % Game.skills.level)
 			hud.open_skill_choice()
+	# победы качают стату героя (v1.24): бой — сила и ловкость
+	var ha: Dictionary = hero.attrs_cfg() if hero != null else {}
+	if not ha.is_empty():
+		Game.hero_train("str", float(ha.get("train_kill_str", 0.25)))
+		Game.hero_train("agi", float(ha.get("train_kill_agi", 0.15)))
 	_apply_clear_light()
 	_check_dungeon_cleared()
 

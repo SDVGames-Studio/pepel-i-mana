@@ -338,9 +338,29 @@ func _spawn_golem() -> void:
 	events.append({"type": "golem_awakens", "name": GOLEM_NAME})
 
 
+## Врождённый пул статов (v1.24): каждый житель рождается разным — пул
+## start_pool_min..start_pool очков раскидывается по пяти статам со случайными
+## весами (одна статка не выше start_stat_cap). Мудрость — пятый стат:
+## она противится зову тьмы и питает волшебные ремёсла.
+func _roll_start_stats() -> Dictionary:
+	var acfg: Dictionary = cfg.get("attributes", {})
+	var pool := float(_event_rng.randi_range(int(acfg.get("start_pool_min", 20)),
+			int(acfg.get("start_pool_max", 30))))
+	var cap := float(acfg.get("start_stat_cap", 12))
+	var weights := {}
+	var total := 0.0
+	for k in ["str", "agi", "end", "int", "wis"]:
+		var w := 0.25 + _event_rng.randf() * _event_rng.randf()   # склонности перекошены
+		weights[k] = w
+		total += w
+	var out := {}
+	for k in weights:
+		out[k] = minf(cap, roundf(pool * float(weights[k]) / total))
+	return out
+
+
 ## Новый житель с личностью: черты, настроение, навык с нуля.
-func _new_resident(res_name: String, prof: String, tile: Vector2i) -> Dictionary:
-	var traits := _random_traits()
+func _new_resident(res_name: String, prof: String, tile: Vector2i) -> Dictionary:	var traits := _random_traits()
 	var r := {
 		"id": _next_id, "name": res_name, "prof": prof,
 		"bld": null, "site": null, "home": null,
@@ -350,7 +370,7 @@ func _new_resident(res_name: String, prof: String, tile: Vector2i) -> Dictionary
 		"traits": traits, "mood": _start_mood(traits),
 		"skill": 0.0, "rank": 0, "age_days": 100.0,
 		"ail": "", "ail_days": 0.0, "friend": -1, "work_bonus": 0.0,
-		"stats": {"str": 0.0, "agi": 0.0, "end": 0.0, "int": 0.0},   # статы v1.23
+		"stats": _roll_start_stats(),   # врождённый пул статов (v1.24)
 		"skills": {},                 # прикладные навыки по деятельности (v1.23)
 		"prof_extra": [], "sub_prof": "", "atk_cd": 0.0, "partner": -1,
 		"rel": {}, "mem": [], "goal": "", "goal_prev": "", "tavern_visited": false,

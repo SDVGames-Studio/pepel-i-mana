@@ -128,6 +128,42 @@ func _stack_row(stack: Dictionary) -> Control:
 	return row
 
 
+## Лист героя (v1.24): статы растут от дел всю игру — сила бьёт, ловкость
+## защищает и несёт, выносливость держит здоровье, интеллект питает магию,
+## мудрость ширит ману. Показываем очки и конкретный эффект.
+func _stats_row() -> Control:
+	var box := VBoxContainer.new()
+	box.add_theme_constant_override("separation", 2)
+	var ha: Dictionary = {}
+	var hero_script: GDScript = load("res://scripts/hero.gd")
+	ha = hero_script.attrs_cfg()
+	var effects := {
+		"str": "+%d %s" % [hero_script.stat_melee_bonus(ha, Game.hero_stat("str")), Loc.t("hud.stat_dmg")],
+		"agi": "+%d %s" % [hero_script.stat_armor_bonus(ha, Game.hero_stat("agi")), Loc.t("hud.stat_def")],
+		"end": "+%d %s" % [hero_script.stat_hp_bonus(ha, Game.hero_stat("end")), Loc.t("hud.hp")],
+		"int": "×%.2f %s" % [hero_script.stat_spell_mult(ha, Game.hero_stat("int")), Loc.t("hud.stat_magic")],
+		"wis": "+%d %s" % [int(round(Game.hero_stat("wis") * float(ha.get("wis_mana", 1.0)))), Loc.t("hud.mana")],
+	}
+	for st_id in ["str", "agi", "end", "int", "wis"]:
+		var row := HBoxContainer.new()
+		var name_l := Label.new()
+		name_l.text = Loc.t("stat." + st_id)
+		name_l.custom_minimum_size = Vector2(120, 0)
+		name_l.add_theme_color_override("font_color", Color("#b0bec5"))
+		row.add_child(name_l)
+		var val_l := Label.new()
+		val_l.text = "%.1f" % Game.hero_stat(st_id)
+		val_l.custom_minimum_size = Vector2(48, 0)
+		row.add_child(val_l)
+		var eff_l := Label.new()
+		eff_l.text = String(effects.get(st_id, ""))
+		eff_l.add_theme_color_override("font_color", Color(0.55, 0.75, 0.55))
+		eff_l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		row.add_child(eff_l)
+		box.add_child(row)
+	return box
+
+
 func _craft_row(item: Dictionary) -> Control:
 	var item_id := String(item["id"])
 	var row := HBoxContainer.new()
@@ -154,6 +190,9 @@ func _rebuild() -> void:
 	for child in _content.get_children():
 		child.queue_free()
 	_content.add_child(_header(Loc.t("eq.title")))
+	# лист героя (v1.24): статы и их эффект — растут от дел всю игру
+	_content.add_child(_stats_row())
+	_content.add_child(_spacer(8))
 	for slot in Game.EQUIP_SLOTS:
 		_content.add_child(_slot_row(slot))
 	_content.add_child(_spacer(8))

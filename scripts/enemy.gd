@@ -42,6 +42,8 @@ var _heal_flash := 0.0      # вспышка лечения (вампир пьё
 func setup(data: Dictionary) -> void:
 	p = data
 	hp = int(p["hp"])
+	if not p.has("stats"):
+		p["stats"] = derive_stats(data)
 
 
 ## Конфиг анти-кайта (balance.json -> anti_kite); читается один раз.
@@ -53,6 +55,51 @@ static func anti_kite_cfg() -> Dictionary:
 			if parsed is Dictionary:
 				_ak = parsed.get("anti_kite", {})
 	return _ak
+
+
+# --- статы существ (v1.24) -----------------------------------------------------
+## Конфиг статов (balance.json -> hero_attributes), с кэшем.
+static var _ha: Dictionary = {}
+
+
+static func _attrs_cfg() -> Dictionary:
+	if _ha.is_empty():
+		var f := FileAccess.open("res://data/balance.json", FileAccess.READ)
+		if f != null:
+			var parsed: Variant = JSON.parse_string(f.get_as_text())
+			if parsed is Dictionary:
+				_ha = parsed.get("hero_attributes", {})
+	return _ha
+
+
+## Статы существа выводятся из его параметров: урон — сила, здоровье —
+## выносливость, резвость — ловкость, колдовство — интеллект/мудрость.
+## Боссы (boss: true) идут с множителем boss_mult — СВЕРХ капы обычных
+## жителей: мощь выливается в статы, а не упирается в лимит.
+static func derive_stats(data: Dictionary) -> Dictionary:
+	var m := float(_attrs_cfg().get("boss_mult", 2.2)) if bool(data.get("boss", false)) else 1.0
+	var caster := float(data.get("projectile_speed", 0.0)) > 0.0
+	return {
+		"str": int(round(float(data.get("damage", 1)) * m)),
+		"end": int(round(float(data.get("hp", 5)) / 6.0 * m)),
+		"agi": int(round(float(data.get("speed", 80)) / 25.0 * m)),
+		"int": int(round(float(data.get("damage", 1)) * (1.4 if caster else 0.4) * m)),
+		"wis": int(round(float(data.get("mana_chance", 0.2)) * 10.0 * m)),
+	}
+
+
+## Урон существа по герою: база × сила (v1.24).
+static func melee_damage(data: Dictionary) -> int:
+	var s: Dictionary = data.get("stats", {}) if data.has("stats") else derive_stats(data)
+	var per := float(_attrs_cfg().get("enemy_dmg_per_str", 0.04))
+	return maxi(1, int(round(float(data.get("damage", 1)) * (1.0 + per * float(s.get("str", 0.0))))))
+
+
+## Урон магического снаряда существа: база × интеллект (v1.24).
+static func spell_damage(data: Dictionary) -> int:
+	var s: Dictionary = data.get("stats", {}) if data.has("stats") else derive_stats(data)
+	var per := float(_attrs_cfg().get("enemy_dmg_per_int", 0.05))
+	return maxi(1, int(round(float(data.get("damage", 1)) * (1.0 + per * float(s.get("int", 0.0))))))
 
 
 ## Расчёт магического урона: уязвимая школа ×2, антимаг — 0. Статика — для headless-тестов.
@@ -202,17 +249,18 @@ func _physics_process(delta: float) -> void:
 
 ## --- анти-кайт (M14-B, T06): телеграф и рывок с атакой ---------------------
 
-## Удар в упор (M14-D): урон герою; вампир лечится на долю урона (lifesteal).
-## Отдельный метод — для headless-тестов.
+## Удар в упор (M14-D): урон герою (с силой существа, v1.24); вампир лечится
+## на долю урона (lifesteal). Отдельный метод — для headless-тестов.
 func _attack_hero() -> void:
-	hero.take_damage(int(p["damage"]))
+	var dmg := melee_damage(p)
+	hero.take_damage(dmg)
 	# враг ответил — счётчик безнаказанных ударов обнуляется (T06)
 	_unanswered = 0
 	var ls := float(p.get("lifesteal", 0.0))
 	if ls > 0.0 and hp > 0:
 		var max_hp := int(p["hp"])
 		if hp < max_hp:
-			hp = mini(max_hp, hp + maxi(1, int(round(float(p["damage"]) * ls))))
+			hp = mini(max_hp, hp + maxi(1, int(round(float(dmg) * ls))))
 			_heal_flash = 0.4
 			queue_redraw()
 
@@ -223,7 +271,7 @@ func _make_hero_projectile() -> Node:
 	proj.setup(global_position,
 			(hero.global_position - global_position).normalized(),
 			float(p.get("projectile_speed", 240.0)), float(p.get("projectile_range", 200.0)),
-			int(p["damage"]), Color(String(p.get("color", "#b39ddb"))), float(p["radius"]))
+			spell_damage(p), Color(String(p.get("color", "#b39ddb"))), float(p["radius"]))
 	proj.target_group = "hero"
 	return proj
 
@@ -264,7 +312,7 @@ func _tick_anti_kite(delta: float, dist_to_hero: float) -> void:
 		velocity = _dash_dir * float(p["speed"]) * float(ak.get("dash_speed_mult", 3.0))
 		if hero != null and is_instance_valid(hero) and not hero.dead \
 				and dist_to_hero <= float(p["attack_range"]) + float(hero.p["radius"]) + 6.0:
-			hero.take_damage(maxi(1, int(round(float(p["damage"]) * float(ak.get("damage_mult", 1.0))))))
+			hero.take_damage(maxi(1, int(round(float(melee_damage(p)) * float(ak.get("damage_mult", 1.0))))))
 			_dash_left = 0.0
 		if _dash_left <= 0.0:
 			_dash_cd = float(ak.get("cooldown", 4.0))

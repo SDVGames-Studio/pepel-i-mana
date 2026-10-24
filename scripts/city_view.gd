@@ -1024,6 +1024,11 @@ func _res_sprite(col: Color, radius: float) -> ImageTexture:
 ## Житель — кружок (правки v1.20): убрали графику, цвет кружка = основная
 ## специальность; голем-староста — белый; дети — маленькие серо-бежевые.
 func _draw_resident(r: Dictionary) -> void:
+	# тайный некромант на кладбище (v1.24): ночная тьма прячет его —
+	# пока герой не подойдёт на hidden_radius (4) клеток, его не видно
+	if city != null and city.hero != null \
+			and sim.necro_hidden_from(r, city.hero.global_position):
+		return
 	var pos: Vector2 = r["pos"]
 	var prof := String(r["prof"])
 	var child := prof == ""

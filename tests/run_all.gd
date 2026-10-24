@@ -94,6 +94,15 @@ const BLOCKS := [
 		"_test_v123_farm_fields",
 		"_test_v123_log_haul",
 	]],
+	["res://tests/test_v124.gd", [
+		"_test_v124_pools",
+		"_test_v124_wis_call",
+		"_test_v124_hero_stats",
+		"_test_v124_enemy_stats",
+		"_test_v124_cemetery_building",
+		"_test_v124_dark_storm",
+		"_test_v124_necro_stealth",
+	]],
 ]
 
 
