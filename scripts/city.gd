@@ -677,7 +677,10 @@ func _process_events() -> void:
 				hud.toast(Loc.t("city.rock_gone_toast"))
 				_rebuild_collision()
 			"necro_revealed":
-				hud.toast(Loc.t("city.necro_revealed_toast"))
+				if String(ev.get("name", "")) != "":
+					hud.toast(Loc.t("city.necro_seen_toast") % String(ev["name"]))
+				else:
+					hud.toast(Loc.t("city.necro_revealed_toast"))
 			"necro_summon":
 				hud.toast(Loc.t("city.necro_summon_toast"))
 			"undead_rising":
@@ -685,6 +688,17 @@ func _process_events() -> void:
 			"necro_purged":
 				hud.toast(Loc.t("city.necro_purged_toast"))
 				_rebuild_collision()
+			# --- кладбище и останки (v1.23) ---
+			"cemetery_founded":
+				hud.toast(Loc.t("city.cemetery_founded_toast"))
+			"cremated":
+				hud.toast(Loc.t("city.cremated_toast") % String(ev.get("name", "")))
+			"corpse_buried":
+				hud.toast(Loc.t("city.corpse_buried_toast") % Loc.t("enemy." + String(ev.get("kind", ""))))
+			"spar":
+				hud.toast(Loc.t("city.spar_toast") % [String(ev.get("a", "")), String(ev.get("b", ""))])
+			"log_hauled":
+				hud.toast(Loc.t("city.log_hauled_toast") % String(ev.get("name", "")))
 			# --- вишлист M13: пары и День основания ---
 			"wedding":
 				hud.toast(Loc.t("story.wedding_toast") % [String(ev["a"]), String(ev["b"])])

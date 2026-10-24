@@ -441,6 +441,8 @@ func _friend_working(r: Dictionary) -> bool:
 
 ## Итоговый множитель работы: настроение + черты + навык + друг + мутация.
 ## Пустой амбар режет работу до «голодных» 40% — но работа не встаёт совсем.
+## v1.23: работает прикладной навык текущего дела (дровосек рубит — растёт
+## «дровосек», а не общий стаж) и статы своего толка.
 func work_mult(r: Dictionary) -> float:
 	var mult := 1.0
 	var mood := float(r.get("mood", 50.0))
@@ -449,7 +451,7 @@ func work_mult(r: Dictionary) -> float:
 	elif mood <= float(people.get("mood_bad", 30.0)):
 		mult *= float(people.get("work_mood_bad", 0.7))
 	mult *= _trait_prod(r, "work_mult")
-	mult *= 1.0 + float(people.get("skill_prod", 0.08)) * float(r.get("skill", 0.0))
+	mult *= 1.0 + float(people.get("skill_prod", 0.08)) * _work_skill_value(r)
 	if _friend_working(r):
 		mult *= float(people.get("friend_work", 1.1))
 	mult *= 1.0 + float(r.get("work_bonus", 0.0))
@@ -459,6 +461,13 @@ func work_mult(r: Dictionary) -> float:
 	var need := _work_need(r)
 	if need != "":
 		mult *= color_work_mult(r, need)
+	# статы своего толка (v1.23): сила — тяжёлая работа, ловкость — ювелирная,
+	# выносливость — монотонная, интеллект — умственная
+	var acfg: Dictionary = cfg.get("attributes", {})
+	if not acfg.is_empty():
+		var per_stat := float(acfg.get("skill_bonus_per_stat", 0.02))
+		for st_id: String in KIND_STATS.get(_skill_kind_of(r), []):
+			mult *= 1.0 + per_stat * _stat(r, st_id)
 	# инструменты из мастерской ускоряют всех, пока есть в хранилище
 	if float(res.get("tools", 0.0)) > 0.0:
 		mult *= float(cfg.get("tools_boost", 1.15))
@@ -468,6 +477,86 @@ func work_mult(r: Dictionary) -> float:
 	if float(res["food"]) <= 0.0:
 		mult *= float(people.get("starving_work", 0.6))
 	return clampf(mult, 0.2, 3.0)
+
+
+# --- статы и прикладные навыки (v1.23) ---------------------------------------
+## Какие статы качает вид деятельности: физический труд — силу и выносливость,
+## ювелирный — ловкость, умственный — интеллект. Чем занимаешься — то и растёт.
+const KIND_STATS := {
+	"lumberjack": ["str", "end"], "miner": ["str", "end"], "smelter": ["str", "end"],
+	"builder": ["str", "agi"], "warrior": ["str", "agi"], "guard": ["str", "agi"],
+	"farmer": ["end", "agi"], "porter": ["end", "agi"], "hunter": ["agi", "end"],
+	"fisher": ["agi", "end"], "crafter": ["agi", "int"], "armorer": ["agi", "int"],
+	"smith": ["str", "int"], "healer": ["int", "end"], "acolyte": ["int"],
+	"bartender": ["int"], "trader": ["int"], "elder": ["int"],
+}
+
+
+## Характеристики жителя (создаются по требованию — старые сейвы без них).
+func _stats(r: Dictionary) -> Dictionary:
+	var st: Dictionary = r.get("stats", {})
+	if st.is_empty():
+		st = {"str": 0.0, "agi": 0.0, "end": 0.0, "int": 0.0}
+		r["stats"] = st
+	return st
+
+
+func _stat(r: Dictionary, key: String) -> float:
+	return float(_stats(r).get(key, 0.0))
+
+
+## Прикладные навыки жителя: {id вида деятельности: 0..skill_max}.
+func _skills(r: Dictionary) -> Dictionary:
+	if not r.has("skills"):
+		r["skills"] = {}
+	return r.get("skills", {})
+
+
+## Вид деятельности жителя сейчас: стройка — строитель, лесопилка — дровосек,
+## каменоломня/шахта — шахтёр, ферма — фермер, прочее — цвет рабочего места.
+func _skill_kind_of(r: Dictionary) -> String:
+	if r.get("site", null) != null:
+		return "builder"
+	var bld = r.get("bld", null)
+	if bld != null:
+		var t := String((bld as Dictionary).get("type", ""))
+		if t == "sawmill":
+			return "lumberjack"
+		if t == "quarry" or t == "mine":
+			return "miner"
+		if t == "farm":
+			return "farmer"
+		var w := String(_def(bld).get("worker", ""))
+		if w != "":
+			return w
+	if String(r.get("prof", "")) == "hunter":
+		return "hunter"
+	if String(r.get("prof", "")) == "porter":
+		return "porter"
+	return String(r.get("prof", ""))
+
+
+## Значение навыка для текущей работы: прикладной навык дела, а при его
+## отсутствии — прежний общий стаж (жители со старых сейвов не теряют КПД).
+func _work_skill_value(r: Dictionary) -> float:
+	var k := _skill_kind_of(r)
+	if k == "":
+		return float(r.get("skill", 0.0))
+	var sk: Dictionary = r.get("skills", {})
+	if sk.has(k):
+		return float(sk[k])
+	return float(r.get("skill", 0.0))
+
+
+## Усталость копится медленнее у выносливых (v1.23).
+func _fatigue_cost(r: Dictionary) -> float:
+	var end := _stat(r, "end")
+	return 1.0 / (1.0 + float(cfg.get("attributes", {}).get("end_fatigue", 0.06)) * end)
+
+
+## Боевая прокачка (v1.23): бой и спарринг растят «воина», силу и ловкость.
+func _grow_combat(r: Dictionary, dt: float) -> void:
+	_grow_skill(r, dt, "warrior")
 
 
 ## Текущее «цветовое» задание жителя: стройка — строитель, иначе профессия
@@ -565,11 +654,24 @@ func _update_mood(r: Dictionary, dt: float, day_len: float) -> void:
 
 
 ## Навык растёт, пока житель работает; вехи — «опытный» и «мастер».
-func _grow_skill(r: Dictionary, dt: float) -> void:
+## v1.23: чем занимается — то и растёт: прикладной навык дела (kind или по
+## месту работы), общий стаж прежним темпом, статы — по таблице KIND_STATS;
+## интеллект ускоряет обучение.
+func _grow_skill(r: Dictionary, dt: float, kind := "") -> void:
 	var rate: float = float(people.get("skill_rate", 0.5)) * _trait_prod(r, "skill_rate")
 	var skill_max: float = float(people.get("skill_max", 5.0))
 	var before := float(r["skill"])
 	r["skill"] = minf(skill_max, before + rate * dt / float(cfg["day_length"]))
+	var k := kind if kind != "" else _skill_kind_of(r)
+	if k != "":
+		var int_boost := 1.0 + float(cfg.get("attributes", {}).get("int_skill_rate", 0.1)) * _stat(r, "int")
+		var sk := _skills(r)
+		sk[k] = minf(skill_max, float(sk.get(k, 0.0)) + rate * int_boost * dt / float(cfg["day_length"]))
+		var acfg: Dictionary = cfg.get("attributes", {})
+		var st := _stats(r)
+		for st_id: String in KIND_STATS.get(k, ["end"]):
+			st[st_id] = minf(float(acfg.get("stat_max", 5.0)),
+					float(st[st_id]) + float(acfg.get("stat_rate", 0.3)) * dt / float(cfg["day_length"]))
 	var expert_at: float = float(people.get("skill_expert_at", 3.0))
 	var rank := int(r.get("rank", 0))
 	if rank < 3 and float(r["skill"]) >= expert_at:

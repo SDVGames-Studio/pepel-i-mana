@@ -58,6 +58,7 @@ func tick(dt_raw: float) -> void:
 	_update_wanderers(dt)
 	_update_zones(dt, day_len)
 	_update_forest(dt, day_len)
+	_update_cemetery(dt, day_len)   # костры догорают, останки истлевают (v1.23)
 	for r in residents:
 		_update_resident(r, dt)
 	# люди (M4): раз в игровой день — преемник старосты, болезни, беженцы, рождения, стройка, истории
@@ -79,6 +80,7 @@ func tick(dt_raw: float) -> void:
 		_roll_guards()
 		_roll_hunter()
 		_roll_porter()
+		_roll_corpse_haul()   # останки врагов несут на кладбище (v1.23)
 		_pull_idle_piles()   # без носильщика кучи разносятся руками (v1.21)
 		_roll_auto_roads()
 		_roll_animals()
@@ -226,6 +228,15 @@ func _update_resident(r: Dictionary, dt: float) -> void:
 	if int(r.get("funeral", 0)) > 0:
 		_funeral_update(r, dt)
 		return
+	# тайный некромант (v1.23): ночью крадётся на кладбище изучать тьму;
+	# главное — чтобы никто не видел (кроме сна его ничто не перебивает)
+	if night and String(r.get("secret", "")) == "necromancer" and not necro_known:
+		if _necro_night_walk(r, dt):
+			return
+	# несёт бревно прохожим (v1.23): довести до лесопилки важнее дел
+	if not raid_active and not _raid_warned and not night and bool(r.get("haul_log", false)):
+		if _log_haul_work(r, dt):
+			return
 	# ночь: спят все, кроме стража ночной смены (дежурство день/ночь — заказчик)
 	var guard_on_duty := String(r["prof"]) == "guard" \
 			and ((night and String(r.get("shift", "day")) == "night") \
@@ -256,6 +267,13 @@ func _update_resident(r: Dictionary, dt: float) -> void:
 	if r["site"] != null:
 		_do_build(r, r["site"], dt)
 		return
+	# поваленное дерево рядом (v1.23): прохожий со свободными руками
+	# подберёт бревно и отнесёт его на лесопилку
+	if not raid_active and not _raid_warned and _try_haul_log(r, dt):
+		return
+	# останки павшего врага (v1.23): донести до кладбища и похоронить
+	if _corpse_work(r, dt):
+		return
 	if r["bld"] != null:
 		var bld_type := String(r["bld"]["type"])
 		if bld_type == "tent":
@@ -278,6 +296,8 @@ func _update_resident(r: Dictionary, dt: float) -> void:
 			pass                 # вне смены страж помогает городу строить (заказчик)
 		elif String(r["prof"]) == "guard" and _guard_patrol(r, dt):
 			pass                 # строек нет — страж обходит ворота (M12)
+		elif String(r["prof"]) == "guard" and _guard_spar(r, dt):
+			pass                 # и ворот нет — стражи тренируются друг с другом (v1.23)
 		else:
 			r["state"] = "idle"
 		return
@@ -309,19 +329,22 @@ func _update_resident(r: Dictionary, dt: float) -> void:
 		return   # свободный житель обустраивает зоны (M6: город заполняет их сам)
 	if _help_build(r, dt):
 		return   # свободный житель в мирное время тоже помогает строить (заказчик)
+	if String(r["prof"]) == "guard" and _guard_spar(r, dt):
+		return   # стражу нет работы — тренировка с напарником (v1.23)
 	r["state"] = "idle"
 
 
-## Страж на посту: стоит у закреплённой вышки.
+## Страж на посту: стоит у закреплённой вышки. Вышки нет — тренируется
+## с напарником (v1.23), напарника нет — ждёт.
 func _guard_post(r: Dictionary, dt: float) -> void:
 	var tower := _assigned_done(r, "guard")
 	if not tower.is_empty():
 		if at_bld(r, tower):
 			r["state"] = "guard"
-			r["fatigue"] += dt / float(cfg["day_length"])
+			r["fatigue"] += dt / float(cfg["day_length"]) * _fatigue_cost(r)
 		else:
 			_move_towards(r, bld_spot(tower), dt)
-	else:
+	elif not _guard_spar(r, dt):
 		r["state"] = "idle"
 
 
@@ -597,7 +620,60 @@ func _gather_fire(r: Dictionary, dt: float) -> void:
 	_move_towards(r, target, dt)
 
 
-## Похороны (M12): носильщик дошёл до кладбища — стоит прощание, могилка готова.
+# --- кладбище (M12 + v1.23): обряды, основание места, останки -----------------
+
+## Конфиг кладбища.
+func _cemetery_cfg() -> Dictionary:
+	return cfg.get("cemetery", {})
+
+
+## Место кладбища: готовое здание, основанное первой могилой место, или {}.
+func _cemetery_spot() -> Dictionary:
+	for b in buildings:
+		if _active(b) and String(b["type"]) == "cemetery":
+			return b
+	if cemetery_tile != Vector2i(-1, -1):
+		return {"tile": cemetery_tile, "id": -1}
+	return {}
+
+
+## Первая могила основывает кладбище (v1.23): трава в ~found_dist клетках
+## от ближайшего строения города (но не дальше max_dist), поближе к городу.
+func _found_cemetery_tile() -> Vector2i:
+	var ccfg := _cemetery_cfg()
+	var min_d := float(ccfg.get("found_dist", 10.0))
+	var max_d := float(ccfg.get("max_dist", 22.0))
+	var best := Vector2i(-1, -1)
+	var best_score := INF
+	for y in range(2, map.h - 2):
+		for x in range(2, map.w - 2):
+			var t := Vector2i(x, y)
+			if not map.in_bounds(t) or not map.is_nature_walkable(t):
+				continue
+			if map.grid[t.y][t.x] != map.TILE_GRASS:
+				continue
+			if not building_at(t).is_empty() or _tile_in_zone(t) or near_plaza(t):
+				continue
+			if map.stumps.has(t) or map.saplings.has(t) or map.logs.has(t):
+				continue
+			var nearest := INF
+			if buildings.is_empty():
+				nearest = Vector2(map.spawn_tile).distance_to(Vector2(t))
+			else:
+				for b in buildings:
+					nearest = minf(nearest, Vector2(b["tile"]).distance_to(Vector2(t)))
+			if nearest < min_d or nearest > max_d:
+				continue
+			var score: float = absf(nearest - min_d) \
+					+ Vector2(t).distance_to(Vector2(map.spawn_tile)) * 0.05
+			if score < best_score:
+				best_score = score
+				best = t
+	return best
+
+
+## Похороны (M12): носильщик дошёл до кладбища — стоит прощание, могилка
+## готова (закопанным — сразу; погребальный костёр догорает два дня, v1.23).
 func _funeral_update(r: Dictionary, dt: float) -> void:
 	if not _arrived(r, funeral_target):
 		_move_towards(r, funeral_target, dt)
@@ -611,24 +687,53 @@ func _funeral_update(r: Dictionary, dt: float) -> void:
 		r["funeral"] = 0
 		r["funeral_wait"] = 0.0
 		for g in graves:
-			g["ready"] = true
+			if not bool(g.get("ready", false)) and String(g.get("rite", "bury")) == "bury":
+				g["ready"] = true
 
 
-## Запуск похорон: свободные жители несут умершего к кладбищу, готовится могилка.
+## Обряд горожане выбирают сами (v1.23): закопать — быстро и дёшево, сжечь —
+## дрова (или магия алтаря) и два дня, зато прах не кормит тьму кладбища.
+## Избранное божество склоняет выбор: Пепел — предать огню, Дом — земле.
+func _pick_rite() -> String:
+	var ccfg := _cemetery_cfg()
+	var rite := String(god_def().get("rite", ""))
+	if rite == "":
+		rite = "burn" if _event_rng.randf() < float(ccfg.get("burn_share_no_god", 0.25)) else "bury"
+	if rite != "burn":
+		return "bury"
+	var wood := float(ccfg.get("burn_cost_wood", 3))
+	var cry := float(ccfg.get("burn_cost_crystal", 1))
+	if float(res.get("wood", 0.0)) >= wood:
+		res["wood"] = float(res["wood"]) - wood
+		return "burn"
+	if altar_ready() and float(res.get("crystal", 0.0)) >= cry:
+		res["crystal"] = float(res["crystal"]) - cry
+		return "burn"   # костёр зажгла магия алтаря
+	return "bury"   # на костёр не наскребли — закопали как смогли
+
+
+## Запуск похорон: свободные жители несут умершего к кладбищу, готовится
+## могила. Кладбища нет — первая могила основывает его (v1.23).
 func _start_funeral(dead: Dictionary, dead_pos: Vector2) -> void:
-	var cemetery: Dictionary = {}
-	for b in buildings:
-		if _active(b) and String(b["type"]) == "cemetery":
-			cemetery = b
-			break
-	if cemetery.is_empty():
-		return
-	var grave := _next_grave_tile(Vector2i(cemetery["tile"]))
+	var cem := _cemetery_spot()
+	if cem.is_empty():
+		var tile := _found_cemetery_tile()
+		if tile == Vector2i(-1, -1):
+			return   # места под кладбище не нашлось
+		cemetery_tile = tile
+		cem = {"tile": tile, "id": -1}
+		events.append({"type": "cemetery_founded"})
+		_chron("chron.cemetery_founded")
+	var grave := _next_grave_tile(Vector2i(cem["tile"]))
 	if grave == Vector2i(-1, -1):
 		return
-	funeral_target = map.nearest_walkable(Vector2i(cemetery["tile"]))
+	var rite := _pick_rite()
+	var g := {"tile": grave, "name": String(dead["name"]), "ready": false, "rite": rite}
+	if rite == "burn":
+		g["burn_left"] = float(_cemetery_cfg().get("burn_days", 2.0))
+	graves.append(g)
+	funeral_target = map.nearest_walkable(Vector2i(cem["tile"]))
 	funeral_pos = dead_pos
-	graves.append({"tile": grave, "name": String(dead["name"]), "ready": false})
 	var bearers := 0
 	for other in residents:
 		if other == dead or String(other["prof"]) == "" or String(other.get("ail", "")) != "":
@@ -642,9 +747,10 @@ func _start_funeral(dead: Dictionary, dead_pos: Vector2) -> void:
 			break
 
 
-## Место под могилку: свободный травяной тайл по спирали вокруг кладбища.
+## Место под могилку: свободный травяной тайл по спирали вокруг кладбища
+## (v1.23: кладбище растёт до grow_radius клеток от первой могилы).
 func _next_grave_tile(center: Vector2i) -> Vector2i:
-	for radius in range(1, 4):
+	for radius in range(1, int(_cemetery_cfg().get("grow_radius", 5)) + 1):
 		for dy in range(-radius, radius + 1):
 			for dx in range(-radius, radius + 1):
 				if maxi(absi(dx), absi(dy)) != radius:
@@ -662,6 +768,110 @@ func _next_grave_tile(center: Vector2i) -> Vector2i:
 				if not taken:
 					return t
 	return Vector2i(-1, -1)
+
+
+## Кладбище живёт (v1.23): погребальные костры догорают (два дня) и прах
+## успокаивается, останки врагов истлевают, если их не унесли.
+func _update_cemetery(dt: float, day_len: float) -> void:
+	for g in graves:
+		if bool(g.get("ready", false)) or String(g.get("rite", "bury")) != "burn":
+			continue
+		g["burn_left"] = float(g.get("burn_left", 2.0)) - dt / day_len
+		if float(g["burn_left"]) <= 0.0:
+			g["ready"] = true
+			g.erase("burn_left")
+			events.append({"type": "cremated", "name": String(g.get("name", ""))})
+			_chron("chron.cremated", String(g.get("name", "")))
+			for r in residents:
+				r["mood"] = clampf(float(r["mood"]) + float(_cemetery_cfg().get("burn_mood", 2.0)), 0.0, 100.0)
+	var rot := float(_cemetery_cfg().get("corpse_rot_days", 3.0))
+	if rot <= 0.0:
+		return
+	var gone := []
+	for c in corpses:
+		c["rot"] = float(c.get("rot", 0.0)) + dt / day_len
+		if float(c["rot"]) >= rot:
+			gone.append(c)
+	for c in gone:
+		corpses.erase(c)
+
+
+## Ежедневный бросок (v1.23): останки врагов кто-то сгребает и относит на
+## кладбище — до двух носильщиков в день; не успели — истлеют.
+func _roll_corpse_haul() -> void:
+	if corpses.is_empty():
+		return
+	var assigned := 0
+	for r in residents:
+		if assigned >= mini(2, corpses.size()):
+			break
+		if String(r["prof"]) in ["", "elder", "guard"] or String(r.get("ail", "")) != "":
+			continue
+		if r["site"] != null or r["bld"] != null or int(r.get("funeral", 0)) > 0 \
+				or int(r.get("spar_with", -1)) >= 0 or not (r.get("corpse_task", {}) as Dictionary).is_empty():
+			continue
+		var task := {}
+		for c in corpses:
+			if not c.has("claim"):
+				task = c
+				break
+		if task.is_empty():
+			break
+		task["claim"] = int(r["id"])
+		r["corpse_task"] = {"tile": task["tile"], "kind": task["kind"]}
+		assigned += 1
+
+
+## Ноша останков (v1.23): дойти, поднять, отнести на кладбище и похоронить.
+## Врагу тоже нужна могила — иначе тьма кладбища останется голодной… или нет?
+func _corpse_work(r: Dictionary, dt: float) -> bool:
+	var task: Dictionary = r.get("corpse_task", {})
+	if task.is_empty():
+		return false
+	var cem := _cemetery_spot()
+	if cem.is_empty():
+		r["corpse_task"] = {}
+		return false
+	if task.has("tile"):
+		# идём за останками
+		var tile: Vector2i = task["tile"]
+		var found := false
+		for c in corpses:
+			if Vector2i(c["tile"]) == tile and int(c.get("claim", -1)) == int(r["id"]):
+				found = true
+				break
+		if not found:
+			r["corpse_task"] = {}   # истлели или унесли другие
+			return false
+		if not map.is_walkable(tile):
+			r["corpse_task"] = {}   # останки замурованы — бросаем
+			return false
+		if not _arrived(r, tile):
+			_move_towards(r, tile, dt)
+			r["state"] = "porter"
+			return true
+		for c in corpses:
+			if Vector2i(c["tile"]) == tile and int(c.get("claim", -1)) == int(r["id"]):
+				corpses.erase(c)
+				break
+		r["corpse_task"] = {"kind": String(task["kind"])}
+		r["carry_slow"] = 0.85
+		return true
+	# несём на кладбище
+	var goal: Vector2i = map.nearest_walkable(Vector2i(cem["tile"]))
+	if not _arrived(r, goal):
+		_move_towards(r, goal, dt)
+		r["state"] = "porter"
+		return true
+	var grave := _next_grave_tile(Vector2i(cem["tile"]))
+	if grave != Vector2i(-1, -1):
+		graves.append({"tile": grave, "name": "", "kind": String(task["kind"]),
+				"ready": true, "rite": "bury"})
+		events.append({"type": "corpse_buried", "kind": String(task["kind"])})
+		_chron("chron.corpse_buried")
+	r["corpse_task"] = {}
+	r["carry_slow"] = 1.0
+	return false
 
 
 ## Патруль стража вне смены (M12): обходит ворота по кругу. False — ворот нет.
@@ -797,8 +1007,10 @@ func _restore_rate(r: Dictionary, sleeping: bool) -> float:
 
 ## Боец (страж или ополченец) при угрозе: без комплекта идёт в оружейку
 ## (страж перед осадой снаряжается и ждёт — заказчик), с комплектом бьёт сильнее.
+## v1.23: урон растёт от боевого навыка и силы, бой их и прокачивает.
 func _defender_update(r: Dictionary, dt: float, dmg: float, cd: float) -> void:
 	var tcfg: Dictionary = cfg.get("threat", {})
+	var acfg: Dictionary = cfg.get("attributes", {})
 	var armory := _done_building_of_type("armory")
 	# снаряжение: в хранилище есть комплекты, боец ещё без него
 	if not bool(r.get("kit", false)) and float(res.get("kits", 0.0)) > 0.0 and not armory.is_empty():
@@ -809,6 +1021,9 @@ func _defender_update(r: Dictionary, dt: float, dmg: float, cd: float) -> void:
 			_move_towards(r, bld_spot(armory), dt)
 			return
 	var mult := float(tcfg.get("kit_damage_mult", 2.0)) if bool(r.get("kit", false)) else 1.0
+	var sk: Dictionary = r.get("skills", {})
+	mult *= 1.0 + float(acfg.get("combat_skill_dmg", 0.06)) * float(sk.get("warrior", 0.0))
+	mult *= 1.0 + float(acfg.get("combat_str_dmg", 0.04)) * _stat(r, "str")
 	var target := _nearest_raider(r["pos"], float(map.ts) * 10.0)
 	if target.is_empty():
 		# волна ещё в пути: страж ждёт на вышке, ополчение — в центре города
@@ -831,6 +1046,7 @@ func _defender_update(r: Dictionary, dt: float, dmg: float, cd: float) -> void:
 		if float(r["atk_cd"]) <= 0.0:
 			r["atk_cd"] = cd
 			_hit_raider(target, int(round(dmg * mult)))
+			_grow_combat(r, cd)   # бой прокачивает воина, силу и ловкость (v1.23)
 		r["state"] = "guard"
 	else:
 		_move_towards(r, map.tile_of_px(target["pos"]), dt)
@@ -864,7 +1080,7 @@ func _do_build(r: Dictionary, site: Dictionary, dt: float) -> void:
 	if bld_has_cell(site, map.tile_of_px(r["pos"])):
 		r["state"] = "build"
 		site["progress"] = float(site["progress"]) + dt * work_mult(r)
-		r["fatigue"] += dt / float(cfg["day_length"])
+		r["fatigue"] += dt / float(cfg["day_length"]) * _fatigue_cost(r)
 		_grow_skill(r, dt)
 		if float(site["progress"]) >= float(_def(site)["build_work"]):
 			r["site"] = null
@@ -905,7 +1121,7 @@ func _workshop_work(r: Dictionary, bld: Dictionary, dt: float) -> void:
 		var rate: float = float(cfg.get("repair", {}).get("per_day", 15.0)) * work_mult(r)
 		var max_hp := float(_bld_max_hp(String(broken["type"])))
 		broken["hp"] = minf(float(broken.get("hp", max_hp)) + rate * dt / float(cfg["day_length"]), max_hp)
-		r["fatigue"] += dt / float(cfg["day_length"])
+		r["fatigue"] += dt / float(cfg["day_length"]) * _fatigue_cost(r)
 		_grow_skill(r, dt)
 	else:
 		_move_towards(r, bld_spot(broken), dt)
@@ -935,7 +1151,7 @@ func _damaged_building(near: Dictionary) -> Dictionary:
 ## попадает только с носильщиком (M6: физическая логистика, ответ №20).
 func _produce_tick(r: Dictionary, bld: Dictionary, dt: float) -> void:
 	r["state"] = "work"
-	r["fatigue"] += dt / float(cfg["day_length"])
+	r["fatigue"] += dt / float(cfg["day_length"]) * _fatigue_cost(r)
 	_grow_skill(r, dt)
 	var prod: Dictionary = _def(bld)["produce"]
 	# расход материалов (мастерская: дерево + камень -> инструменты)
@@ -1033,7 +1249,9 @@ func _move_towards(r: Dictionary, tile: Vector2i, dt: float) -> void:
 		r["state"] = "idle"
 		return
 	var pos: Vector2 = r["pos"]
-	var step: float = float(cfg["resident_speed"]) * dt * float(r.get("carry_slow", 1.0))
+	# ловкость ускоряет шаг (v1.23), груз — замедляет
+	var step: float = float(cfg["resident_speed"]) * dt * float(r.get("carry_slow", 1.0)) \
+			* (1.0 + float(cfg.get("attributes", {}).get("agi_speed", 0.02)) * _stat(r, "agi"))
 	# дорога под ногами ускоряет; носильщику — сильнее всех (M6)
 	if map.has_road(map.tile_of_px(pos)):
 		var rcfg: Dictionary = cfg.get("roads", {})

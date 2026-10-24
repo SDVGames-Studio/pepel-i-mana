@@ -384,6 +384,7 @@ func _zone_fill_sticky(r: Dictionary) -> Dictionary:
 
 
 ## Шаг обустройства клетки зоны (дойти → копить прогресс → закрыть клетку).
+## v1.23: обустройство полей — крестьянское дело, растит «фермера».
 func _zone_fill_do(r: Dictionary, target: Dictionary, dt: float) -> void:
 	var tile: Vector2i = target["tile"]
 	if _arrived(r, tile):
@@ -391,8 +392,9 @@ func _zone_fill_do(r: Dictionary, target: Dictionary, dt: float) -> void:
 		var z: Dictionary = target["zone"]
 		var i: int = int(target["idx"])
 		z["progress"][i] = float(z["progress"][i]) + dt * work_mult(r)
-		r["fatigue"] += dt / float(cfg["day_length"])
-		_grow_skill(r, dt)
+		r["fatigue"] += dt / float(cfg["day_length"]) * _fatigue_cost(r)
+		var kind := "farmer" if String(z["type"]) == "field" else "porter"
+		_grow_skill(r, dt, kind)
 		if _cell_filled(z, i):
 			r["_fill_zone"] = -1
 			r["_fill_idx"] = -1

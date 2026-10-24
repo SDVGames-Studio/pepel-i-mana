@@ -86,6 +86,14 @@ const BLOCKS := [
 		"_test_v122_encounters",
 		"_test_v122_static_ground",
 	]],
+	["res://tests/test_v123.gd", [
+		"_test_v123_attributes",
+		"_test_v123_spar",
+		"_test_v123_cemetery",
+		"_test_v123_necro_night",
+		"_test_v123_farm_fields",
+		"_test_v123_log_haul",
+	]],
 ]
 
 

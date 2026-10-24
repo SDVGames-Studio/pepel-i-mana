@@ -211,6 +211,8 @@ static func _city_sim_block(sim) -> Dictionary:
 		"graves": sim.graves,
 		"funeral_target": sim.funeral_target,
 		"funeral_pos": sim.funeral_pos,
+		"cemetery_tile": [int(sim.cemetery_tile.x), int(sim.cemetery_tile.y)],
+		"corpses": sim.corpses,
 		"_bld_id": int(sim._bld_id),
 		"_storm_struck_at": float(sim._storm_struck_at),
 		"researched": sim.researched,
@@ -470,6 +472,10 @@ static func _apply_city(game, cd: Variant) -> String:
 		gr["ready"] = bool(gr.get("ready", false))
 	sim.funeral_target = _dec_v2i(sd.get("funeral_target", Vector2i(-1, -1)))
 	sim.funeral_pos = _dec_v2(sd.get("funeral_pos", Vector2.ZERO))
+	# кладбище и останки (v1.23): тайлы останков — Vector2i, _dec их восстановил
+	var cem: Array = sd.get("cemetery_tile", [-1, -1])
+	sim.cemetery_tile = Vector2i(int(cem[0]), int(cem[1]))
+	sim.corpses = _dec(sd.get("corpses", []))
 	sim._bld_id = int(sd.get("_bld_id", 1))
 	sim._storm_struck_at = float(sd.get("_storm_struck_at", 0.0))
 	sim.researched = []

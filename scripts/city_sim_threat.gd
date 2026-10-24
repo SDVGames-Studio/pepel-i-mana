@@ -340,10 +340,33 @@ func _walkable_next_to(tile: Vector2i) -> Vector2i:
 
 
 ## Урон мутанту (вышка, страж, герой). Слабость к школе не учитывается — урон физический.
+## v1.23: павший с телом остаётся останками — их унесут на кладбище;
+## духи, призраки и элементали бесплотны, от них не остаётся даже костей.
 func _hit_raider(r: Dictionary, dmg: int) -> void:
 	r["hp"] = int(r["hp"]) - dmg
 	if int(r["hp"]) <= 0:
+		_drop_corpse(r)
 		raiders.erase(r)
+
+
+## Останки павшего врага (v1.23): бесплотные (cemetery.bodiless — духи,
+## призраки, элементали) не оставляют тела; первая могила, даже вражья,
+## основывает кладбище.
+func _drop_corpse(r: Dictionary) -> void:
+	var ccfg: Dictionary = cfg.get("cemetery", {})
+	if ccfg.is_empty():
+		return
+	var kind := String(r.get("type", ""))
+	if kind == "" or (ccfg.get("bodiless", []) as Array).has(kind):
+		return
+	if cemetery_tile == Vector2i(-1, -1) and _done_building_of_type("cemetery").is_empty():
+		var f := _found_cemetery_tile()
+		if f == Vector2i(-1, -1):
+			return   # места под кладбище не нашлось — останки истлеют на месте
+		cemetery_tile = f
+		events.append({"type": "cemetery_founded"})
+		_chron("chron.cemetery_founded")
+	corpses.append({"tile": map.tile_of_px(r["pos"]), "kind": kind, "rot": 0.0})
 
 
 ## Удар героя в городе (участие в обороне): дуга в сторону курсора. Возвращает, скольких задел.
@@ -691,6 +714,112 @@ func _assign_shifts() -> void:
 		if String(r["prof"]) == "guard":
 			r["shift"] = "day" if i % 2 == 0 else "night"
 			i += 1
+
+
+# --- спарринг стражей (v1.23) -------------------------------------------------
+
+## Стражам нет другой работы — они тренируются друг с другом: пара сходится
+## в свободном месте, обменивается условными ударами; растут боевой навык,
+## сила и ловкость, дружба и настроение. False — партнёра или сил нет.
+func _guard_spar(r: Dictionary, dt: float) -> bool:
+	var scfg: Dictionary = cfg.get("spar", {})
+	if scfg.is_empty() or raid_active or _raid_warned or is_night():
+		return false
+	if float(r.get("fatigue", 0.0)) >= float(scfg.get("max_fatigue", 0.75)) \
+			or float(r.get("spar_until", 0.0)) > time:
+		return false
+	var partner := _resident_by_id(int(r.get("spar_with", -1)))
+	if not _spar_partner_ok(partner) or int(partner.get("spar_with", -1)) != int(r["id"]):
+		partner = _pick_spar_partner(r)
+		if partner.is_empty():
+			return false
+		r["spar_with"] = int(partner["id"])
+		partner["spar_with"] = int(r["id"])
+		var spot := _spar_spot(r, partner)
+		r["spar_tile"] = spot
+		partner["spar_tile"] = spot
+		r["spar_t"] = 0.0
+		partner["spar_t"] = 0.0
+	var tile: Vector2i = r.get("spar_tile", Vector2i(-1, -1))
+	if tile == Vector2i(-1, -1):
+		return false
+	if not _arrived(r, tile) \
+			or Vector2(r["pos"]).distance_to(partner["pos"]) > float(map.ts) * float(scfg.get("radius", 1.5)):
+		_move_towards(r, tile, dt)
+		r["state"] = "spar"
+		return true
+	# сошлись: лицом к партнёру, обмениваемся условными ударами
+	r["dir"] = "left" if (partner["pos"] as Vector2).x < float(r["pos"].x) else "right"
+	r["state"] = "spar"
+	r["path"] = PackedVector2Array()
+	r["spar_t"] = float(r.get("spar_t", 0.0)) + dt
+	r["fatigue"] += dt / float(cfg["day_length"]) * float(scfg.get("fatigue", 0.35))
+	r["spar_hit"] = float(r.get("spar_hit", 0.0)) - dt
+	if float(r["spar_hit"]) <= 0.0:
+		r["spar_hit"] = float(scfg.get("hit_cd", 1.5))
+		_grow_combat(r, float(scfg.get("hit_cd", 1.5)))
+	if float(r["spar_t"]) >= float(scfg.get("len", 0.18)) * float(cfg["day_length"]):
+		_end_spar(r, partner)
+	return true
+
+
+## Годен ли текущий партнёр по спаррингу.
+func _spar_partner_ok(partner: Dictionary) -> bool:
+	return not partner.is_empty() and String(partner.get("prof", "")) == "guard" \
+			and String(partner.get("ail", "")) == "" \
+			and partner.get("site", null) == null \
+			and float(partner.get("spar_until", 0.0)) <= time \
+			and not raid_active and not _raid_warned
+
+
+## Второй страж на тренировку: свободный (без стройки), не на спарринге с
+## другим, не уставший, в радиусе seek клеток.
+func _pick_spar_partner(r: Dictionary) -> Dictionary:
+	var scfg: Dictionary = cfg.get("spar", {})
+	var seek := float(scfg.get("seek", 40.0)) * float(map.ts)
+	var best: Dictionary = {}
+	var best_d := INF
+	for other in residents:
+		if other == r or String(other.get("prof", "")) != "guard":
+			continue
+		if String(other.get("ail", "")) != "" or other.get("site", null) != null:
+			continue
+		if int(other.get("spar_with", -1)) >= 0 and int(other.get("spar_with", -1)) != int(r["id"]):
+			continue   # уже спаррингует с другим
+		if float(other.get("spar_until", 0.0)) > time \
+				or float(other.get("fatigue", 0.0)) >= float(scfg.get("max_fatigue", 0.75)):
+			continue
+		var st := String(other.get("state", ""))
+		if not (st in ["idle", "patrol", "guard", "spar", "going", "leisure"]):
+			continue
+		var d: float = Vector2(other["pos"]).distance_to(r["pos"])
+		if d <= seek and d < best_d:
+			best_d = d
+			best = other
+	return best
+
+
+## Место тренировки: свободная клетка на полпути между стражами.
+func _spar_spot(a: Dictionary, b: Dictionary) -> Vector2i:
+	var mid := ((a["pos"] as Vector2) + (b["pos"] as Vector2)) * 0.5
+	return map.nearest_walkable(map.tile_of_px(mid))
+
+
+## Тренировка окончена: перерыв обоим, настроение и дружба.
+func _end_spar(r: Dictionary, partner: Dictionary) -> void:
+	var scfg: Dictionary = cfg.get("spar", {})
+	for who in [r, partner]:
+		var w: Dictionary = who
+		if int(w.get("spar_with", -1)) < 0:
+			continue   # второй уже завершил тренировку
+		w["spar_with"] = -1
+		w["spar_tile"] = Vector2i(-1, -1)
+		w["spar_t"] = 0.0
+		w["spar_until"] = time + float(scfg.get("cd", 0.4)) * float(cfg["day_length"])
+		w["mood"] = clampf(float(w["mood"]) + float(scfg.get("mood", 2.0)), 0.0, 100.0)
+	_rel_change(r, partner, float(scfg.get("rel", 2.0)))
+	_chron("chron.spar", String(r["name"]), String(partner["name"]))
+	events.append({"type": "spar", "a": String(r["name"]), "b": String(partner["name"])})
 
 
 ## Дневной бросок: зверь водится, а охотника нет — свободный взрослый становится
@@ -1293,47 +1422,153 @@ func hero_build(px: Vector2) -> String:
 
 # --- M11: некромант и кладбище ----------------------------------------------
 
-## Готовое кладбище ({} — нет).
+## Кладбище ({} — нет): готовое здание или место, основанное первой могилой (v1.23).
 func _cemetery() -> Dictionary:
-	return _done_building_of_type("cemetery")
+	return _cemetery_spot()
 
 
-## Ночной ритуал (дневной бросок): тьма растёт, скелеты собираются тайно,
+## Закопанный прах (v1.23): тьма питается именно им — сожжённые чисты.
+func _buried_count() -> int:
+	var n := 0
+	for g in graves:
+		if String(g.get("rite", "bury")) == "bury":
+			n += 1
+	return n
+
+
+## Ночной ритуал (дневной бросок): зов слышит один из жителей, только когда
+## на кладбище есть закопанный прах (легендарный случай); тьма растёт от
+## закопанных, армия — от ночных ритуалов некроманта (см. _necro_night_walk);
 ## при достаточной армии — восстание.
 func _roll_necro() -> void:
 	var ncfg: Dictionary = cfg.get("necro", {})
 	var cem := _cemetery()
 	if ncfg.is_empty() or cem.is_empty():
 		return
-	# однажды кто-то из жителей «слышит зов» и начинает тайные ритуалы
-	if not _necro_chosen:
+	var buried := _buried_count()
+	# однажды кто-то из взрослых «слышит зов» и начинает тайные ритуалы
+	if not _necro_chosen and buried >= 1 \
+			and _event_rng.randf() < float(ncfg.get("call_chance", 0.05)):
 		var cands := _adults()
 		if not cands.is_empty():
 			var who: Dictionary = cands[_event_rng.randi_range(0, cands.size() - 1)]
 			who["secret"] = "necromancer"
 			_necro_chosen = true
 			_chron("chron.necro_chosen", String(who["name"]))
-	# кладбище темнеет со временем
-	necro_dark = clampf(necro_dark + float(ncfg.get("dark_per_night", 0.06)), 0.0, 1.0)
+	# кладбище темнеет: тьму кормит закопанный прах; всё сожжено — тьма тает
+	var dark_rate := float(ncfg.get("dark_base", 0.4)) \
+			+ float(ncfg.get("dark_grave_factor", 0.15)) * float(buried)
+	if buried == 0:
+		dark_rate = -float(ncfg.get("dark_decay", 0.03))
+	necro_dark = clampf(necro_dark + float(ncfg.get("dark_per_night", 0.06)) * dark_rate, 0.0, 1.0)
 	if not necro_known and necro_dark >= float(ncfg.get("reveal_dark", 0.45)):
 		necro_known = true
 		events.append({"type": "necro_revealed"})
 		_chron("chron.necro_revealed")
-	# ночные призывы: у кладбища видят огни и тени
-	if _necro_chosen and _event_rng.randf() < float(ncfg.get("summon_chance", 0.6)):
-		necro_army += _event_rng.randi_range(1, 2)
+	# раскрытая некромантия: у кладбища видны огни и тени (армия растёт
+	# только от ночных ритуалов — v1.23)
+	if necro_known and _event_rng.randf() < float(ncfg.get("summon_chance", 0.6)):
 		necro_ghosts.clear()
 		var c: Vector2i = cem["tile"]
 		for i in mini(3, necro_army):
 			var t := _walkable_next_to(c + Vector2i(_event_rng.randi_range(-1, 1), _event_rng.randi_range(-1, 1)))
 			if t != Vector2i(-1, -1):
 				necro_ghosts.append(map.tile_center_px(t))
-		if necro_known:
-			events.append({"type": "necro_summon"})
-		_chron("chron.necro_whisper")
+		events.append({"type": "necro_summon"})
 	# тайная армия созрела — восстание
 	if necro_army >= int(ncfg.get("rise_at", 8)):
 		_spawn_undead_wave()
+
+
+## Ночной путь некроманта (v1.23): крадётся к могилам, режется над прахом
+## и возвращается к рассвету. Увидит бодрствующий житель или герой — тайна
+## раскрыта. False — некромант этой ночью спит как все.
+func _necro_night_walk(r: Dictionary, dt: float) -> bool:
+	if raid_active or _raid_warned or _is_golem(r):
+		return false
+	var ncfg: Dictionary = cfg.get("necro", {})
+	var cem := _cemetery()
+	if cem.is_empty() or float(r.get("fatigue", 0.0)) >= float(cfg.get("tired_at", 0.85)):
+		return false
+	var day_len := float(cfg["day_length"])
+	var phase := String(r.get("necro_phase", ""))
+	if phase == "":
+		r["necro_phase"] = "go"
+		r["necro_study"] = 0.0
+		phase = "go"
+	if phase != "rite":
+		if _necro_seen(r):
+			_necro_caught(r)
+			return true
+	if phase == "go":
+		var goal: Vector2i = map.nearest_walkable(Vector2i(cem["tile"]))
+		if not _arrived(r, goal):
+			_move_towards(r, goal, dt)
+			r["state"] = "sneak"
+			r["fatigue"] += dt / day_len * 0.5
+			return true
+		r["necro_phase"] = "rite"
+		phase = "rite"
+	if phase == "rite":
+		if _necro_seen(r):
+			_necro_caught(r)
+			return true
+		r["state"] = "necro"
+		r["path"] = PackedVector2Array()
+		r["necro_study"] = float(r.get("necro_study", 0.0)) + dt
+		r["fatigue"] += dt / day_len
+		# над могилами теплятся огни — тень запрещённого искусства
+		if _event_rng.randf() < dt * 0.05 and necro_ghosts.size() < 3:
+			var gt := _walkable_next_to(Vector2i(cem["tile"])
+					+ Vector2i(_event_rng.randi_range(-1, 1), _event_rng.randi_range(-1, 1)))
+			if gt != Vector2i(-1, -1):
+				necro_ghosts.append(map.tile_center_px(gt))
+		var need := float(ncfg.get("night_ritual_frac", 0.6)) * day_len * float(cfg["night_fraction"])
+		if float(r["necro_study"]) >= need:
+			# ночь у могил удалась: тьма гуще, армия крепнет
+			necro_dark = clampf(necro_dark + float(ncfg.get("ritual_dark", 0.02)), 0.0, 1.0)
+			if _event_rng.randf() < float(ncfg.get("army_per_ritual_chance", 0.5)):
+				necro_army += _event_rng.randi_range(1, 2)
+			_chron("chron.necro_whisper")
+			r["necro_phase"] = "done"
+		return true
+	# "done": до рассвета — тихо домой
+	var home = r.get("home", null)
+	var hgoal: Vector2i = bld_spot(home) if home != null and not (home as Dictionary).is_empty() \
+			else map.nearest_walkable(map.spawn_tile)
+	if not _arrived(r, hgoal):
+		_move_towards(r, hgoal, dt)
+		r["state"] = "sneak"
+		r["fatigue"] += dt / day_len * 0.5
+		return true
+	r["necro_phase"] = ""
+	return false   # дома — засыпает как все
+
+
+## Заметит ли кто-нибудь тайного некроманта: бодрствующий (не спящий, не в
+## доме) житель или герой в радиусе sight_radius клеток.
+func _necro_seen(r: Dictionary) -> bool:
+	var radius := float(cfg.get("necro", {}).get("sight_radius", 4.0)) * float(map.ts)
+	for other in residents:
+		if other == r or int(other.get("inside", 0)) == 1:
+			continue
+		var st := String(other.get("state", ""))
+		if st == "sleep" or st == "" or bool(other.get("golem", false)):
+			continue
+		if Vector2(other["pos"]).distance_to(r["pos"]) <= radius:
+			return true
+	return hero_alive and hero_pos.distance_to(r["pos"]) <= radius
+
+
+## Некроманта увидели (v1.23): тайна раскрыта, городу не по себе.
+func _necro_caught(r: Dictionary) -> void:
+	r["necro_phase"] = ""
+	necro_known = true
+	events.append({"type": "necro_revealed", "name": String(r["name"])})
+	_chron("chron.necro_seen", String(r["name"]))
+	for other in residents:
+		if other != r:
+			other["mood"] = clampf(float(other["mood"]) - 6.0, 0.0, 100.0)
 
 
 ## Восстание (M11): мертвецы выходят из кладбища, армия тает вдвое.
