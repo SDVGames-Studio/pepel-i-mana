@@ -337,6 +337,19 @@ func morning_plan() -> Dictionary:
 			r["meeting_tile"] = tiles[i % tiles.size()]
 			i += 1
 
+	# v1.22: зимняя готовность — на пороге зимы староста каждый день держит
+	# в плане запасы еды (город сам собирает спелое и достраивает фермы —
+	# ограничений на запас нет, «пусть добывают сколько могут»)
+	if winter_coming():
+		plan["winter"] = {"days": days_to_winter(),
+				"food_per_res": food_per_resident()}
+		if not _winter_announced:
+			_winter_announced = true
+			events.append({"type": "winter_soon", "days": days_to_winter()})
+			_chron("chron.winter_soon", str(days_to_winter()))
+	elif season() == "spring":
+		_winter_announced = false
+
 	day_plans.append(plan)
 	if day_plans.size() > 7:
 		day_plans.pop_front()
@@ -435,6 +448,10 @@ func _plan_text(plan: Dictionary) -> String:
 		parts.append("Конфликты: " + ", ".join(lines))
 	var reserve: Array = plan["reserve"]
 	parts.append("Резерв: " + (", ".join(reserve) if not reserve.is_empty() else "—"))
+	if plan.has("winter"):
+		var w: Dictionary = plan["winter"]
+		parts.append("ЗИМА ЧЕРЕЗ %d ДНЕЙ: еды %s на жителя — собрать спелое, фермы вперёд"
+				% [int(w["days"]), "%.1f" % float(w["food_per_res"])])
 	return "\n".join(parts)
 
 
@@ -660,11 +677,33 @@ func _next_wall_tile() -> Vector2i:
 	return Vector2i(-1, -1)
 
 
+## Еда на одного жителя (v1.22): планёрка видит запас на пороге зимы.
+func food_per_resident() -> float:
+	return float(res.get("food", 0.0)) / maxf(1.0, float(residents.size()))
+
+
+## Легендарный странник поселился в городе (v1.22): сильный профильный
+## житель с высоким навыком — герой позвал его на карте мира.
+func add_legend_resident(res_name: String, prof: String, skill: float) -> Dictionary:
+	var r := _new_resident(res_name, prof, map.spawn_tile)
+	r["skill"] = skill
+	r["mood"] = 80.0
+	r["traits"] = []
+	residents.append(r)
+	_next_id += 1
+	_chron("chron.legend_joined_city", res_name, prof)
+	events.append({"type": "legend_joined", "name": res_name, "prof": prof})
+	_assign_jobs()
+	return r
+
+
 ## Еда идёт в минус: ожидаемый урожай полей меньше дневного расхода города.
 ## Правки v1.21: ферма больше не даёт пассивную еду — считаем по грядкам
 ## действующих ферм. Вспаханные клетки — по устойчивой скорости урожая,
 ## невспаханные — ограниченным потенциалом (фермер ведь пашет), иначе город
 ## бесконечно строил бы фермы, пока поле не вспахано.
+## v1.22: на пороге зимы прикидка умножается на зимний коэффициент — город
+## ДО зимы видит голодную арифметику и достраивает фермы заранее.
 func _food_deficit() -> bool:
 	var fcfg: Dictionary = cfg.get("farming", {})
 	var est: float = float(fcfg.get("est_per_farm", 16.0))
@@ -686,6 +725,8 @@ func _food_deficit() -> bool:
 			if _cell_filled(z, i) and building_at(z["cells"][i]).is_empty():
 				filled += 1
 		production += rate * float(filled) + minf(est, rate * float(total - filled))
+	if winter_coming():
+		production *= float(_weather_cfg().get("effects", {}).get("snow_field_mult", 0.3))
 	return production < float(residents.size()) * float(cfg["food_per_resident_day"])
 
 

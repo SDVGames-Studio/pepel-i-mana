@@ -20,7 +20,7 @@
 	"rest_fraction": 0.6,
 	"well_bonus": 0.5,
 	"pop_per_house": 1,
-	"pop_max": 40,
+	"pop_max": 60,
 	"mayor_pop": 15,
 	"plaza": {
 		"_comment": "главная площадь 2×2 у точки появления (правки v1.20): место сбора и утренней планёрки; radius — запрет стройки вокруг в клетках, meeting_len — доля дня на планёрку",
@@ -173,8 +173,11 @@
 		"start_seeds": 16,
 		"crops": {
 			"turnip": { "loc": "crop.turnip", "desc": "crop.turnip.desc", "stage_days": 0.8, "harvest": 4.0, "sprite": 1 },
-			"pumpkin": { "loc": "crop.pumpkin", "desc": "crop.pumpkin.desc", "stage_days": 1.3, "harvest": 10.0, "sprite": 2 }
-		}
+			"pumpkin": { "loc": "crop.pumpkin", "desc": "crop.pumpkin.desc", "stage_days": 1.3, "harvest": 10.0, "sprite": 2 },
+			"wheat": { "loc": "crop.wheat", "desc": "crop.wheat.desc", "stage_days": 1.0, "harvest": 8.0, "sprite": 3,
+				"seasons": ["spring", "summer", "autumn"] }
+		},
+		"winter_prep_days": 4,
 	},
 	"livestock": {
 		"cells_per_animal": 4,

@@ -119,7 +119,7 @@ func _initialize() -> void:
 	var part := OS.get_environment("BENCH_PART")
 	if part != "view":
 		terrain = load("res://scripts/city_terrain.gd").new()
-		terrain.setup(map_b, cfg)
+		terrain.setup(map_b, cfg, sim)
 		root.add_child(terrain)
 	if part != "terrain":
 		view = load("res://scripts/city_view.gd").new()

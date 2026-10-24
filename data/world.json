@@ -57,6 +57,35 @@
 		"caravan_move_days": 4,
 		"start_strength": {"camp": 4, "dungeon": 6, "ruins": 5, "settlement": 8, "dragon_castle": 12, "vampire_keep": 14, "lich_tower": 12}
 	},
+	"legends": {
+		"_note": "v1.22: легендарные странники живут на карте сами — ходят к дальним данжам и зачищают их (гонка за лут), иногда гостят в городе; герой может позвать их к себе",
+		"move_tiles_per_day": 2,
+		"clear_days": [2, 3],
+		"visit_days": 3,
+		"rest_days": [2, 4],
+		"visit_chance": 0.25,
+		"city_keepout": 6,
+		"defs": [
+			{"id": "grey_cloak", "loc": "legend.grey_cloak", "prof": "hunter", "color": "#7ec8e3", "skill": 3.0,
+			 "flavor": "legend.grey_cloak.flavor"},
+			{"id": "margo", "loc": "legend.margo", "prof": "trader", "color": "#ffd54f", "skill": 3.0,
+			 "flavor": "legend.margo.flavor"},
+			{"id": "kayen", "loc": "legend.kayen", "prof": "guard", "color": "#e8907a", "skill": 3.0,
+			 "flavor": "legend.kayen.flavor"}
+		]
+	},
+	"encounters": {
+		"_note": "v1.22: случайные встречи в пути — бросок на каждый день дороги",
+		"chance_per_day": 0.25,
+		"kinds": {
+			"ambush": {"w": 20, "coins": [4, 10], "scale": 0.7},
+			"merchant": {"w": 15},
+			"wounded": {"w": 15, "food_cost": 5, "rep": 8},
+			"cache": {"w": 15, "coins": [5, 15]},
+			"storm": {"w": 20, "food_frac": 0.1},
+			"pilgrim": {"w": 15, "coins_cost": 5, "rep": 10}
+		}
+	},
 	"nests": {
 		"max_level": 3,
 		"level_days": 4,

@@ -80,6 +80,12 @@ const BLOCKS := [
 		"_test_v1214_caches",
 		"_test_v1215_pop_max",
 	]],
+	["res://tests/test_v122.gd", [
+		"_test_v122_seasons",
+		"_test_v122_legends",
+		"_test_v122_encounters",
+		"_test_v122_static_ground",
+	]],
 ]
 
 

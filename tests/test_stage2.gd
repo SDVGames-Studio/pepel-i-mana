@@ -146,8 +146,8 @@ func _test_stage2_aspect3() -> void:
 	if not (city is Dictionary and loc is Dictionary):
 		return
 	var crops: Dictionary = city.get("farming", {}).get("crops", {})
-	_check(crops.size() == 2, "две культуры (репа и тыква)")
-	_check(crops.has("turnip") and crops.has("pumpkin"), "культуры: turnip и pumpkin")
+	_check(crops.size() == 3, "три культуры (репа, тыква, пшеница — v1.22)")
+	_check(crops.has("turnip") and crops.has("pumpkin") and crops.has("wheat"), "культуры: turnip, pumpkin, wheat")
 	var t_days := float(crops.get("turnip", {}).get("stage_days", 9.0))
 	var p_days := float(crops.get("pumpkin", {}).get("stage_days", 0.0))
 	var t_food := float(crops.get("turnip", {}).get("harvest", 0.0))

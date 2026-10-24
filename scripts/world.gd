@@ -23,6 +23,7 @@ var hero_px := Vector2.ZERO
 var selected: Dictionary = {}   # выбранный POI (панель справа)
 var travel := {}                # {path, days, px_done, px_total, day_mark}
 var _near_poi: Dictionary = {}  # POI у ног героя (действие E)
+var _near_legend: Dictionary = {}   # легендарный странник рядом (v1.22)
 var fauna = null                # мирная фауна и хищники (M14-C, T01)
 const FAUNA_CFG_PATH := "res://data/fauna.json"
 const FAUNA_SCRIPT := "res://scripts/world_fauna.gd"
@@ -217,6 +218,11 @@ func _update_near_poi() -> void:
 			hud.set_hint(Loc.t("world.hint_fish" if String(prey["behavior"]) == "fish" else "world.hint_hunt")
 					% Loc.t("fauna." + String(prey["kind"])))
 			return
+	# легендарный странник рядом (v1.22): звезда на карте, E — разговор
+	_near_legend = sim.legend_near(hero_tile)
+	if not _near_legend.is_empty():
+		hud.set_hint(Loc.t("world.hint_legend") % Loc.t(String(_near_legend["def"]["loc"])))
+		return
 	_near_poi = map.poi_at(hero_tile)
 	if _near_poi.is_empty():
 		# соседний тайл тоже считается (POI занимают один тайл)
@@ -231,7 +237,7 @@ func _update_near_poi() -> void:
 
 
 func _update_travel(delta: float) -> void:
-	if travel.is_empty():
+	if travel.is_empty() or bool(travel.get("hold", false)):
 		return
 	var path: Array = travel["path"]
 	var speed_mult := 1.0
@@ -273,6 +279,7 @@ func _advance_world_day() -> void:
 	_flush_chronicle()
 	if Game.city_sim != null:
 		Game.city_sim.advance_days(1)
+	_maybe_encounter()
 
 
 ## Охота/рыбалка (M14-C/T01): E у зверя — добыча через стандартный лут.
@@ -291,6 +298,159 @@ func _try_hunt() -> bool:
 	if Game.city_sim != null:
 		Game.city_sim.chronicle_add("chron.hunt", Loc.t("fauna." + kind))
 	return true
+
+
+# --- легендарные странники (v1.22) -------------------------------------------
+
+## Разговор со странником: позвать в город, спросить о землях или распрощаться.
+func _legend_dialog(l: Dictionary) -> void:
+	var def: Dictionary = l["def"]
+	var name_s := Loc.t(String(def["loc"]))
+	var can_invite: bool = Game.city_sim != null \
+			and Game.city_sim.residents.size() < Game.city_sim.pop_cap()
+	var choices := [
+		{"text": Loc.t("world.legend_invite") + ("" if can_invite else Loc.t("world.legend_no_space")),
+			"disabled": not can_invite,
+			"action": func() -> void: _legend_invite(l)},
+		{"text": Loc.t("world.legend_rumor") + ("" if not bool(l["rumor_used"]) else Loc.t("world.legend_rumor_used")),
+			"disabled": bool(l["rumor_used"]),
+			"action": func() -> void: _legend_rumor(l)},
+		{"text": Loc.t("world.close_btn"), "action": func() -> void: pass},
+	]
+	hud.open_choice(name_s, [Loc.t(String(def.get("flavor", "world.legend_hi")))], choices)
+
+
+## Странник поселился в городе: сильный профильный житель (v1.22).
+func _legend_invite(l: Dictionary) -> void:
+	var def: Dictionary = sim.legend_invite(int(l["id"]))
+	if def.is_empty() or Game.city_sim == null:
+		return
+	Game.city_sim.add_legend_resident(Loc.t(String(def["loc"])),
+			String(def.get("prof", "guard")), float(def.get("skill", 3.0)))
+	hud.toast(Loc.t("world.legend_joined") % Loc.t(String(def["loc"])))
+	_chron("chron.legend_joined", Loc.t(String(def["loc"])))
+	_near_legend = {}
+	view.queue_redraw()
+
+
+## Слухи странника: открыть дальние земли на карте (раз за визит).
+func _legend_rumor(l: Dictionary) -> void:
+	var opened: int = sim.legend_rumor(int(l["id"]))
+	if opened > 0:
+		hud.toast(Loc.t("world.legend_rumor_got") % opened)
+		_chron("chron.legend_rumor", str(opened))
+		view.queue_redraw()
+	else:
+		hud.toast(Loc.t("world.legend_rumor_used"))
+
+
+# --- случайные встречи в пути (v1.22) ----------------------------------------
+
+## Встреча дня пути: путь стопорится, игрок выбирает реакцию.
+func _maybe_encounter() -> void:
+	if travel.is_empty() or bool(travel.get("hold", false)) or hud.choice_visible():
+		return
+	var kind: String = sim.roll_encounter()
+	if kind == "":
+		return
+	travel["hold"] = true
+	_open_encounter(kind)
+
+
+func _open_encounter(kind: String) -> void:
+	var lines: Array = []
+	var choices: Array = []
+	match kind:
+		"ambush":
+			lines.append(Loc.t("enc.ambush.text"))
+			choices.append({"text": Loc.t("enc.fight"), "action": func() -> void: _enc_ambush()})
+		"merchant":
+			lines.append(Loc.t("enc.merchant.text"))
+			choices.append({"text": Loc.t("enc.trade_btn"), "action": func() -> void: _enc_merchant()})
+		"wounded":
+			lines.append(Loc.t("enc.wounded.text"))
+			choices.append({"text": Loc.t("enc.wounded.help"), "action": func() -> void: _enc_wounded()})
+		"cache":
+			lines.append(Loc.t("enc.cache.text"))
+			choices.append({"text": Loc.t("enc.cache.take"), "action": func() -> void: _enc_cache()})
+		"storm":
+			lines.append(Loc.t("enc.storm.text"))
+			choices.append({"text": Loc.t("enc.storm.wait"), "action": func() -> void: _enc_storm_wait()})
+			choices.append({"text": Loc.t("enc.storm.push"), "action": func() -> void: _enc_storm_push()})
+		"pilgrim":
+			lines.append(Loc.t("enc.pilgrim.text"))
+			choices.append({"text": Loc.t("enc.pilgrim.donate"), "action": func() -> void: _enc_pilgrim()})
+		_:
+			travel["hold"] = false
+			return
+	choices.append({"text": Loc.t("enc.move_on"), "action": func() -> void: _enc_resume()})
+	hud.open_choice(Loc.t("enc." + kind + ".title"), lines, choices)
+
+
+func _enc_resume() -> void:
+	if not travel.is_empty():
+		travel["hold"] = false
+
+
+## Засада: мини-бой в сцене данжа, обратно на карту в ту же точку.
+func _enc_ambush() -> void:
+	Game.return_scene = "res://scenes/world.tscn"
+	Game.world_hero_tile = map.tile_of_px(hero_px)
+	Game.poi_id = -1
+	Game.forced_biome = "bandit_camp"
+	Game.dungeon_scale = sim.encounter_ambush_scale()
+	Game.poi_coins = sim.encounter_ambush_coins()
+	travel = {}
+	get_tree().change_scene_to_file(DUNGEON_SCENE)
+
+
+func _enc_merchant() -> void:
+	travel["hold"] = false
+	hud.open_trade({"kind": "caravan", "id": -1, "tile": hero_tile})
+
+
+func _enc_wounded() -> void:
+	if Game.city_sim == null or not sim.encounter_help_wounded(Game.city_sim.res):
+		hud.toast(Loc.t("enc.wounded.no_food"))
+		_enc_resume()
+		return
+	hud.toast(Loc.t("enc.wounded.done"))
+	_chron("chron.enc_wounded")
+	_enc_resume()
+
+
+func _enc_cache() -> void:
+	var coins: int = sim.encounter_cache_coins()
+	Game.coins += coins
+	hud.toast(Loc.t("enc.cache.got") % coins)
+	_chron("chron.enc_cache", str(coins))
+	_enc_resume()
+
+
+func _enc_storm_wait() -> void:
+	_advance_world_day()
+	hud.toast(Loc.t("enc.storm.waited"))
+	_enc_resume()
+
+
+func _enc_storm_push() -> void:
+	if Game.city_sim != null:
+		var loss: float = sim.encounter_storm_loss(Game.city_sim.res)
+		hud.toast(Loc.t("enc.storm.lost") % int(loss))
+	else:
+		hud.toast(Loc.t("enc.storm.waited"))
+	_enc_resume()
+
+
+func _enc_pilgrim() -> void:
+	if Game.coins < 5:
+		hud.toast(Loc.t("enc.pilgrim.no_coins"))
+		_enc_resume()
+		return
+	Game.coins = sim.encounter_pilgrim_donate(Game.coins)
+	hud.toast(Loc.t("enc.pilgrim.done"))
+	_chron("chron.enc_pilgrim")
+	_enc_resume()
 
 
 ## Следы (M12→M14-G): герой затирает следы и выслеживает гнёзда; узел
@@ -359,6 +519,10 @@ func _unhandled_input(event: InputEvent) -> void:
 		# фауна ближе POI: охота/рыбалка (M14-C/T01)
 		if _try_hunt():
 			return
+		# странник рядом: разговор (v1.22)
+		if not _near_legend.is_empty():
+			_legend_dialog(_near_legend)
+			return
 		if not _near_poi.is_empty():
 			_use_poi(_near_poi)
 		return
@@ -374,6 +538,11 @@ func _unhandled_input(event: InputEvent) -> void:
 
 
 func _cancel() -> void:
+	if hud.choice_visible():
+		hud.close_choice()
+		if not travel.is_empty() and bool(travel.get("hold", false)):
+			travel["hold"] = false
+		return
 	if not travel.is_empty():
 		travel = {}
 		hud.toast(Loc.t("world.travel_cancel"))
@@ -559,6 +728,12 @@ func _event_text(ev: Dictionary) -> String:
 			return Loc.t("world.poi_reborn") % Loc.t("world.poi." + String(ev["a"]))
 		"caravan_moved":
 			return Loc.t("world.caravan_moved")
+		"legend_visit":
+			return Loc.t("world.legend_visit") % Loc.t(String(ev["legend"]))
+		"legend_cleared":
+			return Loc.t("world.legend_cleared") % [Loc.t(String(ev["legend"])), Loc.t("world.poi." + String(ev["poi"]))]
+		"legend_left":
+			return Loc.t("world.legend_left") % Loc.t(String(ev["legend"]))
 	return ""
 
 

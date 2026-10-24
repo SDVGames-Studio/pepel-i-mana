@@ -61,6 +61,40 @@ func set_hint(msg: String) -> void:
 	_hint_label.text = msg
 
 
+# --- панель выбора (v1.22): странники и встречи в пути -----------------------
+
+var _choice_panel: PanelContainer
+var _choice_title: Label
+var _choice_info: RichTextLabel
+var _choice_box: VBoxContainer
+
+
+## Открыть диалог с вариантами: choices = [{text, action(Callable), disabled}].
+func open_choice(title: String, lines: Array, choices: Array) -> void:
+	_choice_title.text = title
+	_choice_info.text = "\n".join(lines)
+	for child in _choice_box.get_children():
+		child.queue_free()
+	for c in choices:
+		var btn := Button.new()
+		btn.text = String(c["text"])
+		btn.disabled = bool(c.get("disabled", false))
+		btn.focus_mode = Control.FOCUS_NONE
+		btn.pressed.connect(func() -> void:
+			close_choice()
+			(c["action"] as Callable).call())
+		_choice_box.add_child(btn)
+	_choice_panel.visible = true
+
+
+func close_choice() -> void:
+	_choice_panel.visible = false
+
+
+func choice_visible() -> bool:
+	return _choice_panel.visible
+
+
 # --- панель точки интереса -------------------------------------------------
 
 func open_poi_panel(poi: Dictionary, days: int) -> void:
@@ -305,6 +339,27 @@ func _build() -> void:
 	_trade_panel.custom_minimum_size = Vector2(800, 0)
 	_trade_panel.visible = false
 	add_child(_trade_panel)
+
+	_choice_panel = PanelContainer.new()
+	_choice_panel.position = Vector2(660, 260)
+	_choice_panel.custom_minimum_size = Vector2(600, 0)
+	_choice_panel.visible = false
+	add_child(_choice_panel)
+	var choice_col := VBoxContainer.new()
+	choice_col.add_theme_constant_override("separation", 8)
+	_choice_panel.add_child(choice_col)
+	_choice_title = _label("", 22)
+	_choice_title.add_theme_color_override("font_color", Color("#ffe082"))
+	choice_col.add_child(_choice_title)
+	_choice_info = RichTextLabel.new()
+	_choice_info.fit_content = true
+	_choice_info.bbcode_enabled = true
+	_choice_info.custom_minimum_size = Vector2(560, 40)
+	choice_col.add_child(_choice_info)
+	_choice_box = VBoxContainer.new()
+	_choice_box.add_theme_constant_override("separation", 4)
+	choice_col.add_child(_choice_box)
+
 	var trade_box := VBoxContainer.new()
 	trade_box.add_theme_constant_override("separation", 6)
 	_trade_panel.add_child(trade_box)
