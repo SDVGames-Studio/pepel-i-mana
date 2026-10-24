@@ -90,6 +90,15 @@ func _draw() -> void:
 	if giants != null:
 		for g in giants.giants:
 			_draw_giant(g, giants.cfg.get("contact_px", 28.0))
+	# легендарные странники (v1.22): звёздный маркер на исследованной земле
+	if sim != null and sim.get("legends") != null:
+		for l in sim.legends:
+			if String(l["state"]) == "gone":
+				continue
+			var lt: Vector2i = l["tile"]
+			if not map.is_explored(lt) and Vector2(lt).distance_to(Vector2(hero_tile)) > 4.0:
+				continue   # в тумане странника не видно — он тоже тень
+			_draw_legend(l, ts)
 	# маршрут в пути
 	_draw_route(ts)
 	# герой (M9): спрайт воина с лёгким бобингом и тенью
@@ -180,6 +189,25 @@ func _draw_poi_fallback(poi: Dictionary, pos: Vector2, color: Color) -> void:
 func _draw_diamond(pos: Vector2, r: float, color: Color) -> void:
 	draw_colored_polygon(PackedVector2Array(
 			[pos + Vector2(0, -r), pos + Vector2(r, 0), pos + Vector2(0, r), pos + Vector2(-r, 0)]), color)
+
+
+## Легендарный странник (v1.22): четырёхлучевая звезда своего цвета с белой
+## сердцевиной; у гостящего в городе — мягкий пульс (его видно у ворот).
+func _draw_legend(l: Dictionary, ts: float) -> void:
+	var pos: Vector2 = map.tile_center_px(l["tile"])
+	var def: Dictionary = l["def"]
+	var col := Color(String(def.get("color", "#ffffff")))
+	var pulse := 0.8 + 0.2 * sin(_time * 2.2 + float(int(l["id"])))
+	if String(l["state"]) == "visit":
+		draw_circle(pos, ts * 0.55, Color(col.r, col.g, col.b, 0.2 * pulse))
+	draw_circle(pos + Vector2(0, 4), 5.0, Color(0, 0, 0, 0.3))
+	# звезда: четыре луча ромбом + сердцевина
+	var r := ts * 0.34
+	draw_colored_polygon(PackedVector2Array(
+			[pos + Vector2(0, -r), pos + Vector2(r * 0.35, -r * 0.35), pos + Vector2(r, 0),
+			 pos + Vector2(r * 0.35, r * 0.35), pos + Vector2(0, r), pos + Vector2(-r * 0.35, r * 0.35),
+			 pos + Vector2(-r, 0), pos + Vector2(-r * 0.35, -r * 0.35)]), col)
+	draw_circle(pos, r * 0.38, Color(1, 1, 1, 0.95))
 
 
 ## След (M12): шеврон направления + пара отпечатков — читается как тропа.

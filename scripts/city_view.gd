@@ -102,10 +102,10 @@ func _draw() -> void:
 	# и дороги всей карты уходили в кадр даже за экраном
 	var xf := get_viewport_transform()
 	_vis = (xf.affine_inverse() * get_viewport_rect()).grow(float(map.ts) * 3.0)
-	# ландшафт рисует отдельный запечённый слой city_terrain.gd (M9, v1.21.5)
-	_draw_plaza()
-	_draw_zones()
-	_draw_roads()
+	# земля (зоны/дороги/плиты площади) запечена в текстуру ландшафта
+	# city_terrain.gd (v1.22); растения и полосы обустройства — живые
+	_draw_plaza_pulse()
+	_draw_field_live()
 	_draw_anomaly()
 	_draw_world_exit()
 	_draw_world_sorted()
@@ -116,26 +116,121 @@ func _draw() -> void:
 var _vis := Rect2(-1e9, -1e9, 2e9, 2e9)
 
 
-## Главная площадь 2×2 (правки v1.20): каменные плиты, место сбора и планёрки.
-func _draw_plaza() -> void:
+## Пульс «места сбора» на площади (правки v1.20): плиты рисует статичный
+## слой, здесь только дышащий круг — планёрка собирается по утрам.
+func _draw_plaza_pulse() -> void:
 	if sim.plaza == Vector2i(-1, -1):
 		return
 	var ts := float(map.ts)
-	var origin := Vector2(sim.plaza) * ts
-	var rect := Rect2(origin, Vector2(ts * 2.0, ts * 2.0))
-	var stone := Color("#9aa0a8")
-	var stone2 := Color("#8a9098")
-	draw_rect(rect, stone)
-	for i in 4:
-		var cx := origin.x + ts * (0.5 + float(i % 2))
-		var cy := origin.y + ts * (0.5 + float(i / 2))
-		draw_rect(Rect2(cx - ts * 0.42, cy - ts * 0.42, ts * 0.84, ts * 0.84), stone2)
-	draw_rect(rect, Color("#5d6470"), false, 2.0)
-	# центральный круг — «место сбора», пульсирует утром
-	var center := origin + Vector2(ts, ts)
+	var center := Vector2(sim.plaza) * ts + Vector2(ts, ts)
 	var pulse := 0.5 + 0.5 * sin(_anim_time * 2.0)
 	draw_circle(center, ts * 0.34, Color(0.98, 0.95, 0.85, 0.25 + 0.2 * pulse))
-	draw_circle(center, ts * 0.16, Color("#e8e2d0"))
+
+
+## Живой слой полей (v1.22): заливки/борозды/заборы запечены в ландшафт
+## (city_terrain.gd), здесь — то, что меняется часто: растения стадиями
+## (печёные спрайты v1.21.5), полосы обустройства неготовых клеток
+## и тёплый пульс спелых грядок.
+func _draw_field_live() -> void:
+	var fill_work: float = float(sim.cfg.get("zones", {}).get("fill_work", 4.0))
+	for z in sim.zones:
+		var cells: Array = z["cells"]
+		var progress: Array = z["progress"]
+		var crops: Array = z.get("crops", [])
+		var is_field := String(z["type"]) == "field"
+		var crop_vis := 0
+		if is_field:
+			var crop_id := String(z.get("crop", "turnip"))
+			if not _crop_vis_cache.has(crop_id):
+				_crop_vis_cache[crop_id] = int(sim.crop_def(crop_id).get("sprite", 0))
+			crop_vis = int(_crop_vis_cache[crop_id])
+		for i in cells.size():
+			var rect := Rect2(Vector2(cells[i]) * map.ts, Vector2(map.ts, map.ts))
+			if not _vis.intersects(rect):
+				continue
+			var filled: bool = float(progress[i]) >= fill_work
+			if not filled:
+				# полоса обустройства: живая, двигается с каждым ударом лопаты
+				var frac := clampf(float(progress[i]) / maxf(0.1, fill_work), 0.0, 1.0)
+				draw_rect(Rect2(rect.position + Vector2(4, map.ts - 8), Vector2((map.ts - 8) * frac, 4)),
+						Color("#ffe082"))
+				continue
+			if not is_field or i >= crops.size() or (crops[i] as Dictionary).is_empty():
+				continue
+			var crop: Dictionary = crops[i]
+			var stage := int(crop.get("stage", 0)) + (1 if bool(crop.get("ripe", false)) else 0)
+			var base := rect.get_center() + Vector2(0.0, map.ts * 0.22)
+			var tex := _crop_sprite(crop_vis, clampi(stage, 0, 4))
+			draw_texture_rect(tex, Rect2(base - Vector2(11.0, 17.0), Vector2(22.0, 22.0)), false)
+			if bool(crop.get("ripe", false)):
+				var glow := Color(1.0, 0.95, 0.6, 0.25 + 0.12 * sin(_anim_time * 3.0))
+				draw_circle(base + Vector2(0, -6), 7.5, glow)
+
+
+## Печёные спрайты растений (v1.21.5, возвращены в живой слой в v1.22):
+## стадия культуры — маленькая текстура в кэше; вид 3 — золотой колос
+## пшеницы (сезонная культура v1.22).
+var _crop_sprites: Dictionary = {}
+var _crop_vis_cache: Dictionary = {}
+
+
+func _px_circle(img: Image, c: Vector2, r: float, col: Color) -> void:
+	var x0 := maxi(0, int(floor(c.x - r - 1.0)))
+	var x1 := mini(img.get_width() - 1, int(ceil(c.x + r + 1.0)))
+	var y0 := maxi(0, int(floor(c.y - r - 1.0)))
+	var y1 := mini(img.get_height() - 1, int(ceil(c.y + r + 1.0)))
+	for py in range(y0, y1 + 1):
+		for px in range(x0, x1 + 1):
+			if Vector2(px + 0.5, py + 0.5).distance_to(c) <= r:
+				img.set_pixel(px, py, col)
+
+
+func _crop_sprite(crop_vis: int, stage: int) -> ImageTexture:
+	var key := "%d|%d" % [crop_vis, stage]
+	if _crop_sprites.has(key):
+		return _crop_sprites[key]
+	var leaf := Color("#5fae4a")
+	var leaf_dark := Color("#3f7a33")
+	var stem := Color("#4c8a3c")
+	var fruit := Color("#c9a8e8")
+	var fruit_r := 3.4
+	if crop_vis == 2:
+		fruit = Color("#e8892c")
+		fruit_r = 4.2
+	elif crop_vis == 3:
+		# пшеница (v1.22): золотой колос
+		leaf = Color("#b7a44a")
+		leaf_dark = Color("#93803a")
+		stem = Color("#a89a4e")
+		fruit = Color("#e8cf6d")
+		fruit_r = 3.8
+	var img := Image.create(22, 22, false, Image.FORMAT_RGBA8)
+	var base := Vector2(11.0, 17.0)
+	match clampi(stage, 0, 4):
+		0:
+			_px_circle(img, base + Vector2(-2, -4), 1.6, leaf)
+			_px_circle(img, base + Vector2(2, -4), 1.6, leaf)
+			_px_circle(img, base + Vector2(0, -2), 1.0, stem)
+		1:
+			_px_circle(img, base + Vector2(-3, -7), 2.4, leaf)
+			_px_circle(img, base + Vector2(3, -7), 2.4, leaf)
+			_px_circle(img, base + Vector2(0, -10), 2.0, leaf_dark)
+			_px_circle(img, base + Vector2(0, -4), 1.2, stem)
+		2:
+			_px_circle(img, base + Vector2(-4, -9), 3.2, leaf)
+			_px_circle(img, base + Vector2(4, -9), 3.2, leaf)
+			_px_circle(img, base + Vector2(0, -12), 3.0, leaf_dark)
+			_px_circle(img, base + Vector2(0, -6), 2.2, leaf)
+			_px_circle(img, base + Vector2(0, -3), 1.2, stem)
+		_:
+			_px_circle(img, base + Vector2(-4, -9), 3.0, leaf)
+			_px_circle(img, base + Vector2(4, -9), 3.0, leaf)
+			_px_circle(img, base + Vector2(0, -5), fruit_r, fruit)
+			_px_circle(img, base + Vector2(-1, -6), 1.2, fruit.lightened(0.35))
+			_px_circle(img, base + Vector2(0, -3), 1.2, stem)
+	var tex := ImageTexture.create_from_image(img)
+	_crop_sprites[key] = tex
+	return tex
 
 
 var _anim_time := 0.0
@@ -144,8 +239,13 @@ var _anim_time := 0.0
 # список пересобирается по флагу, который ставит сцена при sim.terrain_dirty.
 # v1.21.5: кэш предрасчитан до готовых дескрипторов отрисовки (текстура,
 # прямоугольники, тень) и отсортирован по Y — в кадре только выдача команд.
+# v1.22: тень впечена в текстуру дерева — 1 команда вместо 2, а статичные
+# дескрипторы (деревья + здания) сливаются с коротким динамическим списком
+# без общей пересортировки кадра.
 var _trees_dirty := true
 var _trees_cache: Array = []
+var _static_sorted: Array = []      # [y, kind, payload] деревья+здания, готово к слиянию
+var _static_sorted_blds := -1       # размер sim.buildings при сборке (смена — пересобрать)
 
 func _process(delta: float) -> void:
 	_anim_time += delta
@@ -153,12 +253,17 @@ func _process(delta: float) -> void:
 
 
 ## Пересобрать кэш деревьев (вызывает city.gd при sim.terrain_dirty).
+## v1.22: заодно пересобирается статичный сортированный набор (деревья+здания)
+## — снос/перенос здания тоже меняет порядок слоя.
 func mark_trees_dirty() -> void:
 	_trees_dirty = true
+	_static_sorted_blds = -1
 
 
 ## Дескриптор дерева/пня/саженца: всё, что не меняется между кадрами.
-## [y_px, kind, tile, tex, src, dst, тень-центр, тень-радиус]
+## [y_px, kind, tile, tex, src, dst, точка-якорь, тень-r (пень)]
+## v1.22: у дерева tex — композит «спрайт + тень» (печётся один раз на вид
+## дерева), в кадре одна команда текстуры вместо круга тени + спрайта.
 func _build_tree_desc(tile: Vector2i, ts: float) -> Array:
 	var bottom := Vector2(tile.x * ts + ts / 2.0, tile.y * ts + ts * 0.92)
 	if map.saplings.has(tile):
@@ -176,18 +281,58 @@ func _build_tree_desc(tile: Vector2i, ts: float) -> Array:
 	var s := scale / float(t.get_height())
 	var w := t.get_width() * s
 	var pos := bottom + Vector2(0, -2)
-	var dst := Rect2(pos - Vector2(w, scale) * 0.5, Vector2(w, scale))
-	var shadow_r := ts * (0.4 if kind == map.TREE_SMALL
-			else (0.55 if kind == map.TREE_MEDIUM else 0.7)) * 0.5
-	return [bottom.y, "tree", tile, t, src, dst, bottom + Vector2(0, 2), shadow_r]
+	# композит: спрайт + тень под ним; dst растянут пропорционально, низ
+	# спрайта попадает в ту же точку «посадки», что и раньше
+	var comp: ImageTexture = _tree_composite(ref, t, src)
+	var cw := float(comp.get_width()) / maxf(1.0, src.size.x)
+	var ch := float(comp.get_height()) / maxf(1.0, src.size.y)
+	var dst := Rect2(Vector2(pos.x - w * cw * 0.5, pos.y - scale), Vector2(w * cw, scale * ch))
+	return [bottom.y, "tree", tile, comp, Rect2(Vector2.ZERO, comp.get_size()), dst, bottom, 0.0]
+
+
+## Композит дерева (v1.22): спрайт дерева и мягкая тень под ним печутся
+## в одну текстуру один раз на вид дерева — в кадре 1 команда вместо 2.
+var _tree_comp_cache: Dictionary = {}
+
+
+func _tree_composite(ref: String, t: Texture2D, src: Rect2) -> ImageTexture:
+	if _tree_comp_cache.has(ref):
+		return _tree_comp_cache[ref]
+	var sheet: Image = null
+	if t is AtlasTexture:
+		sheet = (t as AtlasTexture).atlas.get_image()
+	else:
+		sheet = t.get_image()
+	var pad := int(round(src.size.x * 0.2))
+	var sh := maxi(4, int(round(src.size.y * 0.12)))
+	var cw := int(round(src.size.x)) + pad * 2
+	var chh := int(round(src.size.y)) + sh
+	var img := Image.create(cw, chh, false, Image.FORMAT_RGBA8)
+	img.blit_rect(sheet, Rect2i(src), Vector2i(pad, 0))
+	# тень-эллипс под стволом: пишем только в пустые пиксели — не трогаем спрайт
+	var c := Vector2(cw / 2.0, float(int(round(src.size.y))) + sh * 0.35)
+	var rx := src.size.x * 0.3
+	var ry := sh * 0.42
+	var col := Color(0, 0, 0, 0.18)
+	for py in range(maxi(0, int(c.y - ry - 1)), mini(chh - 1, int(c.y + ry + 1)) + 1):
+		for px in range(maxi(0, int(c.x - rx - 1)), mini(cw - 1, int(c.x + rx + 1)) + 1):
+			var d := Vector2(px + 0.5 - c.x, py + 0.5 - c.y)
+			if (d.x / maxf(0.1, rx)) ** 2 + (d.y / maxf(0.1, ry)) ** 2 <= 1.0 \
+					and img.get_pixel(px, py).a < 0.02:
+				img.set_pixel(px, py, col)
+	var tex := ImageTexture.create_from_image(img)
+	_tree_comp_cache[ref] = tex
+	return tex
 
 
 ## Единый Y-сортированный слой (M12): деревья, пни, саженцы, здания, кучи,
 ## животные, скот, рейдеры, жители и герой рисуются в порядке «линии ног» —
 ## нижние объекты перекрывают верхние, никто не проваливается сквозь текстуры.
+## v1.22: деревья и здания — редкоменяющийся «статичный» набор, он держится
+## отсортированным в _static_sorted и в кадре СЛИВАЕТСЯ с коротким динамическим
+## списком (живые существа + кучи) — вместо пересортировки всего слоя каждый кадр.
 func _draw_world_sorted() -> void:
 	var ts := float(map.ts)
-	var entries: Array = []   # [y_px, kind, payload]
 	# обитатели внутри домов (этап 2, аспект 2): для светящихся окон
 	_inside_homes.clear()
 	for r in sim.residents:
@@ -202,46 +347,67 @@ func _draw_world_sorted() -> void:
 				if t == map.TILE_TREE or map.stumps.has(Vector2i(x, y)) or map.saplings.has(Vector2i(x, y)):
 					_trees_cache.append(_build_tree_desc(Vector2i(x, y), ts))
 		_trees_cache.sort_custom(func(a, b) -> bool: return float(a[0]) < float(b[0]))
-	for desc: Array in _trees_cache:
-		if desc[1] == "tree" and not _vis.intersects(desc[5]):
-			continue   # за экраном — дерево целиком пропускаем (v1.21.5)
-		entries.append(desc)
+	# статичный набор (деревья + здания) пересобирается только когда ландшафт
+	# или список зданий меняются; в кадре он готов к слиянию
+	if _static_sorted_blds != sim.buildings.size():
+		_static_sorted_blds = sim.buildings.size()
+		_static_sorted = _trees_cache.duplicate(false)
+		for b in sim.buildings:
+			# Y-якорь — нижняя линия прямоугольника здания (2×2: tile.y + 1)
+			var bw: int = sim.bld_w(b)
+			_static_sorted.append([float(Vector2(b["tile"]).y + bw - 1) * ts + ts - 2.0, "bld", b])
+		_static_sorted.sort_custom(func(a, b) -> bool: return float(a[0]) < float(b[0]))
+	# динамический набор — короткий: брёвна, кучи, звери, скот, люди, герой
+	var dyn: Array = []
 	# поваленные брёвна (v1.21.2): герой валит — лесопилка унесёт и распилит
 	for tile: Vector2i in map.logs.keys():
-		entries.append([float(tile.y) * ts + ts * 0.78, "log", tile])
+		dyn.append([float(tile.y) * ts + ts * 0.78, "log", tile])
 	for b in sim.buildings:
-		# Y-якорь — нижняя линия прямоугольника здания (2×2: tile.y + 1)
-		var bw: int = sim.bld_w(b)
-		entries.append([float(Vector2(b["tile"]).y + bw - 1) * ts + ts - 2.0, "bld", b])
-		if bool(b["done"]) and (b as Dictionary).has("pile"):
-			var corner: Vector2 = Vector2(b["tile"]) * ts + Vector2(ts * (0.78 + float(bw - 1)), ts * (0.88 + float(bw - 1)))
-			if _pile_total(b) >= 0.5:
-				entries.append([corner.y, "pile", b])
+		if bool(b["done"]) and (b as Dictionary).has("pile") and _pile_total(b) >= 0.5:
+			dyn.append([float(Vector2(b["tile"]).y + sim.bld_w(b) - 1) * ts + ts * 0.88, "pile", b])
 	for a in sim.animals:
-		entries.append([Vector2(a["pos"]).y, "animal", a])
+		dyn.append([Vector2(a["pos"]).y, "animal", a])
 	for a in sim.livestock:
-		entries.append([Vector2(a["pos"]).y, "stock", a])
+		dyn.append([Vector2(a["pos"]).y, "stock", a])
 	for w in sim.wanderers:
-		entries.append([Vector2(w["pos"]).y, "wanderer", w])
+		dyn.append([Vector2(w["pos"]).y, "wanderer", w])
 	for r in sim.raiders:
-		entries.append([Vector2(r["pos"]).y, "raider", r])
+		dyn.append([Vector2(r["pos"]).y, "raider", r])
 	for r in sim.residents:
 		if int(r.get("inside", 0)) > 0:
 			continue   # спит/лежит/прячется внутри дома — с карты не виден
-		entries.append([Vector2(r["pos"]).y, "res", r])
+		dyn.append([Vector2(r["pos"]).y, "res", r])
 	if city != null and city.hero != null and not city.hero.dead:
-		entries.append([city.hero.global_position.y, "hero", city.hero])
-	entries.sort_custom(func(a, b) -> bool: return float(a[0]) < float(b[0]))
+		dyn.append([city.hero.global_position.y, "hero", city.hero])
+	dyn.sort_custom(func(a, b) -> bool: return float(a[0]) < float(b[0]))
 	_draw_campfire()
-	for e in entries:
+	# слияние двух отсортированных списков: O(n+m) вместо sort всей карты
+	var si := 0
+	var di := 0
+	while si < _static_sorted.size() or di < dyn.size():
+		var e: Array
+		if di >= dyn.size():
+			e = _static_sorted[si]
+			si += 1
+		elif si >= _static_sorted.size() or float(dyn[di][0]) < float(_static_sorted[si][0]):
+			e = dyn[di]
+			di += 1
+		else:
+			e = _static_sorted[si]
+			si += 1
 		match String(e[1]):
 			"tree":
-				# v1.21.5: дескриптор из кэша — тень и спрайт без математики
-				draw_circle(e[6], e[7], Color(0, 0, 0, 0.18))
+				# v1.21.5: дескриптор из кэша; v1.22: тень впечена в текстуру
+				if not _vis.intersects(e[5]):
+					continue   # за экраном — дерево целиком пропускаем
 				draw_texture_rect_region(e[3], e[5], e[4])
 			"sapling":
+				if not _vis.has_point(e[6]):
+					continue
 				_draw_sapling(e[2], e[6], ts)
 			"stump":
+				if not _vis.has_point(e[6]):
+					continue
 				_draw_stump(e[6], ts, _hash(e[2].x, e[2].y, STUMP_PALS.size()))
 			"log":
 				_draw_log_at(e[2])
@@ -495,163 +661,9 @@ func _draw_wanderer(w: Dictionary) -> void:
 		_draw_speech_bubble(pos, Loc.t(key))
 
 
-## Зоны (M6): заливка по типу (Поле/Пастбище), прогресс обустройства
-## в незаполненных клетках (правки v1.20: слои и жилая убраны).
-func _draw_zones() -> void:
-	var fill_work: float = float(sim.cfg.get("zones", {}).get("fill_work", 4.0))
-	for z in sim.zones:
-		var col: Color = _zone_colors.get(String(z["type"]), Color(0.7, 0.7, 0.4))
-		for i in (z["cells"] as Array).size():
-			var tile: Vector2i = z["cells"][i]
-			var rect := Rect2(Vector2(tile) * map.ts, Vector2(map.ts, map.ts))
-			if not _vis.intersects(rect):
-				continue   # клетка зоны за камерой (v1.21.5)
-			var filled: bool = float(z["progress"][i]) >= fill_work
-			# невыделенные клетки заметны сразу (замечание 2026-10-21:
-			# «ставлю поле — ничего нет»): заливка плотнее, у поля — борозды
-			draw_rect(rect, Color(col.r, col.g, col.b, 0.42 if filled else 0.32))
-			if String(z["type"]) == "field":
-				for k: int in 3:
-					var y: float = rect.position.y + map.ts * (0.25 + 0.25 * k)
-					draw_line(Vector2(rect.position.x + 4, y),
-							Vector2(rect.position.x + map.ts - 4, y),
-							col.darkened(0.3 if filled else 0.15),
-							1.5 if filled else 1.0)
-				if filled:
-					draw_rect(rect.grow(-2), col.darkened(0.15), false, 1.5)
-					match String(z["type"]):
-						"field":
-							# посев (M10): стадия роста культуры. Правки v1.20.1:
-							# готовые спрайты растений — крошечные точки в углу
-							# листа (не видно вовсе), поэтому рисуем растения
-							# сами (v1.21.5 — печёные текстуры стадий)
-							var crops: Array = z.get("crops", [])
-							var crop_id := String(z.get("crop", "turnip"))
-							if not _crop_vis_cache.has(crop_id):
-								_crop_vis_cache[crop_id] = int(sim.crop_def(crop_id).get("sprite", 0))
-							var crop_vis: int = int(_crop_vis_cache[crop_id])
-							if i < crops.size() and not (crops[i] as Dictionary).is_empty():
-								var crop: Dictionary = crops[i]
-								var stage := int(crop.get("stage", 0)) + (1 if bool(crop.get("ripe", false)) else 0)
-								var ripe := bool(crop.get("ripe", false))
-								_draw_crop_plant(rect.get_center(), clampi(stage, 0, 4), ripe, crop_vis)
-						"pasture":
-							draw_circle(rect.position + Vector2(10, 20), 3.0, col.darkened(0.35))
-							draw_circle(rect.position + Vector2(22, 12), 3.0, col.darkened(0.35))
-			else:
-				var frac := clampf(float(z["progress"][i]) / maxf(0.1, fill_work), 0.0, 1.0)
-				draw_rect(Rect2(rect.position + Vector2(4, map.ts - 8), Vector2((map.ts - 8) * frac, 4)),
-						Color("#ffe082"))
-		# пастбище — забор по периметру зоны (2026-10-21): цветное обозначение
-		# читается с одного взгляда, скот внутри как за забором
-		if String(z["type"]) == "pasture":
-			_draw_zone_fence(z)
-
-
-## Растение на грядке (правки v1.20.1): рисуем сами — росток → куст →
-## спелый куст с плодом. v1.21.5: стадии растения печатаются в маленькие
-## текстуры (кэш по типу и стадии) — было 5–7 кружков на клетку в кадре,
-## стала одна текстура; свечение спелости остаётся живым (пульсирует).
-var _crop_sprites: Dictionary = {}
-var _crop_vis_cache: Dictionary = {}   # культура -> вид спрайта (v1.21.5)
-
-
-func _px_circle(img: Image, c: Vector2, r: float, col: Color) -> void:
-	var x0 := maxi(0, int(floor(c.x - r - 1.0)))
-	var x1 := mini(img.get_width() - 1, int(ceil(c.x + r + 1.0)))
-	var y0 := maxi(0, int(floor(c.y - r - 1.0)))
-	var y1 := mini(img.get_height() - 1, int(ceil(c.y + r + 1.0)))
-	for py in range(y0, y1 + 1):
-		for px in range(x0, x1 + 1):
-			if Vector2(px + 0.5, py + 0.5).distance_to(c) <= r:
-				img.set_pixel(px, py, col)
-
-
-func _crop_sprite(crop_vis: int, stage: int) -> ImageTexture:
-	var key := "%d|%d" % [crop_vis, stage]
-	if _crop_sprites.has(key):
-		return _crop_sprites[key]
-	var leaf := Color("#5fae4a")
-	var leaf_dark := Color("#3f7a33")
-	var stem := Color("#4c8a3c")
-	var fruit := Color("#c9a8e8")
-	if crop_vis == 2:
-		fruit = Color("#e8892c")
-	var img := Image.create(22, 22, false, Image.FORMAT_RGBA8)
-	var base := Vector2(11.0, 17.0)
-	match clampi(stage, 0, 4):
-		0:
-			_px_circle(img, base + Vector2(-2, -4), 1.6, leaf)
-			_px_circle(img, base + Vector2(2, -4), 1.6, leaf)
-			_px_circle(img, base + Vector2(0, -2), 1.0, stem)
-		1:
-			_px_circle(img, base + Vector2(-3, -7), 2.4, leaf)
-			_px_circle(img, base + Vector2(3, -7), 2.4, leaf)
-			_px_circle(img, base + Vector2(0, -10), 2.0, leaf_dark)
-			_px_circle(img, base + Vector2(0, -4), 1.2, stem)
-		2:
-			_px_circle(img, base + Vector2(-4, -9), 3.2, leaf)
-			_px_circle(img, base + Vector2(4, -9), 3.2, leaf)
-			_px_circle(img, base + Vector2(0, -12), 3.0, leaf_dark)
-			_px_circle(img, base + Vector2(0, -6), 2.2, leaf)
-			_px_circle(img, base + Vector2(0, -3), 1.2, stem)
-		_:
-			_px_circle(img, base + Vector2(-4, -9), 3.0, leaf)
-			_px_circle(img, base + Vector2(4, -9), 3.0, leaf)
-			_px_circle(img, base + Vector2(0, -5), 4.2 if crop_vis == 2 else 3.4, fruit)
-			_px_circle(img, base + Vector2(-1, -6), 1.2, fruit.lightened(0.35))
-			_px_circle(img, base + Vector2(0, -3), 1.2, stem)
-	var tex := ImageTexture.create_from_image(img)
-	_crop_sprites[key] = tex
-	return tex
-
-
-func _draw_crop_plant(center: Vector2, stage: int, ripe: bool, crop_vis: int) -> void:
-	var tex := _crop_sprite(crop_vis, clampi(stage, 0, 4))
-	# якорь растения: низ текстуры встаёт туда, где была «земля» под кустом
-	var base := center + Vector2(0.0, map.ts * 0.22)
-	draw_texture_rect(tex, Rect2(base - Vector2(11.0, 17.0), Vector2(22.0, 22.0)), false)
-	if ripe and clampi(stage, 0, 4) >= 3:
-		# спелость: тёплое свечение — видно с первого взгляда
-		var glow := Color(1.0, 0.95, 0.6, 0.25 + 0.12 * sin(_anim_time * 3.0))
-		draw_circle(base + Vector2(0, -6), 7.5, glow)
-
-
-## Забор пастбища: по внешним рёбрам клеток зоны — перекладина и столбики.
-func _draw_zone_fence(z: Dictionary) -> void:
-	var ts := float(map.ts)
-	var inside := {}
-	for c in z["cells"]:
-		inside[Vector2i(c)] = true
-	var wood := Color("#7a5a3a")
-	var dark := Color("#5d4030")
-	for c: Vector2i in inside.keys():
-		var p := Vector2(c) * ts
-		var edges := []
-		if not inside.has(c + Vector2i(1, 0)):
-			edges.append([p + Vector2(ts, 0), p + Vector2(ts, ts), p + Vector2(ts, ts * 0.5)])
-		if not inside.has(c + Vector2i(-1, 0)):
-			edges.append([p, p + Vector2(0, ts), p + Vector2(0, ts * 0.5)])
-		if not inside.has(c + Vector2i(0, 1)):
-			edges.append([p + Vector2(0, ts), p + Vector2(ts, ts), p + Vector2(ts * 0.5, ts)])
-		if not inside.has(c + Vector2i(0, -1)):
-			edges.append([p, p + Vector2(ts, 0), p + Vector2(ts * 0.5, 0)])
-		for e in edges:
-			draw_line(e[0], e[1], wood, 2.5)
-			draw_line(e[2], e[2] + Vector2(0, -8), dark, 2.5)
-			draw_circle(e[2] + Vector2(0, -8), 1.6, dark)
-
-
-## Дороги (M6): тёплые плитки с камешками.
-func _draw_roads() -> void:
-	var col: Color = colors.get("road", Color("#6e5f4a"))
-	for tile: Vector2i in map.road:
-		var rect := Rect2(Vector2(tile) * map.ts, Vector2(map.ts, map.ts))
-		if not _vis.intersects(rect):
-			continue   # за камерой не рисуем (v1.21.5)
-		draw_rect(rect, col)
-		draw_circle(rect.position + Vector2(map.ts * 0.3, map.ts * 0.4), 2.0, col.lightened(0.2))
-		draw_circle(rect.position + Vector2(map.ts * 0.65, map.ts * 0.65), 1.6, col.lightened(0.15))
+# Зоны, растения грядок, заборы пастбищ и дороги (M6): заливки/борозды/заборы
+# запечены в духовку ландшафта city_terrain.gd (v1.22), растения и полосы
+# обустройства остались живыми (_draw_field_live) вместе с пульсом площади.
 
 
 func _draw_anomaly() -> void:

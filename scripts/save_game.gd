@@ -250,8 +250,22 @@ static func _world_block(wmap, wsim) -> Dictionary:
 			"tracks": wsim.tracks,
 			"giants": wsim.giants.giants if wsim.giants != null else [],
 			"rep": wsim.rep,
+			"legends": _legends_save(wsim),
+			"_legend_id": int(wsim._legend_id),
 		},
 	}
+
+
+## Странники: def — ссылка на конфиг, в сейв кладём id (v1.22).
+static func _legends_save(wsim) -> Array:
+	var out: Array = []
+	for l in wsim.legends:
+		var d := {}
+		for k in l:
+			d[k] = String(l[k]["id"]) if k == "def" else l[k]
+		d["tile"] = [int(l["tile"].x), int(l["tile"].y)]
+		out.append(d)
+	return out
 
 
 ## Жители: ссылки на здания (bld/site/home) превращаем в id зданий.
@@ -520,6 +534,7 @@ static func _apply_city(game, cd: Variant) -> String:
 	sim.hero_alive = false
 	sim.hero_pos = Vector2.ZERO
 	sim.terrain_dirty = true
+	sim.static_dirty = true   # земля (зоны/дороги/плиты) — перевыпечь (v1.22)
 	# миграция старых сейвов: здания 1×1 → 2×2 (этап 2, аспект 2), затем
 	# сплошные клетки всем готовым зданиям (препятствие для всех)
 	sim.migrate_legacy_buildings()
@@ -693,6 +708,28 @@ static func _apply_world(game, wd: Variant) -> String:
 			})
 		if not restored.is_empty():
 			sim.giants.giants = restored
+	# легендарные странники (v1.22): состояние из сейва, def — из конфига;
+	# в старых сейвах ключа нет — свежесозданные странники остаются как есть
+	if wsd.has("legends"):
+		var legend_defs := {}
+		for d in cfg.get("legends", {}).get("defs", []):
+			legend_defs[String(d["id"])] = d
+		var restored_legends: Array = []
+		for ld in _dec(wsd.get("legends", [])):
+			var ldef: Dictionary = legend_defs.get(String(ld.get("def", "")), {})
+			if ldef.is_empty():
+				continue
+			var lt: Array = ld.get("tile", [0, 0])
+			restored_legends.append({
+				"id": int(ld.get("id", 0)), "def": ldef,
+				"tile": Vector2i(int(lt[0]), int(lt[1])),
+				"path": [], "state": String(ld.get("state", "rest")),
+				"target_poi": int(ld.get("target_poi", -1)),
+				"days_left": int(ld.get("days_left", 1)),
+				"rumor_used": bool(ld.get("rumor_used", false)),
+			})
+		sim.legends = restored_legends
+		sim._legend_id = int(wsd.get("_legend_id", restored_legends.size() + 1))
 	game.world_map = map
 	game.world_sim = sim
 	return ""

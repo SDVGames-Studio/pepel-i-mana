@@ -160,6 +160,7 @@ func add_zone(type_id: String, cells: Array, crop := "turnip") -> int:
 		return 0
 	_zone_id += 1
 	zones.append(zone)
+	static_dirty = true   # новая зона на земле — перевыпечь духовку (v1.22)
 	return added
 
 
@@ -177,6 +178,15 @@ func crop_def(crop: String) -> Dictionary:
 		return {"stage_days": float(fcfg.get("stage_days", 0.5)),
 				"harvest": float(fcfg.get("harvest_food", 6.0)), "sprite": 0}
 	return cdef
+
+
+## Сезонная культура (v1.22): растёт только в свои сезоны (у репы и тыквы
+## поля "seasons" нет — расти могут всегда). Зимой пшеница спит.
+func crop_in_season(crop: String) -> bool:
+	var seasons: Array = crop_def(crop).get("seasons", [])
+	if seasons.is_empty():
+		return true
+	return season() in seasons
 
 
 ## Сменить культуру поля (DF-стиль): всё поле пересеивается заново.
@@ -387,6 +397,7 @@ func _zone_fill_do(r: Dictionary, target: Dictionary, dt: float) -> void:
 			r["_fill_zone"] = -1
 			r["_fill_idx"] = -1
 			events.append({"type": "zone_cell", "zone": String(z["type"])})
+			static_dirty = true   # клетка обустроена — заливка плотнее (v1.22)
 			_zone_check_done(z, r)
 	else:
 		_move_towards(r, tile, dt)
@@ -466,6 +477,8 @@ func _update_zones(dt: float, day_len: float) -> void:
 		var crop_stage_days := maxf(0.1, float(cdef.get("stage_days", fcfg.get("stage_days", 0.5))))
 		var crop_harvest := float(cdef.get("harvest", fcfg.get("harvest_food", 6.0)))
 		var crops: Array = z["crops"]
+		var crop_id := String(z.get("crop", "turnip"))
+		var in_season := crop_in_season(crop_id)
 		for i in (z["cells"] as Array).size():
 			if not _cell_filled(z, i) or not building_at(z["cells"][i]).is_empty():
 				continue
@@ -473,20 +486,24 @@ func _update_zones(dt: float, day_len: float) -> void:
 				crops.append({})
 			var crop: Dictionary = crops[i]
 			if crop.is_empty():
-				# пусто: сеем, если есть семя
-				if float(res.get("seeds", 0.0)) >= float(fcfg.get("seed_sow", 1)):
+				# пусто: сеем, если есть семя (v1.22: сезонная культура вне
+				# своего сезона не сеется — семена не переводятся)
+				if in_season and float(res.get("seeds", 0.0)) >= float(fcfg.get("seed_sow", 1)):
 					res["seeds"] = float(res["seeds"]) - float(fcfg.get("seed_sow", 1))
 					crops[i] = {"stage": 0, "t": 0.0, "ripe": false}
 			elif not bool(crop.get("ripe", false)):
 				# рост В ДНЯХ (правки v1.20.1: раньше t копил секунды и сравнивался
-				# с днями — культура «зрела» за секунды, роста не видно)
-				crop["t"] = float(crop.get("t", 0.0)) + dt / maxf(1.0, day_len)
-				if float(crop["t"]) >= crop_stage_days:
-					crop["t"] = 0.0
-					crop["stage"] = int(crop.get("stage", 0)) + 1
-					if int(crop["stage"]) >= stages:
-						crop["ripe"] = true
-			# спелая грядка ЖДЁТ сборщика (этап 2, аспект 3): фермер обходит
+				# с днями — культура «зрела» за секунды, роста не видно).
+				# v1.22: сезонная культура зимой СПИТ — не гибнет, просто ждёт
+				# весны (посев стоит, рост продолжится в тёплый сезон)
+				if in_season:
+					crop["t"] = float(crop.get("t", 0.0)) + dt / maxf(1.0, day_len)
+					if float(crop["t"]) >= crop_stage_days:
+						crop["t"] = 0.0
+						crop["stage"] = int(crop.get("stage", 0)) + 1
+						if int(crop["stage"]) >= stages:
+							crop["ripe"] = true
+				# спелая грядка ЖДЁТ сборщика (этап 2, аспект 3): фермер обходит
 			# поле и собирает, герой — по E. Автосбора больше нет.
 
 

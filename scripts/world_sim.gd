@@ -18,6 +18,8 @@ var sieges: Array = []          # активные осады: {settlement_id, c
 var tracks := {}                # Vector2i -> {dir: Vector2i, camp: int, age: int} — следы (M12)
 var giants = null               # world_giants.gd — грандиозные создания (M14-E)
 var rep: Dictionary = {}        # репутация фракций (M14-H): id -> −100..100
+var legends: Array = []         # легендарные странники (v1.22): {id, def, tile, path, state, target_poi, days_left, rumor_used}
+var _legend_id := 1
 var _rng := RandomNumberGenerator.new()
 
 
@@ -68,6 +70,7 @@ func setup(world_map, world_cfg: Dictionary, seed_value := -1) -> void:
 	# гиганты (M14-E): состояние переживает сейв через блок "giants"
 	giants = load("res://scripts/world_giants.gd").new()
 	giants.setup(map, _read_json_file("res://data/giants.json"), seed_value)
+	_spawn_legends()
 	if seed_value >= 0:
 		_rng.seed = seed_value
 	else:
@@ -86,6 +89,7 @@ func advance_day() -> Array:
 	today.append_array(_roll_resettlement())
 	today.append_array(_roll_dungeon_resets())
 	today.append_array(_roll_caravan())
+	today.append_array(_tick_legends())
 	if giants != null:
 		giants.tick_days(1)   # гнев и дружба гигантов остывают (M14-E)
 	events.append_array(today)
@@ -347,6 +351,231 @@ func _chron(key: String, a := "", b := "") -> void:
 	chronicle.append({"day": day, "key": key, "a": a, "b": b})
 	if chronicle.size() > 200:
 		chronicle.pop_front()
+
+
+# --- легендарные странники (v1.22) ------------------------------------------
+# Уникальные NPC-герои живут своей жизнью: ходят к дальним данжам и зачищают
+# их раньше игрока (гонка за лут: не успел — досталось страннику), иногда
+# гостят в городе. Герой встречает странника на карте (E) и может позвать
+# его в город или спросить о дальних землях.
+
+func _legends_cfg() -> Dictionary:
+	return cfg.get("legends", {})
+
+
+## Заселить странников: подальше от города, каждый начинает с отдыха.
+func _spawn_legends() -> void:
+	legends = []
+	_legend_id = 1
+	var lcfg := _legends_cfg()
+	if lcfg.is_empty():
+		return
+	for def in lcfg.get("defs", []):
+		var tile: Vector2i = map._walkable_random()
+		for attempt in 30:
+			tile = map._walkable_random()
+			if Vector2(tile).distance_to(Vector2(map.city_tile)) >= 12.0:
+				break
+		legends.append({"id": _legend_id, "def": def, "tile": tile,
+				"path": [], "state": "rest",
+				"target_poi": -1, "days_left": _rng.randi_range(1, 2),
+				"rumor_used": false})
+		_legend_id += 1
+
+
+## Дальние цели странников: незачищенные боевые точки вне «двора» города
+## (ближний данж остаётся игроку — гонка идёт за дальними).
+func _legend_targets() -> Array:
+	var keepout := float(_legends_cfg().get("city_keepout", 6))
+	var out: Array = []
+	for poi in map.pois:
+		if not is_combat_poi(poi) or int(poi["cleared_day"]) >= 0:
+			continue
+		if String(poi["kind"]) == "settlement":
+			continue
+		if Vector2(poi["tile"]).distance_to(Vector2(map.city_tile)) <= keepout:
+			continue
+		out.append(poi)
+	return out
+
+
+## Выбор цели: иногда город в гости, иначе дальний данж.
+func _pick_legend_target(l: Dictionary) -> void:
+	var lcfg := _legends_cfg()
+	var dest: Vector2i
+	if _rng.randf() < float(lcfg.get("visit_chance", 0.25)) or _legend_targets().is_empty():
+		l["target_poi"] = -2   # город
+		dest = map.city_tile
+	else:
+		var targets := _legend_targets()
+		var poi: Dictionary = targets[_rng.randi_range(0, targets.size() - 1)]
+		l["target_poi"] = int(poi["id"])
+		dest = poi["tile"]
+	l["path"] = map.tile_path(l["tile"], dest)
+	l["state"] = "travel"
+
+
+## День странника: отдых → путь → зачистка/гости → снова в путь.
+func _tick_legends() -> Array:
+	var out: Array = []
+	var lcfg := _legends_cfg()
+	var step_n := maxi(1, int(lcfg.get("move_tiles_per_day", 2)))
+	for l in legends:
+		match String(l["state"]):
+			"rest":
+				l["days_left"] = int(l["days_left"]) - 1
+				if int(l["days_left"]) <= 0:
+					_pick_legend_target(l)
+			"travel":
+				var path: Array = l["path"]
+				for i in step_n:
+					if path.size() > 1:
+						path.pop_at(0)
+				l["tile"] = path[0] if not path.is_empty() else l["tile"]
+				l["path"] = path
+				if path.size() <= 1:
+					if int(l["target_poi"]) == -2:
+						l["state"] = "visit"
+						l["days_left"] = int(lcfg.get("visit_days", 3))
+						l["tile"] = map.city_tile + Vector2i(1, 0)
+						out.append({"type": "legend_visit", "legend": String(l["def"]["loc"])})
+						_chron("chron.legend_visit", String(l["def"]["loc"]))
+					else:
+						var poi: Dictionary = map.poi_by_id(int(l["target_poi"]))
+						if poi.is_empty() or int(poi["cleared_day"]) >= 0:
+							# данж уже кто-то взял — странник передумал
+							l["state"] = "rest"
+							l["days_left"] = 1
+						else:
+							l["state"] = "clear"
+							var days: Array = lcfg.get("clear_days", [2, 3])
+							l["days_left"] = _rng.randi_range(int(days[0]), int(days[1]))
+			"clear":
+				l["days_left"] = int(l["days_left"]) - 1
+				if int(l["days_left"]) <= 0:
+					var poi2: Dictionary = map.poi_by_id(int(l["target_poi"]))
+					if not poi2.is_empty() and int(poi2["cleared_day"]) < 0:
+						poi2["cleared_day"] = day
+						var kind := String(poi2["kind"])
+						var key := kind if kind in ["camp", "ruins", "dragon_castle", "vampire_keep", "lich_tower"] else "dungeon"
+						poi2["strength"] = float(cfg.get("sim", {}).get("start_strength", {}).get(key, 5.0))
+						out.append({"type": "legend_cleared", "legend": String(l["def"]["loc"]),
+								"poi": kind})
+						_chron("chron.legend_cleared", String(l["def"]["loc"]), kind)
+					l["state"] = "rest"
+					var rd: Array = lcfg.get("rest_days", [2, 4])
+					l["days_left"] = _rng.randi_range(int(rd[0]), int(rd[1]))
+			"visit":
+				l["days_left"] = int(l["days_left"]) - 1
+				if int(l["days_left"]) <= 0:
+					l["state"] = "rest"
+					l["days_left"] = _rng.randi_range(1, 2)
+					l["rumor_used"] = false
+					out.append({"type": "legend_left", "legend": String(l["def"]["loc"])})
+	return out
+
+
+## Странник у ног героя ({} — нет): живой и не ушедший в город.
+func legend_near(hero_tile: Vector2i) -> Dictionary:
+	for l in legends:
+		if String(l["state"]) == "gone":
+			continue
+		if Vector2(l["tile"]).distance_to(Vector2(hero_tile)) <= 1.5:
+			return l
+	return {}
+
+
+## Позвать странника в город (сцена уже проверила место в городе).
+## Возвращает определение странника (def) или {}.
+func legend_invite(legend_id: int) -> Dictionary:
+	for l in legends:
+		if int(l["id"]) == legend_id:
+			l["state"] = "gone"
+			_chron("chron.legend_joined", String(l["def"]["loc"]))
+			return l["def"]
+	return {}
+
+
+## Спросить о дальних землях: открывает кусок карты (раз за визит).
+## Возвращает число открытых точек (0 — уже рассказывал).
+func legend_rumor(legend_id: int) -> int:
+	for l in legends:
+		if int(l["id"]) == legend_id:
+			if bool(l["rumor_used"]) or String(l["state"]) == "gone":
+				return 0
+			l["rumor_used"] = true
+			return map.reveal_far(2).size()
+	return 0
+
+
+# --- случайные встречи в пути (v1.22) ---------------------------------------
+# Путь больше не безопасен: на каждый день дороги бросок кубика. Бой (засада)
+# открывает сцену данжа, остальные встречи — выбор с эффектами.
+
+## Бросок дня пути: id встречи из конфига или "" (не случилось).
+func roll_encounter() -> String:
+	var ecfg: Dictionary = cfg.get("encounters", {})
+	if ecfg.is_empty() or _rng.randf() > float(ecfg.get("chance_per_day", 0.25)):
+		return ""
+	var kinds: Dictionary = ecfg.get("kinds", {})
+	var total := 0
+	for k in kinds:
+		total += int(kinds[k].get("w", 1))
+	if total <= 0:
+		return ""
+	var roll := _rng.randi_range(1, total)
+	for k in kinds:
+		roll -= int(kinds[k].get("w", 1))
+		if roll <= 0:
+			return String(k)
+	return ""
+
+
+## Раненый путник: помочь едой из пула города (+репутация торговцев).
+func encounter_help_wounded(pool: Dictionary) -> bool:
+	var k: Dictionary = cfg.get("encounters", {}).get("kinds", {}).get("wounded", {})
+	var cost := float(k.get("food_cost", 5))
+	if float(pool.get("food", 0.0)) < cost:
+		return false
+	pool["food"] = float(pool["food"]) - cost
+	add_rep("traders", float(k.get("rep", 8)))
+	return true
+
+
+## Схрон контрабандистов: монеты в кошель героя.
+func encounter_cache_coins() -> int:
+	var k: Dictionary = cfg.get("encounters", {}).get("kinds", {}).get("cache", {})
+	var range: Array = k.get("coins", [5, 15])
+	return _rng.randi_range(int(range[0]), int(range[1]))
+
+
+## Пепельная буря «напролом»: караван теряет долю еды.
+func encounter_storm_loss(pool: Dictionary) -> float:
+	var frac := float(cfg.get("encounters", {}).get("kinds", {}).get("storm", {}).get("food_frac", 0.1))
+	var loss: float = float(pool.get("food", 0.0)) * frac
+	pool["food"] = float(pool.get("food", 0.0)) - loss
+	return loss
+
+
+## Паломник культа: пожертвование монет за репутацию культа.
+func encounter_pilgrim_donate(coins: int) -> int:
+	var k: Dictionary = cfg.get("encounters", {}).get("kinds", {}).get("pilgrim", {})
+	var cost := int(k.get("coins_cost", 5))
+	if coins < cost:
+		return coins
+	add_rep("cult", float(k.get("rep", 10)))
+	return coins - cost
+
+
+## Засада: монеты за зачистку и масштаб лагеря (сцена данжа).
+func encounter_ambush_coins() -> int:
+	var k: Dictionary = cfg.get("encounters", {}).get("kinds", {}).get("ambush", {})
+	var range: Array = k.get("coins", [4, 10])
+	return _rng.randi_range(int(range[0]), int(range[1]))
+
+
+func encounter_ambush_scale() -> float:
+	return float(cfg.get("encounters", {}).get("kinds", {}).get("ambush", {}).get("scale", 0.7))
 
 
 # --- зачистка и осмотр локаций ---------------------------------------------

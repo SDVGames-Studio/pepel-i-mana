@@ -450,6 +450,7 @@ func place_road(tile: Vector2i) -> String:
 		return "no_stone"
 	res["stone"] = int(res["stone"]) - cost
 	map.set_road(tile, float(rcfg.get("astar_weight", 0.4)))
+	static_dirty = true   # новая плитка дороги — перевыпечь духовку (v1.22)
 	return ""
 
 
@@ -500,6 +501,7 @@ func _roll_auto_roads() -> void:
 
 ## Убрать тайл из его зоны (здание заняло клетку).
 func _drop_zone_cell(tile: Vector2i) -> void:
+	static_dirty = true   # земля менялась — перевыпечь духовку (v1.22)
 	for z in zones:
 		var idx: int = (z["cells"] as Array).find(tile)
 		if idx >= 0:

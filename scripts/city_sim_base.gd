@@ -125,6 +125,8 @@ var necro_army := 0             # тайная армия скелетов
 var necro_known := false        # некромантия раскрыта городу
 var necro_ghosts: Array = []    # ночные призывы у кладбища (для отрисовки): [px]
 var terrain_dirty := false      # ландшафт менялся (спил/посадка/выработка) — перерисовать слой
+var static_dirty := false       # земля менялась (зоны/дороги/плиты площади) — перевыпечь духовку (v1.22)
+var _winter_announced := false  # «зима близко» уже объявлено в этом предзимье (v1.22)
 var _raid_kind := "mutant"      # вид текущей волны: mutant | forest | undead
 var _forest_warned := false     # предупреждение «лес гневается» уже было
 var _forest_cooldown := 0.0     # время следующей атаки леса, сек
@@ -190,6 +192,7 @@ func setup(city_map, city_cfg: Dictionary, residents_count: int, level: String) 
 	necro_known = false
 	necro_ghosts = []
 	terrain_dirty = false
+	static_dirty = false
 	_raid_kind = "mutant"
 	_forest_warned = false
 	_forest_cooldown = 0.0
@@ -299,6 +302,7 @@ func move_plaza(tile: Vector2i) -> String:
 		if not building_at(c).is_empty():
 			return "city.plaza_bad_spot"
 	plaza = tile
+	static_dirty = true   # плиты площади переехали — перевыпечь духовку (v1.22)
 	_chron("chron.plaza_moved")
 	return ""
 

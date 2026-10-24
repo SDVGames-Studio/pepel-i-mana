@@ -69,7 +69,7 @@ func _ready() -> void:
 	view = load(VIEW_SCRIPT).new()
 	# статический ландшафт — отдельным слоем под динамикой (M9, 60 FPS)
 	_terrain = load("res://scripts/city_terrain.gd").new()
-	_terrain.setup(map, cfg)
+	_terrain.setup(map, cfg, sim)
 	add_child(_terrain)
 	view.setup(map, sim, cfg)
 	view.city = self
@@ -265,14 +265,19 @@ func _process(delta: float) -> void:
 	# болотная зона города (M14-I): тайлы у воды вязнут — герой медленнее
 	hero.city_speed_mult = 0.7 if _near_water(hero.position) else 1.0
 	# правки v1.21 (фризы/FPS): полная перерисовка ландшафта — событие редкое,
-	# но раньше рубка каждого дерева роняла кадр; теперь не чаще 2 раз/сек
-	if sim.terrain_dirty:
+	# но раньше рубка каждого дерева роняла кадр; теперь не чаще 2 раз/сек.
+	# v1.22: в духовке также зоны/дороги/плиты площади — sim.static_dirty
+	# (клетка зоны обустроена, дорога построена, площадь перенесена)
+	if sim.terrain_dirty or sim.static_dirty:
 		_terrain_redraw_accum += delta
 		if _terrain_redraw_accum >= 0.5:
 			_terrain_redraw_accum = 0.0
+			var trees_changed: bool = sim.terrain_dirty
 			sim.terrain_dirty = false
+			sim.static_dirty = false
 			_terrain.rebake()   # перевыпечь текстуру ландшафта (v1.21.5)
-			view.mark_trees_dirty()   # деревья ушли в сортированный слой (M12)
+			if trees_changed:
+				view.mark_trees_dirty()   # деревья ушли в сортированный слой (M12)
 	else:
 		_terrain_redraw_accum = 0.0
 	view.queue_redraw()
@@ -520,6 +525,12 @@ func _process_events() -> void:
 				hud.toast(Loc.t("city.golem_toast"))
 			"morning_plan":
 				hud.toast(Loc.t("city.morning_plan_toast"))
+			"winter_soon":
+				hud.toast(Loc.t("city.winter_soon") % int(ev["days"]))
+				hud.refresh()
+			"legend_joined":
+				hud.toast(Loc.t("world.legend_joined") % String(ev["name"]))
+				hud.refresh()
 			"hauled":
 				hud.toast(Loc.t("city.hauled_toast") % [String(ev["name"]), int(ev["n"]),
 						Loc.t("res." + String(ev["res"]))])

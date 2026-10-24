@@ -189,6 +189,34 @@ func season() -> String:
 	return String(seasons[int((day - 1) / days) % seasons.size()])
 
 
+## Дней до зимы (v1.22): город видит зиму заранее и готовит еду. Зимой
+## возвращает дни до СЛЕДУЮЩЕЙ зимы (большое число — готовиться рано).
+func days_to_winter() -> int:
+	var wcfg: Dictionary = _weather_cfg()
+	var per := maxi(1, int(wcfg.get("season_days", 12)))
+	var seasons: Array = wcfg.get("seasons", ["spring", "summer", "autumn", "winter"])
+	var wi := seasons.find("winter")
+	if wi < 0:
+		return 999
+	var cycle := per * seasons.size()
+	var in_cycle := (maxi(1, int(day)) - 1) % cycle
+	var left := wi * per - in_cycle
+	if left <= 0:
+		left += cycle
+	return left
+
+
+## Окно зимней готовности (v1.22): последние дни осени город собирает
+## урожай и строит фермы заранее — winter_prep_days из city.json.
+func winter_prep_window() -> int:
+	return maxi(1, int(cfg.get("farming", {}).get("winter_prep_days", 4)))
+
+
+## Зима на пороге: сейчас предзимнее окно (не сама зима).
+func winter_coming() -> bool:
+	return season() != "winter" and days_to_winter() <= winter_prep_window()
+
+
 ## Множитель полей: осень жирнее, зима глухая; дождь поливает, снег глушит.
 func crop_mult() -> float:
 	var wcfg: Dictionary = _weather_cfg()

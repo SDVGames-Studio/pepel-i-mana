@@ -8,3 +8,7 @@ build/
 # Система
 Thumbs.db
 .DS_Store
+
+# артефакты A/B-сравнения (tools/shot_city.gd SHOT_AB=1)
+tools/shot_ab_*.png
+tools/shot_ab_*.png.import
