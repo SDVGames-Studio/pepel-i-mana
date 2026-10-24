@@ -479,24 +479,27 @@ func work_mult(r: Dictionary) -> float:
 	return clampf(mult, 0.2, 3.0)
 
 
-# --- статы и прикладные навыки (v1.23) ---------------------------------------
+# --- статы и прикладные навыки (v1.23/v1.24) ----------------------------------
 ## Какие статы качает вид деятельности: физический труд — силу и выносливость,
-## ювелирный — ловкость, умственный — интеллект. Чем занимаешься — то и растёт.
+## ювелирный — ловкость, умственный — интеллект, волшебный — мудрость.
+## Чем занимаешься — то и растёт.
 const KIND_STATS := {
 	"lumberjack": ["str", "end"], "miner": ["str", "end"], "smelter": ["str", "end"],
 	"builder": ["str", "agi"], "warrior": ["str", "agi"], "guard": ["str", "agi"],
 	"farmer": ["end", "agi"], "porter": ["end", "agi"], "hunter": ["agi", "end"],
 	"fisher": ["agi", "end"], "crafter": ["agi", "int"], "armorer": ["agi", "int"],
-	"smith": ["str", "int"], "healer": ["int", "end"], "acolyte": ["int"],
-	"bartender": ["int"], "trader": ["int"], "elder": ["int"],
+	"smith": ["str", "int"], "healer": ["int", "wis"], "acolyte": ["int", "wis"],
+	"bartender": ["int"], "trader": ["int", "wis"], "elder": ["int", "wis"],
 }
 
 
-## Характеристики жителя (создаются по требованию — старые сейвы без них).
+## Характеристики жителя (создаются по требованию — старые сейвы без них;
+## v1.24: пять статов; заселёнцу без статов даём врождённый пул, голему — нули).
 func _stats(r: Dictionary) -> Dictionary:
 	var st: Dictionary = r.get("stats", {})
 	if st.is_empty():
-		st = {"str": 0.0, "agi": 0.0, "end": 0.0, "int": 0.0}
+		st = {"str": 0.0, "agi": 0.0, "end": 0.0, "int": 0.0, "wis": 0.0} if _is_golem(r) \
+				else _roll_start_stats()
 		r["stats"] = st
 	return st
 

@@ -14,13 +14,17 @@ func _test_v123_attributes() -> void:
 	r["traits"] = []
 	var day_len: float = float(sim.cfg["day_length"])
 	# 10 дней валить лес: растут «дровосек», сила и выносливость, но не ловкость
+	# (v1.24: у жителей врождённый пул статов — проверяем прирост, не абсолют)
+	var agi_before: float = float((r.get("stats", {}) as Dictionary).get("agi", 0.0))
+	var str_before: float = float((r.get("stats", {}) as Dictionary).get("str", 0.0))
+	var end_before: float = float((r.get("stats", {}) as Dictionary).get("end", 0.0))
 	sim._grow_skill(r, day_len * 10.0, "lumberjack")
 	_check(float((r.get("skills", {}) as Dictionary).get("lumberjack", 0.0)) > 4.0,
 			"10 дней рубки — дровосек почти мастер (%.1f)" % float((r.get("skills", {}) as Dictionary).get("lumberjack", 0.0)))
-	_check(float((r.get("stats", {}) as Dictionary).get("str", 0.0)) > 1.0,
-			"физический труд растит силу (%.1f)" % float((r.get("stats", {}) as Dictionary).get("str", 0.0)))
-	_check(float((r.get("stats", {}) as Dictionary).get("end", 0.0)) > 1.0, "…и выносливость")
-	_check(float((r.get("stats", {}) as Dictionary).get("agi", 0.0)) == 0.0,
+	_check(float((r.get("stats", {}) as Dictionary).get("str", 0.0)) > str_before + 1.0,
+			"физический труд растит силу (%.1f → %.1f)" % [str_before, float((r.get("stats", {}) as Dictionary).get("str", 0.0))])
+	_check(float((r.get("stats", {}) as Dictionary).get("end", 0.0)) > end_before + 1.0, "…и выносливость")
+	_check(absf(float((r.get("stats", {}) as Dictionary).get("agi", 0.0)) - agi_before) < 0.001,
 			"ловкость от рубки не растёт")
 	# интеллект ускоряет обучение
 	var smart: Dictionary = sim.residents[1]

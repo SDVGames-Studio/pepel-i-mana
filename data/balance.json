@@ -55,6 +55,18 @@
 		"cooldown": 4.0,
 		"damage_mult": 1.0
 	},
+	"hero_attributes": {
+		"_note": "статы героя v1.24: сила — урон (str_dmg за очко), выносливость — здоровье (end_hp), ловкость — броня и бег (agi_armor, agi_speed), интеллект — сила заклинаний (int_spell), мудрость — запас и реген маны (wis_mana, wis_regen). Рост от дел (train_* за действие), кап hero_cap. Существа: статы выводятся из их hp/урона, боссы — с множителем boss_mult сверх капы обычных жителей",
+		"start_each": 2.0,
+		"hero_cap": 20.0,
+		"str_dmg": 0.5, "end_hp": 2.0, "agi_armor": 0.25, "agi_speed": 1.5,
+		"int_spell": 0.04, "wis_mana": 1.0, "wis_regen": 0.02,
+		"train_kill_str": 0.25, "train_kill_agi": 0.15, "train_swing": 0.06,
+		"train_cast_int": 0.15, "train_cast_wis": 0.05, "train_mana_wis": 0.04,
+		"train_hurt_end": 0.1, "train_work_str": 0.1, "train_work_end": 0.05,
+		"enemy_dmg_per_str": 0.04, "enemy_dmg_per_int": 0.05,
+		"boss_mult": 2.2
+	},
 	"rewards": {
 		"coin_mult_per_nest_level": 0.25
 	},

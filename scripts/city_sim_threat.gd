@@ -1436,22 +1436,27 @@ func _buried_count() -> int:
 	return n
 
 
-## Ночной ритуал (дневной бросок): зов слышит один из жителей, только когда
-## на кладбище есть закопанный прах (легендарный случай); тьма растёт от
-## закопанных, армия — от ночных ритуалов некроманта (см. _necro_night_walk);
-## при достаточной армии — восстание.
+## Ночной ритуал (дневной бросок): зов слышит один из наименее мудрых жителей
+## (мудрость противится тьме, v1.24), только когда на кладбище есть закопанный
+## прах (легендарный случай); тьма растёт от закопанных, армия — только от
+## ночных ритуалов некроманта (см. _necro_night_walk) — без ритуалов мёртвые
+## не встанут. Исключение — тёмная буря: при storm_dark тьмы мёртвые
+## поднимаются и сами. Здание кладбища пассивно гасит тьму (_update_cemetery).
 func _roll_necro() -> void:
 	var ncfg: Dictionary = cfg.get("necro", {})
 	var cem := _cemetery()
 	if ncfg.is_empty() or cem.is_empty():
 		return
 	var buried := _buried_count()
-	# однажды кто-то из взрослых «слышит зов» и начинает тайные ритуалы
+	# однажды кто-то из взрослых «слышит зов»: мудрые противятся (v1.24)
 	if not _necro_chosen and buried >= 1 \
 			and _event_rng.randf() < float(ncfg.get("call_chance", 0.05)):
 		var cands := _adults()
+		cands.sort_custom(func(a, b) -> bool:
+			return _stat(a, "wis") < _stat(b, "wis"))
 		if not cands.is_empty():
-			var who: Dictionary = cands[_event_rng.randi_range(0, cands.size() - 1)]
+			# зов берёт одного из трёх наименее мудрых
+			var who: Dictionary = cands[_event_rng.randi_range(0, mini(2, cands.size() - 1))]
 			who["secret"] = "necromancer"
 			_necro_chosen = true
 			_chron("chron.necro_chosen", String(who["name"]))
@@ -1475,14 +1480,23 @@ func _roll_necro() -> void:
 			if t != Vector2i(-1, -1):
 				necro_ghosts.append(map.tile_center_px(t))
 		events.append({"type": "necro_summon"})
-	# тайная армия созрела — восстание
+	# тёмная буря (v1.24): тьма перелилась через край — мёртвые встают и без
+	# некроманта, буря спускает накопленную тьму
+	if not raid_active and necro_dark >= float(ncfg.get("storm_dark", 0.5)) \
+			and _event_rng.randf() < float(ncfg.get("storm_chance", 0.08)):
+		_spawn_undead_wave(clampi(buried, 2, int(ncfg.get("wave_max", 8))))
+		events.append({"type": "dark_storm"})
+		_chron("chron.dark_storm")
+		necro_dark = clampf(necro_dark - 0.25, 0.0, 1.0)
+	# тайная армия созрела — восстание (армия растёт только от ритуалов)
 	if necro_army >= int(ncfg.get("rise_at", 8)):
 		_spawn_undead_wave()
 
 
 ## Ночной путь некроманта (v1.23): крадётся к могилам, режется над прахом
-## и возвращается к рассвету. Увидит бодрствующий житель или герой — тайна
-## раскрыта. False — некромант этой ночью спит как все.
+## и возвращается к рассвету. Поймать можно ТОЛЬКО на кладбище — в пути он
+## тень среди теней (v1.24): разоблачение лишь пока длится ритуал.
+## False — некромант этой ночью спит как все.
 func _necro_night_walk(r: Dictionary, dt: float) -> bool:
 	if raid_active or _raid_warned or _is_golem(r):
 		return false
@@ -1496,10 +1510,6 @@ func _necro_night_walk(r: Dictionary, dt: float) -> bool:
 		r["necro_phase"] = "go"
 		r["necro_study"] = 0.0
 		phase = "go"
-	if phase != "rite":
-		if _necro_seen(r):
-			_necro_caught(r)
-			return true
 	if phase == "go":
 		var goal: Vector2i = map.nearest_walkable(Vector2i(cem["tile"]))
 		if not _arrived(r, goal):
@@ -1510,6 +1520,7 @@ func _necro_night_walk(r: Dictionary, dt: float) -> bool:
 		r["necro_phase"] = "rite"
 		phase = "rite"
 	if phase == "rite":
+		# только здесь, у могил, его можно увидеть (v1.24)
 		if _necro_seen(r):
 			_necro_caught(r)
 			return true
@@ -1560,6 +1571,21 @@ func _necro_seen(r: Dictionary) -> bool:
 	return hero_alive and hero_pos.distance_to(r["pos"]) <= radius
 
 
+## Скрыт ли некромант от смотрящего (v1.24): на кладбище ночная тьма прячет
+## его — пока не подойти на hidden_radius клеток (4), он не виден вовсе.
+func necro_hidden_from(r: Dictionary, viewer_px: Vector2) -> bool:
+	if String(r.get("secret", "")) != "necromancer":
+		return false
+	var cem := _cemetery()
+	if cem.is_empty():
+		return false
+	var at_cem: float = Vector2(r["pos"]).distance_to(map.tile_center_px(Vector2i(cem["tile"])))
+	if at_cem > float(map.ts) * 2.5:
+		return false   # прячет только кладбище
+	var radius := float(cfg.get("necro", {}).get("hidden_radius", 4.0)) * float(map.ts)
+	return viewer_px.distance_to(r["pos"]) > radius
+
+
 ## Некроманта увидели (v1.23): тайна раскрыта, городу не по себе.
 func _necro_caught(r: Dictionary) -> void:
 	r["necro_phase"] = ""
@@ -1572,7 +1598,9 @@ func _necro_caught(r: Dictionary) -> void:
 
 
 ## Восстание (M11): мертвецы выходят из кладбища, армия тает вдвое.
-func _spawn_undead_wave() -> void:
+## v1.24: storm_size >= 0 — волна тёмной бури (мёртвые встают сами,
+## по числу закопанных могил; тайная армия некроманта не тратится).
+func _spawn_undead_wave(storm_size := -1) -> void:
 	var ncfg: Dictionary = cfg.get("necro", {})
 	var cem := _cemetery()
 	if cem.is_empty():
@@ -1590,8 +1618,10 @@ func _spawn_undead_wave() -> void:
 	raid_active = true
 	raid_siege = true
 	_raid_kind = "undead"
-	var size := mini(necro_army, int(ncfg.get("wave_max", 8)))
-	necro_army = int(necro_army / 2)
+	var size := clampi(storm_size, 1, int(ncfg.get("wave_max", 8))) if storm_size >= 0 \
+			else mini(necro_army, int(ncfg.get("wave_max", 8)))
+	if storm_size < 0:
+		necro_army = int(necro_army / 2)
 	var hp_mult := 1.0 + threat_value() * float(cfg.get("threat", {}).get("hp_per_threat", 0.04))
 	var anchor: Vector2i = cem["tile"]
 	for i in size:
