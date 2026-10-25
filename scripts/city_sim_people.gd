@@ -9,6 +9,7 @@ extends "res://scripts/city_sim_build.gd"
 ## M4-подмена: если по профессии никого нет, свободный житель замещает (и учится),
 ## а держатель подмены возвращается на свою профессию, когда она понадобилась.
 func _assign_jobs() -> void:
+	_workers_ver += 1   # назначения меняются — кэш таверны устарел (v1.26)
 	var taken := {}   # id жителя -> занят
 	for r in residents:
 		if r["bld"] != null or r["site"] != null:

@@ -176,6 +176,7 @@ func _spot_name(spot: Dictionary) -> String:
 
 ## Снять все рабочие назначения (утро — новый план).
 func _reset_assignments() -> void:
+	_workers_ver += 1   # v1.26: кэш таверны устарел
 	for r in residents:
 		if r["bld"] != null:
 			(r["bld"] as Dictionary)["worker"] = -1
@@ -198,6 +199,7 @@ func _taken_by(b: Dictionary) -> bool:
 
 ## Назначить жителя на место (одно назначение на жителя).
 func _assign_spot(r: Dictionary, spot: Dictionary, note: String) -> void:
+	_workers_ver += 1   # v1.26: кэш таверны устарел
 	if r["bld"] != null and r["bld"] != spot["bld"]:
 		(r["bld"] as Dictionary)["worker"] = -1
 	if r["site"] != null and r["site"] != spot["bld"]:

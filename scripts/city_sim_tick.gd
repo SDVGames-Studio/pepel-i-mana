@@ -49,7 +49,6 @@ func tick(dt_raw: float) -> void:
 	for b in buildings:
 		if float(b.get("stun_left", 0.0)) > 0.0:
 			b["stun_left"] = maxf(0.0, float(b["stun_left"]) - dt)
-	_update_gates()
 	_update_wild_events(pol_cfg, day_len)
 	_update_storm(dt, day_len)
 	_update_threat(dt, day_len)
@@ -97,7 +96,7 @@ func tick(dt_raw: float) -> void:
 		_roll_weather()   # погода и сезоны (M14-J)
 		_roll_quests()   # доска объявлений (M14-K)
 		_roll_story()   # сюжетная рамка (M14-L)
-	_update_gates()   # достроенные за тик вышки/ворота сразу меняют проходимость
+	_update_gates()   # один скан за тик: страж/стройка/волна меняют створки сразу
 
 
 ## Дикие события (ответ №61): при переборе загрязнения (>= band_wild) раз в день
@@ -1239,10 +1238,24 @@ func _arrived(r: Dictionary, tile: Vector2i) -> bool:
 
 func _move_towards(r: Dictionary, tile: Vector2i, dt: float) -> void:
 	r["state"] = "going"
-	if r["target"] != tile:
-		r["target"] = tile
-		r["path"] = map.path_px(r["pos"], tile)
 	var path: PackedVector2Array = r["path"]
+	# v1.26 (FPS в осаду): полный A* дорог, а цели у догоняющих (охотник за
+	# зверем, ополченец за мутантом) мельтешат каждый тик — новая цель сначала
+	# доигрывается по старому пути (repath_gap), пустой путь (замуровали)
+	# пересчитывается по таймеру empty_retry: снесённая стена выпускает жителя
+	var pcfg: Dictionary = cfg.get("pathing", {})
+	if r["target"] != tile:
+		var cd := float(r.get("_repath_cd", 0.0)) - dt
+		r["_repath_cd"] = cd
+		if path.is_empty() or cd <= 0.0:
+			r["target"] = tile
+			r["path"] = map.path_px(r["pos"], tile)
+			r["_repath_cd"] = float(pcfg.get("repath_gap", 0.3))
+			path = r["path"]
+	elif path.is_empty() and time >= float(r.get("_repath_at", 0.0)):
+		r["path"] = map.path_px(r["pos"], tile)
+		r["_repath_at"] = time + float(pcfg.get("empty_retry", 1.0))
+		path = r["path"]
 	if path.is_empty():
 		# страховка: замурован на сплошном тайле (стену достроили под ногами)
 		var here: Vector2i = map.tile_of_px(r["pos"])

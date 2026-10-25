@@ -31,7 +31,8 @@ var bridges := {}               # Vector2i -> true: мосты через вод
 var anomaly_tile := Vector2i.ZERO   # вход в данж (у аномалии)
 var spawn_tile := Vector2i.ZERO     # старт героя и жителей
 var world_exit_tile := Vector2i.ZERO  # край города — выход на карту мира (M8)
-var astar: AStarGrid2D = null
+var astar: AStarGrid2D = null         # пути жителей/героя: ворота всегда проходимы
+var astar_raider: AStarGrid2D = null  # пути мутантов: закрытые ворота — стена (v1.26)
 
 
 ## Генерация по seed: детерминированная, связная (от старта достижимы все проходимые тайлы).
@@ -65,14 +66,18 @@ func mark_terrain_solid() -> void:
 		return
 	for y in h:
 		for x in w:
-			astar.set_point_solid(Vector2i(x, y), not is_nature_walkable(Vector2i(x, y)))
+			var solid := not is_nature_walkable(Vector2i(x, y))
+			astar.set_point_solid(Vector2i(x, y), solid)
+			astar_raider.set_point_solid(Vector2i(x, y), solid)
 
 
 ## Пересчитать сплошность одной клетки после изменения рельефа
 ## (мост построен, скала выработана, вскрыта руда).
 func refresh_tile_solid(p: Vector2i) -> void:
 	if astar != null and in_bounds(p):
-		astar.set_point_solid(p, not is_nature_walkable(p))
+		var solid := not is_nature_walkable(p)
+		astar.set_point_solid(p, solid)
+		astar_raider.set_point_solid(p, solid)
 
 
 func _generate_once(seed_value: int, params: Dictionary) -> void:
@@ -242,21 +247,47 @@ func is_nature_walkable(p: Vector2i) -> bool:
 
 
 func _setup_astar() -> void:
-	astar = AStarGrid2D.new()
-	astar.region = Rect2i(0, 0, w, h)
-	astar.cell_size = Vector2(ts, ts)
-	astar.diagonal_mode = AStarGrid2D.DIAGONAL_MODE_NEVER
-	astar.update()
+	astar = _new_astar()
+	astar_raider = _new_astar()
+
+
+## Свежая сетка A* с общими настройками карты (v1.26: сеток две — своя и мутантов).
+func _new_astar() -> AStarGrid2D:
+	var g := AStarGrid2D.new()
+	g.region = Rect2i(0, 0, w, h)
+	g.cell_size = Vector2(ts, ts)
+	g.diagonal_mode = AStarGrid2D.DIAGONAL_MODE_NEVER
+	g.update()
+	return g
 
 
 ## Полная проходимость: ландшафт + построенные здания-преграды (частокол).
+## Ворота сознательно НЕ сплошные: для своих это дверь (v1.26, заказчик —
+## закрытые ворота не должны запирать жителей и героя).
 func is_walkable(p: Vector2i) -> bool:
 	return is_nature_walkable(p) and not (astar != null and astar.is_point_solid(p))
 
 
-## Пометить тайл непроходимым (поставлен частокол) — для путей жителей.
+## Проходимость для мутантов: как is_walkable, но закрытые ворота — стена.
+func is_raider_walkable(p: Vector2i) -> bool:
+	if not is_nature_walkable(p):
+		return false
+	return not (astar_raider != null and astar_raider.is_point_solid(p))
+
+
+## Пометить тайл непроходимым (поставлен частокол) — в обеих сетках.
 func set_solid(p: Vector2i, solid: bool) -> void:
-	astar.set_point_solid(p, solid)
+	if astar != null:
+		astar.set_point_solid(p, solid)
+	if astar_raider != null:
+		astar_raider.set_point_solid(p, solid)
+
+
+## Ворота для мутантов: closed=true — заперты (стена), false — открыты.
+## Сетка своих ворот не видит вовсе (см. is_walkable).
+func set_gate_solid(p: Vector2i, solid: bool) -> void:
+	if astar_raider != null and in_bounds(p):
+		astar_raider.set_point_solid(p, solid)
 
 
 ## Проложить дорогу (M6): тайл в слое дорог и «дешевле» для поиска пути.
@@ -264,6 +295,8 @@ func set_road(p: Vector2i, weight := 0.4) -> void:
 	road[p] = true
 	if astar != null:
 		astar.set_point_weight_scale(p, weight)
+	if astar_raider != null:
+		astar_raider.set_point_weight_scale(p, weight)
 
 
 ## Убрать дорогу (под зданием) — вес тайла возвращается к обычному.
@@ -271,6 +304,8 @@ func remove_road(p: Vector2i) -> void:
 	road.erase(p)
 	if astar != null:
 		astar.set_point_weight_scale(p, 1.0)
+	if astar_raider != null:
+		astar_raider.set_point_weight_scale(p, 1.0)
 
 
 func has_road(p: Vector2i) -> bool:
@@ -283,11 +318,13 @@ func add_wear(p: Vector2i, amount: float) -> void:
 
 
 ## Путь между тайлами в пиксельных центрах; пустой, если цели нет.
-func path_px(from_px: Vector2, to_tile: Vector2i) -> PackedVector2Array:
+## for_raider — путь мутанта: закрытые ворота для него сплошные (v1.26).
+func path_px(from_px: Vector2, to_tile: Vector2i, for_raider := false) -> PackedVector2Array:
 	var from_tile := Vector2i(from_px / ts)
 	if not in_bounds(from_tile) or not in_bounds(to_tile) or not is_walkable(to_tile):
 		return PackedVector2Array()
-	var ids := astar.get_id_path(from_tile, to_tile)
+	var grid := astar_raider if for_raider else astar
+	var ids := grid.get_id_path(from_tile, to_tile)
 	var points := PackedVector2Array()
 	for id: Vector2i in ids:
 		points.append(Vector2(id.x * ts + ts / 2.0, id.y * ts + ts / 2.0))

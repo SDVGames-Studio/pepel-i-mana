@@ -234,8 +234,11 @@ func _nearest_raider(from_px: Vector2, radius_px: float) -> Dictionary:
 	return best
 
 
-## ИИ мутанта: герой рядом — дерётся с героем; здание в досягаемости — ломает;
-## путь к центру открыт — идёт; заперт стеной — идёт к ближайшей стене/воротам.
+## ИИ мутанта: герой рядом и достижим — дерётся с героем; здание в досягаемости —
+## ломает; путь к центру открыт — идёт; заперт стеной — идёт к ближайшей стене/воротам.
+## v1.26 (правки приёмки): герой за стеной больше не «прилипает» мутанта к месту —
+## без пути до героя ИИ проваливается к преградам и ломает их; пустой путь
+## пересчитывается по таймеру — разрушенная стена выпускает волну.
 ## M11: духи леса в режиме «hunt» гонятся за своей жертвой (лесорубом/каменотёсом).
 ## Возвращает false, если мутант погиб или волне нечего делать (убрать из списка).
 func _raider_update(r: Dictionary, dt: float, tcfg: Dictionary) -> bool:
@@ -246,21 +249,23 @@ func _raider_update(r: Dictionary, dt: float, tcfg: Dictionary) -> bool:
 	if String(r.get("mode", "")) == "hunt":
 		return _spirit_update(r, dt)
 	# герой в городе и рядом — мутант отвлекается на чемпиона (путь как у жителей:
-	# напрямую он резал бы углы сквозь скалы — заказчик видел проходы насквозь)
+	# напрямую он резал бы углы сквозь скалы — заказчик видел проходы насквозь);
+	# путь к герою закрыт стеной — мутант не толчётся у стены, а ломает её
 	if hero_alive:
 		var to_hero: Vector2 = hero_pos - (r["pos"] as Vector2)
-		if to_hero.length() <= float(p["aggro"]):
-			if to_hero.length() <= float(p["attack_range"]) + 12.0:
+		var hero_d: float = to_hero.length()
+		if hero_d <= float(p["aggro"]):
+			if hero_d <= float(p["attack_range"]) + 12.0:
 				if float(r["atk_cd"]) <= 0.0:
 					r["atk_cd"] = float(p["attack_cooldown"])
 					events.append({"type": "hero_hit", "dmg": int(p["damage"])})
-			else:
-				_raider_move_to(r, map.tile_of_px(hero_pos), float(p["speed"]) * dt)
-			return true
+				return true
+			if _raider_move_to(r, map.tile_of_px(hero_pos), float(p["speed"]) * dt):
+				return true
 	var reach := float(p["attack_range"]) + float(map.ts) * 0.5
 	# здание в пределах досягаемости — крушим (иначе осцилляция «центр ↔ стена»:
 	# обходной путь всегда существует, и мутант ни разу не ударит)
-	var near := _nearest_building_of(r, [])
+	var near := _raider_near_building(r)
 	if not near.is_empty() and bld_dist_px(r["pos"], near) <= reach:
 		if float(r["atk_cd"]) <= 0.0:
 			r["atk_cd"] = float(p["attack_cooldown"])
@@ -268,12 +273,36 @@ func _raider_update(r: Dictionary, dt: float, tcfg: Dictionary) -> bool:
 			if _damage_building(near, float(p["damage"]) * mult):
 				razed_this_raid += 1
 		return true
-	# путь к центру открыт — идём
-	var path: PackedVector2Array = map.path_px(r["pos"], map.spawn_tile)
-	if path.size() > 1:
-		_raider_move_to(r, map.spawn_tile, float(p["speed"]) * dt)
+	# путь к центру открыт — идём (проверка не каждый тик: A* по обнесённой
+	# стенами карте дорог — так держим FPS и в осаду, правки приёмки v1.26)
+	r["_center_cd"] = float(r.get("_center_cd", 0.0)) - dt
+	if float(r["_center_cd"]) <= 0.0:
+		r["_center_cd"] = 0.4
+		r["_center_open"] = map.path_px(r["pos"], map.spawn_tile, true).size() > 1
+	if bool(r.get("_center_open", false)) \
+			and _raider_move_to(r, map.spawn_tile, float(p["speed"]) * dt):
 		return true
 	# заперты в кольце: идём ломать ближайшую стену или ворота
+	return _raider_break_obstacle(r, dt, p, near)
+
+
+## Ближайшее к мутанту действующее здание (кэш на _near_gap секунд: скан всех
+## зданий каждый тик всей волной — заметная цена на большой карте).
+func _raider_near_building(r: Dictionary) -> Dictionary:
+	var b: Dictionary = r.get("_near_bld", {})
+	if not b.is_empty() and _active(b):
+		return b
+	if time < float(r.get("_near_at", 0.0)):
+		return {}
+	b = _nearest_building_of(r, [])
+	r["_near_bld"] = b
+	r["_near_at"] = time + 0.25
+	return b
+
+
+## Мутант заперт: идёт к ближайшей стене/воротам и ломает их.
+## False — ломать нечего (города нет), true — занят преградой.
+func _raider_break_obstacle(r: Dictionary, dt: float, p: Dictionary, near: Dictionary) -> bool:
 	var b := _nearest_building_of(r, ["wall", "gate"])
 	if b.is_empty():
 		b = near
@@ -288,13 +317,33 @@ func _raider_update(r: Dictionary, dt: float, tcfg: Dictionary) -> bool:
 
 ## Движение мутанта по кэшированному пути (как у жителей): без кэша путь
 ## перестраивается каждый тик и мутант дёргается на границе тайла на месте.
-func _raider_move_to(r: Dictionary, tile: Vector2i, step: float) -> void:
+## v1.26: пустой путь пересчитывается по таймеру (раз в полсекунды) — стены
+## рушатся, ворота отпираются, и волна продолжает путь, а не встаёт навсегда.
+## Возвращает false, если пути нет (замурован) — ИИ переключается на преграду.
+func _raider_move_to(r: Dictionary, tile: Vector2i, step: float) -> bool:
+	var path: PackedVector2Array = r["path"]
 	if r["target"] != tile:
 		r["target"] = tile
-		r["path"] = map.path_px(r["pos"], tile)
-	var path: PackedVector2Array = r["path"]
+		r["path"] = map.path_px(r["pos"], tile, true)
+		path = r["path"]
+	elif path.is_empty() and time >= float(r.get("_repath_at", 0.0)):
+		r["path"] = map.path_px(r["pos"], tile, true)
+		r["_repath_at"] = time + 0.5
+		path = r["path"]
+	var here: Vector2i = map.tile_of_px(r["pos"])
+	if here == tile:
+		r["path"] = PackedVector2Array()
+		return true   # пришли
 	if path.is_empty():
-		return
+		# стоит на сплошном для мутантов тайле (ворота заперли под ногами,
+		# стену достроили) — сходит на ближайшую свободную клетку
+		if not map.is_raider_walkable(here):
+			var free := _nearest_raider_walkable(here)
+			if free != Vector2i(-1, -1):
+				r["pos"] = map.tile_center_px(free)
+				r["target"] = Vector2i(-1, -1)
+				r["path"] = PackedVector2Array()
+		return false
 	var pos: Vector2 = r["pos"]
 	while step > 0.0 and not path.is_empty():
 		var to_next: Vector2 = path[0] - pos
@@ -308,6 +357,20 @@ func _raider_move_to(r: Dictionary, tile: Vector2i, step: float) -> void:
 			step = 0.0
 	r["pos"] = pos
 	r["path"] = path
+	return true
+
+
+## Ближайшая клетка, проходимая для мутантов (спираль до радиуса 3).
+func _nearest_raider_walkable(tile: Vector2i) -> Vector2i:
+	for radius in range(1, 4):
+		for dy in range(-radius, radius + 1):
+			for dx in range(-radius, radius + 1):
+				if maxi(absi(dx), absi(dy)) != radius:
+					continue
+				var n: Vector2i = tile + Vector2i(dx, dy)
+				if map.is_raider_walkable(n):
+					return n
+	return Vector2i(-1, -1)
 
 
 ## Ближайшее к мутанту готовое здание с эффектом из wanted (пустой — любое).
@@ -968,7 +1031,8 @@ func _spirit_spawn_px(victim: Dictionary) -> Vector2:
 
 
 ## Охота духа (M11): догоняет свою жертву, ранит и пугает; без жертвы —
-## ломает лесопилку, а если и её нет — растворяется.
+## ломает лесопилку, а если и её нет — растворяется. v1.26: жертва за стеной —
+## дух ломает преграду, а не толчётся у неё до рассвета.
 func _spirit_update(r: Dictionary, dt: float) -> bool:
 	var p: Dictionary = r["p"]
 	var vic := _resident_by_id(int(r.get("victim_id", -1)))
@@ -983,8 +1047,9 @@ func _spirit_update(r: Dictionary, dt: float) -> bool:
 				else:
 					vic["mood"] = clampf(float(vic["mood"]) - 12.0, 0.0, 100.0)
 			return true
-		_raider_move_to(r, map.tile_of_px(vic["pos"]), float(p["speed"]) * dt)
-		return true
+		if _raider_move_to(r, map.tile_of_px(vic["pos"]), float(p["speed"]) * dt):
+			return true
+		return _raider_break_obstacle(r, dt, p, _nearest_building_of(r, ["wall", "gate"]))
 	# жертвы нет: мстим лесопилке или растворяемся
 	r["ttl"] = float(r.get("ttl", 30.0)) - dt
 	if float(r["ttl"]) <= 0.0:

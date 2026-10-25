@@ -355,7 +355,9 @@ func is_gate_open(gate: Dictionary) -> bool:
 	return bool(_gate_state.get(str(gate["id"]), false))
 
 
-## При смене состояния — тайл ворот становится проходимым или стеной.
+## При смене состояния ворота запираются или отпираются ДЛЯ МУТАНТОВ
+## (v1.26): для жителей и героя ворота — дверь, они проходят всегда;
+## закрытые ворота для мутантов — стена, которую те ломают.
 func _update_gates() -> void:
 	for b in buildings:
 		if not _active(b) or _def(b).get("effect", "") != "gate":
@@ -364,7 +366,7 @@ func _update_gates() -> void:
 		var key := str(b["id"])
 		if not _gate_state.has(key) or bool(_gate_state[key]) != open:
 			_gate_state[key] = open
-			map.set_solid(b["tile"], not open)
+			map.set_gate_solid(b["tile"], not open)
 			events.append({"type": "gate", "open": open})
 
 
@@ -600,6 +602,8 @@ func resident_color(r: Dictionary) -> Color:
 
 
 ## Настроение плывёт к целевому: черты + загрязнение + потребности + события.
+## v1.26: сканы зданий (декор, таверна) кэшируются внутри своих функций —
+## раньше каждый житель каждый тик сканировал все здания, что роняло FPS.
 func _mood_target(r: Dictionary) -> float:
 	var target: float = float(people.get("mood_base", 50.0))
 	target += _trait_sum(r, "mood", 0.0)
@@ -796,12 +800,27 @@ func _tavern_surplus() -> bool:
 	return float(res["food"]) > reserve + 1.0
 
 
-func tavern_active() -> bool:
-	var tcfg: Dictionary = cfg.get("tavern", {})
+## Работающая таверна (заказчик). v1.26: скан зданий кэшируется по версии
+## списка/назначений — таверну спрашивает _mood_target каждому жителю каждый тик.
+var _tavern_staffed_cache := false
+var _tavern_ver := ""
+
+func _tavern_staffed() -> bool:
+	var ver := "%d|%d" % [_bld_ver, _workers_ver]
+	if ver == _tavern_ver:
+		return _tavern_staffed_cache
+	var staffed := false
 	for b in buildings:
 		if b["done"] and _def(b).get("effect", "") == "tavern" and int(b["worker"]) > 0:
-			return _tavern_surplus()
-	return false
+			staffed = true
+			break
+	_tavern_staffed_cache = staffed
+	_tavern_ver = ver
+	return staffed
+
+
+func tavern_active() -> bool:
+	return _tavern_staffed() and _tavern_surplus()
 
 
 ## Работающая таверна пьёт только ИЗЛИШКИ еды сверх дневного запаса (просьба заказчика).

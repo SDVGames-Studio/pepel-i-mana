@@ -751,12 +751,24 @@ func layout_mult(bld: Dictionary) -> float:
 
 
 ## Комфорт от готового декора (сад, статуя — ответ №18) с потолком.
+## v1.26: кэш по версии списка зданий — декор зовётся из _mood_target каждому
+## жителю каждый тик, а скан всех зданий и был убийцей FPS большого города.
+var _decor_mood_cache := 0.0
+var _decor_mood_ver := -1
+var _decor_mood_cap := -1.0
+
 func decor_mood() -> float:
+	var cap := float(cfg.get("decor_mood_max", 20.0))
+	if _decor_mood_ver == _bld_ver and is_equal_approx(_decor_mood_cap, cap):
+		return _decor_mood_cache
 	var total := 0.0
 	for b in buildings:
 		if _active(b) and _def(b).get("effect", "") == "decor":
 			total += float(_def(b).get("mood", 0.0))
-	return minf(total, float(cfg.get("decor_mood_max", 20.0)))
+	_decor_mood_cache = minf(total, cap)
+	_decor_mood_ver = _bld_ver
+	_decor_mood_cap = cap
+	return _decor_mood_cache
 
 
 ## Прибавить загрязнение (дикая магия в данже тоже — город в том же регионе).

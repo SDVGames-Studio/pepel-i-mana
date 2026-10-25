@@ -103,6 +103,12 @@ const BLOCKS := [
 		"_test_v124_dark_storm",
 		"_test_v124_necro_stealth",
 	]],
+	["res://tests/test_v126.gd", [
+		"_test_v126_gates",
+		"_test_v126_raiders_walls",
+		"_test_v126_cemetery",
+		"_test_v126_fps",
+	]],
 ]
 
 

@@ -176,8 +176,9 @@ func _spawn_hero() -> void:
 	hero.set_camera_limits(Rect2(0, 0, map.w * map.ts, map.h * map.ts))
 
 
-## Коллизии героя: вода, скалы и все готовые здания (открытые ворота проходимы;
-## руины — обломки, герой проходит сквозь них; этап 2, аспект 5).
+## Коллизии героя: вода, скалы и все готовые здания. Ворота — дверь:
+## герой и жители проходят всегда, запираются ворота только для мутантов
+## (v1.26, правка приёмки); руины — обломки, герой проходит сквозь них.
 func _rebuild_collision() -> void:
 	for child in _static_body.get_children():
 		child.queue_free()
@@ -190,8 +191,8 @@ func _rebuild_collision() -> void:
 					blocked[Vector2i(x, y)] = true
 	for b in sim.buildings:
 		if sim._active(b):
-			if _bld_effect(b) == "gate" and sim.is_gate_open(b):
-				continue
+			if _bld_effect(b) == "gate":
+				continue   # ворота проходимы для героя всегда (v1.26)
 			if _bld_effect(b) == "bridge":
 				continue
 			# здание 2×2: сплошной весь прямоугольник (этап 2, аспект 2)
@@ -541,7 +542,7 @@ func _process_events() -> void:
 				hud.refresh()
 			"gate":
 				hud.toast(Loc.t("city.gate_open" if bool(ev["open"]) else "city.gate_closed"))
-				_rebuild_collision()
+				# коллизии ворот не меняются (для героя ворота — дверь, v1.26)
 			"skill_up":
 				hud.toast(Loc.t("city.skill_up_toast") % [String(ev["name"]), Loc.t("skill." + String(ev["rank"]))])
 			"quarrel":
