@@ -404,13 +404,14 @@ func _test_city_sim() -> void:
 			"руна осталась в рюкзаке (нужна для M3)")
 	_check(float(sim.res["stone"]) == stone_before + 5.0, "камень в пуле вырос на 5")
 
-	# переполнение хранилища: излишек остаётся в рюкзаке
+	# накопление без лимита (v1.25): даже «переполненный» пул принимает всё,
+	# рюкзак опустошается целиком
 	var sim3 := _make_sim()
-	sim3.res["stone"] = float(sim3.storage_cap())
+	sim3.res["stone"] = float(sim3.storage_cap()) + 100.0
 	var full_inv: Array = [{"id": "stone_chip", "count": 10}]
 	var added3: Dictionary = sim3.deposit_loot(full_inv)
-	_check(int(added3.get("stone", 0)) == 0, "полное хранилище не принимает камень")
-	_check(full_inv.size() == 1 and int(full_inv[0]["count"]) == 10, "излишек остался в рюкзаке")
+	_check(int(added3.get("stone", 0)) == 10, "пул без лимита принимает камень сверх любого потолка")
+	_check(full_inv.is_empty(), "рюкзак опустошён целиком — излишка не осталось")
 
 	# алтарь маны: маг-ученик даёт благословение (петля: данж -> кристаллы -> буст)
 	var sim4 := _make_sim()
