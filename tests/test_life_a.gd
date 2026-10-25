@@ -258,24 +258,16 @@ func _test_m12() -> void:
 		sim2.tick(5.0)
 	_check(String(c["state"]) != "gather",
 			"во время предупреждения житель не сидит у костра — работает (%s)" % String(c["state"]))
-	# трус: прячется только когда волна реально пришла
+	# трус: на предупреждении тоже работает (прячется лишь когда волна
+	# реально пришла — это проверяется в test_threat)
 	var coward2 := _add_resident(sim2, "Трус", "farmer")
-	coward2["traits"] = [{"id": "coward", "weight": 1, "grief_mult": 1.5, "flees": true}]
+	coward2["traits"] = ["coward"]
 	coward2["state"] = "idle"
 	_teleport(sim2, coward2, sim2.map.spawn_tile)
-	sim2._raid_warned = false
-	sim2.raid_active = false
 	sim2.tick(1.0)
 	_check(String(coward2["state"]) != "hide",
-			"на предупреждении трус ещё не прячется")
-	sim2._raid_warned = false
-	sim2.raid_active = true
-	sim2.raiders = []   # волна «в пути» — трус уже дома
-	sim2.tick(1.0)
-	_check(String(coward2["state"]) == "hide" or String(coward2["state"]) == "going",
-			"с приходом волны трус прячется домой (%s)" % String(coward2["state"]))
-	sim2.raid_active = false
-	sim2.raiders = []
+			"на предупреждении трус ещё не прячется — работает (%s)" % String(coward2["state"]))
+	sim2._raid_warned = false   # дальше — мирные проверки
 	# похороны: кладбище, смерть жителя → процессия и могилка
 	# v1.23: горожане выбирают обряд — бог «Дом» велит хоронить в землю,
 	# иначе 25% уходит на погребальный костёр (2 дня, проверяется в v123)
