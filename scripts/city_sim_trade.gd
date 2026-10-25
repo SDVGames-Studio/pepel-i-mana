@@ -94,12 +94,9 @@ func market_buy(key: String, count: int) -> String:
 	var cost := int(ceilf(price * float(count)))
 	if coins_source.is_valid() and int(coins_source.call()) < cost:
 		return "no_coins"
-	var free := float(storage_cap()) - float(res.get(key, 0.0))
-	var add := minf(float(count), maxf(0.0, free))
-	if add <= 0.0:
-		return "storage_full"
-	res[key] = float(res.get(key, 0.0)) + add
-	Game_coins_add(-int(ceilf(price * add)))
+	# накопление без лимита (заказчик, 2026-10-25)
+	res[key] = float(res.get(key, 0.0)) + float(count)
+	Game_coins_add(-int(ceilf(price * float(count))))
 	return ""
 
 

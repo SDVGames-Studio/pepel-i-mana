@@ -182,69 +182,33 @@ func _test_m6() -> void:
 	sim_c._roll_auto_roads()
 	_check(not sim_c.map.has_road(ctile), "без старосты автодорог нет — как и самостроя")
 
-	# --- носильщик: куча растёт, носильщик сносит на склад ---
+	# --- v1.25: производство сразу в общий пул — кучи и носильщик упразднены ---
 	var sim_pg := _make_sim()
 	sim_pg._last_daily_day = 999
 	sim_pg.cfg["food_per_resident_day"] = 0.0
-	sim_pg.cfg["piles"] = {"chunk": 2.0, "max": 20.0, "carry": 10.0}
-	var farmer_pg: Dictionary = _resident_by_prof(sim_pg, "farmer")
-	farmer_pg["traits"] = []
-	farmer_pg["mood"] = 100.0
-	# ферма — подальше от спавна (амбара): близкая запечатывает спавн-клетку и
-	# носильщик «без склада» не может дойти до цели (этап 2, аспект 2).
-	# v1.21: ферма на грядках — готовую кучу еды даём руками (как раньше
-	# выращивал пассив), носильщику всё равно, откуда носить
-	var farm_pg := _build_now(sim_pg, "farm", sim_pg.map.spawn_tile + Vector2i(6, 4))
-	_teleport(sim_pg, farmer_pg, farm_pg["tile"])
-	farm_pg["pile"] = {"food": 9.0}
-	_check(float(sim_pg._pile_total(farm_pg)) >= 2.0, "куча у фермы готова к переносу")
-	var food_pg0: float = float(sim_pg.res["food"])
-	# день настал — город сам обучает носильщика, раз кучам некомусть некому носить
-	sim_pg._last_daily_day = 0
+	sim_pg.res["wood"] = 50.0
+	sim_pg.res["stone"] = 50.0
+	var ws_pg := _build_now(sim_pg, "workshop")
+	var crafter_pg: Dictionary = _resident_by_prof(sim_pg, "crafter")
+	_check(not crafter_pg.is_empty(), "среди жителей есть ремесленник")
+	crafter_pg["traits"] = []
+	crafter_pg["mood"] = 100.0
+	_teleport(sim_pg, crafter_pg, ws_pg["tile"])
+	var tools_pg0: float = float(sim_pg.res.get("tools", 0.0))
+	for i in 30:   # полминуты у верстака
+		sim_pg.tick(1.0)
+	_check(float(sim_pg.res.get("tools", 0.0)) > tools_pg0,
+			"мастерская кладёт изделия сразу в общий пул (%.1f → %.1f)"
+					% [tools_pg0, float(sim_pg.res.get("tools", 0.0))])
+	_check((ws_pg.get("pile", {}) as Dictionary).is_empty(),
+			"куча у здания больше не растёт (v1.25)")
+	# готовых куч нет — город больше не обучает носильщиков
 	sim_pg._roll_porter()
-	# флейк (2026-10-25): оставленный «день 0» запускал на первом же тике
-	# полный дневной бросок (самострой/планёрка/истории) — рандом менял
-	# расклад; замораживаем дневные броски до конца чувствительных тиков
-	sim_pg._last_daily_day = 999
-	var porter_pg: Dictionary = _resident_by_prof(sim_pg, "porter")
-	_check(not porter_pg.is_empty(), "город сам обучил носильщика при готовых кучах")
-	# носильщик — случайный житель: «ленивый» не успевает донести за отведённые
-	# тики — это флейк характера, а не логики; в тесте характер идеальный
-	porter_pg["traits"] = []
-	porter_pg["mood"] = 100.0
-	_teleport(sim_pg, porter_pg, farm_pg["tile"])
-	for i in 6:   # дойти до входа фермы 2×2 и забрать кучу
-		sim_pg.tick(1.0)
-	# этап 2, аспект 2: быстрый носильщик за 6 тиков может и донести до амбара
-	var delivered := float(sim_pg.res["food"]) > food_pg0
-	_check((float(porter_pg.get("carry", 0.0)) > 0.0 and float(sim_pg._pile_total(farm_pg)) < 2.0)
-			or delivered, "носильщик забрал кучу целиком")
-	# если уже донёс — выдаём новый груз под проверку «носит к амбару»
-	if delivered and float(porter_pg.get("carry", 0.0)) <= 0.0:
-		farm_pg["pile"] = {"food": 12.0}
-		_teleport(sim_pg, porter_pg, sim_pg.bld_spot(farm_pg))
-		for i in 4:
-			sim_pg.tick(1.0)
-	_teleport(sim_pg, porter_pg, sim_pg.map.spawn_tile)
-	# этап 2, аспект 2: правило «без склада носильщик несёт к амбару города»
-	# проверяем доставкой на месте — пути по карте зависят от расстановки зданий
-	sim_pg._porter_work(porter_pg, 0.5)
-	_check(float(sim_pg.res["food"]) > food_pg0, "без склада носильщик сносит груз к амбару города")
-	# переполненное хранилище: носильщик ждёт с грузом
-	# (куча 12 >= chunk 8 — иначе подборка ниже порога и тест флейкает)
-	sim_pg.res["food"] = float(sim_pg.storage_cap())
-	farm_pg["pile"] = {"food": 12.0}
-	var porter_pg2: Dictionary = _resident_by_prof(sim_pg, "porter")
-	porter_pg2["traits"] = []
-	porter_pg2["mood"] = 100.0
-	_teleport(sim_pg, porter_pg2, farm_pg["tile"])
-	for i in 4:   # подойти ко входу фермы (2×2) и забрать кучу
-		sim_pg.tick(1.0)
-	_check(float(porter_pg2.get("carry", 0.0)) > 0.0, "носильщик снова забрал кучу")
-	_teleport(sim_pg, porter_pg2, sim_pg.map.spawn_tile)
-	for i in 3:   # дойти до амбара (спавна) — хранилище полно, ждёт с грузом
-		sim_pg.tick(1.0)
-	_check(float(porter_pg2.get("carry", 0.0)) > 0.0, "полное хранилище: носильщик ждёт с грузом")
+	var porter_any := false
+	for r in sim_pg.residents:
+		if String(r["prof"]) == "porter":
+			porter_any = true
+	_check(not porter_any, "носильщик не нужен — город его не обучает (v1.25)")
 
 	# --- бонус планировки: склад рядом с производством ускоряет его ---
 	# v1.21: ферма больше не «производит» (её урожай — грядки), бонус планировки
@@ -322,11 +286,12 @@ func _test_m6() -> void:
 	house_w["hp"] = max_hp
 	sim_w.res["wood"] = 20.0
 	sim_w.res["stone"] = 20.0
+	var tools_w0: float = float(sim_w.res.get("tools", 0.0))
 	_teleport(sim_w, crafter_w, workshop_w["tile"])
 	sim_w.time = 10.0
 	sim_w.tick(20.0)
-	_check(float((workshop_w["pile"] as Dictionary).get("tools", 0.0)) > 0.0,
-			"чинить нечего — мастерская перерабатывает излишки в инструменты")
+	_check(float(sim_w.res.get("tools", 0.0)) > tools_w0,
+			"чинить нечего — мастерская перерабатывает излишки в инструменты (сразу в пул)")
 
 	# --- дорога под зданием исчезает; путь строится как раньше ---
 	var sim_wr := _make_sim()

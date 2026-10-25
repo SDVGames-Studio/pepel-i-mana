@@ -50,7 +50,7 @@ func _sawmill_work(r: Dictionary, bld: Dictionary, dt: float) -> void:
 			return
 		var size := int(r["log_size"])
 		var planks: float = _planks_for(size) * blessing_boost() * production_mult(bld)
-		_add_pile(bld, "wood", planks)
+		_add_resource_capped("wood", planks)   # v1.25: сразу в общий пул — без кучи
 		forest_anger = clampf(forest_anger + float(fcfg.get("anger_per_sawing", 0.5)), 0.0, 100.0)
 		events.append({"type": "tree_sawed", "planks": int(planks)})
 		_chron("chron.tree_sawed", str(int(planks)))
@@ -75,7 +75,7 @@ func _sawmill_work(r: Dictionary, bld: Dictionary, dt: float) -> void:
 		var sizes: Array = bld["pending_logs"]
 		var psize := int(sizes.pop_front())
 		var planks2: float = _planks_for(psize) * blessing_boost() * production_mult(bld)
-		_add_pile(bld, "wood", planks2)
+		_add_resource_capped("wood", planks2)
 		forest_anger = clampf(forest_anger + float(fcfg2.get("anger_per_sawing", 0.5)), 0.0, 100.0)
 		events.append({"type": "tree_sawed", "planks": int(planks2)})
 		_chron("chron.tree_sawed", str(int(planks2)))
@@ -404,7 +404,7 @@ func _quarry_work(r: Dictionary, bld: Dictionary, dt: float) -> void:
 			_move_towards(r, bld_spot(bld), dt)
 			return
 		var raw := float(r["raw"])
-		_add_pile(bld, "stone", raw * blessing_boost() * production_mult(bld))
+		_add_resource_capped("stone", raw * blessing_boost() * production_mult(bld))
 		_roll_quarry_bonus(bld)
 		events.append({"type": "quarry_processed", "stone": int(raw)})
 		r["raw"] = 0.0
@@ -445,15 +445,15 @@ func _roll_quarry_bonus(bld: Dictionary) -> void:
 	var mcfg: Dictionary = cfg.get("mountain", {})
 	var roll := _event_rng.randf()
 	if roll < float(mcfg.get("by_iron", 0.35)):
-		_add_pile(bld, "iron", 1.0)
+		_add_resource_capped("iron", 1.0)
 		events.append({"type": "quarry_bonus", "res": "iron"})
 	elif roll < float(mcfg.get("by_iron", 0.35)) + float(mcfg.get("by_gems", 0.12)):
-		_add_pile(bld, "gems", 1.0)
+		_add_resource_capped("gems", 1.0)
 		events.append({"type": "quarry_bonus", "res": "gems"})
 		_chron("chron.gems_found")
 	elif roll < float(mcfg.get("by_iron", 0.35)) + float(mcfg.get("by_gems", 0.12)) \
 			+ float(mcfg.get("by_crystal", 0.08)):
-		_add_pile(bld, "crystal", 1.0)
+		_add_resource_capped("crystal", 1.0)
 		events.append({"type": "quarry_bonus", "res": "crystal"})
 		_chron("chron.gem_found")
 
@@ -552,9 +552,9 @@ func _mine_work(r: Dictionary, bld: Dictionary, dt: float) -> void:
 			_move_towards(r, bld_spot(bld), dt)
 			return
 		if float(r.get("carry_iron", 0.0)) > 0.0:
-			_add_pile(bld, "iron", float(r["carry_iron"]) * blessing_boost() * production_mult(bld))
+			_add_resource_capped("iron", float(r["carry_iron"]) * blessing_boost() * production_mult(bld))
 		if float(r.get("carry_stone", 0.0)) > 0.0:
-			_add_pile(bld, "stone", float(r["carry_stone"]) * blessing_boost() * production_mult(bld))
+			_add_resource_capped("stone", float(r["carry_stone"]) * blessing_boost() * production_mult(bld))
 		events.append({"type": "mine_hauled"})
 		r["carry_iron"] = 0.0
 		r["carry_stone"] = 0.0

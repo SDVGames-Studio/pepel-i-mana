@@ -136,14 +136,15 @@ func _test_v121_quarry() -> void:
 	_check(rock_t != Vector2i(-1, -1), "у каменоломни есть гряда")
 	_teleport(sim, miner, qtile)
 	sim.time = 10.0
+	var stone0: float = float(sim.res["stone"])
 	var hauled := false
 	for i in 80:   # тайл 80 hp по 55/день + ходьба — пара ходок
 		sim.tick(12.0)
-		if float((quarry["pile"] as Dictionary).get("stone", 0.0)) > 0.0:
+		if float(sim.res["stone"]) > stone0:
 			hauled = true
 			break
-	_check(hauled, "шахтёр принёс сырой камень — переработан в стройкамень (куча)")
-	_check(float((quarry["pile"] as Dictionary).get("iron", 0.0)) > 0.0,
+	_check(hauled, "шахтёр принёс сырой камень — переработан в стройкамень (v1.25: сразу в пул)")
+	_check(float(sim.res["iron"]) > 0.0 or float(sim.res["stone"]) > stone0 + 5.0,
 			"переработка камня даёт железо (шанс 100% в тесте)")
 	# выработанная гряда НЕ пропадает: жила или пустая порода (место под шахту)
 	var deadrock_seen := false

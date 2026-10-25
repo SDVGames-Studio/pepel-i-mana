@@ -290,18 +290,19 @@ func _test_city_sim() -> void:
 	# дом: +1 к лимиту жителей (один дом — один человек, правки v1.20)
 	_build_now(sim, "house")
 	_check(sim.pop_cap() == 8, "дом даёт +1 к лимиту жителей (правки v1.20)")
-	# склад: +200 к вместимости
+	# склад (v1.25): накопление БЕЗ лимита — склад больше не режет пул,
+	# он лишь ускоряет соседнее производство (бонус планировки)
 	_build_now(sim, "warehouse")
-	_check(sim.storage_cap() == int(sim.cfg["storage_base"]) + int(sim.cfg["storage_per_warehouse"]),
-			"склад даёт +%d к вместимости" % int(sim.cfg["storage_per_warehouse"]))
+	var cap_before: int = sim.storage_cap()
+	sim._add_resource_capped("wood", 5000.0)
+	_check(float(sim.res["wood"]) > float(maxi(cap_before, 1000)),
+			"хранилище без лимита: пул растёт сверх любого потолка (%.0f)" % float(sim.res["wood"]))
 	# частокол: блокирует тайл
 	var wall_site := _build_now(sim, "wall")
 	_check(not sim.map.is_walkable(wall_site["tile"]), "построенный частокол — преграда")
 
 	# ферма (v1.21): при постройке распахивает поле, фермер вспахивает грядки;
-	# еда приходит урожаем в кучу у фермы — в пул попадает только носильщиком
-	# (M6: физическая логистика, ответ №20)
-	sim.cfg["piles"] = {"chunk": 2.0, "max": 20.0, "carry": 10.0}   # мелкие кучи — тест не ждёт целый день
+	# v1.25: урожай идёт в общий пул сразу — кучи у зданий упразднены
 	var farmer: Dictionary = _resident_by_prof(sim, "farmer")
 	_check(not farmer.is_empty(), "среди жителей есть фермер")
 	farmer["traits"] = []
@@ -330,31 +331,22 @@ func _test_city_sim() -> void:
 			farmer_state = String(farmer["state"])
 			break
 	_check(farmer_state != "", "фермер вспахивает поле своей фермы")
-	# урожай лежит в куче у фермы — урожай с грядок уходит в общий пул сразу,
-	# поэтому кучу для носильщика даём руками (как тестируется и в M6)
-	farm["pile"] = {"food": 4.0}
-	_check(absf(float(sim.res["food"]) - food_before) < 0.001,
-			"без носильщика куча у фермы не попадает в общий пул")
-	# носильщик: забрал кучу и снёс на склад — пул вырос
-	var porter: Dictionary = sim._new_resident("Тар", "porter", sim.map.spawn_tile)
-	sim.residents.append(porter)
-	sim._next_id += 1
-	_teleport(sim, porter, farm["tile"])
-	for i in 6:   # дойти до входа фермы, забрать кучу — и, возможно, уже донести
-		sim.tick(1.0)
-	# этап 2, аспект 2: носильщик быстр, за 6 тиков успевает и сдать груз —
-	# считаем успешно и «в руках», и «уже в пуле»
-	_check(float(porter.get("carry", 0.0)) > 0.0 or float(sim.res["food"]) > food_before,
-			"носильщик забрал кучу у фермы")
-	var barn_tile := Vector2i(-1, -1)
-	for b in sim.buildings:
-		if b["done"] and String(b["type"]) == "warehouse":
-			barn_tile = b["tile"]
-	_check(barn_tile != Vector2i(-1, -1), "склад построен — есть куда носить")
-	_teleport(sim, porter, barn_tile)
-	sim.tick(0.5)
-	_check(float(sim.res["food"]) > food_before, "носильщик снёс еду на склад (пул вырос)")
-	_check(float(porter["carry"]) == 0.0, "груз доставлен целиком")
+	# v1.25: урожай с грядок идёт в общий пул СРАЗУ — кучи и носильщик не нужны
+	var zi := 0
+	for i in (farm_zone["cells"] as Array).size():
+		if sim.building_at(farm_zone["cells"][i]).is_empty():
+			zi = i
+			break
+	farm_zone["progress"][zi] = 99.0   # клетка вспахана
+	var crops_arr: Array = []
+	crops_arr.resize((farm_zone["cells"] as Array).size())
+	crops_arr[zi] = {"stage": 9, "t": 0.0, "ripe": true}
+	farm_zone["crops"] = crops_arr
+	sim.res["seeds"] = 10.0
+	var food_harvest0: float = float(sim.res["food"])
+	sim._harvest_cell(farm_zone, zi)
+	_check(float(sim.res["food"]) > food_harvest0 + 3.0,
+			"урожай с грядок идёт в общий пул без носильщика (v1.25)")
 
 	# еда: жители едят; пустой пул — голодный безработный стоит, работающий трудится вполсилы
 	sim.cfg["food_per_resident_day"] = 2.0
@@ -813,13 +805,14 @@ func _test_people() -> void:
 	miner_q["traits"] = []
 	miner_q["mood"] = 100.0
 	miner_q["ail"] = ""
-	for i in 45:   # v1.21: гряда 80 hp по 55/день + ходьба — держим утро, ждём кучу
+	var stone_q0 := float(sim_st.res["stone"])
+	for i in 45:   # v1.21: гряда 80 hp по 55/день + ходьба — держим утро, ждём камень
 		sim_st.tick(10.0)
 		sim_st.time = 10.0
-		if float((quarry["pile"] as Dictionary).get("stone", 0.0)) > 0.0:
+		if float(sim_st.res["stone"]) > stone_q0:
 			break
-	_check(float((quarry["pile"] as Dictionary).get("stone", 0.0)) > 0.0,
-			"каменоломня добывает камень в кучу у здания (v1.21: сырьём на себе)")
+	_check(float(sim_st.res["stone"]) > stone_q0,
+			"каменоломня добывает камень сразу в общий пул (v1.25)")
 	# v1.20: стартовых жителей теперь ШЕСТЬ (староста — отдельный голем) — среди
 	# них есть крафтер; для чистоты проверки новичка уводим стартового с профессии
 	for r in sim_st.residents:
@@ -834,11 +827,12 @@ func _test_people() -> void:
 			"мастер занял мастерскую")
 	sim_st.res["wood"] = 15.0
 	sim_st.res["stone"] = 10.0
+	var tools_q0 := float(sim_st.res.get("tools", 0.0))
 	_teleport(sim_st, crafter_q, workshop_q["tile"])
 	sim_st.time = 10.0   # утро: ночь в конце длинного теста усыпила бы мастера
 	sim_st.tick(20.0)
-	_check(float((workshop_q["pile"] as Dictionary).get("tools", 0.0)) > 0.0,
-			"мастерская перерабатывает дерево и камень в инструменты (M6)")
+	_check(float(sim_st.res.get("tools", 0.0)) > tools_q0,
+			"мастерская перерабатывает дерево и камень в инструменты (сразу в пул)")
 	var worker_probe: Dictionary = {"traits": [], "mood": 50.0, "skill": 0.0, "friend": -1, "work_bonus": 0.0, "sub_prof": ""}
 	sim_st.res["tools"] = 0.0
 	var plain_q: float = sim_st.work_mult(worker_probe)

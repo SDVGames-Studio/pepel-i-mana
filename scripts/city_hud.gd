@@ -67,15 +67,15 @@ func _process(delta: float) -> void:
 func refresh() -> void:
 	if sim == null:
 		return
-	var cap: int = sim.storage_cap()
-	_res_label.text = "%s %d/%d   %s %d/%d   %s %d   %s %d   %s %d\n%s %d   %s %d/%d   %s %d   %s %d   %s %d   %s %d   %s %d" % [
-		Loc.t("res.wood"), int(sim.res["wood"]), cap,
-		Loc.t("res.stone"), int(sim.res["stone"]), cap,
+	# v1.25: накопление без лимита — потолок хранилища больше не показываем
+	_res_label.text = "%s %d   %s %d   %s %d   %s %d   %s %d\n%s %d   %s %d   %s %d   %s %d   %s %d   %s %d   %s %d" % [
+		Loc.t("res.wood"), int(sim.res["wood"]),
+		Loc.t("res.stone"), int(sim.res["stone"]),
 		Loc.t("res.food"), int(sim.res["food"]),
 		Loc.t("res.crystal"), int(sim.res["crystal"]),
 		Loc.t("res.tools"), int(sim.res.get("tools", 0)),
 		Loc.t("res.gems"), int(sim.res.get("gems", 0)),
-		Loc.t("res.iron"), int(sim.res.get("iron", 0)), cap,
+		Loc.t("res.iron"), int(sim.res.get("iron", 0)),
 		Loc.t("res.metal"), int(sim.res.get("metal", 0)),
 		Loc.t("res.kits"), int(sim.res.get("kits", 0)),
 		Loc.t("res.seeds"), int(sim.res.get("seeds", 0)),

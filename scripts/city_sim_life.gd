@@ -801,13 +801,13 @@ func cast_city_spell(def: Dictionary) -> String:
 	return ""
 
 
-## Добавить ресурс с ограничением хранилища, но БЕЗ уменьшения запаса:
-## если его больше капа (тест-режим, излишки) — просто ничего не добавляем.
+## Добавить ресурс в общий пул — БЕЗ лимита накопления (заказчик, 2026-10-25,
+## повторно: «ресурсы без ограничений»). Историческое имя оставлено — его
+## читают десятки вызовов по всему городу.
 func _add_resource_capped(key: String, amount: float) -> void:
-	var cap := float(storage_cap())
-	if float(res[key]) >= cap:
+	if amount <= 0.0:
 		return
-	res[key] = minf(cap, float(res[key]) + amount)
+	res[key] = float(res.get(key, 0.0)) + amount
 
 
 ## Зачаровать готовое здание (ответ №60): руна из рюкзака + кристаллы из пула.

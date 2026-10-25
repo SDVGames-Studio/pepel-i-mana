@@ -19,16 +19,10 @@ func deposit_loot(inventory: Array) -> Dictionary:
 			continue
 		var key := String(pool_map[item_id])
 		var want := int(stack["count"])
-		var free: float = float(storage_cap()) - float(res[key])
-		var got := mini(want, int(maxf(0.0, free)))
-		if got > 0:
-			res[key] = float(res[key]) + got
-			added[key] = int(added.get(key, 0)) + got
-		if got >= want:
-			inventory.remove_at(i)
-		else:
-			stack["count"] = want - got
-			i += 1
+		# накопление без лимита (заказчик, 2026-10-25)
+		res[key] = float(res[key]) + want
+		added[key] = int(added.get(key, 0)) + want
+		inventory.remove_at(i)
 	return added
 
 

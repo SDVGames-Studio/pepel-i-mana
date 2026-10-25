@@ -323,15 +323,16 @@ func _test_defense() -> void:
 	# город сыт (голод резал бы работу), майнера ставим прямо у жилы
 	sim.time = 10.0
 	sim.res["food"] = 500.0
+	var iron0_chain := float(sim.res["iron"])
 	var mine_pair: Dictionary = sim._vein_target(sim._resident_by_id(int(mine["worker"])), mine)
 	if not mine_pair.is_empty():
 		_teleport(sim, sim._resident_by_id(int(mine["worker"])), mine_pair["stand"])
 	for i in 60:
 		sim.tick(10.0)
 		sim.time = 10.0   # держим утро — шахтёр не спит
-		if float((mine["pile"] as Dictionary).get("iron", 0.0)) > 0.0:
+		if float(sim.res["iron"]) > iron0_chain:
 			break
-	_check(float((mine["pile"] as Dictionary).get("iron", 0.0)) > 0.0, "шахта добывает руду в кучу у здания")
+	_check(float(sim.res["iron"]) > iron0_chain, "шахта добывает руду сразу в общий пул (v1.25)")
 	var smelter_r := _add_resident(sim, "Ада", "smelter")
 	sim.res["wood"] = 60.0   # цепочке нужны ресурсы на плавильню (v1.21)
 	sim.res["stone"] = 40.0
@@ -350,7 +351,7 @@ func _test_defense() -> void:
 	_teleport(sim, smelter_r, smelt["tile"])
 	for i in 8:   # выйти из сплошной плавильни (2×2) и встать на вход
 		sim.tick(4.0)
-	_check(float((smelt["pile"] as Dictionary).get("metal", 0.0)) > 0.0, "плавильня превращает руду в металл (куча)")
+	_check(float(sim.res["metal"]) > 0.0, "плавильня превращает руду в металл (сразу в пул)")
 	sim.time = 10.0
 	var smith_r := _add_resident(sim, "Борн", "smith")
 	sim.res["metal"] = 10.0
@@ -358,7 +359,7 @@ func _test_defense() -> void:
 	_teleport(sim, smith_r, forge["tile"])
 	for i in 10:   # выйти из сплошной кузни (2×2) и ковать на входе
 		sim.tick(3.0)
-	_check(float((forge["pile"] as Dictionary).get("tools", 0.0)) > 0.0, "кузня куёт металлические инструменты (куча)")
+	_check(float(sim.res["tools"]) > 0.0, "кузня куёт металлические инструменты (сразу в пул)")
 	sim.res["stone"] = 30.0   # плавильня и кузня съели весь камень
 	sim.res["metal"] = 20.0
 	# оружейная требует кузню в радиусе 2 по прямой — ищем такой тайл честно
@@ -391,7 +392,7 @@ func _test_defense() -> void:
 	_teleport(sim, armorer_r, armory["tile"])
 	for i in 12:   # выйти из сплошной оружейной (2×2) и работать на входе
 		sim.tick(5.0)
-	_check(float((armory["pile"] as Dictionary).get("kits", 0.0)) > 0.0, "оружейная собирает боевые комплекты (куча)")
+	_check(float(sim.res["kits"]) > 0.0, "оружейная собирает боевые комплекты (сразу в пул)")
 
 	# охота: охотник добывает зверя, еда в пул (зверь бродит — даём время на погоню)
 	var sim_h := _make_sim()
@@ -492,14 +493,22 @@ func _test_defense() -> void:
 	sim_k2.tick(0.3)
 	_check(hp_k0 - int(raider_k["hp"]) == 2, "с комплектом удар вдвое сильнее (1×2)")
 
-	# трус прячется уже при предупреждении
+	# трус: на предупреждении ещё работает (v1.25: город не встаёт), с приходом
+	# волны — прячется домой
 	var sim_c2 := _make_sim()
 	sim_c2._last_daily_day = 999
 	var coward: Dictionary = _resident_by_prof(sim_c2, "farmer")
 	coward["traits"] = ["coward"]
 	sim_c2._raid_warned = true
 	sim_c2.tick(0.1)
-	_check(String(coward["state"]) == "hide", "трус прячется с момента предупреждения")
+	_check(String(coward["state"]) != "hide", "на предупреждении трус ещё не прячется — работает (v1.25)")
+	sim_c2._raid_warned = false
+	sim_c2.raid_active = true
+	var raider_c2 := _spawn_one_raider(sim_c2, "mutant", sim_c2.map.anomaly_tile)
+	sim_c2.tick(0.1)
+	_check(String(coward["state"]) in ["hide", "going"], "с приходом волны трус прячется домой (%s)" % String(coward["state"]))
+	sim_c2.raid_active = false
+	sim_c2.raiders = []
 
 	# расписание волн (правка 2026-10-21): ровный интервал из конфига, волны
 	# ослаблены — размера и здоровья с номером волны почти не добавляется
@@ -681,13 +690,14 @@ func _test_gathering() -> void:
 	worker_sg["mood"] = 100.0
 	_teleport(sim_sg, worker_sg, near_trees)
 	sim_sg.time = 10.0
+	var wood_sg0 := float(sim_sg.res["wood"])
 	var sawed := false
 	for i in 60:   # дойти, свалить (до 1.2 дня у большого), подготовить, притащить, распилить
 		sim_sg.tick(12.0)
-		if float((saw["pile"] as Dictionary).get("wood", 0.0)) > 0.0:
+		if float(sim_sg.res["wood"]) > wood_sg0:
 			sawed = true
 			break
-	_check(sawed, "лесоруб распилил дерево — доски в куче лесопилки (v1.21)")
+	_check(sawed, "лесоруб распилил дерево — доски сразу в общем пуле (v1.25)")
 	var felled_seen := false
 	for e in sim_sg.events:
 		if String(e["type"]) == "tree_felled":
@@ -711,18 +721,16 @@ func _test_gathering() -> void:
 	_check(log_t != Vector2i(-1, -1), "нашлась трава под тестовое бревно")
 	if log_t != Vector2i(-1, -1):
 		var wood_pool0 := int(sim_sg.res["wood"])
-		saw["pile"] = {}   # куча переполнена капом — меряем именно это бревно
 		sim_sg.map.logs[log_t] = {"size": sim_sg.map.TREE_LARGE}
 		var picked := false
 		for i in 40:   # дойти до бревна, принести, распилить (без рубки)
 			sim_sg.tick(12.0)
-			if not sim_sg.map.logs.has(log_t) \
-					and float((saw["pile"] as Dictionary).get("wood", 0.0)) >= 20.0:
-				picked = true   # большое бревно 35, влезает в кап кучи 20
+			if not sim_sg.map.logs.has(log_t) and int(sim_sg.res["wood"]) > wood_pool0:
+				picked = true
 				break
 		_check(picked, "бревно с земли — на лесопилку и в доски (v1.21.2)")
-		_check(int(sim_sg.res["wood"]) == wood_pool0,
-				"доски лежат кучей у лесопилки — в пул их снесёт носильщик/вечер")
+		_check(int(sim_sg.res["wood"]) > wood_pool0,
+				"доски с бревна идут сразу в общий пул (v1.25)")
 
 	# шахта (v1.21): у жилы/выработанного массива, медленно даёт железо и камень
 	var sim_mi := _make_sim()
@@ -735,12 +743,13 @@ func _test_gathering() -> void:
 	_teleport(sim_mi, miner_mi, mtile)
 	sim_mi.time = 10.0
 	var iron_pile := 0.0
+	var iron0_mi := float(sim_mi.res["iron"])
 	for i in 80:   # жила ~104 hp по 35/день — пара ходок с ходьбой
 		sim_mi.tick(12.0)
-		iron_pile = float((mine_mi["pile"] as Dictionary).get("iron", 0.0))
+		iron_pile = float(sim_mi.res["iron"]) - iron0_mi
 		if iron_pile > 0.0:
 			break
-	_check(iron_pile > 0.0, "шахта даёт железную руду (куча)")
+	_check(iron_pile > 0.0, "шахта даёт железную руду — сразу в пул (v1.25)")
 
 	# свободный житель в мирное время помогает строить (много бездельников — заказчик)
 	var sim_ih := _make_sim()

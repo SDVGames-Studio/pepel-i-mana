@@ -200,7 +200,7 @@ func _test_stage2_aspect3() -> void:
 ## Правка приёмки v1.15.1: соседняя постройка 2×2 перекрыла вход здания —
 ## работник не должен простаивать вечно, вход пересчитывается.
 ## v1.21: ферма больше не производит у входа (она на грядках) — проверяем
-## на плавильне: копит кучу металла, стоя у входа.
+## на плавильне: копит металл в общем пуле, стоя у входа (v1.25: кучи упразднены).
 func _test_stage2_entrance_recalc() -> void:
 	print("[Этап 2: перекрытый вход]")
 	var sim_e := _make_sim()
@@ -217,7 +217,7 @@ func _test_stage2_entrance_recalc() -> void:
 	_teleport(sim_e, smelter_e_res, spot0)
 	for i in 4:
 		sim_e.tick(2.0)
-	var pile0: float = sim_e._pile_total(smelt_e)
+	var pile0: float = float(sim_e.res["metal"])
 	_check(pile0 > 0.0, "плавильщик работает у входа плавильни")
 	# ставим стену 1×1 поверх текущего входа: стена — сплошное кольцо, зазора
 	# не держит и может перекрыть вход (правило зазоров — для обычных зданий)
@@ -234,7 +234,7 @@ func _test_stage2_entrance_recalc() -> void:
 	_teleport(sim_e, smelter_e_res, spot1)
 	for i in 5:
 		sim_e.tick(2.0)
-	_check(sim_e._pile_total(smelt_e) > pile0, "плавильщик вернулся к работе через новый вход")
+	_check(float(sim_e.res["metal"]) > pile0, "плавильщик вернулся к работе через новый вход")
 	print("[Этап 2: перекрытый вход] готово")
 
 

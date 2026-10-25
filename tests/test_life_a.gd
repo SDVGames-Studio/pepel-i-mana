@@ -244,23 +244,37 @@ func _test_m12() -> void:
 	sim2.tick(2.0)
 	_check(String(a.get("chat_key", "")) != "" or String(b.get("chat_key", "")) != "",
 			"двое рядом на досуге беседуют облачком")
-	# сбор у костра на тревогу
+	# тревога (v1.25, заказчик: «жители стояли пару дней в ожидании атаки
+	# и ничего не делали»): ПРЕДУПРЕЖДЕНИЕ больше не останавливает город —
+	# жители работают до самой волны; у костра собираются лишь при атаке
 	sim2._raid_warned = true
 	sim2.time = 10.0
 	var c := _add_resident(sim2, "Вера", "farmer")
-	c["traits"] = []   # не трусливая: трус вместо сбора прячется домой
-	# этап 2 (рельеф сплошной в A*): точка сбора в шаге от костра, чтобы
-	# маршрут не зависел от дальнего обхода озёр
+	c["traits"] = []   # не трусливая: трус прячется, только когда волна пришла
 	var fire_t: Vector2i = sim2.fire_tile()
 	_teleport(sim2, c, sim2.map.nearest_walkable(fire_t + Vector2i(-6, 0)))
 	for i in 6:
 		sim2.tick(5.0)
-		if String(c["state"]) == "gather":
-			break
-	_check(String(c["state"]) == "gather"
-			or float((sim2.map.tile_of_px(c["pos"]) - sim2.fire_tile()).length()) <= 2.5,
-			"на тревогу жители собираются у костра")
-	sim2._raid_warned = false   # дальше — мирные проверки
+	_check(String(c["state"]) != "gather",
+			"во время предупреждения житель не сидит у костра — работает (%s)" % String(c["state"]))
+	# трус: прячется только когда волна реально пришла
+	var coward2 := _add_resident(sim2, "Трус", "farmer")
+	coward2["traits"] = [{"id": "coward", "weight": 1, "grief_mult": 1.5, "flees": true}]
+	coward2["state"] = "idle"
+	_teleport(sim2, coward2, sim2.map.spawn_tile)
+	sim2._raid_warned = false
+	sim2.raid_active = false
+	sim2.tick(1.0)
+	_check(String(coward2["state"]) != "hide",
+			"на предупреждении трус ещё не прячется")
+	sim2._raid_warned = false
+	sim2.raid_active = true
+	sim2.raiders = []   # волна «в пути» — трус уже дома
+	sim2.tick(1.0)
+	_check(String(coward2["state"]) == "hide" or String(coward2["state"]) == "going",
+			"с приходом волны трус прячется домой (%s)" % String(coward2["state"]))
+	sim2.raid_active = false
+	sim2.raiders = []
 	# похороны: кладбище, смерть жителя → процессия и могилка
 	# v1.23: горожане выбирают обряд — бог «Дом» велит хоронить в землю,
 	# иначе 25% уходит на погребальный костёр (2 дня, проверяется в v123)

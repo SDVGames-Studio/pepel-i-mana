@@ -200,22 +200,15 @@ func _update_resident(r: Dictionary, dt: float) -> void:
 		return
 	var night := is_night()
 	var tcfg: Dictionary = cfg.get("threat", {})
-	# угроза (M5+): трус прячется сразу с предупреждения, бойцы снаряжаются в оружейке
+	# угроза (M5+): бойцы снаряжаются в оружейке с предупреждения; трус прячется,
+	# только когда волна пришла (v1.25, заказчик: предупреждение длится дни —
+	# город не должен всё это время стоять у костра, работа идёт до самой атаки)
 	if raid_active or _raid_warned:
-		if _has_trait_flag(r, "flees"):
+		if raid_active and _has_trait_flag(r, "flees"):
 			_flee_home(r, dt)
 			return
 		if String(r["prof"]) == "guard":
 			_defender_update(r, dt, float(tcfg.get("guard_damage", 2)), float(tcfg.get("guard_cd", 1.0)))
-			return
-		if _raid_warned and not raid_active:
-			# ночью даже при тревоге спят (2026-10-21): при волнах раз в 10 дней
-			# предупреждение длится 3 дня — без сна город не заселяет дома и не растёт
-			# (стражи отсюда недостижимы — они закрыты веткой защитников выше)
-			if night:
-				_sleep(r, dt)
-			else:
-				_gather_fire(r, dt)   # сбор у костра: город ждёт волну вместе (M12)
 			return
 	if raid_active:
 		# ополчение: бьются все свободные взрослые и храбрые работники (заказчик)
@@ -234,7 +227,8 @@ func _update_resident(r: Dictionary, dt: float) -> void:
 		if _necro_night_walk(r, dt):
 			return
 	# несёт бревно прохожим (v1.23): довести до лесопилки важнее дел
-	if not raid_active and not _raid_warned and not night and bool(r.get("haul_log", false)):
+	# (v1.25: и во время предупреждения о волне — работа не встаёт)
+	if not raid_active and not night and bool(r.get("haul_log", false)):
 		if _log_haul_work(r, dt):
 			return
 	# ночь: спят все, кроме стража ночной смены (дежурство день/ночь — заказчик)
@@ -269,7 +263,7 @@ func _update_resident(r: Dictionary, dt: float) -> void:
 		return
 	# поваленное дерево рядом (v1.23): прохожий со свободными руками
 	# подберёт бревно и отнесёт его на лесопилку
-	if not raid_active and not _raid_warned and _try_haul_log(r, dt):
+	if not raid_active and _try_haul_log(r, dt):
 		return
 	# останки павшего врага (v1.23): донести до кладбища и похоронить
 	if _corpse_work(r, dt):
@@ -1155,9 +1149,10 @@ func _damaged_building(near: Dictionary) -> Dictionary:
 
 
 
-## Само производство: расход материалов, множители, добавка в КУЧУ у здания.
-## Общее для работников у здания и добытчиков у источника. В общий пул ресурс
-## попадает только с носильщиком (M6: физическая логистика, ответ №20).
+## Само производство: расход материалов, множители — и продукция СРАЗУ
+## в общий пул (v1.25, заказчик: «в лесопилке остался какой-то пул досок —
+## а зачем?»). Куч у зданий больше нет; носильщик остался только для
+## старых сейвов — разносит уцелевшие кучи (M6 физическая логистика упразднена).
 func _produce_tick(r: Dictionary, bld: Dictionary, dt: float) -> void:
 	r["state"] = "work"
 	r["fatigue"] += dt / float(cfg["day_length"]) * _fatigue_cost(r)
@@ -1174,14 +1169,16 @@ func _produce_tick(r: Dictionary, bld: Dictionary, dt: float) -> void:
 		res[String(key)] = maxf(0.0, float(res[key]) - float(inputs[key]) * portion)
 	var boost: float = blessing_boost()
 	var amount: float = float(prod["per_day"]) * portion * boost * production_mult(bld) * work_mult(r)
-	_add_pile(bld, String(prod["res"]), amount)
+	_add_resource_capped(String(prod["res"]), amount)
 	# шахта даёт и камень вместе с рудой (заказчик)
 	if prod.has("res2"):
 		var amount2: float = float(prod["per_day2"]) * portion * boost * production_mult(bld) * work_mult(r)
-		_add_pile(bld, String(prod["res2"]), amount2)
+		_add_resource_capped(String(prod["res2"]), amount2)
 
 
-## Куча у здания (M6): производство копится здесь, пока её не унесёт носильщик.
+## Куча у здания — УПРАЗДНЕНА (v1.25): производство идёт сразу в пул.
+## Функция оставлена на всякий случай для сейвов/модов, новые кучи
+## никто не создаёт; старые разносит носильщик и дневной разбор.
 func _add_pile(bld: Dictionary, key: String, amount: float) -> void:
 	if amount <= 0.0:
 		return

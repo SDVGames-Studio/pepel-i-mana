@@ -14,8 +14,8 @@ func _porter_work(r: Dictionary, dt: float) -> void:
 		var goal_tile: Vector2i = bld_spot(barn) if not barn.is_empty() else map.spawn_tile
 		if _arrived(r, goal_tile):
 			var key := String(r["carry_res"])
-			var free: float = float(storage_cap()) - float(res.get(key, 0.0))
-			var drop: float = minf(float(r["carry"]), maxf(0.0, free))
+			# накопление без лимита (заказчик, 2026-10-25)
+			var drop: float = float(r["carry"])
 			if drop > 0.0:
 				res[key] = float(res.get(key, 0.0)) + drop
 				r["carry"] = float(r["carry"]) - drop

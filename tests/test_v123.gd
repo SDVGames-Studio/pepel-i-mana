@@ -353,14 +353,14 @@ func _test_v123_log_haul() -> void:
 		if String(ev["type"]) == "log_hauled":
 			hauled_event = true
 	_check(hauled_event, "вынос бревна отмечен событием")
-	# лесоруб пилит ворох на месте, без ходки
+	# лесоруб пилит ворох на месте, без ходки (v1.25: доски сразу в общий пул)
 	lj["bld"] = mill
 	lj["traits"] = []
 	lj["mood"] = 100.0
 	_teleport(sim, lj, Vector2i(mill["tile"]))
-	var wood_before: float = float(mill.get("pile", {}).get("wood", 0.0))
+	var wood_before: float = float(sim.res["wood"])
 	for i in 80:
 		sim._sawmill_work(lj, mill, 0.5)
-	_check(float(mill.get("pile", {}).get("wood", 0.0)) > wood_before,
-			"ворох брёвен распилен в доски (%.0f)" % float(mill.get("pile", {}).get("wood", 0.0)))
+	_check(float(sim.res["wood"]) > wood_before,
+			"ворох брёвен распилен в доски (%.0f)" % float(sim.res["wood"]))
 	_check((mill.get("pending_logs", []) as Array).is_empty(), "ворох опустошён")
