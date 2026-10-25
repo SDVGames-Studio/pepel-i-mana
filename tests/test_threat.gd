@@ -488,7 +488,11 @@ func _test_defense() -> void:
 	_check(bool(soldier.get("kit", false)) and float(sim_k2.res["kits"]) == 0.0,
 			"боец взял комплект в оружейке")
 	# v1.26: мутант больше не стоит внутри прямоугольника здания (сходит с
-	# сплошного тайла) — ставим его на проходимого соседа от бойца
+	# сплошного тайла) — ставим его на проходимого соседа от бойца; статы
+	# бойца обнуляем (урон = 1×2 ровно, иначе сила из случайного пула ломает
+	# равенство — флейк на свежем процессе)
+	soldier["stats"] = {"str": 0.0, "agi": 0.0, "end": 0.0, "int": 0.0, "wis": 0.0}
+	soldier["skills"] = {}
 	_teleport(sim_k2, soldier, armory_k["tile"])
 	var s_tile_k: Vector2i = sim_k2.map.tile_of_px(soldier["pos"])
 	_teleport(sim_k2, raider_k, sim_k2.map.nearest_walkable(s_tile_k + Vector2i(1, 0)))
