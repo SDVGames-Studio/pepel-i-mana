@@ -215,10 +215,10 @@ func _test_v21_golem_commit() -> void:
 			"свободный житель собирает спелую грядку")
 
 
-## Районы (v1.21.1): новое здание цветовой ветки — рядом со своими;
-## самострой ведёт стройку к своему типу/ветке.
+## Районы (v1.21.1, смягчены v1.26): цветовая ветка — РЕКОМЕНДАЦИЯ для
+## самостроя (кластеры своего типа), игрок строит где хочет.
 func _test_v121_district() -> void:
-	print("[v1.21.1: районы — стройка цветовыми ветками]")
+	print("[v1.21.1→v1.26: районы — рекомендация, запрет снят]")
 	var city: Variant = _read_json("res://data/city.json")
 	var loc: Variant = _read_json("res://loc/ru.json")
 	_check(city is Dictionary and loc is Dictionary, "конфиги читаются")
@@ -226,7 +226,7 @@ func _test_v121_district() -> void:
 		return
 	var dcfg: Dictionary = city.get("district", {})
 	_check(int(dcfg.get("radius", 0)) >= 1, "радиус района задан (в клетках)")
-	_check((dcfg.get("cats", []) as Array).has("living"), "жилая ветка подчиняется районам")
+	_check((dcfg.get("cats", []) as Array).has("living"), "жилая ветка описана в районах")
 	_check(String(loc.get("city.placement_district", "")) != "", "ключ локализации есть")
 	var sim := _make_sim()
 	sim._last_daily_day = 999
@@ -244,11 +244,12 @@ func _test_v121_district() -> void:
 		if far != Vector2i(-1, -1):
 			break
 	_check(far != Vector2i(-1, -1), "нашлось место вдали от жилья")
-	_check(sim.placement_block("house", far) == "city.placement_district",
-			"дом вдали от жилой ветки не ставится (районы, v1.21.1)")
+	_check(sim.placement_block("house", far) == "" and sim.placement_block("garden", far) == "",
+			"вдали от ветки строить МОЖНО — районы лишь рекомендация (v1.26)")
 	_check(sim.placement_block("wall", far) == "", "стена — вне правила районов")
 	_check(sim.placement_block("farm", far) == "", "ферма — вне правила (у неё поле)")
-	# рядом со своим — можно; якорь района — построенный дом
+	# якорь района и кластер — на месте: самострой по-прежнему ведёт стройку
+	# к своему типу/ветке (рекомендация работает, город растёт кварталами)
 	var anchor: Vector2i = sim._district_anchor("house")
 	_check(anchor == Vector2i(h1["tile"]), "якорь жилого района — построенный дом")
 	var near_t: Vector2i = sim._tile_near_cluster("house", anchor)
@@ -258,16 +259,7 @@ func _test_v121_district() -> void:
 	_check(auto_t != Vector2i(-1, -1) \
 			and sim.rects_gap({"type": "house", "tile": auto_t}, h1) <= radius + 2,
 			"самострой строит дом у дома (кластер своего типа)")
-	# сад — та же цветовая ветка (living): тоже к дому
-	_check(sim.placement_block("garden", far) == "city.placement_district",
-			"сад — та же ветка, вдали не ставится")
-	# руины район не держат
-	h1["razed"] = true
-	_check(sim.placement_block("house", far) == "" and sim.placement_block("garden", far) == "",
-			"разрушенное здание не держит район")
-	h1["razed"] = false
-	# первое здание другой ветки — где угодно
-	_check(sim.placement_block("tavern", far) == "", "первое здание ветки — где угодно")
+	_check(sim.placement_block("tavern", far) == "", "любое здание вне ветки — где угодно")
 
 
 ## Город чинит сам (v1.21.3): строитель — за 50% стоимости, непрофильный

@@ -857,7 +857,10 @@ func _test_people() -> void:
 	var gate_b: Dictionary = sim_gt.building_at(gate_tile)
 	_check(bool(gate_b["done"]), "ворота построены в проёме")
 	_check(not bool(sim_gt.is_gate_open(gate_b)), "без стража на вышке ворота закрыты")
-	_check(not sim_gt.map.is_walkable(gate_tile), "закрытые ворота непроходимы")
+	# v1.26 (правка приёмки): ворота — дверь для своих: жители и герой проходят
+	# всегда; запираются ворота только для мутантов (вторая сетка путей)
+	_check(sim_gt.map.is_walkable(gate_tile), "закрытые ворота проходимы для жителей и героя")
+	_check(not sim_gt.map.is_raider_walkable(gate_tile), "закрытые ворота — стена для мутантов")
 	# карта стала плотнее (M5.1) — вышку ставим на ближайшее свободное место
 	var tower_tile: Vector2i = Vector2i(-1, -1)
 	for dy in range(-2, 3):
@@ -874,6 +877,7 @@ func _test_people() -> void:
 	sim_gt.tick(30.5)
 	_check(bool(sim_gt.is_gate_open(gate_b)), "страж на ближней вышке открыл ворота")
 	_check(sim_gt.map.is_walkable(gate_tile), "открытые ворота проходимы")
+	_check(sim_gt.map.is_raider_walkable(gate_tile), "открытые ворота проходимы и для мутантов")
 
 	# план города: староста строит сразу весь нужный набор по порядку (заказчик)
 	var sim_pl := _make_sim()

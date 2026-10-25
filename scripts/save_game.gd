@@ -627,6 +627,7 @@ static func _apply_city_map(map, md: Variant, cfg: Dictionary) -> String:
 	var weight := float(cfg.get("roads", {}).get("astar_weight", 0.4))
 	for p in map.road:
 		map.astar.set_point_weight_scale(p, weight)
+		map.astar_raider.set_point_weight_scale(p, weight)   # сетка мутантов (v1.26)
 	return ""
 
 
