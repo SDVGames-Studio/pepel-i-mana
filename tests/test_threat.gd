@@ -504,10 +504,10 @@ func _test_defense() -> void:
 	_check(String(coward["state"]) != "hide", "на предупреждении трус ещё не прячется — работает (v1.25)")
 	sim_c2._raid_warned = false
 	sim_c2.raid_active = true
-	# волна «на подходе»: рейдер на ПРОХОДИМОЙ клетке у аномалии — иначе
-	# он тут же теряется, волна заканчивается и трус не успевает испугаться
+	# волна «на подходе»: рейдер у самого города (проходимая клетка с путём
+	# к цели — у аномалии он мог потеряться и волна заканчивалась)
 	var raider_c2 := _spawn_one_raider(sim_c2, "mutant",
-			sim_c2.map.nearest_walkable(sim_c2.map.anomaly_tile))
+			sim_c2.map.nearest_walkable(sim_c2.map.spawn_tile + Vector2i(10, 0)))
 	sim_c2.tick(0.1)
 	_check(String(coward["state"]) in ["hide", "going"], "с приходом волны трус прячется домой (%s)" % String(coward["state"]))
 	sim_c2.raid_active = false

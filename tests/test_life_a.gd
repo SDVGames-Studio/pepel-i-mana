@@ -159,6 +159,7 @@ func _test_wishlist() -> void:
 	sim_n.cfg["necro"]["dark_per_night"] = 0.5
 	sim_n.cfg["necro"]["call_chance"] = 1.0
 	sim_n.cfg["necro"]["rise_at"] = 3
+	sim_n.cfg["necro"]["storm_chance"] = 0.0   # v1.24: буря не должна рвать тест вольным случаем
 	var cem := _build_now(sim_n, "cemetery")
 	_check(bool(cem["done"]), "кладбище построено")
 	var cem_tile: Vector2i = cem["tile"]
