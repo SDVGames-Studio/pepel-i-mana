@@ -1,0 +1,431 @@
+extends Node2D
+## Солнечный цикл города (v1.27). Один скрипт — два слоя (поле mode):
+##   "shadows" — мировые тени: от деревьев/зданий/скал, ползут с солнцем
+##   (утром на запад, в полдень короткие, вечером на восток); в пасмурную
+##   погоду свет рассеянный — тени бледнеют, по земле плывут тени облаков;
+##   ночью — слабые лунные тени.
+##   "sky" — небо поверх мира (CanvasLayer): солнце/луна/звёзды на экране,
+##   свечение рассвета и заката; характер дня (ясный, облачный, туманный,
+##   золотистый, розовый, хмурый) и палитра заката — детерминированы по дню.
+## Чистые статические функции (фазы, палитры) вынесены для автотестов.
+
+var mode := "shadows"
+var map = null
+var sim = null
+var cfg: Dictionary = {}
+var _time := 0.0
+
+# --- характеры дня (детерминированы по номеру дня, погода сильнее) ---
+const MOOD_CLEAR := 0
+const MOOD_OVERCAST := 1
+const MOOD_FOGGY := 2
+const MOOD_GOLDEN := 3
+const MOOD_ROSY := 4
+const MOOD_GLOOMY := 5
+# подброска: ясных дней больше (индекс в мешке 7 зёрен)
+const MOOD_BAG := [0, 0, 1, 2, 3, 4, 5]
+const MOOD_TINTS := [
+	Color(1.0, 1.0, 1.0),        # ясный
+	Color(0.92, 0.94, 0.99),     # облачный — ровный холодный свет
+	Color(0.96, 0.95, 0.90),     # туманный — молочный
+	Color(1.0, 0.93, 0.76),      # золотистый — тёплый весь день
+	Color(1.0, 0.91, 0.88),      # розовый — мягкий
+	Color(0.82, 0.84, 0.92),     # хмурый — низкое серое небо
+]
+const NIGHT_TINTS := [
+	Color(0.30, 0.33, 0.52), Color(0.27, 0.29, 0.44), Color(0.30, 0.32, 0.47),
+	Color(0.31, 0.32, 0.50), Color(0.31, 0.32, 0.50), Color(0.26, 0.27, 0.40),
+]
+# палитры закатов: алый, пурпурный, золотой, розовый, огненный, медный
+const SUNSETS := [
+	Color(1.0, 0.52, 0.38), Color(0.82, 0.55, 0.95), Color(1.0, 0.72, 0.38),
+	Color(1.0, 0.62, 0.72), Color(1.0, 0.45, 0.25), Color(0.95, 0.60, 0.35),
+]
+# во сколько раз тени длиннее объекта: закат/рассвет против полудня
+const SHADOW_LONG := 1.5
+const SHADOW_NOON := 0.18
+
+# --- кэш объектов для теней ---
+var _objs_dirty := true
+var _objs: Array = []            # [kind, pos/rect, h]
+var _blds_count := -1
+# звёзды (детерминированные точки экрана)
+var _stars: Array = []
+var _layer: CanvasLayer = null
+var _painter: Node2D = null
+
+
+func setup(city_map, city_sim, city_cfg: Dictionary) -> void:
+	map = city_map
+	sim = city_sim
+	cfg = city_cfg
+	if mode == "sky":
+		_layer = CanvasLayer.new()
+		_layer.layer = 1   # над миром, под HUD (он добавлен позже в дерево)
+		_painter = Node2D.new()
+		_layer.add_child(_painter)
+		# рисование идёт в canvas painter'а — ему передаётся контекст
+		_painter.draw.connect(_draw_sky_screen.bind(_painter))
+		add_child(_layer)
+
+
+func _process(delta: float) -> void:
+	_time += delta
+	if mode == "shadows":
+		if sim != null and sim.buildings.size() != _blds_count:
+			_objs_dirty = true
+		queue_redraw()
+	elif _painter != null:
+		_painter.queue_redraw()
+
+
+func rebuild() -> void:
+	_objs_dirty = true
+
+
+# ============================ ЧИСТАЯ МАТЕМАТИКА ============================
+
+## Доля суток 0..1 (0 — рассвет, 1-nf — закат, дальше ночь).
+static func day_frac(time: float, day_len: float) -> float:
+	return fmod(maxf(time, 0.0), maxf(0.1, day_len)) / maxf(0.1, day_len)
+
+
+static func is_daylight(t: float, nf: float) -> bool:
+	return t < 1.0 - nf
+
+
+## Доля прошедшего дня 0..1 внутри светлой части суток.
+static func day_u(t: float, nf: float) -> float:
+	return clampf(t / maxf(0.001, 1.0 - nf), 0.0, 1.0)
+
+
+## Высота солнца над горизонтом 0..1 (1 — полдень).
+static func sun_elev(t: float, nf: float) -> float:
+	return sin(PI * day_u(t, nf))
+
+
+## Знак направления теней по X: утром < 0 (солнце на востоке),
+## вечером > 0 (солнце на западе). Ноль — полдень.
+static func shadow_dir_x(t: float, nf: float) -> float:
+	return -cos(PI * day_u(t, nf))
+
+
+## Длина тени в долях высоты объекта: длинная по краям дня, короткая в полдень.
+static func shadow_len(t: float, nf: float) -> float:
+	return lerpf(SHADOW_LONG, SHADOW_NOON, sun_elev(t, nf))
+
+
+## Смещение тени для объекта высотой h (лёгкий наклон к югу для читаемости).
+static func shadow_offset(t: float, nf: float, h: float) -> Vector2:
+	return Vector2(shadow_dir_x(t, nf), 0.30 * (1.0 - sun_elev(t, nf))) \
+			* shadow_len(t, nf) * h
+
+
+## Луна: направление и высота в ночной части суток (те же формулы по u_night).
+static func moon_u(t: float, nf: float) -> float:
+	return clampf((t - (1.0 - nf)) / maxf(0.001, nf), 0.0, 1.0)
+
+
+## Характер дня: погода сильнее календаря; в ясную погоду — по дню.
+static func mood_of(day: int, weather: String) -> int:
+	match weather:
+		"rain", "snow":
+			return MOOD_OVERCAST
+		"fog":
+			return MOOD_FOGGY
+		"ash_storm":
+			return MOOD_GLOOMY
+	var v := int((day * 73856093) ^ (31 * 19349663))
+	return MOOD_BAG[absi(v) % MOOD_BAG.size()]
+
+
+## Палитра заката этого дня (разные закаты — детерминированно).
+static func sunset_color(day: int) -> Color:
+	var v := int((day * 19349663) ^ (77 * 73856093))
+	return SUNSETS[absi(v) % SUNSETS.size()]
+
+
+## Амбиентный свет дня: характер дня + краска фазы (рассвет/золото/закат).
+static func daylight_color(mood: int, t: float, nf: float, day: int) -> Color:
+	var base: Color = MOOD_TINTS[clampi(mood, 0, MOOD_TINTS.size() - 1)]
+	var u := day_u(t, nf)
+	var phase := Color.WHITE
+	var strength := 0.0
+	if u < 0.16:
+		# рассвет: тёплый розовый, тает к утру
+		strength = 1.0 - u / 0.16
+		phase = Color(1.0, 0.78, 0.66)
+	elif u > 0.62:
+		var w := (u - 0.62) / 0.38
+		if w < 0.45:
+			# золотой час
+			strength = (w / 0.45) * 0.7
+			phase = Color(1.0, 0.84, 0.58)
+		else:
+			# закат — цвет из палитры дня
+			strength = 0.55 + 0.45 * (w - 0.45) / 0.55
+			phase = sunset_color(day)
+	var col := base.lerp(phase, clampf(strength, 0.0, 1.0) * 0.8)
+	# смягчение к белому: день не должен «красить» всё слишком сильно
+	return Color.WHITE.lerp(col, 0.75)
+
+
+## Ночной амбиент по характеру дня (пасмурная ночь темнее и глухая).
+static func night_color(mood: int) -> Color:
+	return NIGHT_TINTS[clampi(mood, 0, NIGHT_TINTS.size() - 1)]
+
+
+## Сила теней при данном характере дня: рассеянный свет почти не тенит.
+static func shadow_alpha(mood: int) -> float:
+	match mood:
+		MOOD_CLEAR:
+			return 0.22
+		MOOD_GOLDEN:
+			return 0.26
+		MOOD_ROSY:
+			return 0.18
+		MOOD_FOGGY:
+			return 0.10
+		MOOD_OVERCAST:
+			return 0.09
+		_:
+			return 0.08   # хмурый
+
+
+# ============================ СЛОЙ ТЕНЕЙ ============================
+
+func _draw() -> void:
+	if mode != "shadows" or map == null or sim == null:
+		return
+	var day_len := float(cfg.get("day_length", 120.0))
+	var nf := float(cfg.get("night_fraction", 0.3))
+	var t := day_frac(sim.time, day_len)
+	var mood := mood_of(sim.day_number(), String(sim.weather))
+	var xf := get_viewport_transform()
+	var vis := (xf.affine_inverse() * get_viewport_rect()).grow(float(map.ts) * 6.0)
+	if _objs_dirty:
+		_build_objs()
+	var alpha := shadow_alpha(mood)
+	var weather: String = String(sim.weather)
+	if weather == "rain" or weather == "snow" or weather == "fog":
+		alpha *= 0.4   # рассеянный свет — тени едва видны
+	var col := Color(0.04, 0.04, 0.09, alpha)
+	# тёплые тени золотого часа: коричневатые, не чёрные
+	var u := day_u(t, nf)
+	if u > 0.62 or u < 0.16:
+		col = Color(0.16, 0.08, 0.03, alpha)
+	if is_daylight(t, nf):
+		_draw_object_shadows(t, nf, vis, col)
+		_draw_cloud_shadows(mood, vis, weather)
+	else:
+		# лунные тени: слабые, холодные
+		_draw_object_shadows(t, nf, vis, Color(0.55, 0.62, 0.85, 0.07), true)
+
+
+func _build_objs() -> void:
+	_objs_dirty = false
+	_objs = []
+	var ts := float(map.ts)
+	for y in map.h:
+		for x in map.w:
+			var g: int = map.grid[y][x]
+			if g == map.TILE_TREE:
+				var kind: int = map.tree_kind(Vector2i(x, y))
+				var h := ts * (1.9 if kind == map.TREE_SMALL
+						else (2.4 if kind == map.TREE_MEDIUM else 3.0))
+				_objs.append([0, Vector2((x + 0.5) * ts, (y + 0.92) * ts), h])
+			elif g == map.TILE_ROCK or g == map.TILE_ORE:
+				_objs.append([2, Rect2(Vector2(x * ts, y * ts), Vector2(ts, ts)), ts * 0.75])
+	_blds_count = sim.buildings.size()
+	for b in sim.buildings:
+		var bw := float(sim.bld_w(b))
+		var rect := Rect2(Vector2(b["tile"]) * ts, Vector2(ts * bw, ts * bw))
+		_objs.append([1, rect, ts * (0.9 if bool(b["done"]) else 0.45)])
+
+
+func _draw_object_shadows(t: float, nf: float, vis: Rect2, col: Color, moon := false) -> void:
+	var ts := float(map.ts)
+	for o in _objs:
+		var kind: int = o[0]
+		var h: float = o[2]
+		if kind == 0:
+			var base: Vector2 = o[1]
+			if not vis.has_point(base):
+				continue
+			_draw_tree_shadow(base, h, t, nf, col, ts, moon)
+		else:
+			var rect: Rect2 = o[1]
+			if not vis.intersects(rect.grow(h * SHADOW_LONG)):
+				continue
+			_draw_box_shadow(rect, h, t, nf, col, moon)
+
+
+## Тень дерева — вытянутый клин от основания в сторону от солнца.
+func _draw_tree_shadow(base: Vector2, h: float, t: float, nf: float,
+		col: Color, ts: float, moon := false) -> void:
+	var off := shadow_offset(t, nf, h)
+	if moon:
+		# лунная тень короче и слабее — свет отражённый
+		var un := moon_u(t, nf)
+		off = Vector2(moon_dir_x_at(t, nf), 0.2) * lerpf(1.1, 0.25, sin(PI * un)) * h * 0.7
+	if off.length() < 2.0:
+		return
+	var dirn := off.normalized()
+	var perp := Vector2(-dirn.y, dirn.x)
+	var w0 := ts * 0.30
+	var w1 := ts * 0.10
+	var pts := PackedVector2Array([
+		base + perp * w0, base + off + perp * w1,
+		base + off - perp * w1, base - perp * w0,
+	])
+	draw_colored_polygon(pts, col)
+
+
+## Тень прямоугольного объекта — выпуклая оболочка «подошва + подошва+смещение».
+func _draw_box_shadow(rect: Rect2, h: float, t: float, nf: float,
+		col: Color, moon := false) -> void:
+	var off := shadow_offset(t, nf, h)
+	if moon:
+		# лунная тень короче и слабее — свет отражённый
+		var un := moon_u(t, nf)
+		off = Vector2(moon_dir_x_at(t, nf), 0.2) * lerpf(1.1, 0.25, sin(PI * un)) * h * 0.7
+	if off.length() < 2.0:
+		return
+	var tl := rect.position
+	var tr := rect.position + Vector2(rect.size.x, 0)
+	var bl := rect.position + Vector2(0, rect.size.y)
+	var br := rect.end
+	var pts := PackedVector2Array()
+	if off.x >= 0.0:
+		pts.append_array([tl, tr, tr + off, br + off, br, bl + off])
+	else:
+		pts.append_array([tr, tl, tl + off, bl + off, bl, br + off])
+	draw_colored_polygon(pts, col)
+
+
+## Тени облаков (пасмурно/дождь/хмуро): крупные мягкие кляксы плывут по небу.
+func _draw_cloud_shadows(mood: int, vis: Rect2, weather: String) -> void:
+	if mood != MOOD_OVERCAST and mood != MOOD_GLOOMY and weather != "rain":
+		return
+	if map == null:
+		return
+	var ts := float(map.ts)
+	var alpha := 0.07 if mood == MOOD_OVERCAST else 0.10
+	var span := Vector2(map.w * ts, map.h * ts)
+	for i in 10:
+		var seed := float(i) * 17.3
+		# облако летит на восток, заворачивает по модулю размера карты
+		var cx := fposmod(_time * (14.0 + seed) + seed * 91.0, span.x + 400.0) - 200.0
+		var cy := fposmod(seed * 137.0 + sin(_time * 0.02 + seed) * 40.0, span.y)
+		var c := Vector2(cx, cy)
+		var r := ts * (3.0 + fmod(seed, 2.5))
+		var rect := Rect2(c - Vector2(r, r), Vector2(r * 2, r * 2))
+		if not vis.intersects(rect):
+			continue
+		draw_circle(c, r, Color(0.03, 0.04, 0.08, alpha))
+		draw_circle(c + Vector2(r * 0.4, r * 0.25), r * 0.7, Color(0.03, 0.04, 0.08, alpha * 0.8))
+
+
+# ============================ СЛОЙ НЕБА ============================
+
+## Экранное небо: вызывается painter'ом внутри CanvasLayer (координаты экрана).
+## Все draw_* — в canvas painter'а (cv), не в свой: сигнал пришёл от него.
+func _draw_sky_screen(cv: CanvasItem) -> void:
+	if sim == null:
+		return
+	var day_len := float(cfg.get("day_length", 120.0))
+	var nf := float(cfg.get("night_fraction", 0.3))
+	var t := day_frac(sim.time, day_len)
+	var mood := mood_of(sim.day_number(), String(sim.weather))
+	var vp := get_viewport_rect().size
+	var weather: String = String(sim.weather)
+	var dim := 1.0
+	if weather == "rain" or weather == "snow" or weather == "ash_storm":
+		dim = 0.3
+	elif weather == "fog":
+		dim = 0.55
+	if is_daylight(t, nf):
+		_draw_sun(cv, vp, t, nf, mood, dim)
+	else:
+		_draw_moon_stars(cv, vp, t, nf, mood, dim)
+
+
+func _mood_glow(mood: int) -> float:
+	match mood:
+		MOOD_CLEAR:
+			return 1.0
+		MOOD_GOLDEN:
+			return 0.95
+		MOOD_ROSY:
+			return 0.85
+		MOOD_FOGGY:
+			return 0.45
+		MOOD_OVERCAST:
+			return 0.18
+		_:
+			return 0.12
+
+
+func _draw_sun(cv: CanvasItem, vp: Vector2, t: float, nf: float, mood: int, dim: float) -> void:
+	var u := day_u(t, nf)
+	var elev := sun_elev(t, nf)
+	var glow := _mood_glow(mood) * dim
+	if glow < 0.05:
+		return
+	# солнце идёт по верхней кромке: справа (восток) налево (запад)
+	var sp := Vector2(lerpf(vp.x * 0.9, vp.x * 0.1, u), lerpf(vp.y * 0.34, vp.y * 0.06, elev))
+	# цвет диска: рассвет — розовый, полдень — бледно-жёлтый, закат — палитра дня
+	var day: int = sim.day_number()
+	var disc := Color(1.0, 0.95, 0.75)
+	if u < 0.16:
+		disc = Color(1.0, 0.72, 0.58)
+	elif u > 0.72:
+		disc = sunset_color(day)
+	var strength := (0.35 + 0.65 * (1.0 - elev)) if (u > 0.62 or u < 0.16) else 0.45
+	# трёхслойное гало + диск
+	cv.draw_circle(sp, 150.0, Color(disc.r, disc.g, disc.b, 0.05 * glow * (0.6 + strength)))
+	cv.draw_circle(sp, 84.0, Color(disc.r, disc.g, disc.b, 0.09 * glow * (0.6 + strength)))
+	cv.draw_circle(sp, 40.0, Color(disc.r, disc.g, disc.b, 0.16 * glow * (0.5 + strength)))
+	cv.draw_circle(sp, 22.0, Color(disc.r, disc.g, disc.b, 0.55 * glow))
+	cv.draw_circle(sp, 13.0, Color(1.0, 0.98, 0.9, 0.75 * glow))
+	# тёплая вуаль со стороны солнца на рассвете/закате
+	if u > 0.62 or u < 0.16:
+		cv.draw_circle(sp, 320.0, Color(disc.r, disc.g * 0.8, disc.b * 0.6, 0.05 * glow))
+
+
+func _draw_moon_stars(cv: CanvasItem, vp: Vector2, t: float, nf: float, mood: int, dim: float) -> void:
+	var un := moon_u(t, nf)
+	var star_power := 1.0
+	match mood:
+		MOOD_OVERCAST:
+			star_power = 0.08
+		MOOD_GLOOMY:
+			star_power = 0.05
+		MOOD_FOGGY:
+			star_power = 0.2
+		_:
+			star_power = 1.0
+	# звёзды: детерминированное поле точек, мерцают
+	if _stars.is_empty():
+		for i in 70:
+			_stars.append([
+				fposmod(float(i) * 127.3, 1.0) * vp.x,
+				fposmod(float(i) * 61.7, 0.55) * vp.y,
+				float(i % 7) * 0.9,
+			])
+	for s in _stars:
+		var tw := 0.4 + 0.6 * absf(sin(_time * 1.3 + s[2]))
+		cv.draw_circle(Vector2(s[0], s[1]), 1.1 + (1.0 if s[2] > 4.0 else 0.0),
+				Color(0.9, 0.93, 1.0, 0.5 * star_power * tw * dim))
+	# луна идёт с востока на запад, слабое холодное гало
+	var mp := Vector2(lerpf(vp.x * 0.88, vp.x * 0.12, un),
+			lerpf(vp.y * 0.30, vp.y * 0.08, sin(PI * un)))
+	var mglow := (0.85 if mood == MOOD_CLEAR else 0.3) * dim
+	cv.draw_circle(mp, 70.0, Color(0.75, 0.8, 1.0, 0.05 * mglow))
+	cv.draw_circle(mp, 26.0, Color(0.82, 0.86, 1.0, 0.10 * mglow))
+	cv.draw_circle(mp, 13.0, Color(0.9, 0.92, 1.0, 0.55 * mglow))
+	cv.draw_circle(mp + Vector2(-4, -3), 9.0, Color(1.0, 1.0, 1.0, 0.7 * mglow))
+
+
+static func moon_dir_x_at(t: float, nf: float) -> float:
+	return -cos(PI * moon_u(t, nf))

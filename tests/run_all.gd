@@ -109,6 +109,14 @@ const BLOCKS := [
 		"_test_v126_cemetery",
 		"_test_v126_fps",
 	]],
+	["res://tests/test_v127.gd", [
+		"_test_v127_sun_arc",
+		"_test_v127_sunsets",
+		"_test_v127_moods",
+		"_test_v127_daylight_colors",
+		"_test_v127_shadow_alpha",
+		"_test_v127_moon",
+	]],
 ]
 
 

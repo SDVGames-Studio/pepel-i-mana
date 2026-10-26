@@ -10,6 +10,7 @@ const CITY_CFG_PATH := "res://data/city.json"
 const HERO_SCRIPT := "res://scripts/hero.gd"
 const VIEW_SCRIPT := "res://scripts/city_view.gd"
 const HUD_SCRIPT := "res://scripts/city_hud.gd"
+const SKY := preload("res://scripts/city_sky.gd")  # статические функции фаз
 
 var sim = null
 var map = null
@@ -41,6 +42,8 @@ var _quests_panel = null        # доска объявлений (M14-K, кла
 var _codex_panel = null         # кодекс и статистика (M14-K, клавиша K)
 var _ambience = null            # светлячки и огоньки (M14-C, T21/T23)
 var _weather_fx = null          # погода: дождь/снег/туман/буря (M14-J)
+var _sky_shadows: Node2D = null # тени от солнца/луны (v1.27)
+var _sky: Node2D = null         # небо: солнце/луна/звёзды, характер дня (v1.27)
 var _near_temple := false       # храм рядом — E: молитва (M14-H)
 var _hero_tree: Dictionary = {} # дерево у ног героя (E — рубить, правки v1.12.2)
 var _hero_rock: Dictionary = {} # скала/руда рядом (E — добыть)
@@ -71,6 +74,11 @@ func _ready() -> void:
 	_terrain = load("res://scripts/city_terrain.gd").new()
 	_terrain.setup(map, cfg, sim)
 	add_child(_terrain)
+	# тени солнечного цикла (v1.27): под объектами, над ландшафтом
+	_sky_shadows = SKY.new()
+	_sky_shadows.mode = "shadows"
+	_sky_shadows.setup(map, sim, cfg)
+	add_child(_sky_shadows)
 	view.setup(map, sim, cfg)
 	view.city = self
 	view.enchant_colors = _enchant_colors()
@@ -89,6 +97,11 @@ func _ready() -> void:
 	# погода (M14-J): дождь/снег/туман/пепельная буря поверх мира
 	_weather_fx = load("res://scripts/city_weather.gd").new()
 	add_child(_weather_fx)
+	# небо (v1.27): солнце/луна/звёзды и свечение рассветов-закатов поверх
+	_sky = SKY.new()
+	_sky.mode = "sky"
+	_sky.setup(map, sim, cfg)
+	add_child(_sky)
 	hud = load(HUD_SCRIPT).new()
 	hud.init(sim, self, cfg)
 	add_child(hud)
@@ -279,6 +292,7 @@ func _process(delta: float) -> void:
 			_terrain.rebake()   # перевыпечь текстуру ландшафта (v1.21.5)
 			if trees_changed:
 				view.mark_trees_dirty()   # деревья ушли в сортированный слой (M12)
+				_sky_shadows.rebuild()    # кэш теней тоже устарел (v1.27)
 	else:
 		_terrain_redraw_accum = 0.0
 	view.queue_redraw()
@@ -765,8 +779,13 @@ func _update_daylight() -> void:
 		amount = (t - (night_start - fade)) / fade
 	elif t <= fade:
 		amount = 1.0 - t / fade
-	var night_color := Color(0.30, 0.33, 0.52)   # ночь темнее (замечание 2026-10-20)
-	_modulate.color = Color.WHITE.lerp(night_color, amount)
+	# v1.27: свет дня задаёт солнечный цикл — характер дня и краска фазы
+	# (рассвет/золотой час/закат по палитре этого дня)
+	var sky := SKY
+	var mood: int = sky.mood_of(sim.day_number(), String(sim.weather))
+	var day_col: Color = sky.daylight_color(mood, fmod(t, day_len) / day_len, nf, sim.day_number())
+	var night_color: Color = sky.night_color(mood)   # ночь тоже своя: звёздная/глухая
+	_modulate.color = day_col.lerp(night_color, amount)
 	if _ambience != null:
 		_ambience.night = amount   # светлячки и огоньки разгораются к ночи
 	# магическое загрязнение подкрашивает воздух (больше — фиолетовее)

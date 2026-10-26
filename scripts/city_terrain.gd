@@ -90,6 +90,8 @@ func _draw_tiles() -> void:
 	if map == null:
 		return
 	var ts := float(map.ts)
+	# проход 1: земля (трава/скалы) — вода рисуется после, чтобы берега
+	# и скругления углов ложились поверх травы
 	for y in map.h:
 		for x in map.w:
 			var tile: int = map.grid[y][x]
@@ -99,15 +101,12 @@ func _draw_tiles() -> void:
 				map.TILE_GRASS, map.TILE_TREE:
 					_drawer.draw_rect(rect, base)
 					_draw_grass_detail(x, y, rect, base, ts)
-				map.TILE_WATER:
-					_drawer.draw_rect(rect, colors["water"])
-					_draw_water_detail(x, y, rect, ts)
 				map.TILE_DEADROCK:
 					_draw_deadrock(x, y, rect, ts)
 				map.TILE_ROCK, map.TILE_ORE:
-					_drawer.draw_rect(rect, base)
-					_draw_grass_detail(x, y, rect, base, ts)
 					_draw_rock(x, y, tile == map.TILE_ORE, ts)
+	# проход 2: вода — плита, глубина, песчаный берег, скругления углов
+	_draw_water_pass(ts)
 	_draw_roads_baked()
 	_draw_zones_baked()
 	_draw_plaza_baked()
@@ -244,16 +243,196 @@ func _grass_at(x: int, y: int) -> Color:
 	return shade.darkened(0.01 * -j)
 
 
-## Травинки: 3 короткие штриха темнее/светлее по хэшу — земля не «пластмассит».
+## Трава: пучки травинок + редкие камешки + ЦВЕТОЧНЫЕ ПОЛЯНЫ (v1.27):
+## крупноячеистый шум выделяет луга, на них по хэшу цветут 2–4 цветка
+## (белый/жёлтый/розовый/василёк/мак) — поляны, а не рассыпанный горох.
+const FLOWER_COLS := [
+	Color("#f2f0e4"), Color("#e8d44d"), Color("#e88bb0"),
+	Color("#8fb4e8"), Color("#d9584f"),
+]
+
+
 func _draw_grass_detail(x: int, y: int, rect: Rect2, base: Color, ts: float) -> void:
 	var dark := base.darkened(0.14)
 	var light := base.lightened(0.08)
+	# пучки: 3 травинки с изломом — земля не «пластмассит»
 	for i in 3:
 		var h := _hash(x * 3 + i, y * 7 + i, 100)
 		var px := rect.position.x + 4.0 + float(h % int(ts - 8.0))
 		var py := rect.position.y + 5.0 + float((h / 7) % int(ts - 10.0))
 		var col := dark if i % 2 == 0 else light
 		_drawer.draw_line(Vector2(px, py), Vector2(px + 1.0, py - 3.0 - float(h % 3)), col, 1.0)
+	# камешек: редкий серый бугорок
+	if _hash(x * 13, y * 3, 200) == 0:
+		_drawer.draw_circle(rect.position + Vector2(8.0 + float(_hash(x, y, 40) % 14), 9.0), 1.8,
+				Color("#9a958a"))
+		_drawer.draw_circle(rect.position + Vector2(7.4, 8.4), 0.9, Color("#b5b0a4"))
+	# цветочная поляна: шум крупными пятнами + хэш внутри пятна
+	var field := _noise2(x / 5.0, y / 5.0, 100, 71)
+	if field > 0.74:
+		var blooms := 1 + _hash(x, y, 13) % 3
+		for i in blooms:
+			var h2 := _hash(x * 17 + i, y * 19 + i, 100)
+			var c := rect.position + Vector2(5.0 + float(h2 % int(ts - 10.0)),
+					5.0 + float((h2 / 7) % int(ts - 10.0)))
+			var fcol: Color = FLOWER_COLS[_hash(x + i, y - i, FLOWER_COLS.size())]
+			# цветок: 4 лепестка и жёлтая серединка (при 32px — читаемая точка)
+			_drawer.draw_circle(c + Vector2(-1.3, -1.3), 1.1, fcol)
+			_drawer.draw_circle(c + Vector2(1.3, -1.3), 1.1, fcol)
+			_drawer.draw_circle(c + Vector2(-1.3, 1.3), 1.1, fcol)
+			_drawer.draw_circle(c + Vector2(1.3, 1.3), 1.1, fcol)
+			_drawer.draw_circle(c, 0.9, Color("#e8c94d"))
+
+
+## Вода (v1.27): плиты с глубиной (центр пруда темнее, отмель светлее),
+## песчаная кромка по берегу и СКРУГЛЁННЫЕ углы — водоёмы читаются
+## природными кляксами, а не квадратами. Поверх — кувшинки и камыши.
+func _draw_water_pass(ts: float) -> void:
+	var deep_col: Color = colors.get("water_deep", colors["water"].darkened(0.28))
+	var shore_col: Color = colors.get("shore", Color("#c8b183"))
+	# плиты с глубиной
+	for y in map.h:
+		for x in map.w:
+			if map.grid[y][x] != map.TILE_WATER:
+				continue
+			var rect := Rect2(x * map.ts, y * map.ts, map.ts, map.ts)
+			var deep := _water_deep(x, y)   # 0 отмель .. 8 глубина
+			var col: Color = colors["water"].lerp(deep_col, clampf(deep / 6.0, 0.0, 1.0))
+			if deep == 0:
+				col = col.lightened(0.10)   # отмель у берега светлее
+			_drawer.draw_rect(rect, col)
+			_draw_water_detail(x, y, rect, ts)
+	# берег: песчаная кромка и скругления углов
+	for y in map.h:
+		for x in map.w:
+			if map.grid[y][x] != map.TILE_WATER:
+				continue
+			_draw_water_edges(x, y, ts, shore_col)
+	# кувшинки на отмелях и камыши на берегу
+	for y in map.h:
+		for x in map.w:
+			var t := Vector2i(x, y)
+			if map.grid[y][x] == map.TILE_WATER:
+				if _water_deep(x, y) <= 2 and _hash(x, y, 17) == 0:
+					_draw_lily_pads(Vector2(x * ts, y * ts), ts, x, y)
+			elif map.grid[y][x] == map.TILE_GRASS:
+				if _near_water(t) and _hash(x * 3, y * 5, 23) < 3:
+					_draw_reeds(Vector2(x * ts, y * ts), ts, x, y)
+
+
+## Сколько водных соседей по 8 направлениям (глубина плиты).
+func _water_deep(x: int, y: int) -> int:
+	var n := 0
+	for dy in range(-1, 2):
+		for dx in range(-1, 2):
+			if dx == 0 and dy == 0:
+				continue
+			var t := Vector2i(x + dx, y + dy)
+			if map.in_bounds(t) and map.grid[t.y][t.x] == map.TILE_WATER:
+				n += 1
+	return n
+
+
+func _near_water(t: Vector2i) -> bool:
+	for d in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
+		var n: Vector2i = t + d
+		if map.in_bounds(n) and map.grid[n.y][n.x] == map.TILE_WATER:
+			return true
+	return false
+
+
+## Кромка воды: песчаная полоса по береговым рёбрам + четверть-круги на углах.
+## Внешний угол (оба ортогональных соседа — земля) закрашивается травой —
+## плита воды становится «кляксой»; внутренний угол (соседи вода, диагональ —
+## земля) заливается водой — залив округляется без квадратной выемки.
+func _draw_water_edges(x: int, y: int, ts: float, shore_col: Color) -> void:
+	var rect := Rect2(x * ts, y * ts, ts, ts)
+	var p := rect.position
+	var wet := func(off: Vector2i) -> bool:
+		var t := Vector2i(x, y) + off
+		return map.in_bounds(t) and map.grid[t.y][t.x] == map.TILE_WATER
+	var grass := func(off: Vector2i) -> Color:
+		var t := Vector2i(x, y) + off
+		return _grass_at(t.x, t.y) if map.in_bounds(t) else _grass_at(x, y)
+	# песчаная кромка по рёбрам к земле
+	var sw := 3.0
+	if not wet.call(Vector2i(1, 0)):
+		_drawer.draw_rect(Rect2(p + Vector2(ts - sw, 0), Vector2(sw, ts)), shore_col)
+	if not wet.call(Vector2i(-1, 0)):
+		_drawer.draw_rect(Rect2(p, Vector2(sw, ts)), shore_col)
+	if not wet.call(Vector2i(0, 1)):
+		_drawer.draw_rect(Rect2(p + Vector2(0, ts - sw), Vector2(ts, sw)), shore_col)
+	if not wet.call(Vector2i(0, -1)):
+		_drawer.draw_rect(Rect2(p, Vector2(ts, sw)), shore_col)
+	# скругления: внешний угол — трава накрывает угол плиты,
+	# внутренний — вода заполняет угол соседней травы
+	var r := ts * 0.42
+	var corners := [
+		[Vector2i(1, -1), p + Vector2(ts, 0), Vector2(-1, 1)],
+		[Vector2i(-1, -1), p, Vector2(1, 1)],
+		[Vector2i(-1, 1), p + Vector2(0, ts), Vector2(1, -1)],
+		[Vector2i(1, 1), p + Vector2(ts, ts), Vector2(-1, -1)],
+	]
+	for c in corners:
+		var diag: Vector2i = c[0]
+		var corner: Vector2 = c[1]
+		var inward: Vector2 = c[2]
+		var h: Vector2i = Vector2i(int(inward.x), 0)
+		var v: Vector2i = Vector2i(0, int(inward.y))
+		if wet.call(h) and wet.call(v):
+			# внутренний угол: диагональ — земля, зальём её угол водой
+			# (круглая бухта); вода идёт НАРУЖУ от плиты — направление -inward
+			if not wet.call(diag):
+				_water_quarter(corner, -inward, r, colors["water"].lightened(0.06))
+		elif not wet.call(h) and not wet.call(v):
+			# внешний угол: накрываем угол плиты травой соседа — плита воды
+			# становится «кляксой», песчаная кромка по рёбрам сохраняется
+			var gcol: Color = grass.call(h)
+			_water_quarter(corner, inward, r + sw * 0.5, gcol)
+
+
+## Четверть круга из угла corner в направлении inward (полигон-веер).
+func _water_quarter(corner: Vector2, inward: Vector2, r: float, col: Color) -> void:
+	if r < 1.0:
+		return
+	var dx := signf(inward.x)
+	var dy := signf(inward.y)
+	var pts := PackedVector2Array([corner])
+	var steps := 7
+	for i in range(steps + 1):
+		var a := (float(i) / float(steps)) * (PI / 2.0)
+		pts.append(corner + Vector2(dx * cos(a), dy * sin(a)) * r)
+	_drawer.draw_colored_polygon(pts, col)
+
+
+## Кувшинки: пара листьев-эллипсов с выемкой и бликом.
+func _draw_lily_pads(origin: Vector2, ts: float, x: int, y: int) -> void:
+	for i in 2:
+		var h := _hash(x * 5 + i, y * 9 + i, 100)
+		var c := origin + Vector2(6.0 + float(h % int(ts - 14.0)), 6.0 + float((h / 5) % int(ts - 14.0)))
+		var r := 3.0 + float(h % 3)
+		var col := Color("#4e7c3a").lightened(0.05 * float(i))
+		_drawer.draw_circle(c, r, col)
+		_drawer.draw_circle(c + Vector2(-r * 0.3, -r * 0.3), r * 0.45, col.lightened(0.25))
+		# выемка листа — тёмный клин
+		_drawer.draw_line(c, c + Vector2(r + 0.6, 0.6), colors["water"].lightened(0.08), 1.2)
+
+
+## Камыши (v1.27): 2–4 стебля с тёмной шишкой — болотная кромка водоёмов.
+func _draw_reeds(origin: Vector2, ts: float, x: int, y: int) -> void:
+	var stem := Color("#4e6b34")
+	var head := Color("#7a5230")
+	var n := 2 + _hash(x, y, 5) % 3
+	for i in n:
+		var h := _hash(x * 7 + i, y * 11 + i, 100)
+		var base := origin + Vector2(5.0 + float(h % int(ts - 10.0)), ts * 0.85)
+		var lean := 1.6 + float(h % 3) * 0.8
+		var top := base + Vector2(lean, -ts * (0.5 + 0.14 * float(h % 3)))
+		_drawer.draw_line(base, top, stem, 1.4)
+		_drawer.draw_line(top, top + Vector2(lean * 0.5, -3.0), stem, 1.1)
+		# шишка камыша — короткая тёмная капсула на конце
+		_drawer.draw_line(top + Vector2(lean * 0.5, -3.0), top + Vector2(lean * 0.6, -7.0), head, 2.4)
+		_drawer.draw_circle(top + Vector2(lean * 0.6, -7.0), 1.2, head.darkened(0.2))
 
 
 ## Блики воды: пара светлых чёрточек по хэшу.
@@ -268,55 +447,27 @@ func _draw_water_detail(x: int, y: int, rect: Rect2, ts: float) -> void:
 		_drawer.draw_line(Vector2(px, py), Vector2(px + 4.0 + float(h % 4), py), col, 1.2)
 
 
-## Сколько соседей — скала (для формы гряды: внутренние тайлы темнее и крупнее).
-func _rock_neighbors(x: int, y: int) -> int:
-	var n := 0
-	for d: Vector2i in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1),
-			Vector2i(1, 1), Vector2i(-1, -1), Vector2i(1, -1), Vector2i(-1, 1)]:
-		var t: Vector2i = Vector2i(x, y) + d
-		if map.in_bounds(t) and (map.grid[t.y][t.x] == map.TILE_ROCK or map.grid[t.y][t.x] == map.TILE_ORE):
-			n += 1
-	return n
-
-
-## Единая скальная гряда (M11): сплошное тело без щелей — серые плиты с
-## травяной бровкой по верхней кромке, тёмной передней стенкой по нижней,
-## лёгким рельефом и трещинами по мере добычи. Читается одним массивом.
+## Единая скальная гряда (M11, v1.27 — натурная): гряда из НАЛЕГАЮЩИХ
+## валунов — по 2–3 округлых камня на тайл со световым рельефом, углы
+## массива скруглены (трава накрывает внешний угол, порода заполняет
+## внутренний), у подножия — осыпь и травяная бровка. Руда и трещины
+## по мере добычи сохранены.
 func _draw_rock(x: int, y: int, ore: bool, ts: float) -> void:
 	var key := Vector2i(x, y)
 	var rect := Rect2(Vector2(x * ts, y * ts), Vector2(ts, ts))
-	var inner_top := _rock_at(x, y - 1)
-	var inner_bottom := _rock_at(x, y + 1)
-	var inner_left := _rock_at(x - 1, y)
-	var inner_right := _rock_at(x + 1, y)
-	# базовый тон плиты с лёгкой вариацией по тайлу
-	var base := Color("#716c60").lightened(0.02 * float(_hash(x, y, 5) - 2))
+	# тон плиты с плавной вариацией по шуму (гряда «дышит» оттенком)
+	var tone := _noise2(x / 3.0, y / 3.0, 30, 91)
+	var base := Color("#716c60").lightened(0.06 * tone - 0.03)
 	_drawer.draw_rect(rect, base)
-	# рельеф: светлое пятно сверху и пара тёмных сколов по хэшу
+	# валуны: большой камень + меньший рядом, свет сверху-слева
 	var hx := _hash(x, y, 30)
 	var hy := _hash(y * 7, x * 3, 30)
-	_draw_ellipse(rect.position + Vector2(10.0 + float(hx % 12), 9.0 + float(hy % 8)),
-			8.0 + float(hx % 6), 5.0 + float(hy % 3), base.lightened(0.04))
-	_drawer.draw_line(rect.position + Vector2(4.0 + float(hy % 10), 14.0 + float(hx % 12)),
-			rect.position + Vector2(12.0 + float(hx % 14), 22.0 + float(hy % 6)),
-			base.darkened(0.12), 2.0)
-	# верхняя кромка: травяная бровка и тень под ней (гряда лежит на земле)
-	if not inner_top:
-		_drawer.draw_rect(Rect2(rect.position, Vector2(ts, 6.0)), _grass_shades[0].darkened(0.1))
-		_drawer.draw_rect(Rect2(rect.position + Vector2(0, 6.0), Vector2(ts, 3.0)), base.lightened(0.12))
-	# нижняя кромка: передняя стенка обрыва с трещинами
-	if not inner_bottom:
-		var face := Rect2(rect.position + Vector2(0, ts - 10.0), Vector2(ts, 10.0))
-		_drawer.draw_rect(face, Color("#454137"))
-		for i in 3:
-			var cxp := rect.position.x + 4.0 + float((_hash(x * 5 + i, y, 20) % int(ts - 8.0)))
-			_drawer.draw_line(Vector2(cxp, face.position.y + 2.0), Vector2(cxp + 1.5, face.position.y + 9.0),
-					Color(0.1, 0.09, 0.07, 0.8), 1.4)
-	# боковые кромки
-	if not inner_left:
-		_drawer.draw_rect(Rect2(rect.position, Vector2(2.5, ts)), Color("#565248"))
-	if not inner_right:
-		_drawer.draw_rect(Rect2(rect.position + Vector2(ts - 2.5, 0), Vector2(2.5, ts)), Color("#565248"))
+	var c1 := rect.position + Vector2(ts * 0.42 + float(hx % 6) - 3.0, ts * 0.45 + float(hy % 6) - 3.0)
+	_draw_valley_boulder(c1, ts * 0.42, ts * 0.34, base)
+	var c2 := rect.position + Vector2(ts * 0.28 + float(hy % 8), ts * 0.72 + float(hx % 5))
+	_draw_valley_boulder(c2, ts * 0.26, ts * 0.2, base.darkened(0.06))
+	# скругления углов массива (как у воды: внешние — трава, внутренние — порода)
+	_draw_rock_edges(x, y, ts, base)
 	# трещины по мере добычи: скала «оседает»
 	if map.rock_hp.has(key):
 		var frac: float = clampf(float(map.rock_hp[key]) / maxf(1.0, _rock_hp_default), 0.0, 1.0)
@@ -337,6 +488,41 @@ func _draw_rock(x: int, y: int, ore: bool, ts: float) -> void:
 			_drawer.draw_circle(Vector2(fx, fy), 1.6 + float(h2 % 2), col)
 
 
+## Валун: округлый камень со световым пятном и тёмным подбоем.
+func _draw_valley_boulder(c: Vector2, rx: float, ry: float, base: Color) -> void:
+	_draw_ellipse(c, rx, ry, base)
+	_draw_ellipse(c + Vector2(-rx * 0.22, -ry * 0.3), rx * 0.55, ry * 0.45, base.lightened(0.09))
+	_draw_ellipse(c + Vector2(rx * 0.15, ry * 0.35), rx * 0.6, ry * 0.4, base.darkened(0.1))
+
+
+## Скругления массива скал: те же четверть-круги, что у воды.
+func _draw_rock_edges(x: int, y: int, ts: float, base: Color) -> void:
+	var solid := func(off: Vector2i) -> bool:
+		var t := Vector2i(x, y) + off
+		return map.in_bounds(t) and (map.grid[t.y][t.x] == map.TILE_ROCK
+				or map.grid[t.y][t.x] == map.TILE_ORE)
+	var p := Vector2(x * ts, y * ts)
+	var r := ts * 0.4
+	var corners := [
+		[Vector2i(1, -1), p + Vector2(ts, 0), Vector2(-1, 1)],
+		[Vector2i(-1, -1), p, Vector2(1, 1)],
+		[Vector2i(-1, 1), p + Vector2(0, ts), Vector2(1, -1)],
+		[Vector2i(1, 1), p + Vector2(ts, ts), Vector2(-1, -1)],
+	]
+	for c in corners:
+		var diag: Vector2i = c[0]
+		var corner: Vector2 = c[1]
+		var inward: Vector2 = c[2]
+		var h: Vector2i = Vector2i(int(inward.x), 0)
+		var v: Vector2i = Vector2i(0, int(inward.y))
+		if solid.call(h) and solid.call(v):
+			if not solid.call(diag):
+				_water_quarter(corner, inward, r, base)
+		elif not solid.call(h) and not solid.call(v):
+			# внешний угол массива: трава накрывает угол — гряда «лежит» на земле
+			_water_quarter(corner, inward, r, _grass_at(x, y))
+
+
 ## Заполненный эллипс полигоном (для глыб гряды).
 func _draw_ellipse(center: Vector2, rx: float, ry: float, col: Color) -> void:
 	if rx <= 0.5 or ry <= 0.5:
@@ -346,8 +532,3 @@ func _draw_ellipse(center: Vector2, rx: float, ry: float, col: Color) -> void:
 		var a := TAU * float(i) / 18.0
 		pts.append(center + Vector2(cos(a) * rx, sin(a) * ry))
 	_drawer.draw_colored_polygon(pts, col)
-
-
-func _rock_at(x: int, y: int) -> bool:
-	return map.in_bounds(Vector2i(x, y)) \
-			and (map.grid[y][x] == map.TILE_ROCK or map.grid[y][x] == map.TILE_ORE)

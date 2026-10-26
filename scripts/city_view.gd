@@ -106,6 +106,7 @@ func _draw() -> void:
 	# city_terrain.gd (v1.22); растения и полосы обустройства — живые
 	_draw_plaza_pulse()
 	_draw_field_live()
+	_draw_water_glints()
 	_draw_anomaly()
 	_draw_world_exit()
 	_draw_world_sorted()
@@ -114,6 +115,35 @@ func _draw() -> void:
 
 ## Прямоугольник карты, видимый камерой (запас 3 тайла на высокие деревья).
 var _vis := Rect2(-1e9, -1e9, 2e9, 2e9)
+
+
+## Живой блеск воды (v1.27): медленные светлые штрихи на водных тайлах —
+## пруды «дышат» на солнце. Список тайлов воды постоянен — считается один раз.
+var _water_tiles: Array = []
+var _water_ready := false
+
+
+func _draw_water_glints() -> void:
+	if map == null:
+		return
+	if not _water_ready:
+		_water_ready = true
+		for y in map.h:
+			for x in map.w:
+				if map.grid[y][x] == map.TILE_WATER:
+					_water_tiles.append(Vector2i(x, y))
+	var ts := float(map.ts)
+	for t: Vector2i in _water_tiles:
+		var rect := Rect2(Vector2(t) * ts, Vector2(ts, ts))
+		if not _vis.intersects(rect):
+			continue
+		var ph := float(t.x * 7 + t.y * 13)
+		var s := sin(_anim_time * 1.6 + ph)
+		if s < 0.25:
+			continue
+		var c := Vector2(t) * ts + Vector2(ts * (0.35 + 0.3 * sin(ph * 0.7)), ts * 0.55)
+		var w := ts * (0.14 + 0.07 * s)
+		draw_line(c - Vector2(w, 0), c + Vector2(w, 0), Color(1.0, 1.0, 0.95, (s - 0.25) * 0.30), 1.2)
 
 
 ## Пульс «места сбора» на площади (правки v1.20): плиты рисует статичный
@@ -280,7 +310,10 @@ func _build_tree_desc(tile: Vector2i, ts: float) -> Array:
 		src = (t as AtlasTexture).region
 	var s := scale / float(t.get_height())
 	var w := t.get_width() * s
-	var pos := bottom + Vector2(0, -2)
+	# природный сдвиг (v1.27): деревья не стоят по разметке сетки —
+	# лёгкий детерминированный дрейф точки посадки по хэшу тайла
+	var jit := Vector2(float(_hash(tile.x * 3, tile.y, 5) - 2), float(_hash(tile.x, tile.y * 3, 5) - 2))
+	var pos := bottom + Vector2(0, -2) + jit * (ts * 0.035)
 	# композит: спрайт + тень под ним; dst растянут пропорционально, низ
 	# спрайта попадает в ту же точку «посадки», что и раньше
 	var comp: ImageTexture = _tree_composite(ref, t, src)
