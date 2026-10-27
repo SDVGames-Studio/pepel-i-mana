@@ -288,6 +288,8 @@ func field_stats(z: Dictionary) -> Dictionary:
 				and building_at(z["cells"][i]).is_empty():
 			filled += 1
 			if crops.size() > i:
+				if not (crops[i] is Dictionary):
+					crops[i] = {}
 				var c: Dictionary = crops[i]
 				if not c.is_empty():
 					sown += 1
@@ -486,6 +488,9 @@ func _update_zones(dt: float, day_len: float) -> void:
 				continue
 			while crops.size() <= i:
 				crops.append({})
+			# v1.28: старые сейвы могли оставить null-дыры в посевах — чиним
+			if not (crops[i] is Dictionary):
+				crops[i] = {}
 			var crop: Dictionary = crops[i]
 			if crop.is_empty():
 				# пусто: сеем, если есть семя (v1.22: сезонная культура вне

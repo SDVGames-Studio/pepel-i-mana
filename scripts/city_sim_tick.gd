@@ -60,42 +60,55 @@ func tick(dt_raw: float) -> void:
 	_update_cemetery(dt, day_len)   # костры догорают, останки истлевают (v1.23)
 	for r in residents:
 		_update_resident(r, dt)
-	# люди (M4): раз в игровой день — преемник старосты, болезни, беженцы, рождения, стройка, истории
+	# люди (M4): раз в игровой день — преемник старосты, болезни, беженцы, рождения, стройка, истории.
+	# v1.28: дневной блок РАЗБИТ на 3 фазы по тикам — раньше всё (~30 роллов,
+	# включая morning_plan с переназначением всех жителей = пакет A*) шло в
+	# ОДНОМ тике и давало фризы на границе дня (заказчик связывал их со
+	# сменой погоды — она бросается в том же блоке).
 	if day > _last_daily_day:
 		_last_daily_day = day
+		_daily_phase = 1
 		_ensure_elder()
 		_ensure_plaza()
-		# утро старосты (правки v1.20): размещает требуемые здания, затем
-		# собирает жителей на площади и раздаёт план по цветам и приоритетам
-		_roll_autobuild()
-		_roll_city_repair()   # город чинит сам: строитель 50%, непрофильный 70% (v1.21.3)
-		morning_plan()
-		_roll_ailments()
-		_roll_refugees()
-		_roll_births()
-		_roll_stories()
-		_roll_couples()
-		_roll_festival()
-		_roll_guards()
-		_roll_hunter()
-		_roll_porter()
-		_roll_corpse_haul()   # останки врагов несут на кладбище (v1.23)
-		_pull_idle_piles()   # без носильщика кучи разносятся руками (v1.21)
-		_roll_auto_roads()
-		_roll_animals()
-		_roll_storm()
-		_roll_livestock()
-		_roll_market()
-		_roll_wanderer()
-		_watchdog_stuck()
-		_tick_caravans()
-		_tick_tents()
-		_tick_orchards()
-		_roll_necro()
-		_roll_v3()   # жизнь v3 (M14-F): память, отношения, личные цели
-		_roll_weather()   # погода и сезоны (M14-J)
-		_roll_quests()   # доска объявлений (M14-K)
-		_roll_story()   # сюжетная рамка (M14-L)
+	match _daily_phase:
+		1:
+			# фаза 1 — самая тяжёлая: стройка и переназначение всех жителей
+			_roll_autobuild()
+			_roll_city_repair()   # город чинит сам: строитель 50%, непрофильный 70% (v1.21.3)
+			morning_plan()
+			_daily_phase = 2
+		2:
+			# фаза 2 — люди и события
+			_roll_ailments()
+			_roll_refugees()
+			_roll_births()
+			_roll_stories()
+			_roll_couples()
+			_roll_festival()
+			_roll_guards()
+			_roll_hunter()
+			_roll_porter()
+			_roll_corpse_haul()   # останки врагов несут на кладбище (v1.23)
+			_pull_idle_piles()   # без носильщика кучи разносятся руками (v1.21)
+			_daily_phase = 3
+		3:
+			# фаза 3 — экономика, мир, погода/квесты/сюжет
+			_roll_auto_roads()
+			_roll_animals()
+			_roll_storm()
+			_roll_livestock()
+			_roll_market()
+			_roll_wanderer()
+			_watchdog_stuck()
+			_tick_caravans()
+			_tick_tents()
+			_tick_orchards()
+			_roll_necro()
+			_roll_v3()   # жизнь v3 (M14-F): память, отношения, личные цели
+			_roll_weather()   # погода и сезоны (M14-J)
+			_roll_quests()   # доска объявлений (M14-K)
+			_roll_story()   # сюжетная рамка (M14-L)
+			_daily_phase = 0
 	_update_gates()   # один скан за тик: страж/стройка/волна меняют створки сразу
 
 

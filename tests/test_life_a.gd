@@ -109,22 +109,28 @@ func _test_wishlist() -> void:
 	sim_q.cfg["mountain"]["rate"] = 5000.0   # мгновенная выработка — для теста
 	sim_q.cfg["piles"] = {"chunk": 1.0, "max": 60.0, "carry": 10.0}
 	var rock_tile := Vector2i(-1, -1)
+	var qspot := Vector2i(-1, -1)
+	# v1.28: перебираем ВСЕ скалы, пока у какой-нибудь не найдётся место
+	# под каменоломню (составные озёра могли запереть первую попавшуюся)
 	for y in sim_q.map.h:
 		for x in sim_q.map.w:
-			if sim_q.map.grid[y][x] == sim_q.map.TILE_ROCK:
-				rock_tile = Vector2i(x, y)
-				break
-		if rock_tile.x >= 0:
-			break
-	var qspot := Vector2i(-1, -1)
-	for dy in range(-2, 3):
-		for dx in range(-2, 3):
-			var t2 := rock_tile + Vector2i(dx, dy)
-			if sim_q.is_buildable_tile(t2) and sim_q.placement_block("quarry", t2) == "":
-				qspot = t2
-				break
-		if qspot != Vector2i(-1, -1):
-			break
+			var rt := Vector2i(x, y)
+			if sim_q.map.grid[y][x] != sim_q.map.TILE_ROCK:
+				continue
+			for dy in range(-2, 3):
+				for dx in range(-2, 3):
+					var t2 := rt + Vector2i(dx, dy)
+					# v1.28: карьер 2×2 — проверяем ПЛОЩАДЬ (не одну клетку),
+					# и берём скалу поближе к спавну: у края rect не влезает
+					if sim_q.is_buildable_rect("quarry", t2) \
+							and sim_q.placement_block("quarry", t2) == "" \
+							and sim_q.placement_gap_ok("quarry", t2) \
+							and (qspot == Vector2i(-1, -1)
+									or t2.distance_to(sim_q.map.spawn_tile)
+									< qspot.distance_to(sim_q.map.spawn_tile)):
+						rock_tile = rt
+						qspot = t2
+						break
 	_check(qspot != Vector2i(-1, -1), "у скалы есть место под каменоломню")
 	_check(sim_q.place_building("quarry", qspot), "каменоломня заложена у скалы")
 	var builder_q: Dictionary = _resident_by_prof(sim_q, "builder")
@@ -234,7 +240,10 @@ func _test_m12() -> void:
 	sim2.tick(0.8)
 	_check(["leisure", "chat", "going"].has(String(farmer["state"])),
 			"вечером житель не работает, а отдыхает")
-	# разговор: два праздных рядом обмениваются репликой
+	# разговор: два праздных рядом обмениваются репликой.
+	# v1.28: дневные броски заморожены — иначе на границе дня планёрка
+	# переassign-ит жителей, и досуг не наступает (предмет теста — вечер).
+	sim2._last_daily_day = 999
 	var a := _add_resident(sim2, "Ада", "crafter")
 	var b := _add_resident(sim2, "Борис", "porter")
 	a["traits"] = []
@@ -242,7 +251,13 @@ func _test_m12() -> void:
 	_teleport(sim2, a, Vector2i(40, 31))
 	_teleport(sim2, b, Vector2i(40, 32))
 	sim2.time = (1.0 - float(sim2.cfg["night_fraction"]) - 0.05) * day_len
-	sim2.tick(2.0)
+	var evening_t := (1.0 - float(sim2.cfg["night_fraction"]) - 0.05) * day_len
+	# v1.28: ловим МОМЕНТ разговора (реплика живёт 4 с, потом кулдаун)
+	for i in 10:
+		sim2.time = evening_t   # держим вечер: уход в ночь усыпит жителей
+		sim2.tick(2.0)
+		if String(a.get("chat_key", "")) != "" or String(b.get("chat_key", "")) != "":
+			break
 	_check(String(a.get("chat_key", "")) != "" or String(b.get("chat_key", "")) != "",
 			"двое рядом на досуге беседуют облачком")
 	# тревога (v1.25, заказчик: «жители стояли пару дней в ожидании атаки

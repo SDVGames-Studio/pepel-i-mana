@@ -92,6 +92,7 @@ var _spell_ready := {}          # id городского заклинания -
 var _event_rng := RandomNumberGenerator.new()
 var _last_event_day := 0
 var _last_daily_day := 0        # дневные броски M4: беженцы/рождения/болезни/истории
+var _daily_phase := 0           # фаза дневного блока (v1.28): 1..3 по тикам, 0 — нет
 var _gate_state := {}           # id ворот -> открыты? (страж на ближней вышке)
 var _spot_cache := {}           # id здания -> {key, spot}: кэш входа (этап 2, аспект 2)
 # --- кэши производительности (правки приёмки v1.21.4: FPS падал к 70-му дню) ---
@@ -211,6 +212,7 @@ func setup(city_map, city_cfg: Dictionary, residents_count: int, level: String) 
 	_raid_warned = false
 	_storm_struck_at = 0.0
 	_last_daily_day = 0   # дневные броски (в т.ч. стройка) — с первого дня (заказчик)
+	_daily_phase = 0
 	_event_rng.randomize()
 	_raid_rng.randomize()
 	_next_id = 1

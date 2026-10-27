@@ -421,6 +421,8 @@ func _test_defense() -> void:
 	var sim_g2 := _make_sim()
 	sim_g2._last_daily_day = 0
 	sim_g2.tick(0.2)
+	sim_g2.tick(0.2)
+	sim_g2.tick(0.2)   # v1.28: дневной блок — 3 фазы по тикам
 	var guards := 0
 	var shifts := {}
 	for r in sim_g2.residents:
@@ -702,8 +704,10 @@ func _test_gathering() -> void:
 	sim_sg.time = 10.0
 	var wood_sg0 := float(sim_sg.res["wood"])
 	var sawed := false
+	var anger_max := 0.0   # v1.28: гнев поднимается валкой и гаснет посадкой —
 	for i in 60:   # дойти, свалить (до 1.2 дня у большого), подготовить, притащить, распилить
 		sim_sg.tick(12.0)
+		anger_max = maxf(anger_max, sim_sg.forest_anger)
 		if float(sim_sg.res["wood"]) > wood_sg0:
 			sawed = true
 			break
@@ -713,7 +717,7 @@ func _test_gathering() -> void:
 		if String(e["type"]) == "tree_felled":
 			felled_seen = true
 	_check(felled_seen, "дерево реально повалено")
-	_check(sim_sg.forest_anger >= 1.0, "валка дерева злит лес (+1)")
+	_check(anger_max >= 1.0, "валка дерева злит лес (+1)")
 
 	# бревно с валки героя (v1.21.2): лежит на земле — лесопилка подбирает
 	# и пилит; доски в общем пуле не появляются
@@ -783,6 +787,7 @@ func _test_gathering() -> void:
 			hunter_before = true
 	_check(not hunter_before, "в стартовом наборе нет охотника")
 	sim_ht.tick(0.2)
+	sim_ht.tick(0.2)   # v1.28: охотник — фаза 2 дневного блока
 	var hunter_after := false
 	for r in sim_ht.residents:
 		if String(r["prof"]) == "hunter":

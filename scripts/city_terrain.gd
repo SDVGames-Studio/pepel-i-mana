@@ -499,10 +499,10 @@ func _draw_water_blobs(ts: float) -> void:
 			_stroke_on_loop(loop, ts * 0.6, Color("#6d8a4e").darkened(0.05))
 			continue
 		_fill_loop(loop, colors["water"], ts)
-		# глубина: концентрические тёмные контуры у больших водоёмов
-		if _loop_area(loop) > 12.0 * ts * ts:
-			_stroke_inside(loop, 0.66, ts * 0.55, Color(deep_col.r, deep_col.g, deep_col.b, 0.6))
-			_stroke_inside(loop, 0.40, ts * 0.6, Color(deep_col.r, deep_col.g, deep_col.b, 0.55))
+		# глубина: один мягкий тёмный контур только у БОЛЬШИХ водоёмов
+		# (у малых прудов вложенные контуры читались «ромбами»)
+		if _loop_area(loop) > 18.0 * ts * ts:
+			_stroke_inside(loop, 0.60, ts * 0.8, Color(deep_col.r, deep_col.g, deep_col.b, 0.4))
 	# берег: пляж по контуру и светлый урез воды внутри
 	for loop in loops:
 		if _loop_depth(loop, loops) % 2 == 1:
@@ -510,7 +510,7 @@ func _draw_water_blobs(ts: float) -> void:
 		_stroke_on_loop(loop, ts * 0.9, shore_col)
 		# влажный блеск у кромки — едва заметный, без «синей разметки»
 		_stroke_inside(loop, 0.965, 1.5, Color(colors["water"].lightened(0.2), 0.45))
-	# украшения по тайлам внутри контура: блики, кувшинки
+	# украшения по тайлам внутри контура: блики, кувшинки, тина у берега
 	for y in map.h:
 		for x in map.w:
 			if map.grid[y][x] != map.TILE_WATER:
@@ -519,13 +519,25 @@ func _draw_water_blobs(ts: float) -> void:
 			_draw_water_detail(x, y, rect, ts)
 			if _water_deep(x, y) <= 2 and _hash(x, y, 17) == 0:
 				_draw_lily_pads(Vector2(x * ts, y * ts), ts, x, y)
-	# камыши на прибрежной траве
+			# тина (v1.28): болотная плёнка на отмелях — вода у берега зеленее
+			if _water_deep(x, y) <= 1 and _hash(x * 3, y * 7, 29) % 3 == 0:
+				_drawer.draw_circle(rect.position + Vector2(ts * 0.4, ts * 0.5),
+						ts * 0.34, Color("#6b7d4f", 0.35))
+				_drawer.draw_circle(rect.position + Vector2(ts * 0.65, ts * 0.35),
+						ts * 0.22, Color("#7a8d55", 0.28))
+	# берег (v1.28): грязевые проплешины на прибрежной траве — топь
 	for y in map.h:
 		for x in map.w:
 			var t := Vector2i(x, y)
-			if map.grid[y][x] == map.TILE_GRASS and _near_water(t) \
-					and _hash(x * 3, y * 5, 23) < 3:
-				_draw_reeds(Vector2(x * ts, y * ts), ts, x, y)
+			if map.grid[y][x] == map.TILE_GRASS and _near_water(t):
+				var rect2 := Rect2(Vector2(t) * ts, Vector2(ts, ts))
+				if _hash(x * 13, y * 3, 31) % 5 == 0:
+					_drawer.draw_circle(rect2.get_center() + Vector2(3, -2),
+							ts * 0.3, Color("#5f5142", 0.55))
+					_drawer.draw_circle(rect2.get_center() + Vector2(-4, 3),
+							ts * 0.2, Color("#6b5c4a", 0.45))
+				if _hash(x * 3, y * 5, 23) < 3:
+					_draw_reeds(Vector2(t) * ts, ts, x, y)
 
 
 ## Сколько водных соседей по 8 направлениям (глубина плиты).

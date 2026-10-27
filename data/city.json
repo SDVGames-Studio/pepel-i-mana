@@ -1,7 +1,7 @@
 {
 	"tile_size": 32,
-	"map_w": 80,
-	"map_h": 60,
+	"map_w": 96,
+	"map_h": 72,
 	"lakes": 5,
 	"rocks": 3,
 	"ore_spots": 8,

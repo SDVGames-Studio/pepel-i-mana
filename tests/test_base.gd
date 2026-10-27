@@ -255,7 +255,12 @@ func _reachable_from(gen: Object) -> Dictionary:
 func _make_sim(level: String = "normal") -> Object:
 	var cfg: Variant = _read_json("res://data/city.json")
 	var city_map = load("res://scripts/city_map.gd").new()
-	city_map.generate(7, cfg)
+	# v1.28: в тестах карта без реки — фиксированные координаты проверок
+	var gen_cfg: Dictionary = (cfg as Dictionary).duplicate(true)
+	gen_cfg["river"] = false
+	gen_cfg["map_w"] = 80   # геометрия под фиксированные координаты тестов
+	gen_cfg["map_h"] = 60
+	city_map.generate(7, gen_cfg)
 	var sim = load("res://scripts/city_sim.gd").new()
 	sim.setup(city_map, cfg, 6, level)
 	# в игре дневные броски идут с первого дня; в тестах фиксируем день 1,

@@ -128,9 +128,25 @@ static func shadow_len(t: float, nf: float) -> float:
 
 
 ## Смещение тени для объекта высотой h (лёгкий наклон к югу для читаемости).
-static func shadow_offset(t: float, nf: float, h: float) -> Vector2:
-	return Vector2(shadow_dir_x(t, nf), 0.30 * (1.0 - sun_elev(t, nf))) \
+## tilt — сезонный наклон дуги (заказчик 2026-10-27): весной/осенью солнце
+## встаёт точно на востоке (tilt 0), летом — на северо-востоке (тени
+## утром/вечером косые К ЮГУ), зимой — на юго-востоке (к северу).
+static func shadow_offset(t: float, nf: float, h: float, tilt := 0.0) -> Vector2:
+	return Vector2(shadow_dir_x(t, nf),
+			0.30 * (1.0 - sun_elev(t, nf)) + tilt * absf(shadow_dir_x(t, nf))) \
 			* shadow_len(t, nf) * h
+
+
+## Сезонный наклон солнечной дуги: лето +0.45 (восход на СВ), зима -0.45
+## (восход на ЮВ), весна/осень — 0 (равноденствие, точно на востоке).
+static func season_tilt(season: String) -> float:
+	match season:
+		"summer":
+			return 0.45
+		"winter":
+			return -0.45
+		_:
+			return 0.0
 
 
 ## Луна: направление и высота в ночной части суток (те же формулы по u_night).
@@ -228,14 +244,98 @@ func _draw() -> void:
 	var u := day_u(t, nf)
 	if u > 0.62 or u < 0.16:
 		col = Color(0.10, 0.05, 0.02, alpha)
+	# сезонный наклон дуги (v1.28): лето — восход на СВ, зима — на ЮВ
+	var tilt := season_tilt(String(sim.season()))
 	if is_daylight(t, nf):
-		# тени облаков убраны (замечание заказчика 2026-10-27: тёмный круг
-		# на земле читался «тенью солнца» — нелогично). Пасмурность читается
-		# приглушённым светом и бледными тенями (alpha *= 0.4 выше).
-		_draw_object_shadows(t, nf, vis, col)
+		# реалистичные тени облаков (v1.28): кляксы-скопления кружков, день
+		_draw_cloud_shadows(t, nf, mood, vis, weather, tilt, false)
+		_draw_object_shadows(t, nf, vis, col, false, tilt)
 	else:
-		# лунные тени: слабые, холодные
+		# лунные тени: слабые, холодные; облака тоже дают ночные тени
+		_draw_cloud_shadows(t, nf, mood, vis, weather, tilt, true)
 		_draw_object_shadows(t, nf, vis, Color(0.55, 0.62, 0.85, 0.07), true)
+
+
+## ---------- тени облаков (v1.28, реалистичные — по фото-референсам) ----------
+## Облако = скопление 4–7 мягких кружков (двойной проход: широкий бледный
+## ореол + ядро), плывут на восток. Количество — по погоде/характеру дня:
+## ясно 3, облачно 8, дождь/снег 10, хмуро 6; ночью те же, но бледнее и
+## синее (лунный свет). Туман и пепельная буря облака скрывают.
+
+const CLOUD_MAX := 10
+
+var _clouds: Array = []   # {puffs: [[offset: Vector2, r: float]...], y: float, speed: float, phase: float}
+
+
+func _cloud_count(mood: int, weather: String, night: bool) -> int:
+	if weather == "fog" or weather == "ash_storm":
+		return 0
+	if night:
+		return 2 if mood == MOOD_CLEAR else 7
+	match mood:
+		MOOD_CLEAR:
+			return 3
+		MOOD_ROSY, MOOD_GOLDEN:
+			return 4
+		MOOD_OVERCAST:
+			return 10 if (weather == "rain" or weather == "snow") else 8
+		_:
+			return 6   # хмурый
+
+
+## Детерминированный хеш (как в city_terrain) — форма облаков стабильна.
+static func _hash(x: int, y: int, n: int) -> int:
+	var v := int((x * 73856093) ^ (y * 19349663))
+	return absi(v) % maxi(1, n)
+
+
+func _build_clouds() -> void:
+	_clouds.clear()
+	for i in CLOUD_MAX:
+		var puffs: Array = []
+		var n: int = 4 + _hash(i, 7, 4)   # 4..7 кружков в облаке
+		for p in n:
+			var ang := TAU * float(_hash(i * 13 + p, 3, 100)) / 100.0
+			var dist := 16.0 + 52.0 * float(_hash(i * 7 + p, 5, 100)) / 100.0
+			puffs.append([Vector2(cos(ang) * dist * 1.6, sin(ang) * dist * 0.6),
+					24.0 + 42.0 * float(_hash(i * 11 + p, 9, 100)) / 100.0])
+		_clouds.append({
+			"puffs": puffs,
+			"speed": 9.0 + 7.0 * float(i % 5),
+			"y": (float(i) + 0.5) / float(CLOUD_MAX),
+			"phase": float(i) * 3.7,
+		})
+
+
+func _draw_cloud_shadows(_t: float, _nf: float, mood: int, vis: Rect2,
+		weather: String, _tilt: float, night: bool) -> void:
+	var count := _cloud_count(mood, weather, night)
+	if count <= 0:
+		return
+	if _clouds.is_empty():
+		_build_clouds()
+	var ts := float(map.ts)
+	var span := Vector2(map.w * ts, map.h * ts)
+	# плотность и цвет: днём серые по силе света, ночью — бледно-синие
+	var base_a := 0.13 if mood == MOOD_OVERCAST else 0.09
+	if weather == "rain" or weather == "snow":
+		base_a = 0.14
+	var col := Color(0.10, 0.11, 0.16, base_a) if not night \
+			else Color(0.45, 0.50, 0.72, base_a * 0.5)
+	for i in count:
+		var cl: Dictionary = _clouds[i]
+		var cy := span.y * float(cl["y"]) + sin(_time * 0.03 + float(cl["phase"])) * 22.0
+		var cx := fposmod(_time * float(cl["speed"]) + float(cl["phase"]) * 160.0,
+				span.x + 500.0) - 250.0
+		for puff in cl["puffs"]:
+			var c := Vector2(cx, cy) + (puff[0] as Vector2)
+			var r := float(puff[1])
+			var rect := Rect2(c - Vector2(r, r), Vector2(r * 2, r * 2))
+			if not vis.intersects(rect):
+				continue
+			# мягкая кромка: широкий бледный ореол + ядро
+			draw_circle(c, r * 1.45, Color(col.r, col.g, col.b, col.a * 0.45))
+			draw_circle(c, r, Color(col.r, col.g, col.b, col.a))
 
 
 func _build_objs() -> void:
@@ -259,7 +359,8 @@ func _build_objs() -> void:
 		_objs.append([1, rect, ts * (0.9 if bool(b["done"]) else 0.45)])
 
 
-func _draw_object_shadows(t: float, nf: float, vis: Rect2, col: Color, moon := false) -> void:
+func _draw_object_shadows(t: float, nf: float, vis: Rect2, col: Color,
+		moon := false, tilt := 0.0) -> void:
 	var ts := float(map.ts)
 	for o in _objs:
 		var kind: int = o[0]
@@ -268,18 +369,18 @@ func _draw_object_shadows(t: float, nf: float, vis: Rect2, col: Color, moon := f
 			var base: Vector2 = o[1]
 			if not vis.has_point(base):
 				continue
-			_draw_tree_shadow(base, h, t, nf, col, ts, moon)
+			_draw_tree_shadow(base, h, t, nf, col, ts, moon, tilt)
 		else:
 			var rect: Rect2 = o[1]
 			if not vis.intersects(rect.grow(h * SHADOW_LONG)):
 				continue
-			_draw_box_shadow(rect, h, t, nf, col, moon)
+			_draw_box_shadow(rect, h, t, nf, col, moon, tilt)
 
 
 ## Тень дерева — вытянутый клин от основания в сторону от солнца.
 func _draw_tree_shadow(base: Vector2, h: float, t: float, nf: float,
-		col: Color, ts: float, moon := false) -> void:
-	var off := shadow_offset(t, nf, h)
+		col: Color, ts: float, moon := false, tilt := 0.0) -> void:
+	var off := shadow_offset(t, nf, h, tilt)
 	if moon:
 		# лунная тень короче и слабее — свет отражённый
 		var un := moon_u(t, nf)
@@ -299,8 +400,8 @@ func _draw_tree_shadow(base: Vector2, h: float, t: float, nf: float,
 
 ## Тень прямоугольного объекта — выпуклая оболочка «подошва + подошва+смещение».
 func _draw_box_shadow(rect: Rect2, h: float, t: float, nf: float,
-		col: Color, moon := false) -> void:
-	var off := shadow_offset(t, nf, h)
+		col: Color, moon := false, tilt := 0.0) -> void:
+	var off := shadow_offset(t, nf, h, tilt)
 	if moon:
 		# лунная тень короче и слабее — свет отражённый
 		var un := moon_u(t, nf)
@@ -374,7 +475,11 @@ func _draw_sun(cv: CanvasItem, vp: Vector2, t: float, nf: float, mood: int, dim:
 		disc = Color(1.0, 0.72, 0.58)
 	elif u > 0.72:
 		disc = sunset_color(day)
-	var sp := Vector2(lerpf(vp.x * 0.95, vp.x * 0.05, u), -80.0 + 40.0 * elev)
+	# Сезонный наклон (v1.28): летом источник выше (восход СВ / закат СЗ),
+	# зимой ниже (ЮВ / ЮЗ) — отсвет это подчёркивает
+	var tilt := season_tilt(String(sim.season()))
+	var sp := Vector2(lerpf(vp.x * 0.95, vp.x * 0.05, u),
+			-80.0 + 40.0 * elev - tilt * 110.0 * (1.0 - elev))
 	var strength := (0.35 + 0.65 * (1.0 - elev)) if (u > 0.62 or u < 0.16) else 0.45
 	# диск за кадром — свет читается только отсветом (сильнее на рассвете/
 	# закате, чтобы «солнце плывёт» ощущалось без самого диска)

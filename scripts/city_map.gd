@@ -89,9 +89,17 @@ func _generate_once(seed_value: int, params: Dictionary) -> void:
 		row.resize(w)
 		row.fill(TILE_GRASS)
 		grid.append(row)
-	# озёра — круглые пятна, не у краёв
+	# озёра (v1.28): каждое — ДВА налегающих пятна со смещением, водная
+	# клякса органичнее круга (малые круги сглаживались в ромбы)
 	for i in int(params["lakes"]):
-		_blob(_random_inner_tile(rng), rng.randi_range(2, 4), TILE_WATER)
+		var lc := _random_inner_tile(rng)
+		_blob(lc, rng.randi_range(2, 4), TILE_WATER)
+		_blob(lc + Vector2i(rng.randi_range(-2, 2), rng.randi_range(-2, 2)),
+				rng.randi_range(2, 3), TILE_WATER)
+	# река (v1.28): меандрирует с севера на юг — живая водная артерия;
+	# переправа — мосты (M14-I), герои и жители ходят по ним
+	if bool(params.get("river", true)):
+		_generate_river(rng)
 	# скальные ГРЯДЫ (M11): не россыпь одиночных камней, а единые массивы —
 	# большое пятно плюс сателлиты внахлёст; в них живёт руда и их добывают
 	for i in int(params.get("rocks", 2)):
@@ -144,6 +152,37 @@ func _blob(center: Vector2i, radius: int, kind: int) -> void:
 				continue
 			if Vector2(x, y).distance_to(Vector2(center)) <= radius:
 				grid[y][x] = kind
+
+
+## Река (v1.28): вертикальный меандр от севера к югу — плавная синусоида
+## с ограниченным наклоном (без «пилы»), русло 2 тайла. Стартовый квадрат
+## города сухой; переправы — мосты (M14-I).
+func _generate_river(rng: RandomNumberGenerator) -> void:
+	var base_x := float(rng.randi_range(int(w * 0.25), int(w * 0.75)))
+	var amp := float(rng.randi_range(int(w * 0.08), int(w * 0.14)))
+	var period := float(rng.randi_range(int(h * 0.9), int(h * 1.3)))
+	var phase := rng.randf() * TAU
+	var core := 9   # кольцо стен (6) + подходы снаружи; старт всегда в центре
+	var sx := w / 2
+	var sy := h / 2
+	var last_x := -99
+	for y in h:
+		var cx := base_x + sin(float(y) / period * TAU + phase) * amp
+		# наклон русла ограничен — река течёт плавно, без ступенек
+		cx = clampf(cx, float(last_x) - 0.6, float(last_x) + 0.6) if last_x > -90 else cx
+		last_x = int(round(cx))
+		for dx in 2:   # русло 2 тайла шириной — мост 2×1 перекрывает
+			var x := last_x + dx
+			if x < 1 or x >= w - 1:
+				continue
+			# городское ядро без реки: старт/аномалия/выход + кольцо стен
+			if absi(x - sx) <= core and absi(y - sy) <= core:
+				continue
+			if absi(x - (w - 3)) <= 2 and absi(y - sy) <= 3:
+				continue
+			if x <= 3 and absi(y - sy) <= 3:
+				continue
+			grid[y][x] = TILE_WATER
 
 
 ## Рудная жила: железо поверх скал и травы, но не поверх воды.

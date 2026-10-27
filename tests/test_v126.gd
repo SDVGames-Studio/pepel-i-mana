@@ -152,14 +152,16 @@ func _test_v126_raiders_walls() -> void:
 			break
 	_check(bool(sim.building_at(gate_e).get("razed", false)) or float(sim.building_at(gate_e)["hp"]) < hp0,
 			"мутант ломает ворота, а не толчётся перед ними с героем за стеной (тик %d)" % ticks)
-	# пролом открыт — мутант идёт к герою, путь пересчитался сам
+	# пролом открыт — мутант идёт к герою, путь пересчитался сам.
+	# v1.28: порог 1.5 тайла — вплотную мутанта не подпускает контактная
+	# остановка («монстры не входят в модель персонажа», v1.26)
 	var dist0: float = (raider["pos"] as Vector2).distance_to(sim.hero_pos)
 	var moved_in := false
 	for i in 600:
 		sim.tick(0.2)
 		if sim.raiders.is_empty():
 			break   # пал под городом — значит, вошёл
-		if (raider["pos"] as Vector2).distance_to(sim.hero_pos) < dist0 - float(sim.map.ts) * 2.0:
+		if (raider["pos"] as Vector2).distance_to(sim.hero_pos) < dist0 - float(sim.map.ts) * 1.5:
 			moved_in = true
 			break
 	_check(moved_in, "через разрушенные ворота мутант проходит к герою")

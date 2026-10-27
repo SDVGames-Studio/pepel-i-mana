@@ -16,7 +16,11 @@ func _test_fixes_v1191() -> void:
 
 	# --- 1. соло-старт: город строит и растёт, беженцы приходят ---------------
 	var solo_map = load("res://scripts/city_map.gd").new()
-	solo_map.generate(7, city)
+	var solo_gen: Dictionary = (city as Dictionary).duplicate(true)
+	solo_gen["river"] = false   # v1.28: фиксированные координаты теста
+	solo_gen["map_w"] = 80
+	solo_gen["map_h"] = 60
+	solo_map.generate(7, solo_gen)
 	var solo = load("res://scripts/city_sim.gd").new()
 	seed(11)   # глобальный RNG ДО setup: погода/досуг тянут randf()
 	solo.setup(solo_map, city, 1, "normal")
@@ -36,6 +40,11 @@ func _test_fixes_v1191() -> void:
 	solo.cfg["storm"]["base_chance"] = 0.0
 	var step := day_len / 4.0
 	for i in 25 * 4:
+		solo.tick(step)
+	# v1.28: досыпаем ночь — заселение происходит при отходе ко сну, а
+	# поселенец мог прийти под утро (не ночевал ещё — homeless по времени)
+	solo.time = (1.0 - float(solo.cfg["night_fraction"]) + 0.05) * day_len
+	for i in 6:
 		solo.tick(step)
 	_check(solo.pop_cap() > 1, "соло-старт: староста достроил дома, кап %d" % solo.pop_cap())
 	_check(solo.residents.size() > 1,

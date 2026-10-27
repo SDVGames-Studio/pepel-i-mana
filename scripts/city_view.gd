@@ -107,6 +107,7 @@ func _draw() -> void:
 	_draw_plaza_pulse()
 	_draw_field_live()
 	_draw_water_glints()
+	_draw_swaying_grass()
 	_draw_anomaly()
 	_draw_world_exit()
 	_draw_world_sorted()
@@ -121,6 +122,35 @@ var _vis := Rect2(-1e9, -1e9, 2e9, 2e9)
 ## пруды «дышат» на солнце. Список тайлов воды постоянен — считается один раз.
 var _water_tiles: Array = []
 var _water_ready := false
+
+
+## Колышущаяся трава (v1.28): кончики травинок качаются по синусу — луга
+## «дышат» ветром. Каждая вторая трава по хэшу, только видимая область.
+var _grass_tiles: Array = []
+var _grass_ready := false
+
+
+func _draw_swaying_grass() -> void:
+	if map == null:
+		return
+	if not _grass_ready:
+		_grass_ready = true
+		for y in map.h:
+			for x in map.w:
+				if map.grid[y][x] == map.TILE_GRASS and _hash(x, y, 3) % 2 == 0:
+					_grass_tiles.append(Vector2i(x, y))
+	var ts := float(map.ts)
+	for t: Vector2i in _grass_tiles:
+		var rect := Rect2(Vector2(t) * ts, Vector2(ts, ts))
+		if not _vis.intersects(rect):
+			continue
+		var ph := float(t.x * 5 + t.y * 11)
+		var sway := sin(_anim_time * 1.9 + ph) * 2.0
+		var base := rect.position + Vector2(ts * (0.3 + 0.4 * sin(ph * 0.7)), ts * 0.78)
+		var tip := base + Vector2(sway, -7.0)
+		var tip2 := base + Vector2(-sway * 0.7 + 2.0, -5.0)
+		draw_line(base, tip, Color("#4a7a38"), 1.1)
+		draw_line(base + Vector2(2.0, 0), tip2, Color("#5c8f46"), 1.0)
 
 
 func _draw_water_glints() -> void:
@@ -327,8 +357,9 @@ func _build_tree_desc(tile: Vector2i, ts: float) -> Array:
 	return [bottom.y, "tree", tile, comp, Rect2(Vector2.ZERO, comp.get_size()), dst, bottom, 0.0]
 
 
-## Композит дерева (v1.22): спрайт дерева и мягкая тень под ним печутся
-## в одну текстуру один раз на вид дерева — в кадре 1 команда вместо 2.
+## Композит дерева (v1.22): спрайт дерева печётся в одну текстуру один раз
+## на вид дерева. v1.28: статичная тень-эллипс УДАЛЕНА — она дублировала
+## динамическую тень от солнца/луны (city_sky.gd), у дерева было ДВЕ тени.
 var _tree_comp_cache: Dictionary = {}
 
 
@@ -341,22 +372,10 @@ func _tree_composite(ref: String, t: Texture2D, src: Rect2) -> ImageTexture:
 	else:
 		sheet = t.get_image()
 	var pad := int(round(src.size.x * 0.2))
-	var sh := maxi(4, int(round(src.size.y * 0.12)))
 	var cw := int(round(src.size.x)) + pad * 2
-	var chh := int(round(src.size.y)) + sh
+	var chh := int(round(src.size.y))
 	var img := Image.create(cw, chh, false, Image.FORMAT_RGBA8)
 	img.blit_rect(sheet, Rect2i(src), Vector2i(pad, 0))
-	# тень-эллипс под стволом: пишем только в пустые пиксели — не трогаем спрайт
-	var c := Vector2(cw / 2.0, float(int(round(src.size.y))) + sh * 0.35)
-	var rx := src.size.x * 0.3
-	var ry := sh * 0.42
-	var col := Color(0, 0, 0, 0.18)
-	for py in range(maxi(0, int(c.y - ry - 1)), mini(chh - 1, int(c.y + ry + 1)) + 1):
-		for px in range(maxi(0, int(c.x - rx - 1)), mini(cw - 1, int(c.x + rx + 1)) + 1):
-			var d := Vector2(px + 0.5 - c.x, py + 0.5 - c.y)
-			if (d.x / maxf(0.1, rx)) ** 2 + (d.y / maxf(0.1, ry)) ** 2 <= 1.0 \
-					and img.get_pixel(px, py).a < 0.02:
-				img.set_pixel(px, py, col)
 	var tex := ImageTexture.create_from_image(img)
 	_tree_comp_cache[ref] = tex
 	return tex

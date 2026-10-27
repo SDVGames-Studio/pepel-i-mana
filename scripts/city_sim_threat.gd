@@ -1315,7 +1315,9 @@ func _nearest_ripe_field_cell(r: Dictionary, farm_id := -1) -> Dictionary:
 		for i in (z["cells"] as Array).size():
 			if not _cell_filled(z, i) or not building_at(z["cells"][i]).is_empty():
 				continue
-			if crops.size() <= i or not bool((crops[i] as Dictionary).get("ripe", false)):
+			# v1.28: null-дыры в посевах старых сейвов не роняют поиск
+			if crops.size() <= i or not (crops[i] is Dictionary) \
+					or not bool((crops[i] as Dictionary).get("ripe", false)):
 				continue
 			var d: float = map.tile_center_px(z["cells"][i]).distance_to(r["pos"])
 			if own and d < best_d:
