@@ -134,6 +134,10 @@ func _draw_water_glints() -> void:
 					_water_tiles.append(Vector2i(x, y))
 	var ts := float(map.ts)
 	for t: Vector2i in _water_tiles:
+		# плотность бликов прорежена хэшем (FPS-замер 2026-10-27): мерцает
+		# половина тайлов — картинка та же, команд вдвое меньше
+		if _hash(t.x, t.y, 3) % 2 == 0:
+			continue
 		var rect := Rect2(Vector2(t) * ts, Vector2(ts, ts))
 		if not _vis.intersects(rect):
 			continue

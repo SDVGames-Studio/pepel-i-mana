@@ -53,6 +53,12 @@ var _blds_count := -1
 var _stars: Array = []
 var _layer: CanvasLayer = null
 var _painter: Node2D = null
+# FPS-оптимизация (замер 2026-10-27: 130→40 FPS при краске каждый кадр):
+# CanvasItem кэширует геометрию — солнце/тени ползут медленно, содержимое
+# достаточно обновлять 12–15 раз в секунду, а не каждый кадр
+const REDRAW_HZ := 12.0
+const SKY_REDRAW_HZ := 15.0
+var _redraw_accum := 0.0
 
 
 func setup(city_map, city_sim, city_cfg: Dictionary) -> void:
@@ -71,12 +77,18 @@ func setup(city_map, city_sim, city_cfg: Dictionary) -> void:
 
 func _process(delta: float) -> void:
 	_time += delta
+	_redraw_accum += delta
 	if mode == "shadows":
 		if sim != null and sim.buildings.size() != _blds_count:
 			_objs_dirty = true
-		queue_redraw()
+		# редрав по расписанию; перестройка кэша требует немедленного кадра
+		if _objs_dirty or _redraw_accum >= 1.0 / REDRAW_HZ:
+			_redraw_accum = 0.0
+			queue_redraw()
 	elif _painter != null:
-		_painter.queue_redraw()
+		if _redraw_accum >= 1.0 / SKY_REDRAW_HZ:
+			_redraw_accum = 0.0
+			_painter.queue_redraw()
 
 
 func rebuild() -> void:
@@ -162,8 +174,9 @@ static func daylight_color(mood: int, t: float, nf: float, day: int) -> Color:
 			strength = (w / 0.45) * 0.7
 			phase = Color(1.0, 0.84, 0.58)
 		else:
-			# закат — цвет из палитры дня
-			strength = 0.55 + 0.45 * (w - 0.45) / 0.55
+			# закат — цвет из палитры дня; верхняя сила ограничена, иначе
+			# сцена темнеет и тени (суть эффекта) тонут в подкраске
+			strength = 0.45 + 0.35 * (w - 0.45) / 0.55
 			phase = sunset_color(day)
 	var col := base.lerp(phase, clampf(strength, 0.0, 1.0) * 0.8)
 	# смягчение к белому: день не должен «красить» всё слишком сильно
@@ -179,11 +192,11 @@ static func night_color(mood: int) -> Color:
 static func shadow_alpha(mood: int) -> float:
 	match mood:
 		MOOD_CLEAR:
-			return 0.22
+			return 0.24
 		MOOD_GOLDEN:
-			return 0.26
+			return 0.30
 		MOOD_ROSY:
-			return 0.18
+			return 0.20
 		MOOD_FOGGY:
 			return 0.10
 		MOOD_OVERCAST:
@@ -210,10 +223,11 @@ func _draw() -> void:
 	if weather == "rain" or weather == "snow" or weather == "fog":
 		alpha *= 0.4   # рассеянный свет — тени едва видны
 	var col := Color(0.04, 0.04, 0.09, alpha)
-	# тёплые тени золотого часа: коричневатые, не чёрные
+	# тёплые тени золотого часа: тёмно-коричневые (светлые тонут в закатной
+	# подкраске — проверено скриншотами 2026-10-27)
 	var u := day_u(t, nf)
 	if u > 0.62 or u < 0.16:
-		col = Color(0.16, 0.08, 0.03, alpha)
+		col = Color(0.10, 0.05, 0.02, alpha)
 	if is_daylight(t, nf):
 		_draw_object_shadows(t, nf, vis, col)
 		_draw_cloud_shadows(mood, vis, weather)
@@ -372,25 +386,25 @@ func _draw_sun(cv: CanvasItem, vp: Vector2, t: float, nf: float, mood: int, dim:
 	var glow := _mood_glow(mood) * dim
 	if glow < 0.05:
 		return
-	# солнце идёт по верхней кромке: справа (восток) налево (запад)
-	var sp := Vector2(lerpf(vp.x * 0.9, vp.x * 0.1, u), lerpf(vp.y * 0.34, vp.y * 0.06, elev))
-	# цвет диска: рассвет — розовый, полдень — бледно-жёлтый, закат — палитра дня
+	# Диск солнца ЗА кадром (замечание заказчика 2026-10-27): над верхней
+	# кромкой плывёт источник света — на экран попадает только мягкий
+	# боковой отсвет, направление читается по теням и вуали.
 	var day: int = sim.day_number()
 	var disc := Color(1.0, 0.95, 0.75)
 	if u < 0.16:
 		disc = Color(1.0, 0.72, 0.58)
 	elif u > 0.72:
 		disc = sunset_color(day)
+	var sp := Vector2(lerpf(vp.x * 0.95, vp.x * 0.05, u), -80.0 + 40.0 * elev)
 	var strength := (0.35 + 0.65 * (1.0 - elev)) if (u > 0.62 or u < 0.16) else 0.45
-	# трёхслойное гало + диск
-	cv.draw_circle(sp, 150.0, Color(disc.r, disc.g, disc.b, 0.05 * glow * (0.6 + strength)))
-	cv.draw_circle(sp, 84.0, Color(disc.r, disc.g, disc.b, 0.09 * glow * (0.6 + strength)))
-	cv.draw_circle(sp, 40.0, Color(disc.r, disc.g, disc.b, 0.16 * glow * (0.5 + strength)))
-	cv.draw_circle(sp, 22.0, Color(disc.r, disc.g, disc.b, 0.55 * glow))
-	cv.draw_circle(sp, 13.0, Color(1.0, 0.98, 0.9, 0.75 * glow))
+	# диск за кадром — свет читается только отсветом (сильнее на рассвете/
+	# закате, чтобы «солнце плывёт» ощущалось без самого диска)
+	cv.draw_circle(sp, 360.0, Color(disc.r, disc.g, disc.b, 0.08 * glow * (0.6 + strength)))
+	cv.draw_circle(sp, 210.0, Color(disc.r, disc.g, disc.b, 0.14 * glow * (0.6 + strength)))
+	cv.draw_circle(sp, 110.0, Color(disc.r, disc.g, disc.b, 0.20 * glow * (0.5 + strength)))
 	# тёплая вуаль со стороны солнца на рассвете/закате
 	if u > 0.62 or u < 0.16:
-		cv.draw_circle(sp, 320.0, Color(disc.r, disc.g * 0.8, disc.b * 0.6, 0.05 * glow))
+		cv.draw_circle(sp, 520.0, Color(disc.r, disc.g * 0.8, disc.b * 0.6, 0.09 * glow))
 
 
 func _draw_moon_stars(cv: CanvasItem, vp: Vector2, t: float, nf: float, mood: int, dim: float) -> void:
@@ -417,14 +431,11 @@ func _draw_moon_stars(cv: CanvasItem, vp: Vector2, t: float, nf: float, mood: in
 		var tw := 0.4 + 0.6 * absf(sin(_time * 1.3 + s[2]))
 		cv.draw_circle(Vector2(s[0], s[1]), 1.1 + (1.0 if s[2] > 4.0 else 0.0),
 				Color(0.9, 0.93, 1.0, 0.5 * star_power * tw * dim))
-	# луна идёт с востока на запад, слабое холодное гало
-	var mp := Vector2(lerpf(vp.x * 0.88, vp.x * 0.12, un),
-			lerpf(vp.y * 0.30, vp.y * 0.08, sin(PI * un)))
+	# луна ЗА кадром: только холодный отсвет у верхней кромки
+	var mp := Vector2(lerpf(vp.x * 0.95, vp.x * 0.05, un), -60.0 + 30.0 * sin(PI * un))
 	var mglow := (0.85 if mood == MOOD_CLEAR else 0.3) * dim
-	cv.draw_circle(mp, 70.0, Color(0.75, 0.8, 1.0, 0.05 * mglow))
-	cv.draw_circle(mp, 26.0, Color(0.82, 0.86, 1.0, 0.10 * mglow))
-	cv.draw_circle(mp, 13.0, Color(0.9, 0.92, 1.0, 0.55 * mglow))
-	cv.draw_circle(mp + Vector2(-4, -3), 9.0, Color(1.0, 1.0, 1.0, 0.7 * mglow))
+	cv.draw_circle(mp, 240.0, Color(0.75, 0.8, 1.0, 0.05 * mglow))
+	cv.draw_circle(mp, 120.0, Color(0.82, 0.86, 1.0, 0.08 * mglow))
 
 
 static func moon_dir_x_at(t: float, nf: float) -> float:
