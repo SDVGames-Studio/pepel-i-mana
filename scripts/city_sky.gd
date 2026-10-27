@@ -229,8 +229,10 @@ func _draw() -> void:
 	if u > 0.62 or u < 0.16:
 		col = Color(0.10, 0.05, 0.02, alpha)
 	if is_daylight(t, nf):
+		# тени облаков убраны (замечание заказчика 2026-10-27: тёмный круг
+		# на земле читался «тенью солнца» — нелогично). Пасмурность читается
+		# приглушённым светом и бледными тенями (alpha *= 0.4 выше).
 		_draw_object_shadows(t, nf, vis, col)
-		_draw_cloud_shadows(mood, vis, weather)
 	else:
 		# лунные тени: слабые, холодные
 		_draw_object_shadows(t, nf, vis, Color(0.55, 0.62, 0.85, 0.07), true)
@@ -315,29 +317,6 @@ func _draw_box_shadow(rect: Rect2, h: float, t: float, nf: float,
 	else:
 		pts.append_array([tr, tl, tl + off, bl + off, bl, br + off])
 	draw_colored_polygon(pts, col)
-
-
-## Тени облаков (пасмурно/дождь/хмуро): крупные мягкие кляксы плывут по небу.
-func _draw_cloud_shadows(mood: int, vis: Rect2, weather: String) -> void:
-	if mood != MOOD_OVERCAST and mood != MOOD_GLOOMY and weather != "rain":
-		return
-	if map == null:
-		return
-	var ts := float(map.ts)
-	var alpha := 0.07 if mood == MOOD_OVERCAST else 0.10
-	var span := Vector2(map.w * ts, map.h * ts)
-	for i in 10:
-		var seed := float(i) * 17.3
-		# облако летит на восток, заворачивает по модулю размера карты
-		var cx := fposmod(_time * (14.0 + seed) + seed * 91.0, span.x + 400.0) - 200.0
-		var cy := fposmod(seed * 137.0 + sin(_time * 0.02 + seed) * 40.0, span.y)
-		var c := Vector2(cx, cy)
-		var r := ts * (3.0 + fmod(seed, 2.5))
-		var rect := Rect2(c - Vector2(r, r), Vector2(r * 2, r * 2))
-		if not vis.intersects(rect):
-			continue
-		draw_circle(c, r, Color(0.03, 0.04, 0.08, alpha))
-		draw_circle(c + Vector2(r * 0.4, r * 0.25), r * 0.7, Color(0.03, 0.04, 0.08, alpha * 0.8))
 
 
 # ============================ СЛОЙ НЕБА ============================

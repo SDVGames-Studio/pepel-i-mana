@@ -163,7 +163,9 @@ func _mask_loops(is_set: Callable) -> Array:
 					# седловая точка tr+bl: та же диагональная связность
 					add_seg.call(left, top)
 					add_seg.call(bottom, right)
-	# сшить сегменты в кольца
+	# сшить сегменты в кольца: при использовании ребра удаляем ОБЕ записи
+	# (прямую и встречную) — иначе обход откатывается и кольцо складывается
+	# вдвое (самопересечение, is_point_in_polygon ломается, заливка пустая)
 	var loops: Array = []
 	for start_key in edges.keys():
 		while (edges[start_key] as Array).size() > 0:
@@ -174,6 +176,11 @@ func _mask_loops(is_set: Callable) -> Array:
 				if lst.is_empty():
 					break
 				var nxt: Array = lst.pop_back()
+				var rec: Array = edges[nxt[0]]
+				for idx in range(rec.size()):
+					if rec[idx][0] == cur_key:
+						rec.remove_at(idx)
+						break
 				loop.append(nxt[1])
 				cur_key = nxt[0]
 			if loop.size() >= 3:
@@ -250,12 +257,26 @@ func _shrunk_loop(loop: PackedVector2Array, f: float) -> PackedVector2Array:
 ## Надёжная заливка региона: тайлы внутри контура (триангуляция большого
 ## сглаженного полигона нестабильна — падает на почти-коллинеарных точках).
 ## Гладкость края даёт _stroke_inside поверх.
+var _fill_debug_count := 0
+
+
+## Заливка региона: полигон (контур теперь простой — починен сшивкой),
+## при отказе триангуляции — деградация к тайлам по центрам.
+func _fill_loop(loop: PackedVector2Array, col: Color, ts: float) -> void:
+	if Geometry2D.triangulate_polygon(loop).is_empty():
+		_fill_loop_tiles(loop, col, ts)
+		return
+	_drawer.draw_colored_polygon(loop, col)
+
+
 func _fill_loop_tiles(loop: PackedVector2Array, col: Color, ts: float) -> void:
+	_fill_debug_count = 0
 	for y in map.h:
 		for x in map.w:
 			var c := Vector2((x + 0.5) * ts, (y + 0.5) * ts)
 			if Geometry2D.is_point_in_polygon(c, loop):
 				_drawer.draw_rect(Rect2(Vector2(x * ts, y * ts), Vector2(ts, ts)), col)
+				_fill_debug_count += 1
 
 
 ## Широкая обводка чуть внутри контура — сглаживает ступенчатый край тайлов.
@@ -474,10 +495,10 @@ func _draw_water_blobs(ts: float) -> void:
 		var depth := _loop_depth(loop, loops)
 		var c := _poly_centroid(loop)
 		if depth % 2 == 1:
-			_fill_loop_tiles(loop, _grass_at(int(c.x / ts), int(c.y / ts)), ts)
+			_fill_loop(loop, _grass_at(int(c.x / ts), int(c.y / ts)), ts)
 			_stroke_on_loop(loop, ts * 0.6, Color("#6d8a4e").darkened(0.05))
 			continue
-		_fill_loop_tiles(loop, colors["water"], ts)
+		_fill_loop(loop, colors["water"], ts)
 		# глубина: концентрические тёмные контуры у больших водоёмов
 		if _loop_area(loop) > 12.0 * ts * ts:
 			_stroke_inside(loop, 0.66, ts * 0.55, Color(deep_col.r, deep_col.g, deep_col.b, 0.6))
@@ -487,7 +508,8 @@ func _draw_water_blobs(ts: float) -> void:
 		if _loop_depth(loop, loops) % 2 == 1:
 			continue
 		_stroke_on_loop(loop, ts * 0.9, shore_col)
-		_stroke_inside(loop, 0.965, 2.0, colors["water"].lightened(0.3))
+		# влажный блеск у кромки — едва заметный, без «синей разметки»
+		_stroke_inside(loop, 0.965, 1.5, Color(colors["water"].lightened(0.2), 0.45))
 	# украшения по тайлам внутри контура: блики, кувшинки
 	for y in map.h:
 		for x in map.w:
@@ -636,9 +658,10 @@ func _draw_water_detail(x: int, y: int, rect: Rect2, ts: float) -> void:
 		_drawer.draw_line(Vector2(px, py), Vector2(px + 4.0 + float(h % 4), py), col, 1.2)
 
 
-## Скальная гряда v1.27.1 — ОРГАНИЧНЫЙ массив (референс RimWorld/Dwarf
-## Fortress): единый блоб по marching squares со сглаживанием, тёмная
-## обводка, внутри — налегающие валуны, трещины добычи и руда по тайлам.
+## Скальная гряда v1.27.2 — СПЛОШНОЙ массив (референс RimWorld/Dwarf
+## Fortress, правка заказчика: бледные круги-валуны читались «облаками»).
+## Светлая порода, лёгкая пятнистость, тёмная кромка по краю; трещины
+## добычи и руда — по тайлам.
 func _draw_rock_blobs(ts: float) -> void:
 	var raw_loops: Array = _mask_loops(func(t: Vector2i) -> bool:
 		return map.grid[t.y][t.x] == map.TILE_ROCK or map.grid[t.y][t.x] == map.TILE_ORE)
@@ -649,17 +672,18 @@ func _draw_rock_blobs(ts: float) -> void:
 		loops.append(_smooth_loop(raw))
 	for loop in loops:
 		var c := _poly_centroid(loop)
-		# тон массива «дышит» по блобу
-		var tone := _noise2(c.x / (ts * 3.0), c.y / (ts * 3.0), 30, 91)
-		var base := Color("#716c60").lightened(0.06 * tone - 0.03)
-		# заливка тайлами; ступенчатый край накрывает тёмная кромка массива
-		# прямо по сглаженному контуру (гасит ступени ~0.35 тайла)
-		_fill_loop_tiles(loop, base, ts)
-		_stroke_on_loop(loop, ts * 0.7, Color("#454137"))
-		# внутренний рельеф: светлая ступень у больших массивов
+		# тон массива «дышит» по блобу — порода СВЕТЛАЯ (тёмная база + белые
+		# круги давали «облака»)
+		var tone := _noise2(c.x / (ts * 3.0), c.y / (ts * 3.0), 30, 91) / 29.0
+		var base := Color("#8a8478").lightened(0.05 * tone - 0.025)
+		# заливка региона; край накрывает тёмная кромка массива по контуру
+		_fill_loop(loop, base, ts)
+		_stroke_on_loop(loop, ts * 0.55, Color("#55503f"))
+		# светлая верхняя ступень и лёгкая тень подошвы — рельеф без кругов
 		if _loop_area(loop) > 6.0 * ts * ts:
-			_stroke_inside(loop, 0.78, ts * 0.5, base.lightened(0.08))
-	# валунная фактура, трещины и руда — по тайлам внутри массива
+			_stroke_inside(loop, 0.90, ts * 0.4, base.lightened(0.07))
+			_stroke_inside(loop, 0.70, ts * 0.5, base.darkened(0.05))
+	# пятнистость, трещины и руда — по тайлам внутри массива
 	for y in map.h:
 		for x in map.w:
 			var t := Vector2i(x, y)
@@ -669,22 +693,22 @@ func _draw_rock_blobs(ts: float) -> void:
 			_draw_rock_tile_detail(x, y, g == map.TILE_ORE, ts)
 
 
-## Фактура внутри скального блоба: валуны, трещины добычи, вкрапления руды.
+## Фактура внутри скального блоба: мягкие пятна породы, трещины добычи,
+## вкрапления руды. Никаких светлых кругов (читались «облаками»).
 func _draw_rock_tile_detail(x: int, y: int, ore: bool, ts: float) -> void:
 	var rect := Rect2(Vector2(x * ts, y * ts), Vector2(ts, ts))
-	var tone := _noise2(x / 3.0, y / 3.0, 30, 91)
-	var base := Color("#716c60").lightened(0.06 * tone - 0.03)
+	var tone := _noise2(x / 3.0, y / 3.0, 30, 91) / 29.0
+	var base := Color("#8a8478").lightened(0.05 * tone - 0.025)
 	var hx := _hash(x, y, 30)
 	var hy := _hash(y * 7, x * 3, 30)
-	# большой валун есть всегда, второй — редко (разнообразие гряды);
-	# размеры умеренные — крупные светлые круги читались «пузырями»
-	var r1 := 0.22 + 0.07 * float(hx % 3)
-	_draw_valley_boulder(rect.position + Vector2(ts * 0.42 + float(hx % 6) - 3.0,
-			ts * 0.45 + float(hy % 6) - 3.0), ts * r1 + ts * 0.06, ts * r1, base)
-	if _hash(x, y, 37) % 4 == 0:
-		var r2 := 0.14 + 0.05 * float(hy % 3)
-		_draw_valley_boulder(rect.position + Vector2(ts * 0.28 + float(hy % 8),
-				ts * 0.72 + float(hx % 5)), ts * r2 + ts * 0.05, ts * r2, base.darkened(0.06))
+	# редкие мягкие пятна чуть темнее/светлее породы — фактура камня,
+	# контраст минимальный (круги с контрастом читались пузырями)
+	if _hash(x, y, 37) % 3 == 0:
+		_draw_ellipse(rect.position + Vector2(ts * 0.4 + float(hx % 8), ts * 0.4 + float(hy % 8)),
+				ts * 0.2, ts * 0.15, base.darkened(0.04))
+	elif _hash(x, y, 43) % 4 == 0:
+		_draw_ellipse(rect.position + Vector2(ts * 0.55 + float(hy % 7), ts * 0.5 + float(hx % 7)),
+				ts * 0.17, ts * 0.13, base.lightened(0.04))
 	# трещины по мере добычи: скала «оседает»
 	var key := Vector2i(x, y)
 	if map.rock_hp.has(key):
@@ -704,14 +728,6 @@ func _draw_rock_tile_detail(x: int, y: int, ore: bool, ts: float) -> void:
 			var fx := rect.position.x + 5.0 + float(h2 % int(ts - 10.0))
 			var fy := rect.position.y + 10.0 + float((h2 / 3) % int(ts - 16.0))
 			_drawer.draw_circle(Vector2(fx, fy), 1.6 + float(h2 % 2), col)
-
-
-## Валун: округлый камень со световым пятном и тёмным подбоем.
-## Камни держим близко к тону массива — яркие круги читались «пузырями».
-func _draw_valley_boulder(c: Vector2, rx: float, ry: float, base: Color) -> void:
-	_draw_ellipse(c, rx, ry, base.darkened(0.02))
-	_draw_ellipse(c + Vector2(-rx * 0.2, -ry * 0.28), rx * 0.5, ry * 0.42, base.lightened(0.05))
-	_draw_ellipse(c + Vector2(rx * 0.14, ry * 0.34), rx * 0.55, ry * 0.38, base.darkened(0.09))
 
 
 ## Заполненный эллипс полигоном (для глыб гряды).
