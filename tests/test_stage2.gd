@@ -113,11 +113,13 @@ func _test_stage2_aspect2() -> void:
 			var water: bool = m.grid[t.y][t.x] == m.TILE_WATER
 			# клетки под зданиями сплошные по правилу зданий (аспект 2) — не рельеф
 			if sim.building_at(t).is_empty():
-				# брод v1.29.1: вода не сплошная для жителей (вес > 1) и
-				# сплошная для мутантов; скалы/руда/порода — сплошные для всех
-				if m.astar.is_point_solid(t) != (not nw and not water):
+				# брод v1.29.1: для своих проходимы РЕКА и БОЛОТО (вес > 1);
+				# озеро и скалы сплошные; для мутантов вода сплошная целиком
+				var wkind: String = String(m.water_kind.get(t, ""))
+				var ford := water and (wkind == "river" or wkind == "swamp")
+				if m.astar.is_point_solid(t) != (not nw and not ford):
 					solid_ok = false
-				if water and m.astar.get_point_weight_scale(t) <= 1.0:
+				if ford and m.astar.get_point_weight_scale(t) <= 1.0:
 					solid_ok = false
 				if m.astar_raider.is_point_solid(t) != (not nw):
 					solid_ok = false
