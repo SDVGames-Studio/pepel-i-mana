@@ -61,11 +61,11 @@ func generate(seed_value: int, params: Dictionary) -> void:
 
 
 ## Природные препятствия: скалы/руда/выработанная порода — сплошные для A*.
-## v1.29.1 (брод, заказчик): вода проходима вброд для СВОИХ (жители, путь
-## с повышенным весом — без причины никто через озеро не срезает; герой
-## идёт с замедлением). Для мутантов вода осталась сплошной (v1.26) —
-## переправа для них только по мостам. Деревья проходимы по дизайну —
-## на них стоят лесорубы и герой при рубке.
+## v1.29.1 (брод, правки приёмки): СВОИ (жители) переходят вброд ТОЛЬКО
+## реку и болото; озеро непроходимо для всех — мост через него исключение;
+## мутантам вода сплошная целиком (v1.26), их переправа — мосты. Вода для
+## своих имеет повышенный вес — без причины никто не срезает, мост дешевле.
+## Деревья проходимы по дизайну — на них стоят лесорубы и герой при рубке.
 func mark_terrain_solid() -> void:
 	if astar == null:
 		return
@@ -73,8 +73,8 @@ func mark_terrain_solid() -> void:
 		for x in w:
 			var t := Vector2i(x, y)
 			var solid: bool = not is_nature_walkable(t)
-			var ford: bool = grid[y][x] == TILE_WATER
-			# брод: для своих вода открыта, для мутантов — сплошная (v1.26)
+			var ford: bool = water_kind.get(t, "") == "river" \
+					or water_kind.get(t, "") == "swamp"
 			astar.set_point_solid(t, solid and not ford)
 			astar_raider.set_point_solid(t, solid)
 			if ford:
@@ -140,9 +140,11 @@ func water_kind_at(p: Vector2i) -> String:
 	return String(water_kind.get(p, ""))
 
 
-## Замедление в воде (брод): болото 0.4 (долго), река/озеро 0.6 (проще);
-## не вода — 1.0.
+## Замедление в воде (брод): болото ОЧЕНЬ медленно (0.4), река/озеро 0.6;
+## по мосту — как по земле; не вода — 1.0.
 func water_speed_mult(p: Vector2i) -> float:
+	if bridges.has(p):
+		return 1.0
 	match water_kind_at(p):
 		"swamp":
 			return 0.4
@@ -166,7 +168,8 @@ func is_solid(p: Vector2i, for_raider := false) -> bool:
 func refresh_tile_solid(p: Vector2i) -> void:
 	if astar != null and in_bounds(p):
 		var solid: bool = not is_nature_walkable(p)
-		var ford: bool = grid[p.y][p.x] == TILE_WATER
+		var ford: bool = water_kind.get(p, "") == "river" \
+				or water_kind.get(p, "") == "swamp"
 		astar.set_point_solid(p, solid and not ford)
 		astar_raider.set_point_solid(p, solid)
 		if ford:

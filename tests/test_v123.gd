@@ -14,10 +14,16 @@ func _test_v123_attributes() -> void:
 	r["traits"] = []
 	var day_len: float = float(sim.cfg["day_length"])
 	# 10 дней валить лес: растут «дровосек», сила и выносливость, но не ловкость
-	# (v1.24: у жителей врождённый пул статов — проверяем прирост, не абсолют)
-	var agi_before: float = float((r.get("stats", {}) as Dictionary).get("agi", 0.0))
-	var str_before: float = float((r.get("stats", {}) as Dictionary).get("str", 0.0))
-	var end_before: float = float((r.get("stats", {}) as Dictionary).get("end", 0.0))
+	# (v1.24: у жителей врождённый пул статов — проверяем прирост, не абсолют;
+	# флейк CI 2026-10-28: врождённый стат катится случайным _event_rng в
+	# setup() ДО пересеивания и мог выпасть у потолка 12 — прирост не виден;
+	# прижимаем статы к 9, чтобы рост был измерим)
+	var st: Dictionary = r.get("stats", {}) as Dictionary
+	for sid: String in ["agi", "str", "end"]:
+		st[sid] = minf(float(st.get(sid, 0.0)), 9.0)
+	var agi_before: float = float(st.get("agi", 0.0))
+	var str_before: float = float(st.get("str", 0.0))
+	var end_before: float = float(st.get("end", 0.0))
 	sim._grow_skill(r, day_len * 10.0, "lumberjack")
 	_check(float((r.get("skills", {}) as Dictionary).get("lumberjack", 0.0)) > 4.0,
 			"10 дней рубки — дровосек почти мастер (%.1f)" % float((r.get("skills", {}) as Dictionary).get("lumberjack", 0.0)))
