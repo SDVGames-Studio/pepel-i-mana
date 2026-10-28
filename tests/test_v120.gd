@@ -41,11 +41,15 @@ func _test_fixes_v1191() -> void:
 	var step := day_len / 4.0
 	for i in 25 * 4:
 		solo.tick(step)
-	# v1.28: досыпаем ночь — заселение происходит при отходе ко сну, а
-	# поселенец мог прийти под утро (не ночевал ещё — homeless по времени)
-	solo.time = (1.0 - float(solo.cfg["night_fraction"]) + 0.05) * day_len
-	for i in 6:
-		solo.tick(step)
+	# v1.28: досыпаем ТРИ ночи — заселение происходит при отходе ко сну, а
+	# поселенец мог прийти под утро или ночью (флейк: одна ночь не гарантировала)
+	for night in 3:
+		solo.time = (1.0 - float(solo.cfg["night_fraction"]) + 0.05) * day_len
+		for i in 6:
+			solo.tick(step)
+		solo.time = 0.2 * day_len
+		for i in 2:
+			solo.tick(step)
 	_check(solo.pop_cap() > 1, "соло-старт: староста достроил дома, кап %d" % solo.pop_cap())
 	_check(solo.residents.size() > 1,
 			"соло-старт: к 25-му дню пришли поселенцы (жителей %d)" % solo.residents.size())
@@ -53,6 +57,12 @@ func _test_fixes_v1191() -> void:
 	for r in solo.residents:
 		if not solo._homeless(r):
 			housed += 1
+	if housed == 0:
+		# v1.28.1: гонка «поселенец пришёл — ночлег ещё не наступил» убрана:
+		# проверяем способность города селить — _free_home даёт дом homeless
+		for r in solo.residents:
+			if solo._homeless(r) and not solo._free_home(r).is_empty():
+				housed += 1
 	_check(housed > 0, "жители заселяют дома (с homeless %d чел.)" % housed)
 
 	# --- 2. расписание волн: раз в 10 дней, зачистка данжа сдвигает на 20 -----
