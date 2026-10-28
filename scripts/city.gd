@@ -198,10 +198,14 @@ func _rebuild_collision() -> void:
 	var blocked := {}
 	for y in map.h:
 		for x in map.w:
-			if map.grid[y][x] == map.TILE_WATER or map.grid[y][x] == map.TILE_ROCK:
-				# мост (M14-I) стоит на воде и не блокирует проход
-				if not map.bridges.has(Vector2i(x, y)):
-					blocked[Vector2i(x, y)] = true
+			var t := Vector2i(x, y)
+			# v1.29.1 (правки приёмки): всё непроходимое для жителей — то же
+			# для героя (вода, скала, РУДНАЯ ЖИЛА, выработанная порода);
+			# раньше руда в список не попадала — малые жилы проходились
+			# насквозь (замечание заказчика). Мост (M14-I) стоит на воде
+			# и не блокирует проход.
+			if not map.is_nature_walkable(t) and not map.bridges.has(t):
+				blocked[t] = true
 	for b in sim.buildings:
 		if sim._active(b):
 			if _bld_effect(b) == "gate":
