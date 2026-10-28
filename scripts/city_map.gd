@@ -29,7 +29,8 @@ var tree_growth := {}           # Vector2i -> float: дни роста дере�
 var logs := {}                  # Vector2i -> {size: int}: поваленные брёвна на земле (v1.21.2) —
                                 # герой валит, лесопилка подбирает и пилит
 var bridges := {}               # Vector2i -> true: мосты через воду (M14-I)
-var water_kind := {}            # Vector2i -> "lake"|"river"|"swamp" (брод, v1.29.1)
+var water_kind := {}            # Vector2i -> "lake"|"river"|"swamp" — тип водоёма
+                                # для отрисовки (цвет воды, песчаная кромка)
 var anomaly_tile := Vector2i.ZERO   # вход в данж (у аномалии)
 var spawn_tile := Vector2i.ZERO     # старт героя и жителей
 var world_exit_tile := Vector2i.ZERO  # край города — выход на карту мира (M8)
@@ -60,12 +61,11 @@ func generate(seed_value: int, params: Dictionary) -> void:
 	mark_terrain_solid()
 
 
-## Природные препятствия: скалы/руда/выработанная порода — сплошные для A*.
-## v1.29.1 (брод, правки приёмки): СВОИ (жители) переходят вброд ТОЛЬКО
-## реку и болото; озеро непроходимо для всех — мост через него исключение;
-## мутантам вода сплошная целиком (v1.26), их переправа — мосты. Вода для
-## своих имеет повышенный вес — без причины никто не срезает, мост дешевле.
-## Деревья проходимы по дизайну — на них стоят лесорубы и герой при рубке.
+## Природные препятствия: ВОДА и скалы/руда/выработанная порода — сплошные
+## для обеих сеток A* (v1.29.2, заказчик: «запрети всем ходить через воду,
+## только через мост» — брод v1.29.1 отменён). Переправа — только мосты
+## (M14-I). Деревья проходимы по дизайну — на них стоят лесорубы и герой
+## при рубке.
 func mark_terrain_solid() -> void:
 	if astar == null:
 		return
@@ -73,39 +73,29 @@ func mark_terrain_solid() -> void:
 		for x in w:
 			var t := Vector2i(x, y)
 			var solid: bool = not is_nature_walkable(t)
-			var ford: bool = water_kind.get(t, "") == "river" \
-					or water_kind.get(t, "") == "swamp"
-			astar.set_point_solid(t, solid and not ford)
+			astar.set_point_solid(t, solid)
 			astar_raider.set_point_solid(t, solid)
-			if ford:
-				_apply_tile_weight(t)
 	for p: Vector2i in bridges:
 		_apply_tile_weight(p)
 
 
-## Вес тайла для A* (брод v1.29.1): земля 1.0, дорога 0.4 (set_road),
-## вода — против шерсти: река/озеро 2.5, болото 4.0 (вязнет), мост — 0.7.
-const FORD_WEIGHT := {"river": 2.5, "lake": 2.5, "swamp": 4.0}
+## Вес тайла для A*: земля 1.0, дорога 0.4 (set_road), мост — 0.7
+## (по мосту охотнее, чем в обход).
 const BRIDGE_WEIGHT := 0.7
 
 
 func _apply_tile_weight(p: Vector2i) -> void:
-	var w := 1.0
-	if bridges.has(p):
-		w = BRIDGE_WEIGHT
-	elif water_kind.has(p):
-		w = float(FORD_WEIGHT.get(String(water_kind[p]), 2.5))
+	var w := BRIDGE_WEIGHT if bridges.has(p) else 1.0
 	astar.set_point_weight_scale(p, w)
 	astar_raider.set_point_weight_scale(p, w)
 
 
-## Классификация водоёмов (v1.29.1, брод): вытянутая лента — река, малое
-## компактное пятно — болотце, остальное — озеро. Один источник правды для
-## путей (вес/замедление) и отрисовки (city_terrain берёт отсюда). Публичная:
-## save_game перезапускает её ПОСЛЕ восстановления сетки из сейва (каркас
-## генерируется с сидом 0 и перекрывается сохранёнными тайлами — без
-## переклассификации типы воды не совпадали с реальной картой, и герой
-## «не проходил по водным препятствиям»).
+## Классификация водоёмов (v1.29.1): вытянутая лента — река, малое
+## компактное пятно — болотце, остальное — озеро. Источник правды для
+## отрисовки (city_terrain берёт отсюда: цвета воды, песчаная кромка).
+## Публичная: save_game перезапускает её ПОСЛЕ восстановления сетки из сейва
+## (каркас генерируется с сидом 0 и перекрывается сохранёнными тайлами —
+## без переклассификации типы воды не совпадали с реальной картой).
 func classify_water() -> void:
 	water_kind = {}
 	var seen := {}
@@ -144,22 +134,9 @@ func water_kind_at(p: Vector2i) -> String:
 	return String(water_kind.get(p, ""))
 
 
-## Замедление в воде (брод): болото ОЧЕНЬ медленно (0.4), река/озеро 0.6;
-## по мосту — как по земле; не вода — 1.0.
-func water_speed_mult(p: Vector2i) -> float:
-	if bridges.has(p):
-		return 1.0
-	match water_kind_at(p):
-		"swamp":
-			return 0.4
-		"river", "lake":
-			return 0.6
-	return 1.0
-
-
-## Сплошной ли тайл для A* (вода при броде — НЕ сплошная). Страховки
-## «замурован под стеной» должны смотреть сюда, а не в is_walkable, — иначе
-## они телепортировали бы всех, кто стоит в воде.
+## Сплошной ли тайл для A* (вода сплошная наравне со скалами, v1.29.2).
+## Страховки «замурован под стеной» должны смотреть сюда, а не в is_walkable,
+## — иначе они телепортировали бы всех, кто стоит в воде.
 func is_solid(p: Vector2i, for_raider := false) -> bool:
 	if astar == null or not in_bounds(p):
 		return false
@@ -172,12 +149,8 @@ func is_solid(p: Vector2i, for_raider := false) -> bool:
 func refresh_tile_solid(p: Vector2i) -> void:
 	if astar != null and in_bounds(p):
 		var solid: bool = not is_nature_walkable(p)
-		var ford: bool = water_kind.get(p, "") == "river" \
-				or water_kind.get(p, "") == "swamp"
-		astar.set_point_solid(p, solid and not ford)
+		astar.set_point_solid(p, solid)
 		astar_raider.set_point_solid(p, solid)
-		if ford:
-			_apply_tile_weight(p)
 
 
 func _generate_once(seed_value: int, params: Dictionary) -> void:
