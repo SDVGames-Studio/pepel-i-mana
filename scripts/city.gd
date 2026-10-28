@@ -267,6 +267,7 @@ func _leftover_line() -> String:
 
 var _hud_refresh_accum := 0.0     # троттлинг HUD (v1.21): панели не чаще 4 раз/сек
 var _terrain_redraw_accum := 0.0  # ландшафт перерисовывается не чаще 2 раз/сек
+var _baked_grid_ver := -1   # версия сетки, на которую запечена земля (v1.28.1)
 
 
 func _process(delta: float) -> void:
@@ -287,9 +288,14 @@ func _process(delta: float) -> void:
 		if _terrain_redraw_accum >= 0.5:
 			_terrain_redraw_accum = 0.0
 			var trees_changed: bool = sim.terrain_dirty
+			var grid_ver: int = int(sim.map.grid_ver)
+			# v1.28.1: земля перевыпекается ТОЛЬКО при смене маски скал
+			# (grid_ver); деревья/саженцы в землю не запечены с M12.
+			# Спил/рост деревьев — только кэши видов (view/тени).
+			_terrain.rebake(grid_ver != _baked_grid_ver, grid_ver)
+			_baked_grid_ver = grid_ver
 			sim.terrain_dirty = false
 			sim.static_dirty = false
-			_terrain.rebake()   # перевыпечь текстуру ландшафта (v1.21.5)
 			if trees_changed:
 				view.mark_trees_dirty()   # деревья ушли в сортированный слой (M12)
 				_sky_shadows.rebuild()    # кэш теней тоже устарел (v1.27)

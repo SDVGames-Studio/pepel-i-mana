@@ -153,27 +153,70 @@ func _update_fps(delta: float) -> void:
 
 ## Автосейв каждое утро города (M14-A): герой в городе (не в данже и не в пути
 ## по карте мира), начиная со 2-го дня. Тост «сохранено» — через события sim.
+## v1.28.1: сбор снапшота — в кадре (быстро), запись — В ФОНОВОМ ПОТОКЕ:
+## синхронная запись сотен КБ на диск каждое утро и была ежедневным фризом.
+var _save_thread: Thread = null
+var _save_pending_toast := false
+
+
 func _autosave_tick() -> void:
 	if city_sim == null or in_dungeon or world_active:
 		return
 	var day := int(city_sim.day)
 	if day <= 1 or day <= _autosave_day:
 		return
+	# предыдущая фоновая запись ещё идёт — утро пропускаем (догонит завтра)
+	if _save_thread != null and _save_thread.is_alive():
+		return
 	Game.stats["days"] = maxi(int(Game.stats.get("days", 0)), day)   # статистика (M14-K)
 	_autosave_day = day
 	var sg: Script = load(SAVE_SCRIPT)
-	var err: String = sg.save_game(self, sg.city_hero_tile(self), -1, -1)
-	if err == "":
+	var snapshot: Dictionary = sg.save_snapshot(self, sg.city_hero_tile(self), -1, -1)
+	if snapshot.is_empty():
+		return
+	_save_pending_toast = true
+	_save_thread = Thread.new()
+	_save_thread.start(_save_worker.bind(snapshot))
+
+
+## Рабочая функция фонового автосейва: только снапшот и диск — никаких
+## обращений к дереву сцены. По завершении ставит тост через главный поток.
+func _save_worker(snapshot: Dictionary) -> void:
+	var sg: Script = load(SAVE_SCRIPT)
+	var err: String = sg.write_snapshot(snapshot)
+	_toast_save_result.call_deferred(err)
+
+
+func _toast_save_result(err: String) -> void:
+	if _save_thread != null:
+		_save_thread.wait_to_finish()
+		_save_thread = null
+	if err == "" and city_sim != null and _save_pending_toast:
+		_save_pending_toast = false
 		city_sim.events.append({"type": "autosaved"})
 
 
 ## Сохранить игру (обёртка для сцен). hero_tile — текущий тайл героя.
+## Ручной сейв синхронный и ждёт завершения фоновой записи (v1.28.1).
 func save_game(hero_tile: Vector2i, hero_hp: int, hero_mana: int) -> String:
+	_join_save_thread()
 	var sg: Script = load(SAVE_SCRIPT)
 	var err: String = sg.save_game(self, hero_tile, hero_hp, hero_mana)
 	if err == "":
 		_autosave_day = int(city_sim.day) if city_sim != null else _autosave_day
 	return err
+
+
+## Дождаться фоновой записи сейва (ручной сейв и выход из игры).
+func _join_save_thread() -> void:
+	if _save_thread != null and _save_thread.is_alive():
+		_save_thread.wait_to_finish()
+	_save_thread = null
+
+
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_PREDELETE:
+		_join_save_thread()   # не бросать фоновую запись при выходе
 
 
 ## Загрузить игру из файла в этот инстанс. "" — успех, иначе ключ локализации.

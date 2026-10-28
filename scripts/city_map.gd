@@ -17,6 +17,7 @@ const TREE_LARGE := 3
 var w := 0
 var h := 0
 var ts := 32
+var grid_ver := 0             # v1.28.1: версия масок воды/скал — инкремент при выработке породы
 var grid: Array = []            # grid[y][x] -> TILE_*
 var road := {}                  # Vector2i -> true: дороги (M6) — ускорение и приоритет путей
 var wear := {}                  # Vector2i -> float: износ троп (M6) — город сам строит дороги там, где ходят

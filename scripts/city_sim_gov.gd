@@ -799,23 +799,66 @@ func _find_autobuild_tile(type_id: String) -> Vector2i:
 
 ## Ближайший к центру города билдабл-тайл рядом с природой заданных видов
 ## (радиус от прямоугольника здания). Для самостроя добытчиков (v1.21).
-func _find_tile_near_nature(type_id: String, kinds: Array, radius: float) -> Vector2i:
-	var best := Vector2i(-1, -1)
-	var best_d := INF
-	for y in map.h:
-		for x in map.w:
+func _find_tile_near_nature(type_id: String, kinds: Array, radius: float,
+		sync := false) -> Vector2i:
+	# v1.28.1: кэш + возобновляемый скан (как у _find_gather_tile) — полный
+	# проход по карте с gap-проверками стоил ~0.7 с в день постановки лесопилки
+	var budget := GATHER_SCAN_BUDGET if not sync else 1 << 30
+	var ver := int(map.grid_ver)
+	var key := "nat:" + type_id
+	var c: Dictionary = _gather_cache.get(key, {})
+	if c.is_empty() or int(c.get("ver", -1)) != ver:
+		c = {"ver": ver, "best": Vector2i(-1, -1), "best_d": INF,
+				"y": 0, "x": 0, "done": false}
+		_gather_cache[key] = c
+	if bool(c["done"]):
+		var fb: Vector2i = c["best"]
+		if fb == Vector2i(-1, -1):
+			return fb
+		if is_buildable_rect(type_id, fb) and placement_gap_ok(type_id, fb) \
+				and placement_block(type_id, fb) == "" \
+				and _nature_near_rect(type_id, fb, kinds, radius) != Vector2i(-1, -1):
+			return fb
+		c["done"] = false
+		c["best"] = Vector2i(-1, -1)
+		c["best_d"] = INF
+		c["y"] = 0
+		c["x"] = 0
+	var best: Vector2i = c["best"]
+	var best_d: float = c["best_d"]
+	var processed := 0
+	var y: int = c["y"]
+	while y < map.h and processed < budget:
+		var row_d: float = absf(float(y) - float(map.spawn_tile.y))
+		if row_d > best_d:
+			y += 1
+			continue
+		var x: int = c["x"]
+		while x < map.w and processed < budget:
+			processed += 1
 			var t := Vector2i(x, y)
+			x += 1
+			var col_d: float = maxf(row_d, absf(float(t.x) - float(map.spawn_tile.x)))
+			if col_d >= best_d:
+				continue
 			if not is_buildable_rect(type_id, t) or not placement_gap_ok(type_id, t):
 				continue
 			if placement_block(type_id, t) != "":
 				continue
 			if _nature_near_rect(type_id, t, kinds, radius) == Vector2i(-1, -1):
 				continue
-			var d: float = Vector2(t).distance_to(Vector2(map.spawn_tile))
-			if d < best_d:
-				best_d = d
-				best = t
-	return best
+			best = t
+			best_d = col_d
+		if x >= map.w:
+			y += 1
+			x = 0
+		c["y"] = y
+		c["x"] = x
+	if y >= map.h:
+		c["done"] = true
+	c["best"] = best
+	c["best_d"] = best_d
+	return Vector2i(-1, -1) if not bool(c["done"]) else best
 
 
 ## Якорь района (v1.21.1): ближайшее к центру города ГОТОВОЕ здание того же
@@ -867,25 +910,102 @@ func _tile_near_cluster(type_id: String, anchor: Vector2i) -> Vector2i:
 
 ## Ближайший к центру города тайл рядом с ресурсом, куда можно поставить здание.
 ## on_resource — здание ставится прямо на тайл (шахта на руде).
-func _find_gather_tile(type_id: String, kinds: Array, on_resource: bool) -> Vector2i:
-	var best := Vector2i(-1, -1)
-	var best_d := INF
-	for y in map.h:
-		for x in map.w:
+var _gather_cache := {}   # type_id -> состояние возобновляемого скана (v1.28.1)
+
+## Бюджет тайлов на один тик: полный скан размазывается по тикам, фриза нет.
+## sync=true — пройти до конца за один вызов (автотесты).
+const GATHER_SCAN_BUDGET := 400
+
+
+## Поиск места у ресурса: скан РЕЗЮМИРУЕТСЯ между тиками (состояние в
+## _gather_cache). Пока скан не дошёл до конца — возвращает -1 («сегодня не
+## поставили»), город просто строит на день позже, зато без фриза.
+func _find_gather_tile(type_id: String, kinds: Array, on_resource: bool,
+		sync := false) -> Vector2i:
+	var budget := GATHER_SCAN_BUDGET if not sync else 1 << 30
+	var ver := int(map.grid_ver)
+	var c: Dictionary = _gather_cache.get(type_id, {})
+	if c.is_empty() or int(c.get("ver", -1)) != ver:
+		c = {"ver": ver, "best": Vector2i(-1, -1), "best_d": INF,
+				"y": 0, "x": 0, "done": false}
+		_gather_cache[type_id] = c
+	if bool(c["done"]):
+		# скан завершён: быстрое ревалидирование найденного места
+		var fb: Vector2i = c["best"]
+		if fb == Vector2i(-1, -1):
+			return fb
+		if is_buildable_rect(type_id, fb) and placement_block(type_id, fb) == "" \
+				and placement_gap_ok(type_id, fb):
+			return fb
+		c["done"] = false   # место заняли — скан заново (догонит за пару тиков)
+		c["best"] = Vector2i(-1, -1)
+		c["best_d"] = INF
+		c["y"] = 0
+		c["x"] = 0
+	# возобновляем скан с сохранённой позиции, бюджет — на один тик
+	var best: Vector2i = c["best"]
+	var best_d: float = c["best_d"]
+	var w := bld_w_of_type(type_id)
+	var others: Array = []
+	for b in buildings:
+		others.append({"r": Rect2i(Vector2i(b["tile"]), Vector2i(bld_w(b), bld_w(b))),
+				"wall": String(b["type"]) == "wall" or String(b["type"]) == "gate",
+				"house": String(b["type"]) == "house"})
+	var pcfg: Dictionary = cfg.get("placement", {})
+	var build_gap := int(pcfg.get("build_gap", 1))
+	var wall_gap := int(pcfg.get("wall_house_gap", 3))
+	var processed := 0
+	var y: int = c["y"]
+	while y < map.h and processed < budget:
+		var row_d: float = absf(float(y) - float(map.spawn_tile.y))
+		if row_d > best_d:
+			y += 1
+			continue
+		var x: int = c["x"]
+		while x < map.w and processed < budget:
+			processed += 1
 			var t := Vector2i(x, y)
-			if on_resource:
-				if not (map.grid[y][x] in kinds) or not is_buildable_rect(type_id, t) \
-						or not placement_gap_ok(type_id, t):
-					continue
-			else:
-				if not is_buildable_rect(type_id, t) or placement_block(type_id, t) != "" \
-						or not placement_gap_ok(type_id, t):
-					continue
-			var d: float = Vector2(t).distance_to(Vector2(map.spawn_tile))
-			if d < best_d:
-				best_d = d
-				best = t
-	return best
+			var col_d: float = maxf(row_d, absf(float(x) - float(map.spawn_tile.x)))
+			x += 1
+			if col_d >= best_d:
+				continue
+			if on_resource and not (map.grid[t.y][t.x] in kinds):
+				continue
+			var ok := true
+			for dy in w:
+				for dx in w:
+					var ct := t + Vector2i(dx, dy)
+					if not is_buildable_tile(ct) or not building_at(ct).is_empty():
+						ok = false
+						break
+				if not ok:
+					break
+			# особые правила места (шахта на жиле, оружейная у кузни...) —
+			# без этого скан находил формально годное, но игрово неверное место
+			if ok and placement_block(type_id, t) != "":
+				ok = false
+			if ok:
+				for o in others:
+					var r: Rect2i = o["r"]
+					var dx2: int = maxi(maxi(t.x - r.end.x, r.position.x - (t.x + w)), 0)
+					var dy2: int = maxi(maxi(t.y - r.end.y, r.position.y - (t.y + w)), 0)
+					if maxi(dx2, dy2) < (wall_gap if (o["wall"] and o["house"]) else build_gap):
+						ok = false
+						break
+			if not ok:
+				continue
+			best = t
+			best_d = col_d
+		if x >= map.w:
+			y += 1
+			x = 0
+		c["y"] = y
+		c["x"] = x
+	if y >= map.h:
+		c["done"] = true
+	c["best"] = best
+	c["best_d"] = best_d
+	return Vector2i(-1, -1) if not bool(c["done"]) else best
 
 
 func _ring_buildable(center: Vector2i, max_radius: int, type_id := "") -> Vector2i:
@@ -929,6 +1049,8 @@ func _ensure_elder() -> void:
 
 ## Дневной бросок: болезни и выздоровления (лекарь лечит, запущенная болезнь убивает).
 func _roll_ailments() -> void:
+	if OS.get_environment("AIL_OFF") != "":
+		return   # биопсия: глушим тело для бисекции фриза
 	var acfg: Dictionary = people.get("ailments", {})
 	for r in residents.duplicate():
 		if String(r["prof"]) == "" or _is_golem(r):

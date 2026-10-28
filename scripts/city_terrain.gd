@@ -22,6 +22,12 @@ var _rock_hp_default := 80.0
 var _vp: SubViewport = null
 var _drawer: Node2D = null
 var _tex: Texture2D = null
+# v1.28.1: второй слой — «надстройки» (зоны/дороги/плиты). Они меняются
+# часто (обустройство полей), а полная перевыпечка земли (тысячи команд
+# травы) стоила ~0.3 с и давала регулярные фризы.
+var _vp2: SubViewport = null
+var _drawer2: Node2D = null
+var _tex2: Texture2D = null
 
 
 func setup(city_map, city_cfg: Dictionary, city_sim = null) -> void:
@@ -49,21 +55,49 @@ func setup(city_map, city_cfg: Dictionary, city_sim = null) -> void:
 	_drawer.draw.connect(_draw_tiles)
 	_vp.add_child(_drawer)
 	_tex = _vp.get_texture()
+	_vp2 = SubViewport.new()
+	_vp2.size = _vp.size
+	_vp2.transparent_bg = true
+	_vp2.render_target_update_mode = SubViewport.UPDATE_DISABLED
+	_vp2.canvas_item_default_texture_filter = Viewport.DEFAULT_CANVAS_ITEM_TEXTURE_FILTER_NEAREST
+	add_child(_vp2)
+	_drawer2 = Node2D.new()
+	_drawer2.draw.connect(_draw_static_content)
+	_vp2.add_child(_drawer2)
+	_tex2 = _vp2.get_texture()
 	queue_redraw()
 
 
 func _ready() -> void:
-	rebake()
+	rebake(true)   # первый bake: кэш блобов строится обязательно
 
 
-## Перевыпечь ландшафт (дерево спилили, скала выработана...) — вызвать
-## вместо queue_redraw(): перерисовать духовку и обновить квадрат.
-func rebake() -> void:
+## Перевыпечь слой земли (скалу выработали, воду замостили мостом...) —
+## heavy=true и версия сетки изменились: пересчитать блобы и всё поле.
+## false: перерисовать ТОЛЬКО надстройки (зоны/дороги/плиты) — дёшево.
+## v1.28.1 (фикс фризов): полная перевыпечка земли = тысячи draw-команд
+## травы (~0.3 с), а вызывалась на каждое обустройство клетки/дорогу.
+var _rebake_count := 0
+var _blob_cache_ver := -1     # версия сетки, на которую построен кэш блобов
+var _blob_cache_dirty := true # кэш требует пересчёта (первый bake или смена сетки)
+var _water_cached: Array = []   # [{loop, tris, depth}...]
+var _rock_cached: Array = []    # [{loop, tris}...]
+
+
+func rebake(heavy := false, grid_ver := -1) -> void:
 	if _vp == null:
 		return
-	_drawer.queue_redraw()
-	_vp.render_target_update_mode = SubViewport.UPDATE_DISABLED
-	_vp.render_target_update_mode = SubViewport.UPDATE_ONCE
+	_rebake_count += 1
+	if heavy and map != null and _blob_cache_ver != grid_ver:
+		_blob_cache_ver = grid_ver
+		_blob_cache_dirty = true
+		_drawer.queue_redraw()
+		_vp.render_target_update_mode = SubViewport.UPDATE_DISABLED
+		_vp.render_target_update_mode = SubViewport.UPDATE_ONCE
+	# надстройки всегда перерисовываются — их мало (сотни команд)
+	_drawer2.queue_redraw()
+	_vp2.render_target_update_mode = SubViewport.UPDATE_DISABLED
+	_vp2.render_target_update_mode = SubViewport.UPDATE_ONCE
 	queue_redraw()
 
 
@@ -78,6 +112,8 @@ func _draw() -> void:
 	if _tex == null or map == null:
 		return
 	draw_texture_rect(_tex, Rect2(Vector2.ZERO, Vector2(map.w * map.ts, map.h * map.ts)), false)
+	if _tex2 != null:
+		draw_texture_rect(_tex2, Rect2(Vector2.ZERO, Vector2(map.w * map.ts, map.h * map.ts)), false)
 
 
 ## Отрисовка тайлов — в холст духовки (те же команды, что рисовали в _draw
@@ -106,6 +142,13 @@ func _draw_tiles() -> void:
 	# сглаживание Безье — стиль RimWorld/Dwarf Fortress, не по тайлам)
 	_draw_rock_blobs(ts)
 	_draw_water_blobs(ts)
+
+
+## Надстройки (v1.28.1 — отдельный дешёвый слой): зоны, дороги, плиты
+## площади. Меняются часто, но команд здесь сотни, а не тысячи.
+func _draw_static_content() -> void:
+	if map == null:
+		return
 	_draw_roads_baked()
 	_draw_zones_baked()
 	_draw_plaza_baked()
@@ -262,6 +305,21 @@ var _fill_debug_count := 0
 
 ## Заливка региона: полигон (контур теперь простой — починен сшивкой),
 ## при отказе триангуляции — деградация к тайлам по центрам.
+## Заливка региона: кэшированная триангуляция (быстрый путь, v1.28.1) или
+## разовая триангуляция/тайлы. Триангуляция большого сглаженного полигона
+## дорога — потому кэшируется вместе с контуром.
+func _fill_loop_cached(loop: PackedVector2Array, tris: PackedInt32Array, col: Color) -> void:
+	if tris.is_empty():
+		_drawer.draw_colored_polygon(loop, col)
+		return
+	var cols := PackedColorArray()
+	cols.resize(loop.size())
+	cols.fill(col)
+	# draw_polygon не принимает индексы — пишем триангуляцию через RS
+	RenderingServer.canvas_item_add_triangle_array(_drawer.get_canvas_item(),
+			tris, loop, cols)
+
+
 func _fill_loop(loop: PackedVector2Array, col: Color, ts: float) -> void:
 	if Geometry2D.triangulate_polygon(loop).is_empty():
 		_fill_loop_tiles(loop, col, ts)
@@ -479,33 +537,39 @@ func _draw_grass_detail(x: int, y: int, rect: Rect2, base: Color, ts: float) -> 
 func _draw_water_blobs(ts: float) -> void:
 	var deep_col: Color = colors.get("water_deep", colors["water"].darkened(0.28))
 	var shore_col: Color = colors.get("shore", Color("#c8b183"))
-	var raw_loops: Array = _mask_loops(func(t: Vector2i) -> bool:
-		return map.grid[t.y][t.x] == map.TILE_WATER)
-	if raw_loops.is_empty():
-		return
-	raw_loops.sort_custom(func(a, b) -> bool: return _loop_area(a) > _loop_area(b))
-	var loops: Array = []
-	for raw in raw_loops:
-		loops.append(_smooth_loop(raw))
-	# заливка: чётная глубина — вода, нечётная — остров (трава).
-	# Тайловая заливка; ступенчатый край накрывает ПЛЯЖ — широкая песчаная
-	# обводка прямо по сглаженному контуру (полуширина ~0.45 тайла гасит
-	# ступени и даёт naturальный берег, как в RimWorld).
-	for loop in loops:
-		var depth := _loop_depth(loop, loops)
-		var c := _poly_centroid(loop)
+	# v1.28.1: контуры+триангуляция — из кэша (маска воды меняется только
+	# со сменой сетки); пересчёт — по _blob_cache_dirty из rebake(heavy)
+	if _blob_cache_dirty:
+		_water_cached = []
+		var raw: Array = _mask_loops(func(t: Vector2i) -> bool:
+			return map.grid[t.y][t.x] == map.TILE_WATER)
+		raw.sort_custom(func(a, b) -> bool: return _loop_area(a) > _loop_area(b))
+		var smootheds: Array = []
+		for rl in raw:
+			smootheds.append(_smooth_loop(rl))
+		for sm in smootheds:
+			_water_cached.append({"loop": sm,
+					"tris": Geometry2D.triangulate_polygon(sm),
+					"depth": _loop_depth(sm, smootheds)})
+		_rock_cached = _build_rock_cache()
+		_blob_cache_dirty = false
+	for entry in _water_cached:
+		var loop: PackedVector2Array = entry["loop"]
+		var depth: int = int(entry["depth"])
 		if depth % 2 == 1:
-			_fill_loop(loop, _grass_at(int(c.x / ts), int(c.y / ts)), ts)
+			var c := _poly_centroid(loop)
+			_fill_loop_cached(loop, entry["tris"], _grass_at(int(c.x / ts), int(c.y / ts)))
 			_stroke_on_loop(loop, ts * 0.6, Color("#6d8a4e").darkened(0.05))
 			continue
-		_fill_loop(loop, colors["water"], ts)
+		_fill_loop_cached(loop, entry["tris"], colors["water"])
 		# глубина: один мягкий тёмный контур только у БОЛЬШИХ водоёмов
 		# (у малых прудов вложенные контуры читались «ромбами»)
 		if _loop_area(loop) > 18.0 * ts * ts:
 			_stroke_inside(loop, 0.60, ts * 0.8, Color(deep_col.r, deep_col.g, deep_col.b, 0.4))
 	# берег: пляж по контуру и светлый урез воды внутри
-	for loop in loops:
-		if _loop_depth(loop, loops) % 2 == 1:
+	for entry in _water_cached:
+		var loop: PackedVector2Array = entry["loop"]
+		if int(entry["depth"]) % 2 == 1:
 			continue
 		_stroke_on_loop(loop, ts * 0.9, shore_col)
 		# влажный блеск у кромки — едва заметный, без «синей разметки»
@@ -675,21 +739,15 @@ func _draw_water_detail(x: int, y: int, rect: Rect2, ts: float) -> void:
 ## Светлая порода, лёгкая пятнистость, тёмная кромка по краю; трещины
 ## добычи и руда — по тайлам.
 func _draw_rock_blobs(ts: float) -> void:
-	var raw_loops: Array = _mask_loops(func(t: Vector2i) -> bool:
-		return map.grid[t.y][t.x] == map.TILE_ROCK or map.grid[t.y][t.x] == map.TILE_ORE)
-	if raw_loops.is_empty():
-		return
-	var loops: Array = []
-	for raw in raw_loops:
-		loops.append(_smooth_loop(raw))
-	for loop in loops:
+	for entry in _rock_cached:
+		var loop: PackedVector2Array = entry["loop"]
 		var c := _poly_centroid(loop)
 		# тон массива «дышит» по блобу — порода СВЕТЛАЯ (тёмная база + белые
 		# круги давали «облака»)
 		var tone := _noise2(c.x / (ts * 3.0), c.y / (ts * 3.0), 30, 91) / 29.0
 		var base := Color("#8a8478").lightened(0.05 * tone - 0.025)
 		# заливка региона; край накрывает тёмная кромка массива по контуру
-		_fill_loop(loop, base, ts)
+		_fill_loop_cached(loop, entry["tris"], base)
 		_stroke_on_loop(loop, ts * 0.55, Color("#55503f"))
 		# светлая верхняя ступень и лёгкая тень подошвы — рельеф без кругов
 		if _loop_area(loop) > 6.0 * ts * ts:
@@ -703,6 +761,18 @@ func _draw_rock_blobs(ts: float) -> void:
 			if g != map.TILE_ROCK and g != map.TILE_ORE:
 				continue
 			_draw_rock_tile_detail(x, y, g == map.TILE_ORE, ts)
+
+
+## Кэш скальных блобов (контуры + триангуляция) — пересчёт только при
+## смене сетки (rebake(heavy)), см. v1.28.1.
+func _build_rock_cache() -> Array:
+	var raw_loops: Array = _mask_loops(func(t: Vector2i) -> bool:
+		return map.grid[t.y][t.x] == map.TILE_ROCK or map.grid[t.y][t.x] == map.TILE_ORE)
+	var out: Array = []
+	for raw in raw_loops:
+		var sm := _smooth_loop(raw)
+		out.append({"loop": sm, "tris": Geometry2D.triangulate_polygon(sm)})
+	return out
 
 
 ## Фактура внутри скального блоба: мягкие пятна породы, трещины добычи,

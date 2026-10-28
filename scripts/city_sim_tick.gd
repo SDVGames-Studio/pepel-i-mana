@@ -73,12 +73,16 @@ func tick(dt_raw: float) -> void:
 	match _daily_phase:
 		1:
 			# фаза 1 — самая тяжёлая: стройка и переназначение всех жителей
+			var t0: int = Time.get_ticks_usec()
 			_roll_autobuild()
+			var t1: int = Time.get_ticks_usec()
 			_roll_city_repair()   # город чинит сам: строитель 50%, непрофильный 70% (v1.21.3)
+			var t2: int = Time.get_ticks_usec()
 			morning_plan()
+			var t3: int = Time.get_ticks_usec()
 			_daily_phase = 2
 		2:
-			# фаза 2 — люди и события
+			# фаза 2 — люди и события (болезни/беженцы/рождения/стражи/охота...)
 			_roll_ailments()
 			_roll_refugees()
 			_roll_births()

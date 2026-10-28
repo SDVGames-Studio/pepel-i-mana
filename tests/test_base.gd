@@ -309,7 +309,7 @@ func _find_free_tile(sim: Object, near: Vector2i, type_id: String = "") -> Vecto
 					kinds = [sim.map.TILE_TREE]
 				"quarry":
 					kinds = [sim.map.TILE_ROCK, sim.map.TILE_ORE]
-			return sim._find_gather_tile(type_id, kinds, on_resource)
+			return sim._find_gather_tile(type_id, kinds, on_resource, true)
 	for radius in range(1, 8):
 		for dy in range(-radius, radius + 1):
 			for dx in range(-radius, radius + 1):

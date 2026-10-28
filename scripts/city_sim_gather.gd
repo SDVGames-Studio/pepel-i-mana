@@ -483,6 +483,7 @@ func _exhaust_rock_tile(tile: Vector2i, r: Dictionary) -> void:
 		_chron("chron.ore_revealed")
 	else:
 		map.grid[tile.y][tile.x] = map.TILE_DEADROCK
+		map.grid_ver += 1   # v1.28.1: маска скал изменилась
 		map.rock_hp[tile] = float(mcfg.get("deadrock_hp", 60.0))
 		events.append({"type": "rock_gone"})
 		_chron("chron.rock_gone")
@@ -599,6 +600,7 @@ func _mine_work(r: Dictionary, bld: Dictionary, dt: float) -> void:
 	map.rock_hp[tile] = float(cfg.get("mountain", {}).get("deadrock_hp", 60.0))
 	if kind == map.TILE_ORE:
 		map.grid[tile.y][tile.x] = map.TILE_DEADROCK
+		map.grid_ver += 1   # v1.28.1: маска скал изменилась
 		events.append({"type": "rock_gone"})
 		_chron("chron.rock_gone")
 	terrain_dirty = true

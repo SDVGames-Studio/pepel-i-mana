@@ -34,15 +34,24 @@ static func clear_save() -> void:
 ## Сохранить игру. hero_tile — где герой сейчас (сцена знает точнее всего),
 ## hero_hp/hero_mana — состояние героя (из данжа не вызывается).
 static func save_game(game, hero_tile: Vector2i, hero_hp: int, hero_mana: int) -> String:
-	if game.city_sim == null or game.world_map == null or game.world_sim == null:
+	var data := save_snapshot(game, hero_tile, hero_hp, hero_mana)
+	if data.is_empty():
 		return "save.no_game"
+	return write_snapshot(data)
+
+
+## Снапшот сейва (v1.28.1): сбор данных БЕЗ записи на диск — быстрый,
+## вызывается в кадре. Пустой словарь — нет игры.
+static func save_snapshot(game, hero_tile: Vector2i, hero_hp: int, hero_mana: int) -> Dictionary:
+	if game.city_sim == null or game.world_map == null or game.world_sim == null:
+		return {}
 	var wt := Vector2i(-1, -1)
 	if bool(game.world_active):
 		wt = hero_tile
 	var ct: Vector2i = game.city_return_tile
 	if not bool(game.world_active):
 		ct = hero_tile
-	var data := {
+	return {
 		"v": FORMAT_VERSION,
 		"meta": {
 			"day": int(game.city_sim.day),
@@ -56,14 +65,30 @@ static func save_game(game, hero_tile: Vector2i, hero_hp: int, hero_mana: int) -
 		"codex": game.codex,
 		"stats": game.stats,
 	}
+
+
+## Запись снапшота: строковизация + диск. v1.28.1 — вызывается В ФОНОВОМ
+## ПОТОКЕ автосейвом (страшный фриз по утрам был здесь: stringify + запись
+## сотен КБ на диск в кадре). Пишет во временный файл и переименовывает —
+## читатель не увидит полуфайл. Возвращает "" или ключ ошибки.
+static func write_snapshot(data: Dictionary) -> String:
 	if DirAccess.make_dir_recursive_absolute(SAVE_PATH.get_base_dir()) != OK \
 			and not DirAccess.dir_exists_absolute(SAVE_PATH.get_base_dir()):
 		return "save.write_failed"
-	var f := FileAccess.open(SAVE_PATH, FileAccess.WRITE)
+	var tmp := SAVE_PATH + ".tmp"
+	var f := FileAccess.open(tmp, FileAccess.WRITE)
 	if f == null:
 		return "save.write_failed"
 	f.store_string(JSON.stringify(data, "\t", true, true))
 	f.close()
+	if f.get_error() != OK and f.get_error() != ERR_FILE_EOF:
+		DirAccess.remove_absolute(tmp)
+		return "save.write_failed"
+	# атомарная подмена: сначала переименование поверх, потом запасной путь
+	if DirAccess.rename_absolute(tmp, SAVE_PATH) != OK:
+		DirAccess.remove_absolute(SAVE_PATH)
+		if DirAccess.rename_absolute(tmp, SAVE_PATH) != OK:
+			return "save.write_failed"
 	return ""
 
 
@@ -272,13 +297,16 @@ static func _legends_save(wsim) -> Array:
 
 
 ## Жители: ссылки на здания (bld/site/home) превращаем в id зданий.
+## v1.28.1: защитно — ссылка без id (битая/чужая) сохраняется как null,
+## а не роняет весь сейв (было: «Invalid access 'id'» и отмена сохранения).
 static func _residents_save(sim) -> Array:
 	var out: Array = []
 	for r in sim.residents:
 		var d := {}
 		for k in r:
 			if k in ["bld", "site", "home"]:
-				d[k] = int(r[k]["id"]) if r[k] != null else null
+				var v: Variant = r[k]
+				d[k] = int(v["id"]) if (v is Dictionary and v.has("id")) else null
 			else:
 				d[k] = r[k]
 		out.append(d)
