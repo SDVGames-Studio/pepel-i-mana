@@ -49,8 +49,6 @@ const SHADOW_NOON := 0.18
 var _objs_dirty := true
 var _objs: Array = []            # [kind, pos/rect, h]
 var _blds_count := -1
-# звёзды (детерминированные точки экрана)
-var _stars: Array = []
 var _layer: CanvasLayer = null
 var _painter: Node2D = null
 # FPS-оптимизация (замер 2026-10-27: 130→40 FPS при краске каждый кадр):
@@ -256,15 +254,16 @@ func _draw() -> void:
 		_draw_object_shadows(t, nf, vis, Color(0.55, 0.62, 0.85, 0.07), true)
 
 
-## ---------- тени облаков (v1.28, реалистичные — по фото-референсам) ----------
-## Облако = скопление 4–7 мягких кружков (двойной проход: широкий бледный
-## ореол + ядро), плывут на восток. Количество — по погоде/характеру дня:
-## ясно 3, облачно 8, дождь/снег 10, хмуро 6; ночью те же, но бледнее и
-## синее (лунный свет). Туман и пепельная буря облака скрывают.
+## ---------- тени облаков (правки приёмки v1.29.1) ----------
+## Облако — ОДНА мягкая масса: выпуклая оболочка скопления кружков заливается
+## одним полигоном с единой альфой. Раньше 4–7 полупрозрачных кружков с
+## ореолами накладывались друг на друга — пересветы наложений читались
+## «кучей шариков», овечками/корабликами (замечание заказчика). Плывут на
+## восток; ночью те же, но бледнее и синее. Туман и пепельная буря скрывают.
 
 const CLOUD_MAX := 10
 
-var _clouds: Array = []   # {puffs: [[offset: Vector2, r: float]...], y: float, speed: float, phase: float}
+var _clouds: Array = []   # {hull: PackedVector2Array, y: float, speed: float, phase: float}
 
 
 func _cloud_count(mood: int, weather: String, night: bool) -> int:
@@ -293,14 +292,22 @@ func _build_clouds() -> void:
 	_clouds.clear()
 	for i in CLOUD_MAX:
 		var puffs: Array = []
-		var n: int = 4 + _hash(i, 7, 4)   # 4..7 кружков в облаке
+		var n: int = 4 + _hash(i, 7, 4)   # 4..7 кружков в основе формы
 		for p in n:
 			var ang := TAU * float(_hash(i * 13 + p, 3, 100)) / 100.0
 			var dist := 16.0 + 52.0 * float(_hash(i * 7 + p, 5, 100)) / 100.0
 			puffs.append([Vector2(cos(ang) * dist * 1.6, sin(ang) * dist * 0.6),
 					24.0 + 42.0 * float(_hash(i * 11 + p, 9, 100)) / 100.0])
+		# единый силуэт: обводка кружков точками -> выпуклая оболочка
+		var pts := PackedVector2Array()
+		for puff in puffs:
+			var c: Vector2 = puff[0]
+			var r: float = puff[1]
+			for k in 12:
+				var a := TAU * float(k) / 12.0
+				pts.append(c + Vector2(cos(a) * r, sin(a) * r))
 		_clouds.append({
-			"puffs": puffs,
+			"hull": Geometry2D.convex_hull(pts),
 			"speed": 9.0 + 7.0 * float(i % 5),
 			"y": (float(i) + 0.5) / float(CLOUD_MAX),
 			"phase": float(i) * 3.7,
@@ -324,24 +331,30 @@ func _draw_cloud_shadows(_t: float, _nf: float, mood: int, vis: Rect2,
 			else Color(0.45, 0.50, 0.72, base_a * 0.5)
 	for i in count:
 		var cl: Dictionary = _clouds[i]
+		var hull: PackedVector2Array = cl["hull"]
+		if hull.size() < 3:
+			continue
 		var cy := span.y * float(cl["y"]) + sin(_time * 0.03 + float(cl["phase"])) * 22.0
 		var cx := fposmod(_time * float(cl["speed"]) + float(cl["phase"]) * 160.0,
 				span.x + 500.0) - 250.0
-		for puff in cl["puffs"]:
-			var c := Vector2(cx, cy) + (puff[0] as Vector2)
-			var r := float(puff[1])
-			var rect := Rect2(c - Vector2(r, r), Vector2(r * 2, r * 2))
-			if not vis.intersects(rect):
-				continue
-			# мягкая кромка: широкий бледный ореол + ядро
-			draw_circle(c, r * 1.45, Color(col.r, col.g, col.b, col.a * 0.45))
-			draw_circle(c, r, Color(col.r, col.g, col.b, col.a))
+		var off := Vector2(cx, cy)
+		var bbox := Rect2(hull[0], Vector2.ZERO)
+		for k in range(1, hull.size()):
+			bbox = bbox.expand(hull[k])
+		bbox.position += off
+		if not vis.intersects(bbox.grow(4.0)):
+			continue
+		var shifted := hull.duplicate()
+		for k in shifted.size():
+			shifted[k] += off
+		draw_colored_polygon(shifted, col)
 
 
 func _build_objs() -> void:
 	_objs_dirty = false
 	_objs = []
 	var ts := float(map.ts)
+	var rock_cells := {}
 	for y in map.h:
 		for x in map.w:
 			var g: int = map.grid[y][x]
@@ -351,7 +364,28 @@ func _build_objs() -> void:
 						else (2.4 if kind == map.TREE_MEDIUM else 3.0))
 				_objs.append([0, Vector2((x + 0.5) * ts, (y + 0.92) * ts), h])
 			elif g == map.TILE_ROCK or g == map.TILE_ORE:
-				_objs.append([2, Rect2(Vector2(x * ts, y * ts), Vector2(ts, ts)), ts * 0.75])
+				rock_cells[Vector2i(x, y)] = true
+	# v1.29.1 (правки приёмки): скала — МАССИВ, тень у него одна. Раньше
+	# каждый тайл отбрасывал свою — гряда «рассыпалась» на полосы.
+	var seen := {}
+	for c: Vector2i in rock_cells:
+		if seen.has(c):
+			continue
+		var queue: Array = [c]
+		seen[c] = true
+		var mn: Vector2i = c
+		var mx: Vector2i = c
+		while not queue.is_empty():
+			var t: Vector2i = queue.pop_back()
+			mn = Vector2i(mini(mn.x, t.x), mini(mn.y, t.y))
+			mx = Vector2i(maxi(mx.x, t.x), maxi(mx.y, t.y))
+			for d in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
+				var n: Vector2i = t + d
+				if rock_cells.has(n) and not seen.has(n):
+					seen[n] = true
+					queue.append(n)
+		var rect := Rect2(Vector2(mn) * ts, Vector2(mx - mn + Vector2i(1, 1)) * ts)
+		_objs.append([2, rect, ts * 0.75])
 	_blds_count = sim.buildings.size()
 	for b in sim.buildings:
 		var bw := float(sim.bld_w(b))
@@ -493,31 +527,11 @@ func _draw_sun(cv: CanvasItem, vp: Vector2, t: float, nf: float, mood: int, dim:
 
 func _draw_moon_stars(cv: CanvasItem, vp: Vector2, t: float, nf: float, mood: int, dim: float) -> void:
 	var un := moon_u(t, nf)
-	var star_power := 1.0
-	match mood:
-		MOOD_OVERCAST:
-			star_power = 0.08
-		MOOD_GLOOMY:
-			star_power = 0.05
-		MOOD_FOGGY:
-			star_power = 0.2
-		_:
-			star_power = 1.0
-	# звёзды: детерминированное поле точек, мерцают
-	if _stars.is_empty():
-		for i in 70:
-			_stars.append([
-				fposmod(float(i) * 127.3, 1.0) * vp.x,
-				fposmod(float(i) * 61.7, 0.55) * vp.y,
-				float(i % 7) * 0.9,
-			])
-	for s in _stars:
-		var tw := 0.4 + 0.6 * absf(sin(_time * 1.3 + s[2]))
-		cv.draw_circle(Vector2(s[0], s[1]), 1.1 + (1.0 if s[2] > 4.0 else 0.0),
-				Color(0.9, 0.93, 1.0, 0.5 * star_power * tw * dim))
+	# v1.29.1 (правки приёмки): звёзды убраны — точки «просто висели на
+	# экране»; ночью небо читается холодным лунным отсветом у кромки.
+	var mglow := (0.85 if mood == MOOD_CLEAR else 0.3) * dim
 	# луна ЗА кадром: только холодный отсвет у верхней кромки
 	var mp := Vector2(lerpf(vp.x * 0.95, vp.x * 0.05, un), -60.0 + 30.0 * sin(PI * un))
-	var mglow := (0.85 if mood == MOOD_CLEAR else 0.3) * dim
 	cv.draw_circle(mp, 240.0, Color(0.75, 0.8, 1.0, 0.05 * mglow))
 	cv.draw_circle(mp, 120.0, Color(0.82, 0.86, 1.0, 0.08 * mglow))
 
