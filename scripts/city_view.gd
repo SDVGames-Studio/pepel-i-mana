@@ -636,8 +636,10 @@ func _draw_stump(bottom: Vector2, ts: float, variant: int) -> void:
 		draw_line(bottom + Vector2(-w * 0.2, -h * 1.6), bottom + Vector2(w * 0.1, -h * 0.3), Color("#4e342e"), 1.1)
 
 
+# v1.29 п.1 «Деревья»: добавлена липа (20% деревьев), дуб/берёза/сосна освежены.
 const TREE_REFS := ["e:tree_oak", "e:tree_pine", "e:tree_birch", "e:tree_autumn",
-		"e:tree_oak", "e:tree_pine", "e:tree_fruit2", "e:tree_birch"]
+		"e:tree_oak", "e:tree_lime", "e:tree_fruit2", "e:tree_birch",
+		"e:tree_pine", "e:tree_lime"]
 
 
 static func _hash(x: int, y: int, n: int) -> int:
