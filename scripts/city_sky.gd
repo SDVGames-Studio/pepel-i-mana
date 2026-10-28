@@ -323,12 +323,14 @@ func _draw_cloud_shadows(_t: float, _nf: float, mood: int, vis: Rect2,
 		_build_clouds()
 	var ts := float(map.ts)
 	var span := Vector2(map.w * ts, map.h * ts)
-	# плотность и цвет: днём серые по силе света, ночью — бледно-синие
+	# плотность и цвет: тени и днём и ночью ТЁМНЫЕ (волна 6: бледно-голубые
+	# ночные облака поверх затемнённого мира читались «вода белеет»);
+	# ночью — слабее и холоднее
 	var base_a := 0.13 if mood == MOOD_OVERCAST else 0.09
 	if weather == "rain" or weather == "snow":
 		base_a = 0.14
 	var col := Color(0.10, 0.11, 0.16, base_a) if not night \
-			else Color(0.45, 0.50, 0.72, base_a * 0.5)
+			else Color(0.03, 0.04, 0.08, base_a * 0.7)
 	for i in count:
 		var cl: Dictionary = _clouds[i]
 		var hull: PackedVector2Array = cl["hull"]

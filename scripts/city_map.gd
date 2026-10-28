@@ -55,7 +55,7 @@ func generate(seed_value: int, params: Dictionary) -> void:
 		_generate_once(seed_value + attempt * 1013, params)
 		if _connected():
 			break
-	_classify_water()
+	classify_water()
 	_setup_astar()
 	mark_terrain_solid()
 
@@ -101,8 +101,12 @@ func _apply_tile_weight(p: Vector2i) -> void:
 
 ## Классификация водоёмов (v1.29.1, брод): вытянутая лента — река, малое
 ## компактное пятно — болотце, остальное — озеро. Один источник правды для
-## путей (вес/замедление) и отрисовки (city_terrain берёт отсюда).
-func _classify_water() -> void:
+## путей (вес/замедление) и отрисовки (city_terrain берёт отсюда). Публичная:
+## save_game перезапускает её ПОСЛЕ восстановления сетки из сейва (каркас
+## генерируется с сидом 0 и перекрывается сохранёнными тайлами — без
+## переклассификации типы воды не совпадали с реальной картой, и герой
+## «не проходил по водным препятствиям»).
+func classify_water() -> void:
 	water_kind = {}
 	var seen := {}
 	for y in h:
