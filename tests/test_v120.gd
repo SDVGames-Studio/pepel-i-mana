@@ -29,6 +29,15 @@ func _test_fixes_v1191() -> void:
 	# черты сразу после setup: единственный оставшийся источник недетерминизма
 	for r in solo.residents:
 		r["traits"] = []
+	# v1.29 (флейк CI 2026-10-28): стадо раскатывается тем же случайным
+	# _event_rng ДО пересеивания — виды (волк!), позиции и idle различаются
+	# между прогонами и могли срывать стройку. Стадо детерминируем: мирные
+	# олени в фиксированной точке (охота жива, вариативности нет).
+	var deer_spot: Vector2i = solo.map.nearest_walkable(Vector2i(2, 2))
+	for a in solo.animals:
+		a["kind"] = "deer"
+		a["pos"] = solo.map.tile_center_px(deer_spot)
+		a["idle"] = 1.0
 	solo._event_rng.seed = 11
 	solo._next_raid_at = 999999999.0   # волны отдельно: здесь — рост города
 	# болезни глушим (гигиена теста): больной староста в соло может умереть —
@@ -36,8 +45,12 @@ func _test_fixes_v1191() -> void:
 	solo.people["ailments"]["sick_chance"] = 0.0
 	solo.people["ailments"]["wounded_on_surge"] = 0
 	# гигиена теста: шторм с фиксированным сидом методично рушил дом —
-	# заселение проверяем без погодных ЧП (буря — отдельная механика M14-J)
+	# заселение проверяем без погодных ЧП (буря — отдельная механика M14-J).
+	# v1.29 (флейк CI 2026-10-28): одного base_chance мало — шанс бури
+	# складывается с pollution_chance × pollution, и метеор/производство
+	# открывали шторму дверь снова; гасим оба слагаемых.
 	solo.cfg["storm"]["base_chance"] = 0.0
+	solo.cfg["storm"]["pollution_chance"] = 0.0
 	var step := day_len / 4.0
 	for i in 25 * 4:
 		solo.tick(step)
@@ -57,6 +70,12 @@ func _test_fixes_v1191() -> void:
 	for r in solo.residents:
 		if not solo._homeless(r):
 			housed += 1
+	if housed == 0:
+		# v1.28.1: гонка «поселенец пришёл — ночлег ещё не наступил» убрана:
+		# проверяем способность города селить — _free_home даёт дом homeless
+		for r in solo.residents:
+			if solo._homeless(r) and not solo._free_home(r).is_empty():
+				housed += 1
 	if housed == 0:
 		# v1.28.1: гонка «поселенец пришёл — ночлег ещё не наступил» убрана:
 		# проверяем способность города селить — _free_home даёт дом homeless
