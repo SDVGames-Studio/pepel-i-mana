@@ -1274,9 +1274,10 @@ func _move_towards(r: Dictionary, tile: Vector2i, dt: float) -> void:
 		r["_repath_at"] = time + float(pcfg.get("empty_retry", 1.0))
 		path = r["path"]
 	if path.is_empty():
-		# страховка: замурован на сплошном тайле (стену достроили под ногами)
+		# страховка: замурован на СПЛОШНОМ тайле (стену достроили под ногами);
+		# вода при броде не сплошная — мокрый житель телепорта не получает
 		var here: Vector2i = map.tile_of_px(r["pos"])
-		if not map.is_walkable(here):
+		if map.is_solid(here):
 			var free := _nearest_walkable(here)
 			if not free == Vector2i(-1, -1):
 				r["pos"] = map.tile_center_px(free)
@@ -1293,6 +1294,8 @@ func _move_towards(r: Dictionary, tile: Vector2i, dt: float) -> void:
 		var rcfg: Dictionary = cfg.get("roads", {})
 		step *= float(rcfg.get("porter_mult", 1.8)) if String(r["prof"]) == "porter" \
 				else float(rcfg.get("mult", 1.4))
+	# брод (v1.29.1): в воде все идут медленно — болото дольше реки
+	step *= map.water_speed_mult(map.tile_of_px(pos))
 	var step_total := step
 	while step > 0.0 and not path.is_empty():
 		var to_next: Vector2 = path[0] - pos
