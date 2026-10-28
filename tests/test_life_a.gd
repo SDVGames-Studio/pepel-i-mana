@@ -32,6 +32,10 @@ func _test_wishlist() -> void:
 		if tree_tile.x >= 0:
 			break
 	_check(tree_tile != Vector2i(-1, -1), "на карте есть дерево для вырубки")
+	# размер дерева малый (v1.29.4): бюджет тиков рассчитан на малое/среднее —
+	# первое по скану дерево могло стать большим (1 день рубки) и цикл
+	# заканчивался за тик до падения (flak по сдвигу потока RNG)
+	sim_f.map.tree_size[tree_tile] = sim_f.map.TREE_SMALL
 	sim_f.cfg["piles"] = {"chunk": 2.0, "max": 60.0, "carry": 10.0}
 	var spot := Vector2i(-1, -1)
 	for dy in range(-2, 3):
