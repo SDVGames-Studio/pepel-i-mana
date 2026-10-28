@@ -35,6 +35,12 @@ func _process(delta: float) -> void:
 
 func _draw() -> void:
 	var vp := get_viewport_rect().size
+	# v1.29.4: узел живёт в МИРОВЫХ координатах, а рисовал «на весь экран»
+	# от нуля карты — вуаль тумана заливала угол карты (бледный квадрат
+	# поверх мира, ночью светился), капли дождя не доходили до центра.
+	# Обратная canvas-трансформация: дальнейшие команды — в экранных
+	# координатах, покрывают ровно видимый экран.
+	draw_set_transform_matrix(get_viewport().get_canvas_transform().affine_inverse())
 	match weather:
 		"rain":
 			for i in DROPS:

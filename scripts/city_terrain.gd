@@ -599,13 +599,19 @@ func _draw_water_blobs(ts: float) -> void:
 		if int(entry["depth"]) % 2 == 1:
 			continue
 		var kind := String(entry["kind"])
-		var w := ts * 0.3
-		if kind == "lake" and _loop_area(loop) > 30.0 * ts * ts:
+		var area := _loop_area(loop)
+		# v1.29.4: ширина песка — по размеру водоёма: у малых прудов тонкая
+		# (раньше кромка съедала воду — оставалась «голубая щёлочка в глазке»)
+		var w := ts * 0.16
+		if area > 12.0 * ts * ts:
+			w = ts * 0.3
+		if kind == "lake" and area > 30.0 * ts * ts:
 			w = ts * 0.55
 		_stroke_inside(loop, 0.985, w, shore_col)
-		# влажный блеск у кромки — едва заметный, без «синей разметки»
-		var wcol: Color = _water_river if kind == "river" else _water_lake
-		_stroke_inside(loop, 0.955, 1.5, Color(wcol.lightened(0.25), 0.45))
+		# влажный блеск у кромки — только у средних и больших водоёмов
+		if area > 12.0 * ts * ts:
+			var wcol: Color = _water_river if kind == "river" else _water_lake
+			_stroke_inside(loop, 0.955, 1.5, Color(wcol.lightened(0.25), 0.45))
 	_draw_swamp_blobs(ts)
 	# украшения по тайлам внутри контура — у каждой воды свои
 	for y in map.h:
@@ -874,28 +880,42 @@ func _draw_rock_blobs(ts: float) -> void:
 	for entry in _rock_cached:
 		var loop: PackedVector2Array = entry["loop"]
 		var c := _poly_centroid(loop)
-		# тон массива «дышит» по блобу — порода СВЕТЛАЯ (тёмная база + белые
-		# круги давали «облака»)
+		# v1.29.4 «натуральная гора»: базовый тон массива дышит по блобу,
+		# светлая солнечная грань сверху, тёмное подножие — полосой ТОЛЬКО
+		# по нижней половине контура (раньше тёмная кромка шла по всему
+		# силуэту и читалась «крыльями»), крупные фасеты вместо крапинок
 		var tone := _noise2(c.x / (ts * 3.0), c.y / (ts * 3.0), 30, 91) / 29.0
-		var base := Color("#8a8478").lightened(0.05 * tone - 0.025)
-		# заливка региона; край накрывает тёмная кромка массива по контуру
+		var base := Color("#857e71").lightened(0.05 * tone - 0.025)
 		_fill_loop_cached(loop, entry["tris"], base)
-		_stroke_on_loop(loop, ts * 0.55, Color("#55503f"))
-		# v1.29.1 волна 6 — «настоящая гора»: светлая вершина у верхнего края
-		# и тёмное подножие в сердце массива; всё ВНУТРИ силуэта, без
-		# выступающих плато и концентрических колец
-		if _loop_area(loop) > 6.0 * ts * ts:
-			var top := _shrunk_loop(loop, 0.84)
+		var area := _loop_area(loop)
+		if area > 6.0 * ts * ts:
+			# светлая вершина и тёмное подножие: сжатие слабое (0.8), сдвиг
+			# малый — на органичном силуэте читается светом/тенью, а не
+			# концентрическими кольцами (v1.29.4)
+			var top := _shrunk_loop(loop, 0.80)
 			for i in top.size():
-				top[i] += Vector2(0, -ts * 0.08)
+				top[i] += Vector2(-ts * 0.03, -ts * 0.06)
 			_fill_loop_cached(top, Geometry2D.triangulate_polygon(top),
-					base.lightened(0.09))
-			var heart := _shrunk_loop(loop, 0.58)
-			for i in heart.size():
-				heart[i] += Vector2(0, ts * 0.10)
-			_fill_loop_cached(heart, Geometry2D.triangulate_polygon(heart),
-					base.darkened(0.09))
-	# пятнистость, трещины и руда — по тайлам внутри массива
+					base.lightened(0.08))
+			var foot := _shrunk_loop(loop, 0.80)
+			for i in foot.size():
+				foot[i] += Vector2(0, ts * 0.09)
+			_fill_loop_cached(foot, Geometry2D.triangulate_polygon(foot),
+					base.darkened(0.10))
+			# грань: 3–5 мягких сколов-пятен ГЛУБОКО внутри силуэта — фактура
+			# камня без «горошка» и без вылезания за контур (v1.29.4)
+			var r_in := sqrt(area / PI) * 0.45
+			var n := 3 + int(area / (26.0 * ts * ts))
+			for f in mini(n, 5):
+				var a0 := TAU * float(_hash(f * 31, int(c.x), 100)) / 100.0
+				var p0 := c + Vector2(cos(a0), sin(a0) * 0.75) * r_in
+				var rr := sqrt(area / PI) * (0.22 + 0.1 * float(_hash(f * 7, int(c.y), 100)) / 100.0)
+				var fc := base.darkened(0.05) if f % 2 == 0 else base.lightened(0.05)
+				_draw_ellipse(p0, rr, rr * 0.72, Color(fc, 0.55))
+		# кромка: тёмная полоса только по НИЖНЕЙ половине силуэта —
+		# подножие в тени; верхний край наоборот подсвечен
+		_stroke_bottom_rim(loop, ts, base)
+	# трещины добычи и руда — по тайлам внутри массива
 	for y in map.h:
 		for x in map.w:
 			var t := Vector2i(x, y)
@@ -903,6 +923,26 @@ func _draw_rock_blobs(ts: float) -> void:
 			if g != map.TILE_ROCK and g != map.TILE_ORE:
 				continue
 			_draw_rock_tile_detail(x, y, g == map.TILE_ORE, ts)
+
+
+## Тёмное подножие по нижней дуге контура: сегменты, чья нормаль смотрит вниз.
+func _stroke_bottom_rim(loop: PackedVector2Array, ts: float, base: Color) -> void:
+	var cy := _poly_centroid(loop).y
+	var band := PackedVector2Array()
+	var open := false
+	for i in loop.size() + 1:
+		var p: Vector2 = loop[i % loop.size()]
+		var below: bool = p.y > cy + ts * 0.15
+		if below and not open:
+			open = true
+			band.clear()
+		if open:
+			band.append(p)
+		if open and not below and band.size() >= 3:
+			_stroke_on_loop(band, ts * 0.42, base.darkened(0.22))
+			open = false
+	if open and band.size() >= 3:
+		_stroke_on_loop(band, ts * 0.42, base.darkened(0.22))
 
 
 ## Кэш скальных блобов (контуры + триангуляция) — пересчёт только при
@@ -917,22 +957,10 @@ func _build_rock_cache() -> Array:
 	return out
 
 
-## Фактура внутри скального блоба: мягкие пятна породы, трещины добычи,
-## вкрапления руды. Никаких светлых кругов (читались «облаками»).
+## Фактура внутри скального блоба: трещины добычи и руда. Пятнистые точки
+## убраны (v1.29.4) — читались «горошком» по массиву; фактуру дают фасеты.
 func _draw_rock_tile_detail(x: int, y: int, ore: bool, ts: float) -> void:
 	var rect := Rect2(Vector2(x * ts, y * ts), Vector2(ts, ts))
-	var tone := _noise2(x / 3.0, y / 3.0, 30, 91) / 29.0
-	var base := Color("#8a8478").lightened(0.05 * tone - 0.025)
-	var hx := _hash(x, y, 30)
-	var hy := _hash(y * 7, x * 3, 30)
-	# редкие мягкие пятна чуть темнее/светлее породы — фактура камня,
-	# контраст минимальный (круги с контрастом читались пузырями)
-	if _hash(x, y, 37) % 3 == 0:
-		_draw_ellipse(rect.position + Vector2(ts * 0.4 + float(hx % 8), ts * 0.4 + float(hy % 8)),
-				ts * 0.2, ts * 0.15, base.darkened(0.04))
-	elif _hash(x, y, 43) % 4 == 0:
-		_draw_ellipse(rect.position + Vector2(ts * 0.55 + float(hy % 7), ts * 0.5 + float(hx % 7)),
-				ts * 0.17, ts * 0.13, base.lightened(0.04))
 	# трещины по мере добычи: скала «оседает»
 	var key := Vector2i(x, y)
 	if map.rock_hp.has(key):

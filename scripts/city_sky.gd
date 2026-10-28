@@ -387,7 +387,10 @@ func _build_objs() -> void:
 					seen[n] = true
 					queue.append(n)
 		var rect := Rect2(Vector2(mn) * ts, Vector2(mx - mn + Vector2i(1, 1)) * ts)
-		_objs.append([2, rect, ts * 0.75])
+		# v1.29.4: высота массива — по его размеру (раньше была постоянной,
+		# и тень большой гряды не соответствовала массе)
+		_objs.append([2, rect, clampf(maxf(rect.size.x, rect.size.y) * 0.6,
+				ts * 0.7, ts * 2.4)])
 	_blds_count = sim.buildings.size()
 	for b in sim.buildings:
 		var bw := float(sim.bld_w(b))
@@ -410,10 +413,16 @@ func _draw_object_shadows(t: float, nf: float, vis: Rect2, col: Color,
 			var rect: Rect2 = o[1]
 			if not vis.intersects(rect.grow(h * SHADOW_LONG)):
 				continue
-			_draw_box_shadow(rect, h, t, nf, col, moon, tilt)
+			if kind == 2:
+				_draw_rock_shadow(rect, h, t, nf, col, moon, tilt)
+			else:
+				_draw_box_shadow(rect, h, t, nf, col, moon, tilt)
 
 
 ## Тень дерева — вытянутый клин от основания в сторону от солнца.
+## v1.29.4: клин начинается чуть ВНУТРИ ствола и шире у основания — раньше
+## он отходил вниз-влево тонкой полосой и читался «оторванной» от дерева
+## тенью (дерево «висит на блок выше тени»).
 func _draw_tree_shadow(base: Vector2, h: float, t: float, nf: float,
 		col: Color, ts: float, moon := false, tilt := 0.0) -> void:
 	var off := shadow_offset(t, nf, h, tilt)
@@ -423,15 +432,45 @@ func _draw_tree_shadow(base: Vector2, h: float, t: float, nf: float,
 		off = Vector2(moon_dir_x_at(t, nf), 0.2) * lerpf(1.1, 0.25, sin(PI * un)) * h * 0.7
 	if off.length() < 2.0:
 		return
+	off.y = maxf(off.y * 0.6, -h * 0.05)   # меньше «подползания» вниз
+	var root := base + Vector2(0, -h * 0.12)   # старт от нижней части ствола
 	var dirn := off.normalized()
 	var perp := Vector2(-dirn.y, dirn.x)
-	var w0 := ts * 0.30
-	var w1 := ts * 0.10
+	var w0 := ts * 0.42
+	var w1 := ts * 0.12
 	var pts := PackedVector2Array([
-		base + perp * w0, base + off + perp * w1,
-		base + off - perp * w1, base - perp * w0,
+		root + perp * w0, root + off + perp * w1,
+		root + off - perp * w1, root - perp * w0,
 	])
 	draw_colored_polygon(pts, col)
+
+
+## Тень массива скал (v1.29.4): заливается ТОЛЬКО полоса ВНЕ контура массива.
+## Раньше тень = смещённый прямоугольник целиком — при малом смещении он
+## накрывал сам массив, и гряда темнела (тень «не соответствует поведению»).
+## Г-образная полоса: боковая связка по X + нижняя по Y.
+func _draw_rock_shadow(rect: Rect2, h: float, t: float, nf: float,
+		col: Color, moon := false, tilt := 0.0) -> void:
+	var off := shadow_offset(t, nf, h, tilt)
+	if moon:
+		var un := moon_u(t, nf)
+		off = Vector2(moon_dir_x_at(t, nf), 0.2) * lerpf(1.1, 0.25, sin(PI * un)) * h * 0.7
+	if off.length() < 2.0:
+		return
+	var tl := rect.position
+	var tr := rect.position + Vector2(rect.size.x, 0)
+	var bl := rect.position + Vector2(0, rect.size.y)
+	var br := rect.end
+	# нижняя полоса (юг): между подошвой и смещённой подошвой
+	if off.y > 1.0:
+		draw_colored_polygon(PackedVector2Array([
+			bl, br, br + Vector2(0, off.y), bl + Vector2(0, off.y)]), col)
+	# боковая полоса: между боковой гранью и смещённой гранью
+	if absf(off.x) > 1.0:
+		var top_e := tr if off.x > 0.0 else tl
+		var bot_e := br if off.x > 0.0 else bl
+		draw_colored_polygon(PackedVector2Array([
+			top_e, bot_e, bot_e + Vector2(off.x, off.y), top_e + Vector2(off.x, off.y)]), col)
 
 
 ## Тень прямоугольного объекта — выпуклая оболочка «подошва + подошва+смещение».
