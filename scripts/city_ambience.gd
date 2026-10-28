@@ -14,16 +14,20 @@ const WISP_COUNT := 14
 const LIGHT_COUNT := 6
 
 var night := 0.0
+var map = null              # карта города (v1.29.4: центры тайлов берега для света)
 var _flies: Array = []   # {base: Vector2, phase: float, span: float}
 var _wisps: Array = []
+var _lowlands: Array = []   # трава у воды: берег — свет, не сама вода
 var _lights: Array = []  # PointLight2D — «живой свет» стай
 var _time := 0.0
 var _seed := 20261020
 
 
 func setup(city_map) -> void:
+	map = city_map
 	_flies = []
 	_wisps = []
+	_lowlands = []
 	var trees: Array = []
 	var meadows: Array = []
 	var water: Array = []
@@ -37,12 +41,11 @@ func setup(city_map) -> void:
 					meadows.append(t)
 				city_map.TILE_WATER:
 					water.append(t)
-	var lowlands: Array = []
 	for t: Vector2i in water:
 		for d in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
 			var n: Vector2i = t + d
 			if city_map.in_bounds(n) and int(city_map.grid[n.y][n.x]) == city_map.TILE_GRASS:
-				lowlands.append(n)
+				_lowlands.append(n)
 	for i in FLY_COUNT:
 		if trees.is_empty() and meadows.is_empty():
 			break
@@ -55,7 +58,7 @@ func setup(city_map) -> void:
 			"phase": float(i) * 1.7, "span": 10.0 + _warp_rand(9),
 		})
 	for i in WISP_COUNT:
-		var pool: Array = water if not water.is_empty() else lowlands
+		var pool: Array = water if not water.is_empty() else _lowlands
 		if pool.is_empty():
 			break
 		var t2: Vector2i = pool[_warp_rand(pool.size())]
@@ -66,11 +69,14 @@ func setup(city_map) -> void:
 
 
 func _ready() -> void:
-	# «живой свет»: несколько мягких источников кочуют между стайками
+	# «живой свет»: несколько мягких источников кочуют между стайками.
+	# v1.29.4: источник ВДВОЕ меньше и втрое слабее; свет огоньков у воды
+	# кочует по БЕРЕГУ, а не по воде — раньше большие гало PointLight2D
+	# заливали реку/озеро светом, и вода ночью «белела» (замечание заказчика)
 	for i in LIGHT_COUNT:
 		var l := PointLight2D.new()
 		l.texture = _glow_texture()
-		l.texture_scale = 3.2
+		l.texture_scale = 1.5
 		l.color = FLY_COLOR if i < LIGHT_COUNT / 2 else WISP_COLOR
 		l.energy = 0.0
 		l.enabled = false
@@ -102,18 +108,24 @@ func _process(delta: float) -> void:
 				l.enabled = false
 		return
 	queue_redraw()
-	# света дышат и дрейфуют вокруг своих стай
+	# света дышат и дрейфуют вокруг своих стай; свет «у воды» — по берегу
 	for i in _lights.size():
-		var pool: Array = _flies if i < _lights.size() / 2 else _wisps
 		var l: PointLight2D = _lights[i]
-		if pool.is_empty():
-			l.enabled = false
-			continue
-		var anchor: Dictionary = pool[i % pool.size()]
+		var base := Vector2.ZERO
+		if i < _lights.size() / 2:
+			if _flies.is_empty():
+				l.enabled = false
+				continue
+			base = _flies[i % _flies.size()]["base"]
+		else:
+			if _lowlands.is_empty() or map == null:
+				l.enabled = false
+				continue
+			base = map.tile_center_px(_lowlands[i % _lowlands.size()])
 		var t2 := _time * 0.13 + float(i) * 2.1
 		l.enabled = true
-		l.position = (anchor["base"] as Vector2) + Vector2(sin(t2) * 22.0, cos(t2 * 0.8) * 15.0)
-		l.energy = night * (0.6 + 0.25 * sin(_time * 1.2 + float(i) * 1.9))
+		l.position = base + Vector2(sin(t2) * 22.0, cos(t2 * 0.8) * 15.0)
+		l.energy = night * (0.35 + 0.15 * sin(_time * 1.2 + float(i) * 1.9))
 
 
 ## Детерминированный «случайный» для setup (важен стабильный вид, не честность).

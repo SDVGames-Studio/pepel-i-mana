@@ -19,14 +19,23 @@ func _test_wishlist() -> void:
 	# вырубка: лесоруб валит дерево — пень, гнев леса
 	var sim_f := _make_sim()
 	var tree_tile := Vector2i(-1, -1)
+	# дерево — из ДОСТИЖИМЫХ от старта (v1.29.4): карта режется рекой, первое
+	# по скану дерево могло оказаться на другом берегу без моста — лесоруб
+	# до него не дойдёт, и тест ловил флак по сиду
+	var reach: Dictionary = sim_f.map._reachable_from(sim_f.map.spawn_tile)
 	for y in sim_f.map.h:
 		for x in sim_f.map.w:
-			if sim_f.map.grid[y][x] == sim_f.map.TILE_TREE:
+			if sim_f.map.grid[y][x] == sim_f.map.TILE_TREE \
+					and reach.has(Vector2i(x, y)):
 				tree_tile = Vector2i(x, y)
 				break
 		if tree_tile.x >= 0:
 			break
 	_check(tree_tile != Vector2i(-1, -1), "на карте есть дерево для вырубки")
+	# размер дерева малый (v1.29.4): бюджет тиков рассчитан на малое/среднее —
+	# первое по скану дерево могло стать большим (1 день рубки) и цикл
+	# заканчивался за тик до падения (flak по сдвигу потока RNG)
+	sim_f.map.tree_size[tree_tile] = sim_f.map.TREE_SMALL
 	sim_f.cfg["piles"] = {"chunk": 2.0, "max": 60.0, "carry": 10.0}
 	var spot := Vector2i(-1, -1)
 	for dy in range(-2, 3):

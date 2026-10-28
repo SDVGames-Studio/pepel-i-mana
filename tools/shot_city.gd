@@ -5,6 +5,9 @@ extends SceneTree
 ## духи), ждёт кадры, сохраняет tools/shot_city.png и выходит.
 
 var _frames := 0
+var _game: Node = null
+var _city: Node = null
+var _weather_override := ""   # погода перед кадром: дневной ролл её перебивает
 
 
 func _initialize() -> void:
@@ -32,6 +35,8 @@ func _call_deferred(cb: Callable) -> void:
 
 
 func _decorate(city: Node, game: Node) -> void:
+	_game = game
+	_city = city
 	var sim = game.city_sim
 	var map = sim.map
 	var cfg: Dictionary = sim.cfg
@@ -124,11 +129,44 @@ func _decorate(city: Node, game: Node) -> void:
 	elif OS.get_environment("SHOT_EVENING") != "":
 		# вечер (M12): костёр горит, жители в досуге, разговоры-облачка
 		sim.time = float(sim.cfg["day_length"]) * 0.65
+	elif OS.get_environment("SHOT_CLEAR") != "":
+		# v1.29.4: ясное утро — длинные тени деревьев/скал (проверка теней)
+		_weather_override = "clear"
+		sim.time = float(sim.cfg["day_length"]) * 0.18
+	if OS.get_environment("SHOT_FOG") != "":
+		_weather_override = "fog"
+		sim.time = float(sim.cfg["day_length"]) * 0.4
+	if OS.get_environment("SHOT_WATER") != "":
+		# v1.29.4: камера у ближайшего водоёма — проверка формы воды/кромки
+		_teleport_near(func(g: int) -> bool: return g == map.TILE_WATER)
+	if OS.get_environment("SHOT_ROCK") != "":
+		_teleport_near(func(g: int) -> bool: return g == map.TILE_ROCK or g == map.TILE_ORE)
 	print("shot: город украшен")
+
+
+## Телепорт героя к ближайшему тайлу-предикату (вода/скала — в кадр).
+func _teleport_near(pred: Callable) -> void:
+	var sim = _game.city_sim
+	var map = sim.map
+	var best := Vector2i(-1, -1)
+	var bd := 1e9
+	for y2 in map.h:
+		for x2 in map.w:
+			if pred.call(int(map.grid[y2][x2])):
+				var d: float = Vector2(x2, y2).distance_squared_to(Vector2(map.spawn_tile))
+				if d < bd:
+					bd = d
+					best = Vector2i(x2, y2)
+	if best != Vector2i(-1, -1):
+		(_city as Node).hero.position = map.tile_center_px(best + Vector2i(3, 2))
 
 
 func _on_frame() -> void:
 	_frames += 1
+	# v1.29.4: дневной ролл погоды на первых тиках перебивает заданную —
+	# возвращаем её прямо перед снимком
+	if _frames == 40 and _weather_override != "" and _game != null:
+		_game.city_sim.weather = _weather_override
 	if _frames < 45:
 		return
 	if OS.get_environment("SHOT_AB") != "":

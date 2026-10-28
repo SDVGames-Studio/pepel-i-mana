@@ -376,6 +376,19 @@ func _tree_composite(ref: String, t: Texture2D, src: Rect2) -> ImageTexture:
 	var chh := int(round(src.size.y))
 	var img := Image.create(cw, chh, false, Image.FORMAT_RGBA8)
 	img.blit_rect(sheet, Rect2i(src), Vector2i(pad, 0))
+	# v1.29.4: контактная тень у корней — дерево «стоит на земле», а не висит
+	# над динамической тенью от солнца (замечание заказчика)
+	var ry := maxf(2.0, chh * 0.055)
+	var cy := chh - ry * 0.6
+	for py in range(maxi(0, int(cy - ry)), mini(chh, int(cy + ry))):
+		for px in range(maxi(0, int(pad - cw * 0.28)), mini(cw, int(pad + cw * 0.28))):
+			var nx := float(px - pad) / (cw * 0.28)
+			var ny := float(py - cy) / ry
+			var d := nx * nx + ny * ny
+			if d <= 1.0:
+				var a := 0.22 * (1.0 - d * 0.55)
+				var under := img.get_pixel(px, py)
+				img.set_pixel(px, py, under.lerp(Color(0.06, 0.06, 0.09), a))
 	var tex := ImageTexture.create_from_image(img)
 	_tree_comp_cache[ref] = tex
 	return tex

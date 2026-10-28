@@ -162,9 +162,9 @@ func _generate_once(seed_value: int, params: Dictionary) -> void:
 		row.resize(w)
 		row.fill(TILE_GRASS)
 		grid.append(row)
-	# озёра (v1.29.3): гладкий овал с мягкой рябью контура — ровные красивые
-	# берега у КАЖДОГО озера (раньше клякса из двух налегающих пятен давала
-	# горбатый боб через раз — замечание заказчика по скриншоту)
+	# озёра (v1.29.4): почти круглый овал с мягкой рябью контура — ровные
+	# красивые берега у КАЖДОГО озера (оси по сетке: повёрнутый овал при
+	# квантовании в тайлы давал «глаз-линзу»)
 	for i in int(params["lakes"]):
 		_lake_blob(_random_inner_tile(rng), rng)
 	# болота (v1.29.3): свой малый гладкий овал с лужей-сателлитом — до 16
@@ -172,12 +172,21 @@ func _generate_once(seed_value: int, params: Dictionary) -> void:
 	# иначе болотце сольётся с озером
 	for i in int(params.get("swamps", 2)):
 		_swamp_blob(_random_grass_tile(rng), rng)
+	# вся вода на этот момент — озёра и болота; обрывки реки их не трогают
+	var keep := {}
+	for y in h:
+		for x in w:
+			if grid[y][x] == TILE_WATER:
+				keep[Vector2i(x, y)] = true
 	# река (v1.28): меандрирует с севера на юг — живая водная артерия;
 	# переправа — мосты (M14-I), герои и жители ходят по ним
 	if bool(params.get("river", true)):
 		_generate_river(rng)
+	_trim_river_stubs(keep)
 	# скальные ГРЯДЫ (M11): не россыпь одиночных камней, а единые массивы —
-	# большое пятно плюс сателлиты внахлёст; в них живёт руда и их добывают
+	# большое пятно плюс сателлиты внахлёст; в них живёт руда и их добывают.
+	# v1.29.4: сателлита ДВА со случайными смещениями — силуэт органичнее;
+	# радиусы прежние (шире залезали на кольцо стен и лес у старта)
 	for i in int(params.get("rocks", 2)):
 		var center := _random_inner_tile(rng)
 		_blob(center, rng.randi_range(4, 6), TILE_ROCK)
@@ -187,6 +196,17 @@ func _generate_once(seed_value: int, params: Dictionary) -> void:
 	# рудные жилы: железо в скалах и на голой земле — места под шахту (M5+)
 	for i in int(params.get("ore_spots", 0)):
 		_ore_blob(_random_inner_tile(rng), rng.randi_range(1, 2))
+	# чистое ядро города (v1.29.4): та же зона радиуса 9, что у реки —
+	# вода/скалы/руда в неё не попадают. Кольцо стен, лесопилка и дома
+	# должны строиться гарантированно: раньше озеро, болото или руда могли
+	# лечь в кольцо и ломали и стройку, и тесты (кольцо 29 вместо 40)
+	var sx := w / 2
+	var sy := h / 2
+	for y in range(maxi(0, sy - 9), mini(h, sy + 10)):
+		for x in range(maxi(0, sx - 9), mini(w, sx + 10)):
+			var t: int = grid[y][x]
+			if t == TILE_WATER or t == TILE_ROCK or t == TILE_ORE:
+				grid[y][x] = TILE_GRASS
 	# запас прочности скалы (M11): тайлы гряды добываемы; руда богаче
 	var hp := float(params.get("mountain", {}).get("hp", 80.0))
 	for y in h:
@@ -216,35 +236,66 @@ func _generate_once(seed_value: int, params: Dictionary) -> void:
 	_clear_around(world_exit_tile, 2)
 
 
+## Обрывки реки (v1.29.4): ядро города и край карты режут меандр на куски —
+## осколки выглядели «глазами-линзами» с песчаной кромкой. Компонент воды, в
+## котором НЕТ ни одного тайла озёр/болот (они перечислены до реки) и меньше
+## 20 тайлов, — речной обрывок: возвращаем траву.
+func _trim_river_stubs(keep: Dictionary) -> void:
+	var seen := {}
+	for y in h:
+		for x in w:
+			var start := Vector2i(x, y)
+			if grid[y][x] != TILE_WATER or seen.has(start):
+				continue
+			var comp: Array = [start]
+			seen[start] = true
+			var has_keep := keep.has(start)
+			var qi := 0
+			while qi < comp.size():
+				var t: Vector2i = comp[qi]
+				qi += 1
+				for d in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
+					var n: Vector2i = t + d
+					if in_bounds(n) and grid[n.y][n.x] == TILE_WATER and not seen.has(n):
+						seen[n] = true
+						has_keep = has_keep or keep.has(n)
+						comp.append(n)
+			if not has_keep and comp.size() < 20:
+				for t2: Vector2i in comp:
+					grid[t2.y][t2.x] = TILE_GRASS
+
+
 func _random_inner_tile(rng: RandomNumberGenerator) -> Vector2i:
 	return Vector2i(rng.randi_range(4, w - 5), rng.randi_range(4, h - 5))
 
 
-## Озеро (v1.29.3): гладкий овал — базовые радиусы 3.4–4.8 × 2.6–3.6.
+## Озеро (v1.29.4): почти круглый овал — вертикальный радиус выводится из
+## горизонтального (отношение ≤ 1.4), случайный поворот осей.
 func _lake_blob(center: Vector2i, rng: RandomNumberGenerator) -> void:
-	_smooth_water_blob(center, rng, rng.randf_range(3.4, 4.8),
-			rng.randf_range(2.6, 3.6))
+	var rx := rng.randf_range(3.4, 4.6)
+	_smooth_water_blob(center, rng, rx, rx / rng.randf_range(1.15, 1.4))
 
 
-## Болото (v1.29.3): малый гладкий овал (до ~11 тайлов) + лужа-сателлит
+## Болото (v1.29.4): малый гладкий овал (до ~11 тайлов) + лужа-сателлит
 ## внахлёст — суммарно ≤ 16 тайлов, чтобы остаться болотцем для
-## classify_water(); формула озера, уменьшенная в два раза.
+## classify_water(); форма озера, уменьшенная в два раза.
 func _swamp_blob(center: Vector2i, rng: RandomNumberGenerator) -> void:
-	_smooth_water_blob(center, rng, rng.randf_range(1.7, 2.0),
-			rng.randf_range(1.4, 1.7))
+	var rx := rng.randf_range(1.8, 2.1)
+	_smooth_water_blob(center, rng, rx, rx / 1.25)
 	_blob(center + Vector2i(rng.randi_range(-1, 1), rng.randi_range(-1, 1)),
 			1, TILE_WATER)
 
 
 ## Гладкий водоём (v1.29.3): клетка заливается, если её центр внутри контура
-## «овал × k(θ)», где k — две мягкие гармоники по углу (амплитуда ≤ 0.19):
-## контур округлый, с лёгкой природной асимметрией, без клякс и вмятин.
+## «овал × k(θ)», где k — две мягкие гармоники по углу. v1.29.4: рябь слабая
+## (амплитуда ≤ 0.1), оси СТРОГО по сетке — повёрнутый овал при квантовании
+## в тайлы превращался в «глаз-линзу» с заострёнными концами.
 func _smooth_water_blob(center: Vector2i, rng: RandomNumberGenerator,
 		rx: float, ry: float) -> void:
 	var ph1 := rng.randf() * TAU
 	var ph2 := rng.randf() * TAU
-	var a1 := rng.randf_range(0.05, 0.12)
-	var a2 := rng.randf_range(0.04, 0.07)
+	var a1 := rng.randf_range(0.03, 0.07)
+	var a2 := rng.randf_range(0.02, 0.04)
 	var rad := int(ceil(maxf(rx, ry) * (1.0 + a1 + a2))) + 1
 	for y in range(maxi(1, center.y - rad), mini(h - 1, center.y + rad + 1)):
 		for x in range(maxi(1, center.x - rad), mini(w - 1, center.x + rad + 1)):
