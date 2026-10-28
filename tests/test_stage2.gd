@@ -110,17 +110,27 @@ func _test_stage2_aspect2() -> void:
 		for x in m.w:
 			var t := Vector2i(x, y)
 			var nw: bool = m.is_nature_walkable(t)
+			var water: bool = m.grid[t.y][t.x] == m.TILE_WATER
 			# клетки под зданиями сплошные по правилу зданий (аспект 2) — не рельеф
-			if sim.building_at(t).is_empty() and m.astar.is_point_solid(t) == nw:
-				solid_ok = false
+			if sim.building_at(t).is_empty():
+				# брод v1.29.1: вода не сплошная для жителей (вес > 1) и
+				# сплошная для мутантов; скалы/руда/порода — сплошные для всех
+				if m.astar.is_point_solid(t) != (not nw and not water):
+					solid_ok = false
+				if water and m.astar.get_point_weight_scale(t) <= 1.0:
+					solid_ok = false
+				if m.astar_raider.is_point_solid(t) != (not nw):
+					solid_ok = false
 			if nw and walk_sample == Vector2i(-1, -1):
 				walk_sample = t
-	_check(solid_ok, "A*: сплошность клетки совпадает с проходимостью рельефа")
+	_check(solid_ok, "A*: сплошность по рельефу (вода — брод для своих, скалы для всех)")
 	var path_clean := true
 	if not walk_sample == Vector2i(-1, -1):
 		var goal: Vector2i = m.nearest_walkable(m.spawn_tile)
 		for cell in m.path_px(m.tile_center_px(walk_sample), goal):
-			if not m.is_walkable(Vector2i(int(cell.x / m.ts), int(cell.y / m.ts))):
+			var pt := Vector2i(int(cell.x / m.ts), int(cell.y / m.ts))
+			# брод: путь может включать воду — нельзя только по сплошным тайлам
+			if m.is_solid(pt):
 				path_clean = false
 				break
 	_check(path_clean, "путь A* не содержит непроходимых клеток")

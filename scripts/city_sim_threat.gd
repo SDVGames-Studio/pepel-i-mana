@@ -335,9 +335,10 @@ func _raider_move_to(r: Dictionary, tile: Vector2i, step: float) -> bool:
 		r["path"] = PackedVector2Array()
 		return true   # пришли
 	if path.is_empty():
-		# стоит на сплошном для мутантов тайле (ворота заперли под ногами,
-		# стену достроили) — сходит на ближайшую свободную клетку
-		if not map.is_raider_walkable(here):
+		# стоит на СПЛОШНОМ для мутантов тайле (ворота заперли под ногами,
+		# стену достроили) — сходит на ближайшую свободную клетку; вода при
+		# броде не сплошная — мокрый мутант телепорта не получает
+		if map.is_solid(here, true):
 			var free := _nearest_raider_walkable(here)
 			if free != Vector2i(-1, -1):
 				r["pos"] = map.tile_center_px(free)

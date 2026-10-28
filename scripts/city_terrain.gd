@@ -554,8 +554,14 @@ func _draw_water_blobs(ts: float) -> void:
 		for rl in raw:
 			smootheds.append(_smooth_loop(rl))
 		for sm in smootheds:
-			var kind := _water_kind(sm, ts)
 			var tiles := _loop_tiles(sm, ts)
+			# v1.29.1: тип водоёма считает КАРТА (он нужен и путям/броду);
+			# локальный расчёт по силуэту — страховка для карт без неё
+			var kind := ""
+			if not tiles.is_empty():
+				kind = map.water_kind_at(tiles[0])
+			if kind == "":
+				kind = _water_kind(sm, ts)
 			for t: Vector2i in tiles:
 				_water_tile_kind[t] = kind
 			_water_cached.append({"loop": sm,
@@ -718,8 +724,10 @@ func _draw_swamp_blobs(ts: float) -> void:
 
 
 ## Тип водоёма в тайле («lake» | «river» | «swamp») — брод героя и подсказки.
+## Первоисточник — карта (water_kind), локальный — страховка.
 func water_kind_at(t: Vector2i) -> String:
-	return String(_water_tile_kind.get(t, "lake"))
+	var k: String = map.water_kind_at(t)
+	return k if k != "" else String(_water_tile_kind.get(t, "lake"))
 
 
 ## Сколько водных соседей по 8 направлениям (глубина плиты).
