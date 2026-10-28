@@ -589,17 +589,23 @@ func _draw_water_blobs(ts: float) -> void:
 		# течение и так читается струями, у малых прудов контур был «ромбом»)
 		if kind == "lake" and _loop_area(loop) > 18.0 * ts * ts:
 			_stroke_inside(loop, 0.60, ts * 0.8, Color(deep_col.r, deep_col.g, deep_col.b, 0.4))
-	# берег: пляж по контуру и светлый урез воды внутри — озёрам и рекам
+	# берег (волна 6): песок ВНУТРИ кромки воды. Раньше штрих шёл по контуру
+	# шириной 0.9 тайла — на узкой реке съедал всю воду («реки мутные»), а на
+	# малых водоёмах выплёскивался на соседние скалы («текстуры залазят»)
 	for entry in _water_cached:
 		if String(entry["kind"]) == "swamp":
 			continue
 		var loop: PackedVector2Array = entry["loop"]
 		if int(entry["depth"]) % 2 == 1:
 			continue
-		_stroke_on_loop(loop, ts * 0.9, shore_col)
+		var kind := String(entry["kind"])
+		var w := ts * 0.3
+		if kind == "lake" and _loop_area(loop) > 30.0 * ts * ts:
+			w = ts * 0.55
+		_stroke_inside(loop, 0.985, w, shore_col)
 		# влажный блеск у кромки — едва заметный, без «синей разметки»
-		var wcol: Color = _water_river if String(entry["kind"]) == "river" else _water_lake
-		_stroke_inside(loop, 0.965, 1.5, Color(wcol.lightened(0.25), 0.45))
+		var wcol: Color = _water_river if kind == "river" else _water_lake
+		_stroke_inside(loop, 0.955, 1.5, Color(wcol.lightened(0.25), 0.45))
 	_draw_swamp_blobs(ts)
 	# украшения по тайлам внутри контура — у каждой воды свои
 	for y in map.h:
@@ -875,16 +881,20 @@ func _draw_rock_blobs(ts: float) -> void:
 		# заливка региона; край накрывает тёмная кромка массива по контуру
 		_fill_loop_cached(loop, entry["tris"], base)
 		_stroke_on_loop(loop, ts * 0.55, Color("#55503f"))
-		# v1.29.1 (правки приёмки): вместо концентрических внутренних колец
-		# (читались странными кругами) — светлое плато со сдвигом к солнцу
-		# и мягкая тень подошвы; рельеф без «слоёв»
+		# v1.29.1 волна 6 — «настоящая гора»: светлая вершина у верхнего края
+		# и тёмное подножие в сердце массива; всё ВНУТРИ силуэта, без
+		# выступающих плато и концентрических колец
 		if _loop_area(loop) > 6.0 * ts * ts:
-			var plateau := _shrunk_loop(loop, 0.78)
-			for i in plateau.size():
-				plateau[i] += Vector2(0, -ts * 0.14)
-			_fill_loop_cached(plateau, Geometry2D.triangulate_polygon(plateau),
-					base.lightened(0.08))
-			_stroke_inside(loop, 0.965, ts * 0.35, base.darkened(0.10))
+			var top := _shrunk_loop(loop, 0.84)
+			for i in top.size():
+				top[i] += Vector2(0, -ts * 0.08)
+			_fill_loop_cached(top, Geometry2D.triangulate_polygon(top),
+					base.lightened(0.09))
+			var heart := _shrunk_loop(loop, 0.58)
+			for i in heart.size():
+				heart[i] += Vector2(0, ts * 0.10)
+			_fill_loop_cached(heart, Geometry2D.triangulate_polygon(heart),
+					base.darkened(0.09))
 	# пятнистость, трещины и руда — по тайлам внутри массива
 	for y in map.h:
 		for x in map.w:
@@ -933,15 +943,16 @@ func _draw_rock_tile_detail(x: int, y: int, ore: bool, ts: float) -> void:
 		if frac < 0.33:
 			_drawer.draw_line(rect.position + Vector2(ts * 0.65, ts * 0.2),
 					rect.position + Vector2(ts * 0.5, ts * 0.55), Color(0.12, 0.11, 0.09, 0.85), 1.4)
-	# руда: золотые или рыжие вкрапления
+	# руда (волна 6): кристаллы-ромбики с блеском вместо точек-горошин
 	if ore:
 		var gold := _hash(x, y, 4) == 0
 		var col := Color("#e0b13e") if gold else Color("#b0684a")
-		for i in 4:
+		for i in 3:
 			var h2 := _hash(x * 13 + i, y * 17 + i, 100)
-			var fx := rect.position.x + 5.0 + float(h2 % int(ts - 10.0))
-			var fy := rect.position.y + 10.0 + float((h2 / 3) % int(ts - 16.0))
-			_drawer.draw_circle(Vector2(fx, fy), 1.6 + float(h2 % 2), col)
+			var fx := rect.position.x + 6.0 + float(h2 % int(ts - 12.0))
+			var fy := rect.position.y + 9.0 + float((h2 / 3) % int(ts - 16.0))
+			_draw_diamond(Vector2(fx, fy), 2.4 + float(h2 % 3), col)
+			_draw_diamond(Vector2(fx - 1.0, fy - 1.2), 1.1, col.lightened(0.4))
 
 
 ## Заполненный эллипс полигоном (для глыб гряды).
@@ -953,3 +964,13 @@ func _draw_ellipse(center: Vector2, rx: float, ry: float, col: Color) -> void:
 		var a := TAU * float(i) / 18.0
 		pts.append(center + Vector2(cos(a) * rx, sin(a) * ry))
 	_drawer.draw_colored_polygon(pts, col)
+
+
+## Ромб-кристалл (руда) с центром center и полудиагональю r.
+func _draw_diamond(center: Vector2, r: float, col: Color) -> void:
+	if r < 0.8:
+		return
+	_drawer.draw_colored_polygon(PackedVector2Array([
+		center + Vector2(0, -r), center + Vector2(r * 0.7, 0),
+		center + Vector2(0, r), center + Vector2(-r * 0.7, 0),
+	]), col)

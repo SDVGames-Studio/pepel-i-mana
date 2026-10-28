@@ -405,6 +405,8 @@ static func _apply_city(game, cd: Variant) -> String:
 	map.generate(0, cfg)   # каркас (astar, размеры) — состояние перекрывается ниже
 	if _apply_city_map(map, cd.get("map", {}), cfg) != "":
 		return "save.load_failed"
+	map.classify_water()   # v1.29.1: типы воды (река/озеро/болото) — по
+	                       # ВОССТАНОВЛЕННОЙ сетке, не по каркасу сида 0
 	var sim = load(CITY_SIM_SCRIPT).new()
 	sim.map = map
 	sim.cfg = cfg
