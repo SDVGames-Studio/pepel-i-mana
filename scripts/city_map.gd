@@ -162,13 +162,16 @@ func _generate_once(seed_value: int, params: Dictionary) -> void:
 		row.resize(w)
 		row.fill(TILE_GRASS)
 		grid.append(row)
-	# озёра (v1.28): каждое — ДВА налегающих пятна со смещением, водная
-	# клякса органичнее круга (малые круги сглаживались в ромбы)
+	# озёра (v1.29.3): гладкий овал с мягкой рябью контура — ровные красивые
+	# берега у КАЖДОГО озера (раньше клякса из двух налегающих пятен давала
+	# горбатый боб через раз — замечание заказчика по скриншоту)
 	for i in int(params["lakes"]):
-		var lc := _random_inner_tile(rng)
-		_blob(lc, rng.randi_range(2, 4), TILE_WATER)
-		_blob(lc + Vector2i(rng.randi_range(-2, 2), rng.randi_range(-2, 2)),
-				rng.randi_range(2, 3), TILE_WATER)
+		_lake_blob(_random_inner_tile(rng), rng)
+	# болота (v1.29.3): свой малый гладкий овал с лужей-сателлитом — до 16
+	# тайлов, classify_water() узнаёт болотце по размеру; сухой центр обязателен,
+	# иначе болотце сольётся с озером
+	for i in int(params.get("swamps", 2)):
+		_swamp_blob(_random_grass_tile(rng), rng)
 	# река (v1.28): меандрирует с севера на юг — живая водная артерия;
 	# переправа — мосты (M14-I), герои и жители ходят по ним
 	if bool(params.get("river", true)):
@@ -217,6 +220,52 @@ func _random_inner_tile(rng: RandomNumberGenerator) -> Vector2i:
 	return Vector2i(rng.randi_range(4, w - 5), rng.randi_range(4, h - 5))
 
 
+## Озеро (v1.29.3): гладкий овал — базовые радиусы 3.4–4.8 × 2.6–3.6.
+func _lake_blob(center: Vector2i, rng: RandomNumberGenerator) -> void:
+	_smooth_water_blob(center, rng, rng.randf_range(3.4, 4.8),
+			rng.randf_range(2.6, 3.6))
+
+
+## Болото (v1.29.3): малый гладкий овал (до ~11 тайлов) + лужа-сателлит
+## внахлёст — суммарно ≤ 16 тайлов, чтобы остаться болотцем для
+## classify_water(); формула озера, уменьшенная в два раза.
+func _swamp_blob(center: Vector2i, rng: RandomNumberGenerator) -> void:
+	_smooth_water_blob(center, rng, rng.randf_range(1.7, 2.0),
+			rng.randf_range(1.4, 1.7))
+	_blob(center + Vector2i(rng.randi_range(-1, 1), rng.randi_range(-1, 1)),
+			1, TILE_WATER)
+
+
+## Гладкий водоём (v1.29.3): клетка заливается, если её центр внутри контура
+## «овал × k(θ)», где k — две мягкие гармоники по углу (амплитуда ≤ 0.19):
+## контур округлый, с лёгкой природной асимметрией, без клякс и вмятин.
+func _smooth_water_blob(center: Vector2i, rng: RandomNumberGenerator,
+		rx: float, ry: float) -> void:
+	var ph1 := rng.randf() * TAU
+	var ph2 := rng.randf() * TAU
+	var a1 := rng.randf_range(0.05, 0.12)
+	var a2 := rng.randf_range(0.04, 0.07)
+	var rad := int(ceil(maxf(rx, ry) * (1.0 + a1 + a2))) + 1
+	for y in range(maxi(1, center.y - rad), mini(h - 1, center.y + rad + 1)):
+		for x in range(maxi(1, center.x - rad), mini(w - 1, center.x + rad + 1)):
+			var dx := float(x - center.x) / rx
+			var dy := float(y - center.y) / ry
+			var ang := atan2(float(y - center.y), float(x - center.x))
+			var k := 1.0 + a1 * sin(2.0 * ang + ph1) + a2 * sin(3.0 * ang + ph2)
+			if dx * dx + dy * dy <= k * k:
+				grid[y][x] = TILE_WATER
+
+
+## Случайный внутренний тайл с травой (сухой центр болота) — до 20 попыток,
+## фолбэк — обычный внутренний тайл.
+func _random_grass_tile(rng: RandomNumberGenerator) -> Vector2i:
+	for i in 20:
+		var p := _random_inner_tile(rng)
+		if grid[p.y][p.x] == TILE_GRASS:
+			return p
+	return _random_inner_tile(rng)
+
+
 ## Пятно круглой формы из тайлов kind (не поверх друг друга — вода поверх скалы допустима).
 func _blob(center: Vector2i, radius: int, kind: int) -> void:
 	for y in range(center.y - radius, center.y + radius + 1):
@@ -227,9 +276,11 @@ func _blob(center: Vector2i, radius: int, kind: int) -> void:
 				grid[y][x] = kind
 
 
-## Река (v1.28): вертикальный меандр от севера к югу — плавная синусоида
-## с ограниченным наклоном (без «пилы»), русло 2 тайла. Стартовый квадрат
-## города сухой; переправы — мосты (M14-I).
+## Река (v1.29.3): вертикальный меандр с севера на юг — синусоида с
+## ограниченным наклоном. Русло рисуется РАССТОЯНИЕМ до кривой (клетка
+## заливается, если её центр ближе 1.0 к оси): берега ступают по диагонали
+## плавно, без «пилы» целых столбцов; ширина стабильно 2 тайла — мост
+## перекрывает. Городское ядро без реки: старт/аномалия/выход + стены.
 func _generate_river(rng: RandomNumberGenerator) -> void:
 	var base_x := float(rng.randi_range(int(w * 0.25), int(w * 0.75)))
 	var amp := float(rng.randi_range(int(w * 0.08), int(w * 0.14)))
@@ -238,16 +289,13 @@ func _generate_river(rng: RandomNumberGenerator) -> void:
 	var core := 9   # кольцо стен (6) + подходы снаружи; старт всегда в центре
 	var sx := w / 2
 	var sy := h / 2
-	var last_x := -99
+	var last_cx := -99.0
 	for y in h:
 		var cx := base_x + sin(float(y) / period * TAU + phase) * amp
 		# наклон русла ограничен — река течёт плавно, без ступенек
-		cx = clampf(cx, float(last_x) - 0.6, float(last_x) + 0.6) if last_x > -90 else cx
-		last_x = int(round(cx))
-		for dx in 2:   # русло 2 тайла шириной — мост 2×1 перекрывает
-			var x := last_x + dx
-			if x < 1 or x >= w - 1:
-				continue
+		cx = clampf(cx, last_cx - 0.6, last_cx + 0.6) if last_cx > -90.0 else cx
+		last_cx = cx
+		for x in range(maxi(1, int(cx) - 2), mini(w - 1, int(cx) + 3)):
 			# городское ядро без реки: старт/аномалия/выход + кольцо стен
 			if absi(x - sx) <= core and absi(y - sy) <= core:
 				continue
@@ -255,7 +303,8 @@ func _generate_river(rng: RandomNumberGenerator) -> void:
 				continue
 			if x <= 3 and absi(y - sy) <= 3:
 				continue
-			grid[y][x] = TILE_WATER
+			if absf(float(x) + 0.5 - cx) <= 1.0:
+				grid[y][x] = TILE_WATER
 
 
 ## Рудная жила: железо поверх скал и травы, но не поверх воды.

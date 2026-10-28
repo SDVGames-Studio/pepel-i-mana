@@ -135,6 +135,34 @@ func _test_stage2_aspect2() -> void:
 		m.refresh_tile_solid(water_sample)
 		bridge_ok = bridge_ok and m.is_solid(water_sample)
 	_check(bridge_ok, "мост открывает воду для путей, без моста вода сплошная")
+	# v1.29.3: красивые водоёмы — болота малые (≤16, не обрезки озёр),
+	# озёра крупные (≥17, ровный контур); компоненты воды считаем BFS-ом
+	var comp_ok := true
+	var seen_w := {}
+	for y in m.h:
+		for x in m.w:
+			var wt := Vector2i(x, y)
+			var wk: String = String(m.water_kind.get(wt, ""))
+			if wk == "" or seen_w.has(wt):
+				continue
+			var comp: Array = [wt]
+			seen_w[wt] = true
+			var qi := 0
+			while qi < comp.size():
+				var c: Vector2i = comp[qi]
+				qi += 1
+				for d in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
+					var n: Vector2i = c + d
+					if n.x >= 0 and n.y >= 0 and n.x < m.w and n.y < m.h \
+							and not seen_w.has(n) \
+							and String(m.water_kind.get(n, "")) == wk:
+						seen_w[n] = true
+						comp.append(n)
+			if wk == "swamp" and comp.size() > 16:
+				comp_ok = false
+			if wk == "lake" and comp.size() < 17:
+				comp_ok = false
+	_check(comp_ok, "водоёмы v1.29.3: болотца ≤16 тайлов, озёра ≥17 (ровные)")
 	var path_clean := true
 	if not walk_sample == Vector2i(-1, -1):
 		var goal: Vector2i = m.nearest_walkable(m.spawn_tile)
