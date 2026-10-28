@@ -219,6 +219,25 @@ func _apply_clear_light() -> void:
 			params.get("clear_light", {}))
 
 
+## Ночное усиление нечисти (v1.30, док 14): ночь города и тьма данжа до
+## зачистки. Чистая формула — enemy.night_mult (тесты).
+func night_boost() -> float:
+	var is_night := false
+	var cs = Game.city_sim
+	if cs != null and cs.cfg != null:
+		var dl := maxf(0.1, float(cs.cfg.get("day_length", 120.0)))
+		var nf := clampf(float(cs.cfg.get("night_fraction", 0.3)), 0.0, 0.9)
+		is_night = fmod(maxf(float(cs.time), 0.0), dl) >= dl * (1.0 - nf)
+	var dark_frac := 1.0
+	if _enemies_total > 0:
+		var alive := 0
+		for e in get_tree().get_nodes_in_group("enemies"):
+			if is_instance_valid(e) and int(e["hp"]) > 0:
+				alive += 1
+		dark_frac = float(alive) / float(_enemies_total)
+	return EnemyScript.night_mult(is_night, dark_frac)
+
+
 func _make_view() -> Node2D:
 	var view = DungeonViewScript.new()
 	view.setup(gen, ts, biome)
@@ -471,6 +490,16 @@ func _build_boss() -> void:
 	boss.died.connect(_on_enemy_died)
 	boss.died.connect(_on_boss_died)
 	add_child(boss)
+	# Кощей (v1.30, док 14): игла смерти в углу арены — пока цела, босс бессмертен
+	if String(boss_data.get("perk", "")) == "koshchei":
+		var nd := _enemy_by_id("death_needle")
+		if not nd.is_empty():
+			var needle = EnemyScript.new()
+			needle.setup(nd)
+			needle.position = boss.position + Vector2(-float(ts) * 4.0, float(ts) * 2.0)
+			needle.hero = hero
+			needle.died.connect(_on_enemy_died)
+			add_child(needle)
 
 
 func _enemy_by_id(enemy_id: String) -> Dictionary:

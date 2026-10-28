@@ -1190,8 +1190,8 @@ func _test_m14_d() -> void:
 	var ltower: Dictionary = dungeon_cfg["biomes"]["lich_tower"]
 	_check(int(vkeep["loot_bonus"]) == 3 and int(ltower["loot_bonus"]) == 2,
 			"лут биомов: замок +3, башня +2")
-	_check(String(vkeep["boss"]) == "archvampire" and String(ltower["boss"]) == "archlich",
-			"боссы биомов — архивампир и архилич")
+	_check(String(vkeep["boss"]) == "archvampire" and String(ltower["boss"]) == "koshchei",
+			"боссы биомов — архивампир и Кощей (нечисть v1.30)")
 	_check(Color(String(vkeep["ambient"])).get_luminance() < Color("#0f0b06").get_luminance(),
 			"замок вампира темнее логова дракона (ночь-ambient)")
 	var weights_ok := true

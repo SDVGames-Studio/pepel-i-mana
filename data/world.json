@@ -9,40 +9,135 @@
 	"fog_reveal_radius": 2,
 	"city_reveal_radius": 9,
 	"biomes": {
-		"plains": {"color": "#5d7a3a", "cost": 1.0},
-		"water": {"color": "#2e5f7a", "cost": 0.0},
-		"forest": {"color": "#3e5a2a", "cost": 1.6},
-		"hills": {"color": "#6e6a63", "cost": 2.0},
-		"waste": {"color": "#7a6a55", "cost": 2.0},
-		"swamp": {"color": "#5a6b4a", "cost": 2.5},
-		"road": {"color": "#6e5f4a", "cost": 0.5}
+		"plains": {
+			"color": "#5d7a3a",
+			"cost": 1.0
+		},
+		"water": {
+			"color": "#2e5f7a",
+			"cost": 0.0
+		},
+		"forest": {
+			"color": "#3e5a2a",
+			"cost": 1.6
+		},
+		"hills": {
+			"color": "#6e6a63",
+			"cost": 2.0
+		},
+		"waste": {
+			"color": "#7a6a55",
+			"cost": 2.0
+		},
+		"swamp": {
+			"color": "#5a6b4a",
+			"cost": 2.5
+		},
+		"road": {
+			"color": "#6e5f4a",
+			"cost": 0.5
+		}
 	},
-	"blobs": {"forest": 16, "hills": 10, "waste": 9, "water": 9, "swamp": 6},
-	"blob_radius": {"forest": [3, 6], "hills": [3, 5], "waste": [4, 7], "water": [3, 5], "swamp": [3, 5]},
+	"blobs": {
+		"forest": 16,
+		"hills": 10,
+		"waste": 9,
+		"water": 9,
+		"swamp": 6
+	},
+	"blob_radius": {
+		"forest": [
+			3,
+			6
+		],
+		"hills": [
+			3,
+			5
+		],
+		"waste": [
+			4,
+			7
+		],
+		"water": [
+			3,
+			5
+		],
+		"swamp": [
+			3,
+			5
+		]
+	},
 	"pois": {
 		"ruins": 3,
 		"camps": 4,
 		"obelisks": 2,
-		"settlements": ["traders", "cult", "traders"],
+		"settlements": [
+			"traders",
+			"cult",
+			"traders"
+		],
 		"caravans": 1,
 		"trade_camps": 1,
 		"dragon_castles": 1,
 		"vampire_keeps": 1,
 		"lich_towers": 1,
-		"dungeon_biomes": ["ruins", "mutant_forest", "crystal_caves", "ash_wastes", "cursed_hall", "demon_lair", "swamp_mire"]
+		"dungeon_biomes": [
+			"ruins",
+			"mutant_forest",
+			"crystal_caves",
+			"ash_wastes",
+			"cursed_hall",
+			"demon_lair",
+			"swamp_mire",
+			"midnight_crypt",
+			"yaga_hut"
+		]
 	},
 	"distances": {
-		"city_dungeon": [3, 5],
-		"settlement": [10, 20],
-		"caravan": [8, 18],
-		"trade_camp": [6, 14],
-		"dungeon": [12, 30],
-		"ruins": [8, 26],
-		"camp": [8, 24],
-		"obelisk": [18, 34],
-		"dragon_castle": [20, 36],
-		"vampire_keep": [20, 34],
-		"lich_tower": [16, 30]
+		"city_dungeon": [
+			3,
+			5
+		],
+		"settlement": [
+			10,
+			20
+		],
+		"caravan": [
+			8,
+			18
+		],
+		"trade_camp": [
+			6,
+			14
+		],
+		"dungeon": [
+			12,
+			30
+		],
+		"ruins": [
+			8,
+			26
+		],
+		"camp": [
+			8,
+			24
+		],
+		"obelisk": [
+			18,
+			34
+		],
+		"dragon_castle": [
+			20,
+			36
+		],
+		"vampire_keep": [
+			20,
+			34
+		],
+		"lich_tower": [
+			16,
+			30
+		]
 	},
 	"sim": {
 		"camp_growth_min": 0.0,
@@ -55,35 +150,93 @@
 		"resettle_chance": 0.35,
 		"dungeon_reset_days": 10,
 		"caravan_move_days": 4,
-		"start_strength": {"camp": 4, "dungeon": 6, "ruins": 5, "settlement": 8, "dragon_castle": 12, "vampire_keep": 14, "lich_tower": 12}
+		"start_strength": {
+			"camp": 4,
+			"dungeon": 6,
+			"ruins": 5,
+			"settlement": 8,
+			"dragon_castle": 12,
+			"vampire_keep": 14,
+			"lich_tower": 12
+		}
 	},
 	"legends": {
 		"_note": "v1.22: легендарные странники живут на карте сами — ходят к дальним данжам и зачищают их (гонка за лут), иногда гостят в городе; герой может позвать их к себе",
 		"move_tiles_per_day": 2,
-		"clear_days": [2, 3],
+		"clear_days": [
+			2,
+			3
+		],
 		"visit_days": 3,
-		"rest_days": [2, 4],
+		"rest_days": [
+			2,
+			4
+		],
 		"visit_chance": 0.25,
 		"city_keepout": 6,
 		"defs": [
-			{"id": "grey_cloak", "loc": "legend.grey_cloak", "prof": "hunter", "color": "#7ec8e3", "skill": 3.0,
-			 "flavor": "legend.grey_cloak.flavor"},
-			{"id": "margo", "loc": "legend.margo", "prof": "trader", "color": "#ffd54f", "skill": 3.0,
-			 "flavor": "legend.margo.flavor"},
-			{"id": "kayen", "loc": "legend.kayen", "prof": "guard", "color": "#e8907a", "skill": 3.0,
-			 "flavor": "legend.kayen.flavor"}
+			{
+				"id": "grey_cloak",
+				"loc": "legend.grey_cloak",
+				"prof": "hunter",
+				"color": "#7ec8e3",
+				"skill": 3.0,
+				"flavor": "legend.grey_cloak.flavor"
+			},
+			{
+				"id": "margo",
+				"loc": "legend.margo",
+				"prof": "trader",
+				"color": "#ffd54f",
+				"skill": 3.0,
+				"flavor": "legend.margo.flavor"
+			},
+			{
+				"id": "kayen",
+				"loc": "legend.kayen",
+				"prof": "guard",
+				"color": "#e8907a",
+				"skill": 3.0,
+				"flavor": "legend.kayen.flavor"
+			}
 		]
 	},
 	"encounters": {
 		"_note": "v1.22: случайные встречи в пути — бросок на каждый день дороги",
 		"chance_per_day": 0.25,
 		"kinds": {
-			"ambush": {"w": 20, "coins": [4, 10], "scale": 0.7},
-			"merchant": {"w": 15},
-			"wounded": {"w": 15, "food_cost": 5, "rep": 8},
-			"cache": {"w": 15, "coins": [5, 15]},
-			"storm": {"w": 20, "food_frac": 0.1},
-			"pilgrim": {"w": 15, "coins_cost": 5, "rep": 10}
+			"ambush": {
+				"w": 20,
+				"coins": [
+					4,
+					10
+				],
+				"scale": 0.7
+			},
+			"merchant": {
+				"w": 15
+			},
+			"wounded": {
+				"w": 15,
+				"food_cost": 5,
+				"rep": 8
+			},
+			"cache": {
+				"w": 15,
+				"coins": [
+					5,
+					15
+				]
+			},
+			"storm": {
+				"w": 20,
+				"food_frac": 0.1
+			},
+			"pilgrim": {
+				"w": 15,
+				"coins_cost": 5,
+				"rep": 10
+			}
 		}
 	},
 	"nests": {
@@ -105,13 +258,37 @@
 	},
 	"trade": {
 		"start_coins": 15,
-		"buy": {"food": 2, "wood": 2, "stone": 3, "crystal": 9, "tools": 6, "metal": 5, "iron": 4, "seeds": 4},
+		"buy": {
+			"food": 2,
+			"wood": 2,
+			"stone": 3,
+			"crystal": 9,
+			"tools": 6,
+			"metal": 5,
+			"iron": 4,
+			"seeds": 4
+		},
 		"sell_mult": 0.5,
 		"camp_discount": 0.7,
 		"barter": [
-			{"give": "food", "get": "wood", "give_n": 3, "get_n": 2},
-			{"give": "stone", "get": "food", "give_n": 2, "get_n": 2},
-			{"give": "wood", "get": "stone", "give_n": 3, "get_n": 2}
+			{
+				"give": "food",
+				"get": "wood",
+				"give_n": 3,
+				"get_n": 2
+			},
+			{
+				"give": "stone",
+				"get": "food",
+				"give_n": 2,
+				"get_n": 2
+			},
+			{
+				"give": "wood",
+				"get": "stone",
+				"give_n": 3,
+				"get_n": 2
+			}
 		],
 		"rune_price": 25,
 		"camp_coins_min": 8,
