@@ -271,7 +271,7 @@ func _leftover_line() -> String:
 
 var _hud_refresh_accum := 0.0     # троттлинг HUD (v1.21): панели не чаще 4 раз/сек
 var _terrain_redraw_accum := 0.0  # ландшафт перерисовывается не чаще 2 раз/сек
-var _hero_last_land := Vector2(-99999, -99999)  # последняя точка героя на суше (озеро непроходимо)
+var _hero_last_land := Vector2(-99999, -99999)  # последняя точка героя на суше (вода непроходима)
 var _baked_grid_ver := -1   # версия сетки, на которую запечена земля (v1.28.1)
 
 
@@ -283,11 +283,11 @@ func _process(delta: float) -> void:
 	# меч героя и ландшафт меняются — перерисовываем точечно
 	hero.queue_redraw()
 	# болотная зона города (M14-I): тайлы у воды вязнут — герой медленнее.
-	# v1.29.1: брод только через РЕКУ (0.6) и БОЛОТО (очень медленно, 0.4);
-	# ОЗЕРО непроходимо для всех — героя не пускаем в воду, мост разрешает.
+	# v1.29.2: ВОДА непроходима для всех целиком (брод отменён) — героя не
+	# пускаем ни в реку, ни в болото, ни в озеро; мост разрешает.
 	hero.city_speed_mult = _hero_ground_mult(hero.position)
 	var hero_tile: Vector2i = map.tile_of_px(hero.position)
-	if _hero_in_lake(hero_tile):
+	if _hero_in_water(hero_tile):
 		hero.position = _hero_last_land
 		hero.velocity = Vector2.ZERO
 	else:
@@ -394,22 +394,20 @@ func _near_water(pos: Vector2) -> bool:
 	return false
 
 
-## Скорость героя по грунту (v1.29.1): брод — только река (0.6) и болото
-## (очень медленно, 0.4); по мосту — как по земле; у воды — влажная низина.
+## Скорость героя по грунту: по мосту — как по земле; у воды — влажная
+## низина (стоячей воды под ногами не бывает — она непроходима, v1.29.2).
 func _hero_ground_mult(pos: Vector2) -> float:
 	var t: Vector2i = map.tile_of_px(pos)
 	if map.bridges.has(t):
 		return 1.0
-	if map.in_bounds(t) and map.grid[t.y][t.x] == map.TILE_WATER:
-		return 0.4 if _terrain.water_kind_at(t) == "swamp" else 0.6
 	return 0.7 if _near_water(pos) else 1.0
 
 
-## Герой в запрещённой воде? Озеро без моста непроходимо для всех (v1.29.1).
-func _hero_in_lake(t: Vector2i) -> bool:
+## Герой в запрещённой воде? Вода непроходима для всех — только мост (v1.29.2).
+func _hero_in_water(t: Vector2i) -> bool:
 	if not map.in_bounds(t) or map.grid[t.y][t.x] != map.TILE_WATER:
 		return false
-	return not map.bridges.has(t) and _terrain.water_kind_at(t) == "lake"
+	return not map.bridges.has(t)
 
 
 ## Оружейка рядом с героем (M5.1): за металл герой надевает боевой комплект.

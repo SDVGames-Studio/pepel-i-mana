@@ -1275,7 +1275,8 @@ func _move_towards(r: Dictionary, tile: Vector2i, dt: float) -> void:
 		path = r["path"]
 	if path.is_empty():
 		# страховка: замурован на СПЛОШНОМ тайле (стену достроили под ногами);
-		# вода при броде не сплошная — мокрый житель телепорта не получает
+		# v1.29.2 вода тоже сплошная — житель из старого сейва, застрявший в
+		# броде, выталкивается на ближайшую сушу
 		var here: Vector2i = map.tile_of_px(r["pos"])
 		if map.is_solid(here):
 			var free := _nearest_walkable(here)
@@ -1294,8 +1295,6 @@ func _move_towards(r: Dictionary, tile: Vector2i, dt: float) -> void:
 		var rcfg: Dictionary = cfg.get("roads", {})
 		step *= float(rcfg.get("porter_mult", 1.8)) if String(r["prof"]) == "porter" \
 				else float(rcfg.get("mult", 1.4))
-	# брод (v1.29.1): в воде все идут медленно — болото дольше реки
-	step *= map.water_speed_mult(map.tile_of_px(pos))
 	var step_total := step
 	while step > 0.0 and not path.is_empty():
 		var to_next: Vector2 = path[0] - pos

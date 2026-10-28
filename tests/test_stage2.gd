@@ -106,6 +106,7 @@ func _test_stage2_aspect2() -> void:
 	var m: Object = sim.map
 	var solid_ok := true
 	var walk_sample: Vector2i = Vector2i(-1, -1)
+	var water_sample: Vector2i = Vector2i(-1, -1)
 	for y in m.h:
 		for x in m.w:
 			var t := Vector2i(x, y)
@@ -113,25 +114,33 @@ func _test_stage2_aspect2() -> void:
 			var water: bool = m.grid[t.y][t.x] == m.TILE_WATER
 			# клетки под зданиями сплошные по правилу зданий (аспект 2) — не рельеф
 			if sim.building_at(t).is_empty():
-				# брод v1.29.1: для своих проходимы РЕКА и БОЛОТО (вес > 1);
-				# озеро и скалы сплошные; для мутантов вода сплошная целиком
-				var wkind: String = String(m.water_kind.get(t, ""))
-				var ford := water and (wkind == "river" or wkind == "swamp")
-				if m.astar.is_point_solid(t) != (not nw and not ford):
-					solid_ok = false
-				if ford and m.astar.get_point_weight_scale(t) <= 1.0:
+				# v1.29.2: вода непроходима для ВСЕХ (брод отменён) — мост открывает
+				# свой тайл, скалы сплошные; обе сетки A* совпадают
+				if m.astar.is_point_solid(t) != (not nw):
 					solid_ok = false
 				if m.astar_raider.is_point_solid(t) != (not nw):
 					solid_ok = false
 			if nw and walk_sample == Vector2i(-1, -1):
 				walk_sample = t
-	_check(solid_ok, "A*: сплошность по рельефу (вода — брод для своих, скалы для всех)")
+			if water and not m.bridges.has(t) and water_sample == Vector2i(-1, -1):
+				water_sample = t
+	_check(solid_ok, "A*: сплошность по рельефу (вода и скалы — для всех, мост — проход)")
+	# v1.29.2: мост превращает водный тайл в единственный проход через воду
+	var bridge_ok := false
+	if water_sample != Vector2i(-1, -1):
+		m.bridges[water_sample] = true
+		m.refresh_tile_solid(water_sample)
+		bridge_ok = not m.is_solid(water_sample) and m.is_nature_walkable(water_sample)
+		m.bridges.erase(water_sample)
+		m.refresh_tile_solid(water_sample)
+		bridge_ok = bridge_ok and m.is_solid(water_sample)
+	_check(bridge_ok, "мост открывает воду для путей, без моста вода сплошная")
 	var path_clean := true
 	if not walk_sample == Vector2i(-1, -1):
 		var goal: Vector2i = m.nearest_walkable(m.spawn_tile)
 		for cell in m.path_px(m.tile_center_px(walk_sample), goal):
 			var pt := Vector2i(int(cell.x / m.ts), int(cell.y / m.ts))
-			# брод: путь может включать воду — нельзя только по сплошным тайлам
+			# v1.29.2: вода сплошная — путь не должен содержать непроходимых клеток
 			if m.is_solid(pt):
 				path_clean = false
 				break

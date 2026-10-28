@@ -729,7 +729,7 @@ func _draw_swamp_blobs(ts: float) -> void:
 				_draw_reeds(rect.position, ts, t.x, t.y)
 
 
-## Тип водоёма в тайле («lake» | «river» | «swamp») — брод героя и подсказки.
+## Тип водоёма в тайле («lake» | «river» | «swamp») — цвета воды и кромка.
 ## Первоисточник — карта (water_kind), локальный — страховка.
 func water_kind_at(t: Vector2i) -> String:
 	var k: String = map.water_kind_at(t)
