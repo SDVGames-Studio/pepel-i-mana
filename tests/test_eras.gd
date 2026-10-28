@@ -315,8 +315,8 @@ func _test_m7() -> void:
 	# --- 4 биома: цвета, веса врагов, босс существует ---
 	var biomes: Dictionary = dungeon_cfg.get("biomes", {})
 	var weights: Dictionary = dungeon_cfg.get("biome_weights", {})
-	_check(biomes.size() == 11 and weights.size() == 4,
-			"11 биомов данжа (…+ M14-D: вампир/лич, M14-I: топь)")
+	_check(biomes.size() == 13 and weights.size() == 6,
+			"13 биомов данжа (11 прежних + Полуночная крипта и Избушка — нечисть v1.30)")
 	var enemy_ids := {}
 	var bosses_by_id := {}
 	for e in enemies:
@@ -568,7 +568,7 @@ func _test_m8() -> void:
 			dungeon_biomes[String(poi["biome"])] = true
 	_check(int(kinds.get("city", 0)) == 1, "на карте есть город игрока")
 	_check(int(kinds.get("dungeon", 0)) >= 5, "городская аномалия + 4 данжа биомов на карте")
-	_check(dungeon_biomes.size() == 7, "данжи всех биомов M7+M13+M14-I представлены")
+	_check(dungeon_biomes.size() == 9, "данжи всех биомов M7+M13+M14-I+v1.30 представлены")
 	_check(int(kinds.get("ruins", 0)) >= 1, "руины на карте")
 	_check(int(kinds.get("camp", 0)) >= 1, "лагеря бандитов на карте")
 	_check(int(kinds.get("settlement", 0)) >= 3, "3 поселения на карте")

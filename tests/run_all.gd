@@ -25,6 +25,9 @@ const BLOCKS := [
 	"_test_defense",
 	"_test_gathering",
 ]],
+	["res://tests/test_nechist.gd", [
+	"_test_nechist",
+]],
 	["res://tests/test_eras.gd", [
 	"_test_m6",
 	"_test_m7",

@@ -3,7 +3,9 @@
 		"ash_wastes": 15.0,
 		"crystal_caves": 20.0,
 		"mutant_forest": 25.0,
-		"ruins": 40.0
+		"ruins": 40.0,
+		"midnight_crypt": 18.0,
+		"yaga_hut": 8.0
 	},
 	"biomes": {
 		"ash_wastes": {
@@ -71,10 +73,13 @@
 			"boss": "seraph_of_ash",
 			"decor_color": "#4a4468",
 			"enemy_weights": {
-				"fallen": 15.0,
-				"ghoul": 40.0,
-				"skeleton": 15.0,
-				"wraith": 30.0
+				"upyr": 16.0,
+				"nochnitsa": 12.0,
+				"kikimora": 8.0,
+				"ghoul": 12.0,
+				"wraith": 12.0,
+				"skeleton": 8.0,
+				"fallen": 6.0
 			},
 			"exit_color": "#b39ddb",
 			"floor_color": "#3f3a4c",
@@ -130,13 +135,15 @@
 		"lich_tower": {
 			"ambient": "#080612",
 			"bg_color": "#0b0814",
-			"boss": "archlich",
+			"boss": "koshchei",
 			"decor_color": "#3a5a6a",
 			"enemy_weights": {
-				"lich": 30.0,
-				"skeleton": 20.0,
-				"skeleton_mage": 30.0,
-				"wraith": 20.0
+				"kikimora": 8.0,
+				"nochnitsa": 8.0,
+				"lich": 22.0,
+				"skeleton": 16.0,
+				"skeleton_mage": 20.0,
+				"wraith": 12.0
 			},
 			"exit_color": "#9575cd",
 			"floor_color": "#3a3448",
@@ -154,11 +161,15 @@
 			"boss": "broodmother",
 			"decor_color": "#3f5a2c",
 			"enemy_weights": {
-				"brute": 25.0,
-				"mutant": 40.0,
-				"rat": 10.0,
-				"spitter": 20.0,
-				"wolf": 20.0
+				"leshy": 28.0,
+				"volkolak": 16.0,
+				"nochnitsa": 10.0,
+				"kikimora": 10.0,
+				"brute": 8.0,
+				"mutant": 12.0,
+				"rat": 5.0,
+				"spitter": 8.0,
+				"wolf": 8.0
 			},
 			"exit_color": "#9fd45a",
 			"floor_color": "#3c4a2c",
@@ -183,7 +194,15 @@
 			"loot_bonus": 0.0,
 			"pollution_on_visit": 0.0,
 			"wall_color": "#241f1d",
-			"wall_sprite": "k:57"
+			"wall_sprite": "k:57",
+			"enemy_weights": {
+				"polevik": 22.0,
+				"upyr": 14.0,
+				"kikimora": 8.0,
+				"skeleton": 10.0,
+				"ghoul": 12.0,
+				"rat": 6.0
+			}
 		},
 		"swamp_mire": {
 			"ambient": "#0a0d08",
@@ -191,9 +210,13 @@
 			"boss": "broodmother",
 			"decor_color": "#46603a",
 			"enemy_weights": {
-				"crawler": 30.0,
-				"rat": 20.0,
-				"spitter": 40.0
+				"vodyanoy": 26.0,
+				"rusalka": 16.0,
+				"bannik": 10.0,
+				"kikimora": 8.0,
+				"spitter": 12.0,
+				"rat": 6.0,
+				"crawler": 10.0
 			},
 			"exit_color": "#9ccc65",
 			"floor_color": "#44503a",
@@ -224,6 +247,47 @@
 			"pollution_on_visit": 1.0,
 			"wall_color": "#1c1620",
 			"wall_sprite": "k:59"
+		},
+		"midnight_crypt": {
+			"ambient": "#05040c",
+			"bg_color": "#080610",
+			"boss": "viy",
+			"decor_color": "#3a3460",
+			"enemy_weights": {
+				"upyr": 18.0,
+				"nochnitsa": 16.0,
+				"kikimora": 10.0,
+				"wraith": 10.0,
+				"skeleton": 8.0
+			},
+			"exit_color": "#9575cd",
+			"floor_color": "#2e2940",
+			"floor_sprite": "k:39",
+			"floor_sprite_alt": "k:59",
+			"loc": "biome.midnight_crypt",
+			"loot_bonus": 3.0,
+			"pollution_on_visit": 2.0,
+			"wall_color": "#181428",
+			"wall_sprite": "k:36"
+		},
+		"yaga_hut": {
+			"ambient": "#0c0806",
+			"bg_color": "#120d09",
+			"boss": "baba_yaga",
+			"decor_color": "#7a5a30",
+			"enemy_weights": {
+				"black_hen": 60.0,
+				"skeleton": 10.0
+			},
+			"exit_color": "#e0a04a",
+			"floor_color": "#4a3c28",
+			"floor_sprite": "k:17",
+			"floor_sprite_alt": "k:42",
+			"loc": "biome.yaga_hut",
+			"loot_bonus": 4.0,
+			"pollution_on_visit": 1.0,
+			"wall_color": "#2b2014",
+			"wall_sprite": "k:16"
 		}
 	},
 	"chest_count": 4.0,
