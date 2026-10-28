@@ -18,6 +18,8 @@ var colors: Dictionary = {}
 var _zone_colors: Dictionary = {}   # тип зоны -> цвет заливки (v1.22)
 var _grass_shades: Array = []
 var _rock_deep := Color("#565248")
+var _water_lake := Color("#3f87b5")   # v1.29.1: озеро — яркая синь
+var _water_river := Color("#57b2d4")  # v1.29.1: река — светло-бирюзовая
 var _rock_hp_default := 80.0
 var _vp: SubViewport = null
 var _drawer: Node2D = null
@@ -41,6 +43,8 @@ func setup(city_map, city_cfg: Dictionary, city_sim = null) -> void:
 	_grass_shades = [colors["grass"], colors.get("grass_alt", colors["grass"]),
 			colors.get("grass2", colors["grass"]).darkened(0.03)]
 	_rock_deep = colors.get("rock_deep", Color("#565248"))
+	_water_lake = colors.get("water_lake", _water_lake)
+	_water_river = colors.get("water_river", _water_river)
 	_rock_hp_default = float(city_cfg.get("mountain", {}).get("hp", 80.0))
 	# духовка: SubViewport размером с карту, содержимое — те же тайлы.
 	# Сама выпечка — в _ready(): до входа в дерево SubViewport не рендерится
@@ -573,7 +577,8 @@ func _draw_water_blobs(ts: float) -> void:
 			_fill_loop_cached(loop, entry["tris"], _grass_at(int(c.x / ts), int(c.y / ts)))
 			_stroke_on_loop(loop, ts * 0.6, Color("#6d8a4e").darkened(0.05))
 			continue
-		_fill_loop_cached(loop, entry["tris"], colors["water"])
+		_fill_loop_cached(loop, entry["tris"],
+				_water_river if kind == "river" else _water_lake)
 		# глубина: один мягкий тёмный контур только у БОЛЬШИХ озёр (у рек
 		# течение и так читается струями, у малых прудов контур был «ромбом»)
 		if kind == "lake" and _loop_area(loop) > 18.0 * ts * ts:
@@ -587,7 +592,8 @@ func _draw_water_blobs(ts: float) -> void:
 			continue
 		_stroke_on_loop(loop, ts * 0.9, shore_col)
 		# влажный блеск у кромки — едва заметный, без «синей разметки»
-		_stroke_inside(loop, 0.965, 1.5, Color(colors["water"].lightened(0.2), 0.45))
+		var wcol: Color = _water_river if String(entry["kind"]) == "river" else _water_lake
+		_stroke_inside(loop, 0.965, 1.5, Color(wcol.lightened(0.25), 0.45))
 	_draw_swamp_blobs(ts)
 	# украшения по тайлам внутри контура — у каждой воды свои
 	for y in map.h:
@@ -675,8 +681,7 @@ func _shore_kind(t: Vector2i) -> String:
 func _draw_river_flow(x: int, y: int, rect: Rect2, ts: float) -> void:
 	if _hash(x, y, 41) % 2 != 0:
 		return
-	var col: Color = colors.get("water", Color("#2e5f7a"))
-	col = col.lightened(0.42)
+	var col: Color = _water_river.lightened(0.45)
 	col.a = 0.5
 	for i in 2:
 		var h := _hash(x * 5 + i, y * 11 + i, 100)
@@ -710,6 +715,11 @@ func _draw_swamp_blobs(ts: float) -> void:
 				_drawer.draw_circle(c + Vector2(-0.8, -0.8), 1.2, Color("#7d8a54"))
 			if _hash(t.x, t.y * 3, 4) == 0:
 				_draw_reeds(rect.position, ts, t.x, t.y)
+
+
+## Тип водоёма в тайле («lake» | «river» | «swamp») — брод героя и подсказки.
+func water_kind_at(t: Vector2i) -> String:
+	return String(_water_tile_kind.get(t, "lake"))
 
 
 ## Сколько водных соседей по 8 направлениям (глубина плиты).
@@ -832,7 +842,7 @@ func _draw_reeds(origin: Vector2, ts: float, x: int, y: int) -> void:
 func _draw_water_detail(x: int, y: int, rect: Rect2, ts: float) -> void:
 	if _hash(x, y, 41) % 3 != 0:
 		return
-	var col: Color = colors.get("water", Color("#2e5f7a"))
+	var col: Color = _water_lake
 	col = col.lightened(0.35)
 	col.a = 0.4
 	for i in 2:

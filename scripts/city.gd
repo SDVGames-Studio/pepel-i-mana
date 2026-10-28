@@ -277,8 +277,11 @@ func _process(delta: float) -> void:
 		sim.hero_alive = true
 	# меч героя и ландшафт меняются — перерисовываем точечно
 	hero.queue_redraw()
-	# болотная зона города (M14-I): тайлы у воды вязнут — герой медленнее
-	hero.city_speed_mult = 0.7 if _near_water(hero.position) else 1.0
+	# болотная зона города (M14-I): тайлы у воды вязнут — герой медленнее.
+	# v1.29.1: водоёмы проходимы ВБРОД — реку и болото можно пересечь
+	# пешком: болото — долго (0.4), река/озеро — проще (0.6); это и есть
+	# брод через русло.
+	hero.city_speed_mult = _hero_ground_mult(hero.position)
 	# правки v1.21 (фризы/FPS): полная перерисовка ландшафта — событие редкое,
 	# но раньше рубка каждого дерева роняла кадр; теперь не чаще 2 раз/сек.
 	# v1.22: в духовке также зоны/дороги/плиты площади — sim.static_dirty
@@ -379,6 +382,15 @@ func _near_water(pos: Vector2) -> bool:
 			if map.in_bounds(n) and map.grid[n.y][n.x] == map.TILE_WATER:
 				return true
 	return false
+
+
+## Скорость героя по грунту (v1.29.1): в самой воде — брод, болото вязнет
+## дольше всего; на суше у воды — влажная низина (M14-I).
+func _hero_ground_mult(pos: Vector2) -> float:
+	var t: Vector2i = map.tile_of_px(pos)
+	if map.in_bounds(t) and map.grid[t.y][t.x] == map.TILE_WATER:
+		return 0.4 if _terrain.water_kind_at(t) == "swamp" else 0.6
+	return 0.7 if _near_water(pos) else 1.0
 
 
 ## Оружейка рядом с героем (M5.1): за металл герой надевает боевой комплект.

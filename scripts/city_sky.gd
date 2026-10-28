@@ -457,83 +457,13 @@ func _draw_box_shadow(rect: Rect2, h: float, t: float, nf: float,
 # ============================ СЛОЙ НЕБА ============================
 
 ## Экранное небо: вызывается painter'ом внутри CanvasLayer (координаты экрана).
-## Все draw_* — в canvas painter'а (cv), не в свой: сигнал пришёл от него.
+## v1.29.1 (правки приёмки): ореолы солнца и луны убраны — мягкие круги
+## «висели» на экране (замечание заказчика). День/ночь читается амбиентом
+## (CanvasModulate) и тенями; слой оставлен как точка подключения будущих
+## небесных эффектов.
 func _draw_sky_screen(cv: CanvasItem) -> void:
 	if sim == null:
 		return
-	var day_len := float(cfg.get("day_length", 120.0))
-	var nf := float(cfg.get("night_fraction", 0.3))
-	var t := day_frac(sim.time, day_len)
-	var mood := mood_of(sim.day_number(), String(sim.weather))
-	var vp := get_viewport_rect().size
-	var weather: String = String(sim.weather)
-	var dim := 1.0
-	if weather == "rain" or weather == "snow" or weather == "ash_storm":
-		dim = 0.3
-	elif weather == "fog":
-		dim = 0.55
-	if is_daylight(t, nf):
-		_draw_sun(cv, vp, t, nf, mood, dim)
-	else:
-		_draw_moon_stars(cv, vp, t, nf, mood, dim)
-
-
-func _mood_glow(mood: int) -> float:
-	match mood:
-		MOOD_CLEAR:
-			return 1.0
-		MOOD_GOLDEN:
-			return 0.95
-		MOOD_ROSY:
-			return 0.85
-		MOOD_FOGGY:
-			return 0.45
-		MOOD_OVERCAST:
-			return 0.18
-		_:
-			return 0.12
-
-
-func _draw_sun(cv: CanvasItem, vp: Vector2, t: float, nf: float, mood: int, dim: float) -> void:
-	var u := day_u(t, nf)
-	var elev := sun_elev(t, nf)
-	var glow := _mood_glow(mood) * dim
-	if glow < 0.05:
-		return
-	# Диск солнца ЗА кадром (замечание заказчика 2026-10-27): над верхней
-	# кромкой плывёт источник света — на экран попадает только мягкий
-	# боковой отсвет, направление читается по теням и вуали.
-	var day: int = sim.day_number()
-	var disc := Color(1.0, 0.95, 0.75)
-	if u < 0.16:
-		disc = Color(1.0, 0.72, 0.58)
-	elif u > 0.72:
-		disc = sunset_color(day)
-	# Сезонный наклон (v1.28): летом источник выше (восход СВ / закат СЗ),
-	# зимой ниже (ЮВ / ЮЗ) — отсвет это подчёркивает
-	var tilt := season_tilt(String(sim.season()))
-	var sp := Vector2(lerpf(vp.x * 0.95, vp.x * 0.05, u),
-			-80.0 + 40.0 * elev - tilt * 110.0 * (1.0 - elev))
-	var strength := (0.35 + 0.65 * (1.0 - elev)) if (u > 0.62 or u < 0.16) else 0.45
-	# диск за кадром — свет читается только отсветом (сильнее на рассвете/
-	# закате, чтобы «солнце плывёт» ощущалось без самого диска)
-	cv.draw_circle(sp, 360.0, Color(disc.r, disc.g, disc.b, 0.08 * glow * (0.6 + strength)))
-	cv.draw_circle(sp, 210.0, Color(disc.r, disc.g, disc.b, 0.14 * glow * (0.6 + strength)))
-	cv.draw_circle(sp, 110.0, Color(disc.r, disc.g, disc.b, 0.20 * glow * (0.5 + strength)))
-	# тёплая вуаль со стороны солнца на рассвете/закате
-	if u > 0.62 or u < 0.16:
-		cv.draw_circle(sp, 520.0, Color(disc.r, disc.g * 0.8, disc.b * 0.6, 0.09 * glow))
-
-
-func _draw_moon_stars(cv: CanvasItem, vp: Vector2, t: float, nf: float, mood: int, dim: float) -> void:
-	var un := moon_u(t, nf)
-	# v1.29.1 (правки приёмки): звёзды убраны — точки «просто висели на
-	# экране»; ночью небо читается холодным лунным отсветом у кромки.
-	var mglow := (0.85 if mood == MOOD_CLEAR else 0.3) * dim
-	# луна ЗА кадром: только холодный отсвет у верхней кромки
-	var mp := Vector2(lerpf(vp.x * 0.95, vp.x * 0.05, un), -60.0 + 30.0 * sin(PI * un))
-	cv.draw_circle(mp, 240.0, Color(0.75, 0.8, 1.0, 0.05 * mglow))
-	cv.draw_circle(mp, 120.0, Color(0.82, 0.86, 1.0, 0.08 * mglow))
 
 
 static func moon_dir_x_at(t: float, nf: float) -> float:

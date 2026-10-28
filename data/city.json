@@ -267,6 +267,8 @@
 		"grass_alt": "#577336",
 		"grass2": "#506c31",
 		"water": "#2e5f7a",
+		"water_lake": "#3f87b5",
+		"water_river": "#57b2d4",
 		"rock": "#6e6a63",
 		"rock_deep": "#565248",
 		"deadrock": "#4a463f",
