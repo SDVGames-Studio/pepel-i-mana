@@ -12,3 +12,6 @@ Thumbs.db
 # артефакты A/B-сравнения (tools/shot_city.gd SHOT_AB=1)
 tools/shot_ab_*.png
 tools/shot_ab_*.png.import
+
+# референсы заказчика «для Z.ai» — не в git и не в экспорте (.gdignore)
+для Z.ai/
