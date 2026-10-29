@@ -820,6 +820,7 @@ func _update_fog() -> void:
 		if _fog != null:
 			_fog.visited = _visited
 			_fog.visible_now = vis
+			_fog.hero_pos = hero.position   # центр мягкого круга (v1.33.2)
 			_fog.queue_redraw()
 	if changed:
 		hud.minimap.update_state(t, _visited)

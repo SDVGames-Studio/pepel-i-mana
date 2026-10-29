@@ -234,7 +234,7 @@ func make_light(radius_px: float) -> void:
 	light.energy = LANTERN_ENERGY
 	light.shadow_enabled = true
 	light.shadow_filter = PointLight2D.SHADOW_FILTER_PCF5
-	light.shadow_filter_smooth = 2.0
+	light.shadow_filter_smooth = 5.0   # v1.33.2: мягкая кромка теней
 	add_child(light)
 	_lantern = light
 
