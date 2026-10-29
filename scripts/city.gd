@@ -62,6 +62,7 @@ func _ready() -> void:
 		Game.new_city()
 	sim = Game.city_sim
 	sim.paused = false
+	get_tree().paused = false   # v1.30.1: после смерти в данже пауза не должна протекать в город
 	Game.in_dungeon = false   # герой в городе — автосейв и «Сохранить» доступны
 	# монеты общие с героем (M10): симуляция кладёт/берёт через колбэки
 	sim.coins_sink = func(n: int) -> void: Game.coins += n

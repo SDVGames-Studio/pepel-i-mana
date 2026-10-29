@@ -74,6 +74,18 @@ func setup(city_map, city_cfg: Dictionary, city_sim = null) -> void:
 
 func _ready() -> void:
 	rebake(true)   # первый bake: кэш блобов строится обязательно
+	# v1.30.1: страховка «пустого ландшафта» после смены сцены (смерть в
+	# данже): первый UPDATE_ONCE SubViewport изредка сгорает впустую в кадре
+	# смены сцены — переводыпекаем ещё раз следующим кадром (дёшево)
+	_bake_guard.call_deferred()
+
+
+func _bake_guard() -> void:
+	if _vp == null or not is_inside_tree():
+		return
+	_drawer.queue_redraw()
+	_vp.render_target_update_mode = SubViewport.UPDATE_DISABLED
+	_vp.render_target_update_mode = SubViewport.UPDATE_ONCE
 
 
 ## Перевыпечь слой земли (скалу выработали, воду замостили мостом...) —
@@ -291,6 +303,28 @@ func _loop_depth(loop: PackedVector2Array, all_loops: Array) -> int:
 				and Geometry2D.is_point_in_polygon(c, other):
 			depth += 1
 	return depth
+
+
+## Прост ли контур: без самопересечений (сегменты не-соседей не пересекаются)
+## и без вырожденных рёбер. Гладкий контур изредка выходил самопересечением —
+## мусорная триангуляция красила чужие тайлы (v1.30.1).
+func _loop_is_simple(loop: PackedVector2Array) -> bool:
+	var n := loop.size()
+	if n < 4:
+		return true
+	for i in n:
+		var a: Vector2 = loop[i]
+		var b: Vector2 = loop[(i + 1) % n]
+		if a.distance_to(b) < 0.5:
+			return false
+		for j in range(i + 1, n):
+			if j == i or (j + 1) % n == i or (i + 1) % n == j:
+				continue   # соседние сегменты
+			var c: Vector2 = loop[j]
+			var d: Vector2 = loop[(j + 1) % n]
+			if Geometry2D.segment_intersects_segment(a, b, c, d) != Vector2.INF:
+				return false
+	return true
 
 
 ## Вписать контур к центроиду (внутренняя заливка глубины).
@@ -555,6 +589,7 @@ func _draw_water_blobs(ts: float) -> void:
 			smootheds.append(_smooth_loop(rl))
 		for sm in smootheds:
 			var tiles := _loop_tiles(sm, ts)
+			var simple := _loop_is_simple(sm)
 			# v1.29.1: тип водоёма считает КАРТА (он нужен и путям/броду);
 			# локальный расчёт по силуэту — страховка для карт без неё
 			var kind := ""
@@ -564,16 +599,26 @@ func _draw_water_blobs(ts: float) -> void:
 				kind = _water_kind(sm, ts)
 			for t: Vector2i in tiles:
 				_water_tile_kind[t] = kind
+			# v1.30.1: сглаженный контур бывает САМОПЕРЕСЕКАЮЩИМСЯ — триангуляция
+			# и обводки такого контура дают мусорные «пятна» чужого цвета
+			# (песок поверх травы). Деградация: заливка по тайлам, без обводок.
 			_water_cached.append({"loop": sm,
-					"tris": Geometry2D.triangulate_polygon(sm),
+					"tris": Geometry2D.triangulate_polygon(sm) if simple else PackedInt32Array(),
 					"depth": _loop_depth(sm, smootheds),
-					"kind": kind, "tiles": tiles})
+					"kind": kind, "tiles": tiles, "simple": simple})
 		_rock_cached = _build_rock_cache()
 		_blob_cache_dirty = false
 	for entry in _water_cached:
 		var loop: PackedVector2Array = entry["loop"]
 		var depth: int = int(entry["depth"])
 		var kind := String(entry["kind"])
+		var simple := bool(entry.get("simple", true))
+		if not simple:
+			# мусорный контур: честные квадратные тайлы цветом воды
+			for t: Vector2i in entry["tiles"]:
+				_drawer.draw_rect(Rect2(Vector2(t) * ts, Vector2(ts, ts)),
+						_water_river if kind == "river" else _water_lake)
+			continue
 		if kind == "swamp":
 			# болото рисуется ЧЕСТНЫМИ квадратными тайлами — сглаживанию
 			# мелкие кляксы не идут (замечание заказчика 2026-10-28)
@@ -593,7 +638,7 @@ func _draw_water_blobs(ts: float) -> void:
 	# шириной 0.9 тайла — на узкой реке съедал всю воду («реки мутные»), а на
 	# малых водоёмах выплёскивался на соседние скалы («текстуры залазят»)
 	for entry in _water_cached:
-		if String(entry["kind"]) == "swamp":
+		if String(entry["kind"]) == "swamp" or not bool(entry.get("simple", true)):
 			continue
 		var loop: PackedVector2Array = entry["loop"]
 		if int(entry["depth"]) % 2 == 1:
@@ -721,10 +766,18 @@ func _draw_swamp_blobs(ts: float) -> void:
 		for t: Vector2i in entry["tiles"]:
 			var rect := Rect2(Vector2(t) * ts, Vector2(ts, ts))
 			var tone := 0.05 * float(_hash(t.x, t.y, 5) - 2)
-			var fill := Color("#55603f").lightened(tone)
+			# v1.30.1: болото читается ТОПЬЮ, не «маленьким озером» — тёмная
+			# трясина без синевы, лужи-оконца, кочки
+			var fill := Color("#46523a").lightened(tone)
 			_drawer.draw_rect(rect, fill)
-			_drawer.draw_rect(rect, fill.darkened(0.22), false, 1.5)
+			_drawer.draw_rect(rect, fill.darkened(0.25), false, 1.5)
 			var hx := _hash(t.x * 3, t.y * 7, 100)
+			if hx % 3 == 0:
+				# лужа-оконце: тёмная стоячая вода с бликом
+				var pc := rect.position + Vector2(6.0 + float(hx % int(ts - 14.0)),
+						6.0 + float((hx / 5) % int(ts - 14.0)))
+				_drawer.draw_circle(pc, ts * 0.16, Color("#28322a"))
+				_drawer.draw_circle(pc + Vector2(-1.0, -1.0), ts * 0.07, Color("#3d4f44"))
 			for i in 1 + hx % 2:
 				var h2 := _hash(t.x * 7 + i, t.y * 13 + i, 100)
 				var c := rect.position + Vector2(6.0 + float(h2 % int(ts - 12.0)),

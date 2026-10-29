@@ -192,7 +192,11 @@ func _pos_to_tile(pos: Vector2) -> Vector2i:
 func _build_darkness() -> void:
 	var dark := CanvasModulate.new()
 	dark.name = "Darkness"
-	_ambient_base = Color(String(biome["ambient"]))
+	# v1.30.1 (заказчик): тьма — ТОЛЬКО за стенками (войд), сами комнаты
+	# тёмные, но читаемые — фонарь героя важен, но не единственный источник
+	# видимости. Амбиент биома поднимаем к «тусклая луна» лерпом.
+	_ambient_base = Color(String(biome["ambient"])).lerp(
+			Color(0.40, 0.40, 0.46), 0.42)
 	dark.color = _ambient_base
 	_darkness = dark
 	add_child(dark)

@@ -37,9 +37,35 @@ func _call_deferred(cb: Callable) -> void:
 func _decorate(city: Node, game: Node) -> void:
 	_game = game
 	_city = city
+	if OS.get_environment("SHOT_SEED") != "":
+		seed(int(OS.get_environment("SHOT_SEED")))
 	var sim = game.city_sim
 	var map = sim.map
 	var cfg: Dictionary = sim.cfg
+	if OS.get_environment("SHOT_WATER") != "":
+		# дамп компонентов воды: позиция/тип/размер — сверка с белыми пятнами
+		var seen := {}
+		for y in map.h:
+			for x in map.w:
+				var t := Vector2i(x, y)
+				if map.grid[t.y][t.x] != map.TILE_WATER or seen.has(t):
+					continue
+				var comp: Array = [t]
+				seen[t] = true
+				var mn: Vector2i = t
+				var mx: Vector2i = t
+				var qi := 0
+				while qi < comp.size():
+					var c: Vector2i = comp[qi]
+					qi += 1
+					mn = Vector2i(mini(mn.x, c.x), mini(mn.y, c.y))
+					mx = Vector2i(maxi(mx.x, c.x), maxi(mx.y, c.y))
+					for d in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
+						var n: Vector2i = c + d
+						if map.in_bounds(n) and map.grid[n.y][n.x] == map.TILE_WATER and not seen.has(n):
+							seen[n] = true
+							comp.append(n)
+				print("water: %s tiles=%d bbox=%s..%s" % [map.water_kind_at(t), comp.size(), mn, mx])
 	# дом/постройки вокруг центра: дом x3, лесопилка у дерева, каменоломня у скалы,
 	# мастерская, таверна, кладбище
 	var spots := {
@@ -141,6 +167,14 @@ func _decorate(city: Node, game: Node) -> void:
 		_teleport_near(func(g: int) -> bool: return g == map.TILE_WATER)
 	if OS.get_environment("SHOT_ROCK") != "":
 		_teleport_near(func(g: int) -> bool: return g == map.TILE_ROCK or g == map.TILE_ORE)
+	if OS.get_environment("SHOT_NOAMBIENT") != "" and _city.get("_ambience") != null:
+		_city._ambience.visible = false
+	if OS.get_environment("SHOT_NOTERRAIN") != "" and _city.get("_terrain") != null:
+		_city._terrain.visible = false
+	if OS.get_environment("SHOT_NODARK") != "" and _city.get("_modulate") != null:
+		_city._modulate.color = Color.WHITE
+	if OS.get_environment("SHOT_NOVIEW") != "" and _city.get("view") != null:
+		_city.view.visible = false
 	print("shot: город украшен")
 
 
