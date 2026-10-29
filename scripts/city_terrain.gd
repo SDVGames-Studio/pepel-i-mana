@@ -714,10 +714,27 @@ func _draw_water_blobs(ts: float) -> void:
 			continue
 		_fill_loop_cached(loop, entry["tris"],
 				_water_river if kind == "river" else _water_lake)
-		# глубина: один мягкий тёмный контур только у БОЛЬШИХ озёр (у рек
-		# течение и так читается струями, у малых прудов контур был «ромбом»)
-		if kind == "lake" and _loop_area(loop) > 18.0 * ts * ts:
+		# v1.34 «опрятные водоёмы» (референсы «для Z.ai/вода»): три тона —
+		# светлый мель-пояс у берега, тело, тёмная глубина. Ширина по
+		# размеру: малым прудам узкий пояс, большим — широкий.
+		var wbase: Color = _water_river if kind == "river" else _water_lake
+		var area := _loop_area(loop)
+		var w_sh := ts * 0.45
+		var f_sh := 0.975
+		if area < 12.0 * ts * ts:
+			w_sh = ts * 0.26
+			f_sh = 0.96
+		_stroke_inside(loop, f_sh, w_sh, Color(wbase.lightened(0.20), 0.6))
+		# глубина: у больших озёр двухтоновая впадина, у длинных рек — тёмная
+		# сердцевина течения; малым прудам глубина не идёт (урок v1.27.1 —
+		# «ромб» на малом пятне)
+		if kind == "lake" and area > 30.0 * ts * ts:
+			_stroke_inside(loop, 0.72, ts * 0.9, Color(deep_col.r, deep_col.g, deep_col.b, 0.35))
+			_stroke_inside(loop, 0.45, ts * 0.7, Color(deep_col.r, deep_col.g, deep_col.b, 0.45))
+		elif kind == "lake" and area > 18.0 * ts * ts:
 			_stroke_inside(loop, 0.60, ts * 0.8, Color(deep_col.r, deep_col.g, deep_col.b, 0.4))
+		elif kind == "river" and area > 14.0 * ts * ts:
+			_stroke_inside(loop, 0.55, ts * 0.5, Color(deep_col.r, deep_col.g, deep_col.b, 0.30))
 	# берег (волна 6): песок ВНУТРИ кромки воды. Раньше штрих шёл по контуру
 	# шириной 0.9 тайла — на узкой реке съедал всю воду («реки мутные»), а на
 	# малых водоёмах выплёскивался на соседние скалы («текстуры залазят»)
@@ -758,6 +775,13 @@ func _draw_water_blobs(ts: float) -> void:
 				_draw_water_detail(x, y, rect, ts)
 				if _water_deep(x, y) <= 2 and _hash(x, y, 17) == 0:
 					_draw_lily_pads(Vector2(x * ts, y * ts), ts, x, y)
+				# v1.34: круги ряби на открытой воде — редкие статичные
+				# двойные кольца (референс a602a024: кольца вокруг лилий)
+				if _water_deep(x, y) >= 6 and _hash(x, y, 53) % 9 == 0:
+					_draw_ripple(Vector2(x * ts, y * ts), ts)
+				# v1.34: камыши на мели — пучки торчат из воды у кромки
+				if _water_deep(x, y) <= 2 and _hash(x * 7, y * 3, 61) % 4 == 0:
+					_draw_water_reeds(Vector2(x * ts, y * ts), ts, x, y)
 				# тина (v1.28): болотная плёнка на отмелях озёр
 				if _water_deep(x, y) <= 1 and _hash(x * 3, y * 7, 29) % 3 == 0:
 					_drawer.draw_circle(rect.position + Vector2(ts * 0.4, ts * 0.5),
@@ -1003,8 +1027,11 @@ func _water_quarter(corner: Vector2, inward: Vector2, r: float, col: Color) -> v
 	_drawer.draw_colored_polygon(pts, col)
 
 
-## Кувшинки: пара листьев-эллипсов с выемкой и бликом.
+## Кувшинки: пара листьев-эллипсов с выемкой, бликом и кругом ряби.
 func _draw_lily_pads(origin: Vector2, ts: float, x: int, y: int) -> void:
+	# v1.34: тонкое кольцо ряби вокруг группы листьев
+	_drawer.draw_arc(origin + Vector2(ts * 0.5, ts * 0.5), ts * 0.42,
+			0.0, TAU, 14, Color(_water_lake.lightened(0.30), 0.30), 1.2)
 	for i in 2:
 		var h := _hash(x * 5 + i, y * 9 + i, 100)
 		var c := origin + Vector2(6.0 + float(h % int(ts - 14.0)), 6.0 + float((h / 5) % int(ts - 14.0)))
@@ -1031,6 +1058,25 @@ func _draw_reeds(origin: Vector2, ts: float, x: int, y: int) -> void:
 		# шишка камыша — короткая тёмная капсула на конце
 		_drawer.draw_line(top + Vector2(lean * 0.5, -3.0), top + Vector2(lean * 0.6, -7.0), head, 2.4)
 		_drawer.draw_circle(top + Vector2(lean * 0.6, -7.0), 1.2, head.darkened(0.2))
+
+
+## Круги ряби (v1.34): двойное тонкое кольцо на стоячей воде — статичный
+## декор, читается «кругами на воде» без анимации.
+func _draw_ripple(origin: Vector2, ts: float) -> void:
+	var c := origin + Vector2(ts * 0.5, ts * 0.5)
+	_drawer.draw_arc(c, ts * 0.30, 0.0, TAU, 12,
+			Color(_water_lake.lightened(0.28), 0.28), 1.1)
+	_drawer.draw_arc(c, ts * 0.44, 0.0, TAU, 16,
+			Color(_water_lake.lightened(0.22), 0.18), 1.0)
+
+
+## Камыши на мели (v1.34): пучок растёт ИЗ воды — тёмное основание-плёс,
+## стебли чуть темче береговых. Рисуется поверх мель-пояса.
+func _draw_water_reeds(origin: Vector2, ts: float, x: int, y: int) -> void:
+	var base := origin + Vector2(ts * 0.5, ts * 0.72)
+	_drawer.draw_circle(base, ts * 0.20, Color("#2c3f33", 0.55))
+	_drawer.draw_circle(base + Vector2(2.0, 1.0), ts * 0.12, Color("#22322a", 0.45))
+	_draw_reeds(origin + Vector2(0, ts * 0.18), ts * 1.05, x, y)
 
 
 ## Блики воды: светлые чёрточки по хэшу — прорежены (примерно каждый

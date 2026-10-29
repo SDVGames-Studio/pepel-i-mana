@@ -9,3 +9,5 @@
 - Godot — Steam-версия в self-contained режиме (файл `._sc_`), данные редактора лежат рядом с exe.
 - Запуск тестов: `godot --headless --path . --script res://tests/run_all.gd` (или `test.bat`).
 - Сборка exe: `build.bat` → `build\ПепелИМана.exe`.
+
+- Снимок водоёмов (v1.34): `SHOT_SEED=NN godot --path . --script res://tools/shot_water.gd` → tools/shot_water.png (герой сам встаёт у крупнейшего водоёма, камера отзумится).
