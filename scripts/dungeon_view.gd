@@ -44,7 +44,12 @@ func _build_void_mask() -> void:
 func _draw() -> void:
 	if gen == null:
 		return
-	var wall_col := Color(String(biome["wall_color"]))
+	# v1.32.1 (заказчик): стены и пол — ТЁМНЫЕ, НО НЕ ЧЁРНЫЕ. Авторские
+	# цвета биомов (#4d4340/#2b2220) очень тёмные — под амбиентом данжа
+	# стены выходили rgb(29,23,22), «почти чёрные». Поднимаем каналы
+	# цвето-сохраняющим умножением: пол ×1.2, стена ×2.2 (оттенок биома
+	# остаётся, читаемость появляется). ВНЕ комнат — по-прежнему чёрный войд.
+	var wall_col := _scaled(String(biome["wall_color"]), 2.2)
 	draw_rect(Rect2(0, 0, gen.w * ts, gen.h * ts), _void_col)
 	var floor_ref := String(biome.get("floor_sprite", ""))
 	var wall_ref := String(biome.get("wall_sprite", ""))
@@ -52,7 +57,7 @@ func _draw() -> void:
 	# стены различаются между биомами (заказчик)
 	var floor_alt := String(biome.get("floor_sprite_alt", floor_ref))
 	var decor := Color(String(biome.get("decor_color", "#555048")))
-	var floor_color := Color(String(biome["floor_color"]))
+	var floor_color := _scaled(String(biome["floor_color"]), 1.2)
 	var floor_color_alt := floor_color.darkened(0.07)
 	for y in gen.h:
 		for x in gen.w:
@@ -81,11 +86,18 @@ func _draw() -> void:
 						draw_circle(dp + Vector2(3.0, -2.0), 1.0, Color(decor.r, decor.g, decor.b, 0.4))
 			elif _near_floor[y][x]:
 				# стена рядом с полом — видна (по ней читаются коридоры)
-				draw_rect(Rect2(pos, Vector2(ts, ts)), wall_col.darkened(0.25))
+				draw_rect(Rect2(pos, Vector2(ts, ts)), wall_col.darkened(0.18))
 				Assets.draw_ref(self, wall_ref, pos + Vector2(ts, ts) * 0.5, float(ts), false, wall_col)
 			else:
 				# глубинная порода вне коридоров и комнат — чернота без спрайта
 				draw_rect(Rect2(pos, Vector2(ts, ts)), _void_col)
+
+
+## Цвет hex, умноженный на k с сохранением пропорций каналов (кламп):
+## светлее/темнее без увода в серый, как у lightened/darkened.
+static func _scaled(hex: String, k: float) -> Color:
+	var c := Color(hex)
+	return Color(minf(1.0, c.r * k), minf(1.0, c.g * k), minf(1.0, c.b * k))
 
 
 static func _hash(x: int, y: int) -> int:
