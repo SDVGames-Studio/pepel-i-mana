@@ -44,12 +44,12 @@ func _build_void_mask() -> void:
 func _draw() -> void:
 	if gen == null:
 		return
-	# v1.32.1 (заказчик): стены и пол — ТЁМНЫЕ, НО НЕ ЧЁРНЫЕ. Авторские
-	# цвета биомов (#4d4340/#2b2220) очень тёмные — под амбиентом данжа
-	# стены выходили rgb(29,23,22), «почти чёрные». Поднимаем каналы
-	# цвето-сохраняющим умножением: пол ×1.2, стена ×2.2 (оттенок биома
-	# остаётся, читаемость появляется). ВНЕ комнат — по-прежнему чёрный войд.
-	var wall_col := _scaled(String(biome["wall_color"]), 2.2)
+	# v1.33 (заказчик): «стены и пол не обязательно чёрные — могут быть
+	# каменными, кирпичными, земляными, кристальными, в огне». Цвета
+	# материалов теперь заданы в data/dungeon.json нормальной яркости —
+	# без множителей v1.32.1. Что видно, а что скрыто туманом войны,
+	# решает dungeon_fog.gd поверх этого слоя. Войд вне комнат — чёрный.
+	var wall_col := Color(String(biome["wall_color"]))
 	draw_rect(Rect2(0, 0, gen.w * ts, gen.h * ts), _void_col)
 	var floor_ref := String(biome.get("floor_sprite", ""))
 	var wall_ref := String(biome.get("wall_sprite", ""))
@@ -57,8 +57,12 @@ func _draw() -> void:
 	# стены различаются между биомами (заказчик)
 	var floor_alt := String(biome.get("floor_sprite_alt", floor_ref))
 	var decor := Color(String(biome.get("decor_color", "#555048")))
-	var floor_color := _scaled(String(biome["floor_color"]), 1.2)
+	var floor_color := Color(String(biome["floor_color"]))
 	var floor_color_alt := floor_color.darkened(0.07)
+	# v1.33: «в огне» — биом с ember_color усыпает пол тлеющими угольками
+	# (дым-глоу + искра), огненные биомы читаются жаром
+	var ember_hex := String(biome.get("ember_color", ""))
+	var ember := Color(ember_hex) if ember_hex != "" else Color.TRANSPARENT
 	for y in gen.h:
 		for x in gen.w:
 			var tile: int = gen.grid[y][x]
@@ -84,6 +88,14 @@ func _draw() -> void:
 					else:
 						draw_circle(dp, 1.6 + float(h % 2), Color(decor.r, decor.g, decor.b, 0.5))
 						draw_circle(dp + Vector2(3.0, -2.0), 1.0, Color(decor.r, decor.g, decor.b, 0.4))
+				# угольки огненных биомов: редкие (каждый 7-й тайл), жарко-яркие
+				if ember_hex != "" and h % 7 == 3:
+					var ep := pos + Vector2(5.0 + float(h % (ts - 10)),
+							5.0 + float((h / 5) % (ts - 10)))
+					draw_circle(ep, 3.2, Color(ember.r, ember.g, ember.b, 0.22))
+					draw_circle(ep, 1.3, Color(ember.r, ember.g, ember.b, 0.9))
+					draw_circle(ep + Vector2(-0.8, -0.8), 0.6,
+							Color(ember.r, ember.g, ember.b).lightened(0.5))
 			elif _near_floor[y][x]:
 				# стена рядом с полом — видна (по ней читаются коридоры)
 				draw_rect(Rect2(pos, Vector2(ts, ts)), wall_col.darkened(0.18))
@@ -91,13 +103,6 @@ func _draw() -> void:
 			else:
 				# глубинная порода вне коридоров и комнат — чернота без спрайта
 				draw_rect(Rect2(pos, Vector2(ts, ts)), _void_col)
-
-
-## Цвет hex, умноженный на k с сохранением пропорций каналов (кламп):
-## светлее/темнее без увода в серый, как у lightened/darkened.
-static func _scaled(hex: String, k: float) -> Color:
-	var c := Color(hex)
-	return Color(minf(1.0, c.r * k), minf(1.0, c.g * k), minf(1.0, c.b * k))
 
 
 static func _hash(x: int, y: int) -> int:

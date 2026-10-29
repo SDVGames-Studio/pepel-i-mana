@@ -120,6 +120,10 @@ const BLOCKS := [
 		"_test_v127_shadow_alpha",
 		"_test_v127_moon",
 	]],
+
+	["res://tests/test_fog.gd", [
+	"_test_fog",
+]]
 ]
 
 
