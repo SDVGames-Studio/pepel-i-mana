@@ -111,7 +111,14 @@ func _tile_color(p: Vector2i) -> Color:
 	var biomes: Dictionary = map.cfg["biomes"]
 	match int(map.grid[p.y][p.x]):
 		map.TILE_PLAINS: return Color(String(biomes["plains"]["color"]))
-		map.TILE_WATER: return Color(String(biomes["water"]["color"]))
+		map.TILE_WATER:
+			# v1.34: светлая мель-кромка — водный тайл у суши чуть светлее
+			var wc := Color(String(biomes["water"]["color"]))
+			for d in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
+				var n: Vector2i = p + d
+				if n.x >= 0 and n.y >= 0 and n.x < map.w and n.y < map.h 						and int(map.grid[n.y][n.x]) != map.TILE_WATER:
+					return wc.lightened(0.13)
+			return wc
 		map.TILE_FOREST: return Color(String(biomes["forest"]["color"]))
 		map.TILE_HILL: return Color(String(biomes["hills"]["color"]))
 		map.TILE_WASTE: return Color(String(biomes["waste"]["color"]))
