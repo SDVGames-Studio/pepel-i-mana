@@ -39,7 +39,7 @@ var _temp_armor := 0
 # --- статы героя (v1.24): сила/ловкость/выносливость/интеллект/мудрость ------
 static var _ha: Dictionary = {}   # кэш balance.json -> hero_attributes (тесты подменяют)
 
-const LANTERN_ENERGY := 1.35   # v1.33.1: тёплый фонарь заметнее на тёмной базе данжа
+const LANTERN_ENERGY := 1.5   # v1.33.3: тёплый фонарь заметнее на тёмной базе данжа
 
 
 ## Конфиг статов героя (balance.json -> hero_attributes); читается один раз.
@@ -212,11 +212,13 @@ func set_camera_limits(rect: Rect2) -> void:
 ## за стенами (соседние комнаты, коридоры) света не видно.
 func make_light(radius_px: float) -> void:
 	var grad := Gradient.new()
+	# v1.33.3 (заказчик: «свет тёплый и тени от света должны быть»):
+	# ярче центр, длиннее тёплый спад — факел заметен на тёмной базе
 	grad.offsets = PackedFloat32Array([0.0, 0.35, 0.75, 1.0])
 	grad.colors = PackedColorArray([
-		Color(1.0, 0.95, 0.85),
-		Color(0.95, 0.85, 0.68),
-		Color(0.35, 0.28, 0.2),
+		Color(1.0, 0.95, 0.82),
+		Color(0.98, 0.84, 0.58),
+		Color(0.52, 0.36, 0.20),
 		Color(0, 0, 0),
 	])
 	var tex := GradientTexture2D.new()
@@ -230,11 +232,14 @@ func make_light(radius_px: float) -> void:
 	light.name = "Lantern"
 	light.texture = tex
 	light.texture_scale = radius_px * 2.0 / 256.0
-	light.color = Color(1.0, 0.87, 0.68)
+	light.color = Color(1.0, 0.82, 0.55)   # v1.33.3: теплее
 	light.energy = LANTERN_ENERGY
-	light.shadow_enabled = true
-	light.shadow_filter = PointLight2D.SHADOW_FILTER_PCF5
-	light.shadow_filter_smooth = 5.0   # v1.33.2: мягкая кромка теней
+	# v1.33.3: движковые тени (shadow_enabled) ОТКЛЮЧЕНЫ — экструзия тени
+	# больших окклюдеров нестабильна (в узких местах глохла вся лужа света,
+	# замерено серией прогонов). Тени от стен теперь рисует слой тумана
+	# войны (dungeon_fog.gd) по линии взгляда: за стеной — приглушение,
+	# с плавным градиентным краем. Фонарь — чистый тёплый свет.
+	light.shadow_enabled = false
 	add_child(light)
 	_lantern = light
 

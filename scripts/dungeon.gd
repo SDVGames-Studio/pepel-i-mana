@@ -92,6 +92,11 @@ func _ready() -> void:
 
 	_build_darkness()
 	add_child(_make_view())
+	# страховка «пропавших тайлов» (v1.33.3, как у города v1.30.1): первый
+	# _draw dungeon_view изредка сгорает впустую в кадре сборки сцены —
+	# тогда виден только чёрный войд и герой без пола. Перерисовываем
+	# слой отложенно ещё два кадра подряд (дёшево, ~2k команд).
+	_view_redraw_guard()
 	_build_walls()
 	_build_exit()
 	_build_chests()
@@ -261,14 +266,41 @@ func _make_view() -> Node2D:
 	return view
 
 
+## Отложенная переприсовка слоя тайлов: страховка от «сгоревшего» первого
+## кадра (v1.33.3). _view хранится для повторных queue_redraw.
+var _view: Node2D = null
+
+
+func _view_redraw_guard() -> void:
+	_view = get_child(get_child_count() - 1)
+	_view.queue_redraw.call_deferred()
+	_redraw_guard_2()
+
+
+func _redraw_guard_2() -> void:
+	await get_tree().process_frame
+	await get_tree().process_frame
+	if is_instance_valid(_view):
+		_view.queue_redraw()
+
+
 ## Стены: один StaticBody2D, горизонтальные цепочки стен слеплены в один прямоугольник.
-## На каждый сегмент — LightOccluder2D: фонарь героя отбрасывает от стен настоящие тени.
+## Тени (v1.33.3): окклюдер — ПОШТУЧНО на каждый тайл стены (общий ресурс
+## полигона). Слитые в ряд «полосы» на всю ширину глючили: стоило фонарю
+## оказаться вплотную к такой огромной коробке — экструзия тени накрывала
+## всю лужу света (свет «глох» в узких местах, замерено в v1.33.3).
+## Коллизии оставлены слитыми (физике это только в плюс).
 func _build_walls() -> void:
 	var body := StaticBody2D.new()
 	body.name = "Walls"
 	body.collision_layer = 1
 	body.collision_mask = 0
 	add_child(body)
+	var tile_poly := OccluderPolygon2D.new()
+	var hh := float(ts) / 2.0
+	tile_poly.polygon = PackedVector2Array([
+		Vector2(-hh, -hh), Vector2(hh, -hh), Vector2(hh, hh), Vector2(-hh, hh),
+	])
 	for y in gen.h:
 		var x := 0
 		while x < gen.w:
@@ -286,16 +318,11 @@ func _build_walls() -> void:
 			shape.shape = rect
 			shape.position = center
 			body.add_child(shape)
-			var occ := LightOccluder2D.new()
-			var poly := OccluderPolygon2D.new()
-			var hw := seg_w / 2.0
-			var hh := float(ts) / 2.0
-			poly.polygon = PackedVector2Array([
-				Vector2(-hw, -hh), Vector2(hw, -hh), Vector2(hw, hh), Vector2(-hw, hh),
-			])
-			occ.occluder = poly
-			occ.position = center
-			body.add_child(occ)
+			for tx in range(x0, x):
+				var occ := LightOccluder2D.new()
+				occ.occluder = tile_poly
+				occ.position = Vector2((tx + 0.5) * float(ts), (y + 0.5) * float(ts))
+				body.add_child(occ)
 
 
 func _build_exit() -> void:

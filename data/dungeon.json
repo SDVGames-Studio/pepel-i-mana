@@ -321,11 +321,11 @@
 		"dash_distance": 38.0,
 		"dash_time": 0.12,
 		"hp": 20.0,
-		"light_radius_tiles": 4.5,
+		"light_radius_tiles": 5.0,
 		"mana": 10.0,
 		"radius": 10.0,
 		"speed": 140.0,
-		"vision_tiles": 6.0
+		"vision_tiles": 7.0
 	},
 	"mana_drain_period": 25.0,
 	"map_h": 48.0,
