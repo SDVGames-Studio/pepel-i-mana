@@ -19,13 +19,13 @@
 				"dust_stalker": 30.0
 			},
 			"exit_color": "#ff8a65",
-			"floor_color": "#4d4340",
+			"floor_color": "#97897c",
 			"floor_sprite": "k:13",
 			"floor_sprite_alt": "k:24",
 			"loc": "biome.ash_wastes",
 			"loot_bonus": 2.0,
 			"pollution_on_visit": 3.0,
-			"wall_color": "#2b2220",
+			"wall_color": "#75675b",
 			"wall_sprite": "k:36"
 		},
 		"bandit_camp": {
@@ -38,13 +38,13 @@
 				"bandit_archer": 25.0
 			},
 			"exit_color": "#d8a25a",
-			"floor_color": "#4a4238",
+			"floor_color": "#a08055",
 			"floor_sprite": "k:17",
 			"floor_sprite_alt": "k:42",
 			"loc": "biome.bandit_camp",
 			"loot_bonus": 2.0,
 			"pollution_on_visit": 0.0,
-			"wall_color": "#332a1e",
+			"wall_color": "#7c6042",
 			"wall_sprite": "k:16"
 		},
 		"crystal_caves": {
@@ -58,13 +58,13 @@
 				"wisp": 25.0
 			},
 			"exit_color": "#4dd0e1",
-			"floor_color": "#2f4450",
+			"floor_color": "#7fa2bd",
 			"floor_sprite": "k:26",
 			"floor_sprite_alt": "k:27",
 			"loc": "biome.crystal_caves",
 			"loot_bonus": 1.0,
 			"pollution_on_visit": 1.0,
-			"wall_color": "#1a2b33",
+			"wall_color": "#5c82a3",
 			"wall_sprite": "k:2"
 		},
 		"cursed_hall": {
@@ -82,13 +82,13 @@
 				"fallen": 6.0
 			},
 			"exit_color": "#b39ddb",
-			"floor_color": "#3f3a4c",
+			"floor_color": "#948ca4",
 			"floor_sprite": "k:39",
 			"floor_sprite_alt": "k:18",
 			"loc": "biome.cursed_hall",
 			"loot_bonus": 2.0,
 			"pollution_on_visit": 2.0,
-			"wall_color": "#241f30",
+			"wall_color": "#706882",
 			"wall_sprite": "k:59"
 		},
 		"demon_lair": {
@@ -96,6 +96,7 @@
 			"bg_color": "#140a0c",
 			"boss": "demon_lord",
 			"decor_color": "#7a3028",
+			"ember_color": "#ff8a3c",
 			"enemy_weights": {
 				"brute": 15.0,
 				"cinder": 15.0,
@@ -103,13 +104,13 @@
 				"imp": 40.0
 			},
 			"exit_color": "#ff8a65",
-			"floor_color": "#4a2c28",
+			"floor_color": "#a86046",
 			"floor_sprite": "k:24",
 			"floor_sprite_alt": "k:13",
 			"loc": "biome.demon_lair",
 			"loot_bonus": 2.0,
 			"pollution_on_visit": 3.0,
-			"wall_color": "#2b1518",
+			"wall_color": "#7e4030",
 			"wall_sprite": "k:16"
 		},
 		"dragon_lair": {
@@ -117,19 +118,20 @@
 			"bg_color": "#120e08",
 			"boss": "ancient_dragon",
 			"decor_color": "#7a5a28",
+			"ember_color": "#ffc44e",
 			"enemy_weights": {
 				"cinder": 20.0,
 				"dragon_whelp": 55.0,
 				"dust_stalker": 25.0
 			},
 			"exit_color": "#ffd54f",
-			"floor_color": "#4a4234",
+			"floor_color": "#ac9668",
 			"floor_sprite": "k:42",
 			"floor_sprite_alt": "k:17",
 			"loc": "biome.dragon_lair",
 			"loot_bonus": 3.0,
 			"pollution_on_visit": 3.0,
-			"wall_color": "#2a241c",
+			"wall_color": "#83704a",
 			"wall_sprite": "k:2"
 		},
 		"lich_tower": {
@@ -146,13 +148,13 @@
 				"wraith": 12.0
 			},
 			"exit_color": "#9575cd",
-			"floor_color": "#3a3448",
+			"floor_color": "#9089b0",
 			"floor_sprite": "k:27",
 			"floor_sprite_alt": "k:26",
 			"loc": "biome.lich_tower",
 			"loot_bonus": 2.0,
 			"pollution_on_visit": 2.0,
-			"wall_color": "#221c30",
+			"wall_color": "#6a6390",
 			"wall_sprite": "k:36"
 		},
 		"mutant_forest": {
@@ -172,13 +174,13 @@
 				"wolf": 8.0
 			},
 			"exit_color": "#9fd45a",
-			"floor_color": "#3c4a2c",
+			"floor_color": "#7e9450",
 			"floor_sprite": "k:28",
 			"floor_sprite_alt": "k:53",
 			"loc": "biome.mutant_forest",
 			"loot_bonus": 1.0,
 			"pollution_on_visit": 2.0,
-			"wall_color": "#1c2a18",
+			"wall_color": "#5a7038",
 			"wall_sprite": "k:38"
 		},
 		"ruins": {
@@ -187,13 +189,13 @@
 			"boss": "bone_knight",
 			"decor_color": "#5a5248",
 			"exit_color": "#d8c27a",
-			"floor_color": "#4a4440",
+			"floor_color": "#9c948a",
 			"floor_sprite": "k:18",
 			"floor_sprite_alt": "k:39",
 			"loc": "biome.ruins",
 			"loot_bonus": 0.0,
 			"pollution_on_visit": 0.0,
-			"wall_color": "#241f1d",
+			"wall_color": "#776f64",
 			"wall_sprite": "k:57",
 			"enemy_weights": {
 				"polevik": 22.0,
@@ -219,13 +221,13 @@
 				"crawler": 10.0
 			},
 			"exit_color": "#9ccc65",
-			"floor_color": "#44503a",
+			"floor_color": "#7d8f5e",
 			"floor_sprite": "k:53",
 			"floor_sprite_alt": "k:28",
 			"loc": "biome.swamp_mire",
 			"loot_bonus": 1.0,
 			"pollution_on_visit": 1.0,
-			"wall_color": "#232b1c",
+			"wall_color": "#5a6e42",
 			"wall_sprite": "k:38"
 		},
 		"vampire_keep": {
@@ -239,13 +241,13 @@
 				"vampire": 50.0
 			},
 			"exit_color": "#c85a5a",
-			"floor_color": "#3a3238",
+			"floor_color": "#8b8494",
 			"floor_sprite": "k:39",
 			"floor_sprite_alt": "k:26",
 			"loc": "biome.vampire_keep",
 			"loot_bonus": 3.0,
 			"pollution_on_visit": 1.0,
-			"wall_color": "#1c1620",
+			"wall_color": "#635e70",
 			"wall_sprite": "k:59"
 		},
 		"midnight_crypt": {
@@ -261,13 +263,13 @@
 				"skeleton": 8.0
 			},
 			"exit_color": "#9575cd",
-			"floor_color": "#2e2940",
+			"floor_color": "#7d76a0",
 			"floor_sprite": "k:39",
 			"floor_sprite_alt": "k:59",
 			"loc": "biome.midnight_crypt",
 			"loot_bonus": 3.0,
 			"pollution_on_visit": 2.0,
-			"wall_color": "#181428",
+			"wall_color": "#565179",
 			"wall_sprite": "k:36"
 		},
 		"yaga_hut": {
@@ -280,13 +282,13 @@
 				"skeleton": 10.0
 			},
 			"exit_color": "#e0a04a",
-			"floor_color": "#4a3c28",
+			"floor_color": "#a5865e",
 			"floor_sprite": "k:17",
 			"floor_sprite_alt": "k:42",
 			"loc": "biome.yaga_hut",
 			"loot_bonus": 4.0,
 			"pollution_on_visit": 1.0,
-			"wall_color": "#2b2014",
+			"wall_color": "#7e5f3e",
 			"wall_sprite": "k:16"
 		}
 	},

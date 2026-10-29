@@ -38,6 +38,8 @@ var _enemies_total := 0                 # монстров на входе в д
 var _pause_layer: CanvasLayer = null   # пауза данжа (M9, Esc)
 var _pause_overlay = null
 var _equip_panel = null                # панель экипировки (M14-B, клавиша I)
+var _fog = null                        # туман войны (v1.33, dungeon_fog.gd)
+var _visible_now: Dictionary = {}      # полы в поле зрения героя сейчас
 
 
 ## Пауза данжа (M9): Esc — вуаль + «Продолжить / В меню».
@@ -99,11 +101,18 @@ func _ready() -> void:
 	_build_traps()
 	_build_boss()
 	_build_fauna()
+	# туман войны (v1.33): поверх мира, до HUD — неисследованное чёрное,
+	# изученное приглушено, видимое в свет герой — чистое
+	_fog = load("res://scripts/dungeon_fog.gd").new()
+	_fog.setup(gen, ts)
+	add_child(_fog)
 	# сколько монстров было на входе: по доле убитых данж светлеет (2026-10-21)
 	_enemies_total = get_tree().get_nodes_in_group("enemies").size()
 
 	hud = HudScript.new()
 	hud.init(hero, gen, loot_data)
+	# v1.33: HUD — CanvasLayer, рисуется выше тумана войны (z=40 в базовой
+	# канве) автоматически, без z_index (у CanvasLayer его нет)
 	add_child(hud)
 	hud.minimap.setup(gen)
 	_build_pause()
@@ -794,30 +803,62 @@ func _update_fog() -> void:
 	var t := _pos_to_tile(hero.position)
 	var r := int(params["hero"]["vision_tiles"])
 	var changed := false
+	# v1.33: поле зрения СЕЙЧАС (для тумана войны — живой обзор против
+	# «памяти»): полы в радиусе с прямой видимостью
+	var vis: Dictionary = {}
 	for dy in range(-r, r + 1):
 		for dx in range(-r, r + 1):
 			if dx * dx + dy * dy > r * r:
 				continue
 			var p := Vector2i(t.x + dx, t.y + dy)
-			if gen.is_floor(p) and not _visited.has(p) and _line_of_sight(t, p):
-				_visited[p] = true
-				changed = true
+			if gen.is_floor(p) and _line_of_sight(t, p):
+				vis[p] = true
+				if not _visited.has(p):
+					_visited[p] = true
+					changed = true
+	if changed or not _same_keys(vis, _visible_now):
+		_visible_now = vis
+		if _fog != null:
+			_fog.visited = _visited
+			_fog.visible_now = vis
+			_fog.queue_redraw()
 	if changed:
 		hud.minimap.update_state(t, _visited)
+
+
+func _same_keys(a: Dictionary, b: Dictionary) -> bool:
+	if a.size() != b.size():
+		return false
+	for k in a:
+		if not b.has(k):
+			return false
+	return true
 
 
 ## Зрение героя: тайл виден, только если линия от героя не упирается в стену —
 ## карта не должна рисоваться там, где герой не был и не мог видеть (заказчик).
 func _line_of_sight(from: Vector2i, to: Vector2i) -> bool:
+	return los_clear_grid(gen.grid, from, to, DungeonGenScript.TILE_WALL)
+
+
+## Чистая математика LOS (для тестов v1.33): grid — массив строк тайлов,
+## стеной считается tile == wall. Промежуточные клетки линии (без концов)
+## не должны быть стеной.
+static func los_clear_grid(grid: Array, from: Vector2i, to: Vector2i, wall: int) -> bool:
 	var dx := to.x - from.x
 	var dy := to.y - from.y
 	var steps := maxi(absi(dx), absi(dy))
+	if steps <= 1:
+		return true
 	var x := float(from.x)
 	var y := float(from.y)
 	for i in steps - 1:
 		x += float(dx) / float(steps)
 		y += float(dy) / float(steps)
-		if gen.tile_at(Vector2i(int(round(x)), int(round(y)))) == DungeonGenScript.TILE_WALL:
+		var t := Vector2i(int(round(x)), int(round(y)))
+		if t.y < 0 or t.y >= grid.size() or t.x < 0 or t.x >= (grid[0] as Array).size():
+			return false
+		if grid[t.y][t.x] == wall:
 			return false
 	return true
 
