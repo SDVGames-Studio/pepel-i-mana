@@ -1,28 +1,37 @@
 extends Node2D
-## Туман войны данжа с ПЛАВНЫМ краем (v1.33.2). Неисследованное — чёрное,
-## изученное — приглушённая «память», у героя — чистый свет. Край рисуется
-## сеткой квадратов с альфой в ВЕРШИНАХ (билинейная интерполяция) и
-## радиальным спадом от героя: никаких квадратных ступеней на границе
-## света/памяти/тьмы (замечание заказчика «вернуть плавный свет и тени»).
-## Обновление — из dungeon.gd::_update_fog при смене тайла героя/роста
-## исследованного; перерисовка только по изменению.
+## Туман войны данжа с ПЛАВНЫМ краем (v1.33.2–v1.33.3). Неисследованное —
+## чёрное, изученное — приглушённая «память», у героя — чистый тёплый свет.
+## Край — сетка квадратов с альфой в ВЕРШИНАХ (билинейная интерполяция)
+## и радиальным спадом smoothstep от героя: никаких квадратных ступеней
+## (замечание заказчика «расплываться плавнее», «плавный свет и тени»).
 ##
-## Альфа вершины = базовая альфа состояния (память 0.45 / неизвестное 1.0,
-## берётся МИНИМУМ по 4 соседним тайлам — диагональные края сглаживаются)
-## × радиальный спад smoothstep(fade_in..fade_out) от центра героя.
-## Внутри fade_in тумана нет вовсе — там работает живой свет фонаря.
+## v1.33.3: ТЕНИ ОТ СТЕН тоже рисует этот слой — по линии взгляда (LOS,
+## словарь visible_now из dungeon.gd::_update_fog): тайл в радиусе света,
+## но ЗА стеной, затемнён до «памяти» — тёплая лужа света обрезается
+## стенами с мягким градиентным краем. Движковые тени PointLight2D
+## отключены (экструзия больших окклюдеров глючила — глохла вся лужа).
+##
+## Альфа вершины = MAX( база_состояния × радиальный_спад,
+##                       MEMORY × (1 − видимость_LOS) )
+##   LOS-тайл у героя  → 0 (чистый свет фонаря)
+##   LOS-тайл на краю  → база × спад (плавное расплывание в дымку)
+##   за стеной         → MEMORY (тень стены, мягкая по вершинам)
+##   неисследованное   → 1.0 (чёрное)
+## База/видимость в вершине — минимум/максимум по 4 смежным тайлам
+## (диагональные края сглаживаются сами).
 
 var gen = null
 var ts := 32
 var visited: Dictionary = {}      # изученные полы (накопительно)
-var visible_now: Dictionary = {}  # полы в поле зрения героя сейчас
+var visible_now: Dictionary = {}  # полы в поле зрения героя сейчас (LOS)
 var hero_pos := Vector2.ZERO      # центр мягкого круга (мировые px)
 # «память»: изученное вне света темнее живого обзора, но читается
 const MEMORY_ALPHA := 0.45
-# мягкий переход (в тайлах): внутри fade_in — чисто, к fade_out — полная
-# база; ширина полосы ~2.7 тайла даёт плавный градиент без ступеней
-var fade_in := 3.4
-var fade_out := 6.1
+# Мягкий переход (в тайлах): внутри fade_in — чисто (работает свет
+# фонаря радиусом 5.0), к fade_out туман расплывается полным; полоса
+# ~4 тайла — тёплый спад света перетекает в дымку без подрезки
+var fade_in := 5.0
+var fade_out := 9.0
 
 
 func setup(dungeon_gen: Object, tile_size: int) -> void:
@@ -61,13 +70,16 @@ func _draw() -> void:
 		return
 	var w: int = gen.w
 	var h: int = gen.h
-	# 1) альфа в вершинах сетки: минимум баз по 4 смежным тайлам
+	# 1) вершины сетки: база (мин по 4 тайлам) и LOS-видимость (макс)
 	var corners := PackedFloat32Array()
 	corners.resize((w + 1) * (h + 1))
+	var lit := PackedFloat32Array()
+	lit.resize((w + 1) * (h + 1))
 	var offs: Array = [Vector2i(-1, -1), Vector2i(0, -1), Vector2i(-1, 0), Vector2i(0, 0)]
 	for cy in h + 1:
 		for cx in w + 1:
 			var base := 1.0
+			var see := 0.0
 			for d in offs:
 				var t: Vector2i = Vector2i(cx, cy) + d
 				if t.x < 0 or t.y < 0 or t.x >= w or t.y >= h:
@@ -75,8 +87,11 @@ func _draw() -> void:
 				var b := _tile_base(t)
 				if b < base:
 					base = b
+				if visible_now.has(t):
+					see = 1.0
 			corners[cy * (w + 1) + cx] = base
-	# 2) радиальный спад от героя + отрисовка квадратов с цветами вершин
+			lit[cy * (w + 1) + cx] = see
+	# 2) отрисовка: альфа угла = max(база × спад, MEMORY × (1 − LOS))
 	var black := Color(0.008, 0.008, 0.014)
 	var fi_px := fade_in * float(ts)
 	var fi_w := fade_out * float(ts) - fi_px
@@ -90,20 +105,28 @@ func _draw() -> void:
 					and not _near_floor(Vector2i(x, y)):
 				continue   # сплошная тьма над войдом — уже чёрное
 			if maxf(maxf(i00, i10), maxf(i01, i11)) <= 0.01:
-				continue   # глубоко внутри света — тумана нет
+				continue   # изученного рядом нет — внутри света/тьмы рисуем только тьму
 			var p := Vector2(x, y) * ts
 			var quad := PackedVector2Array([
 				p, p + Vector2(ts, 0), p + Vector2(ts, ts), p + Vector2(0, ts)])
 			var cols := PackedColorArray([
-				Color(black.r, black.g, black.b, i00 * _fade_at(quad[0], fi_px, fi_w)),
-				Color(black.r, black.g, black.b, i10 * _fade_at(quad[1], fi_px, fi_w)),
-				Color(black.r, black.g, black.b, i11 * _fade_at(quad[2], fi_px, fi_w)),
-				Color(black.r, black.g, black.b, i01 * _fade_at(quad[3], fi_px, fi_w)),
+				_corner_col(black, i00, lit[y * (w + 1) + x], quad[0], fi_px, fi_w),
+				_corner_col(black, i10, lit[y * (w + 1) + x + 1], quad[1], fi_px, fi_w),
+				_corner_col(black, i11, lit[(y + 1) * (w + 1) + x + 1], quad[2], fi_px, fi_w),
+				_corner_col(black, i01, lit[(y + 1) * (w + 1) + x], quad[3], fi_px, fi_w),
 			])
 			if cols[0].a <= 0.004 and cols[1].a <= 0.004 \
 					and cols[2].a <= 0.004 and cols[3].a <= 0.004:
 				continue
 			draw_polygon(quad, cols)
+
+
+## Цвет угла квадрата тумана: альфа = max(база × радиальный спад,
+## MEMORY × (1 − LOS)) — тень стены не перекрывает чистый свет рядом.
+func _corner_col(black: Color, base: float, see: float, pt: Vector2,
+		fi_px: float, fi_w: float) -> Color:
+	var a := maxf(base * _fade_at(pt, fi_px, fi_w), MEMORY_ALPHA * (1.0 - see))
+	return Color(black.r, black.g, black.b, a)
 
 
 ## Радиальный спад 0..1 в точке (0 у героя, 1 за fade_out).

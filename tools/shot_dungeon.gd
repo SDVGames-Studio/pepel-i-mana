@@ -57,10 +57,26 @@ func _on_frame() -> void:
 						floors += 1
 		var hero2 = dungeon2.get("hero")
 		var dark = dungeon2.get("_darkness")
-		print("diag: floors=%d hero=%s dark=%s view=%s" % [floors,
+		var cam := dungeon2.get_node_or_null("../HeroCam")
+		if cam == null:
+			for c in dungeon2.get_children():
+				if c is Camera2D:
+					cam = c
+			if cam == null and hero2 != null:
+				for c in hero2.get_children():
+					if c is Camera2D:
+						cam = c
+		var camtxt := "нет"
+		if cam != null:
+			var vpt := root.get_viewport().get_visible_rect().size
+			camtxt = "cam=%s hero_screen=%s gen=%dx%d" % [cam.global_position,
+					(hero2.global_position - cam.global_position) + vpt * 0.5
+					if hero2 != null else "-", gen.w if gen != null else 0,
+					gen.h if gen != null else 0]
+		print("diag: floors=%d hero=%s dark=%s view=%s %s" % [floors,
 				hero2.global_position if hero2 != null else "нет",
 				(dark.color if dark != null else "нет"),
-				dungeon2.get_node_or_null("Darkness") != null])
+				dungeon2.get_node_or_null("Darkness") != null, camtxt])
 	var img: Image = root.get_texture().get_image()
 	img.save_png("res://tools/shot_dungeon.png")
 	print("shot: сохранён tools/shot_dungeon.png")
