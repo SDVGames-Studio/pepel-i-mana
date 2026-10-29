@@ -177,7 +177,12 @@ func _draw_water_glints() -> void:
 			continue
 		var c := Vector2(t) * ts + Vector2(ts * (0.35 + 0.3 * sin(ph * 0.7)), ts * 0.55)
 		var w := ts * (0.14 + 0.07 * s)
-		draw_line(c - Vector2(w, 0), c + Vector2(w, 0), Color(1.0, 1.0, 0.95, (s - 0.25) * 0.30), 1.2)
+		# v1.31: солнечные блики гаснут ночью (слабее в ~6 раз и холоднее) —
+		# вода ночью ТЁМНАЯ (замечание заказчика «река становится белой»)
+		var day := 1.0 - 0.85 * night
+		var gcol := Color(1.0, 1.0, 0.95).lerp(Color(0.55, 0.65, 0.9), night)
+		draw_line(c - Vector2(w, 0), c + Vector2(w, 0),
+				Color(gcol.r, gcol.g, gcol.b, (s - 0.25) * 0.30 * day), 1.2)
 
 
 ## Пульс «места сбора» на площади (правки v1.20): плиты рисует статичный
@@ -298,6 +303,7 @@ func _crop_sprite(crop_vis: int, stage: int) -> ImageTexture:
 
 
 var _anim_time := 0.0
+var night := 0.0               # 0..1 — фактор ночи (задаёт city.gd, v1.31)
 
 # кэш тайлов деревьев/пней/саженцев (M12): ландшафт меняется редко —
 # список пересобирается по флагу, который ставит сцена при sim.terrain_dirty.

@@ -397,20 +397,22 @@ func _near_water(pos: Vector2) -> bool:
 	return false
 
 
-## Скорость героя по грунту: по мосту — как по земле; у воды — влажная
-## низина (стоячей воды под ногами не бывает — она непроходима, v1.29.2).
+## Скорость героя по грунту: мост — как по земле, брод-мелководье — 0.55
+## (переход вброд), у воды — влажная низина (v1.31).
 func _hero_ground_mult(pos: Vector2) -> float:
 	var t: Vector2i = map.tile_of_px(pos)
 	if map.bridges.has(t):
 		return 1.0
+	if map.fords.has(t):
+		return 0.55
 	return 0.7 if _near_water(pos) else 1.0
 
 
-## Герой в запрещённой воде? Вода непроходима для всех — только мост (v1.29.2).
+## Герой в запрещённой воде? Проходы: мост и брод-мелководье (v1.31).
 func _hero_in_water(t: Vector2i) -> bool:
 	if not map.in_bounds(t) or map.grid[t.y][t.x] != map.TILE_WATER:
 		return false
-	return not map.bridges.has(t)
+	return not map.bridges.has(t) and not map.fords.has(t)
 
 
 ## Оружейка рядом с героем (M5.1): за металл герой надевает боевой комплект.
@@ -835,6 +837,8 @@ func _update_daylight() -> void:
 	_modulate.color = day_col.lerp(night_color, amount)
 	if _ambience != null:
 		_ambience.night = amount   # светлячки и огоньки разгораются к ночи
+	if view != null:
+		view.night = amount   # v1.31: солнечные блики воды гаснут к ночи
 	# магическое загрязнение подкрашивает воздух (больше — фиолетовее)
 	var pol_cfg: Dictionary = cfg.get("pollution", {})
 	var pol_t := clampf(sim.pollution / maxf(1.0, float(pol_cfg.get("max", 100.0))), 0.0, 1.0)

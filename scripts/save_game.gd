@@ -185,6 +185,7 @@ static func _city_block(sim) -> Dictionary:
 			"tree_growth": _tile_vals(m.tree_growth),
 			"logs": _tile_vals(m.logs),
 			"bridges": _tile_keys(m.bridges),
+			"fords": _tile_keys(m.fords),
 		},
 		"residents": _residents_save(sim),
 		"sim": _city_sim_block(sim),
@@ -632,6 +633,11 @@ static func _apply_city_map(map, md: Variant, cfg: Dictionary) -> String:
 	map.bridges = {}
 	for e in md.get("bridges", []):
 		map.bridges[Vector2i(int(e[0]), int(e[1]))] = true
+	map.fords = {}
+	for e2 in md.get("fords", []):
+		map.fords[Vector2i(int(e2[0]), int(e2[1]))] = true
+	if map.fords.is_empty():
+		map.mark_fords()   # старые сейвы (до v1.31): броды размечаются заново
 	map.saplings = {}
 	for e in md.get("saplings", []):
 		map.saplings[Vector2i(int(e[0]), int(e[1]))] = {"t": float(e[2].get("t", 0.0))}
