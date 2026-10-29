@@ -149,8 +149,9 @@ func _draw_swaying_grass() -> void:
 		var base := rect.position + Vector2(ts * (0.3 + 0.4 * sin(ph * 0.7)), ts * 0.78)
 		var tip := base + Vector2(sway, -7.0)
 		var tip2 := base + Vector2(-sway * 0.7 + 2.0, -5.0)
-		draw_line(base, tip, Color("#4a7a38"), 1.1)
-		draw_line(base + Vector2(2.0, 0), tip2, Color("#5c8f46"), 1.0)
+		# v1.32: в тон текстурной траве (grass L/M/D)
+		draw_line(base, tip, Color("#3f7a34"), 1.1)
+		draw_line(base + Vector2(2.0, 0), tip2, Color("#66aa50"), 1.0)
 
 
 func _draw_water_glints() -> void:
@@ -618,18 +619,18 @@ func _draw_log_at(tile: Vector2i) -> void:
 
 
 ## Пень: срез с годовыми кольцами и кора в палитре своего дерева.
-## Порядок — по индексам TREE_REFS (v1.29 п.1: добавлены липа и сосна 2).
+## Порядок — по индексам TREE_REFS (v1.32: под стволы новых деревьев).
 const STUMP_PALS := [
-	{"side": Color("#6d4c33"), "top": Color("#a1887f"), "ring": Color("#7d6045")},   # дуб
-	{"side": Color("#5a4030"), "top": Color("#8d6e63"), "ring": Color("#6b5140")},   # сосна
-	{"side": Color("#d7ccc8"), "top": Color("#efebe9"), "ring": Color("#a1887f")},   # берёза
-	{"side": Color("#7a5a3a"), "top": Color("#bcaaa4"), "ring": Color("#8d6e63")},   # осеннее
-	{"side": Color("#6d4c33"), "top": Color("#a1887f"), "ring": Color("#7d6045")},   # дуб 2
-	{"side": Color("#8a7058"), "top": Color("#e8d9c3"), "ring": Color("#c4a98a")},   # липа
-	{"side": Color("#77503a"), "top": Color("#c9b0a5"), "ring": Color("#9a7462")},   # плодовое
-	{"side": Color("#d7ccc8"), "top": Color("#efebe9"), "ring": Color("#a1887f")},   # берёза 2
-	{"side": Color("#5a4030"), "top": Color("#8d6e63"), "ring": Color("#6b5140")},   # сосна 2
-	{"side": Color("#7d6650"), "top": Color("#ddccae"), "ring": Color("#b59877")},   # липа 2
+	{"side": Color("#4a321e"), "top": Color("#64452c"), "ring": Color("#7e5c3a")},   # дуб
+	{"side": Color("#3e2a1a"), "top": Color("#563c24"), "ring": Color("#6e4e30")},   # сосна
+	{"side": Color("#d6d6c8"), "top": Color("#f0f0e4"), "ring": Color("#343432")},   # берёза
+	{"side": Color("#4a321e"), "top": Color("#64452c"), "ring": Color("#7e5c3a")},   # осеннее
+	{"side": Color("#4a321e"), "top": Color("#64452c"), "ring": Color("#7e5c3a")},   # дуб 2
+	{"side": Color("#523a24"), "top": Color("#6e5032"), "ring": Color("#8a663e")},   # липа
+	{"side": Color("#4a321e"), "top": Color("#64452c"), "ring": Color("#7e5c3a")},   # плодовое
+	{"side": Color("#d6d6c8"), "top": Color("#f0f0e4"), "ring": Color("#343432")},   # берёза 2
+	{"side": Color("#3e2a1a"), "top": Color("#563c24"), "ring": Color("#6e4e30")},   # сосна 2
+	{"side": Color("#523a24"), "top": Color("#6e5032"), "ring": Color("#8a663e")},   # липа 2
 ]
 
 
@@ -658,10 +659,12 @@ func _draw_stump(bottom: Vector2, ts: float, variant: int) -> void:
 		draw_line(bottom + Vector2(-w * 0.2, -h * 1.6), bottom + Vector2(w * 0.1, -h * 0.3), Color("#4e342e"), 1.1)
 
 
-# v1.29 п.1 «Деревья»: добавлена липа (20% деревьев), дуб/берёза/сосна освежены.
+# v1.32 «Деревья как в видео»: пухлые кроноблобы с дизерингом (генератор
+# tools/make_video_trees.py): дуб ×2, сосна ×2, берёза ×2, липа ×2,
+# осеннее и плодовое — все 10 слотов разные.
 const TREE_REFS := ["e:tree_oak", "e:tree_pine", "e:tree_birch", "e:tree_autumn",
-		"e:tree_oak", "e:tree_lime", "e:tree_fruit2", "e:tree_birch",
-		"e:tree_pine", "e:tree_lime"]
+		"e:tree_oak2", "e:tree_lime", "e:tree_fruit2", "e:tree_birch2",
+		"e:tree_pine2", "e:tree_lime2"]
 
 
 static func _hash(x: int, y: int, n: int) -> int:

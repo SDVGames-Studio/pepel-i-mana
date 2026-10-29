@@ -17,6 +17,10 @@ var sim = null                   # город (v1.22): зоны/дороги/п�
 var colors: Dictionary = {}
 var _zone_colors: Dictionary = {}   # тип зоны -> цвет заливки (v1.22)
 var _grass_shades: Array = []
+# v1.32: трава — ЗАПЕЧЁННЫЕ текстуры-тайлы (стиль dual-grid видео jess::codes):
+# 3 тона-семейства (L/M/D) × 2 варианта, генератор tools/make_video_grass.py.
+# Семейство выбирает крупный шум (пятна луга), вариант — хэш тайла.
+var _grass_texs: Array = []
 var _rock_deep := Color("#565248")
 var _water_lake := Color("#3f87b5")   # v1.29.1: озеро — яркая синь
 var _water_river := Color("#57b2d4")  # v1.29.1: река — светло-бирюзовая
@@ -42,6 +46,10 @@ func setup(city_map, city_cfg: Dictionary, city_sim = null) -> void:
 		_zone_colors[String(t)] = Color(String(city_cfg["zones"]["types"][t]["color"]))
 	_grass_shades = [colors["grass"], colors.get("grass_alt", colors["grass"]),
 			colors.get("grass2", colors["grass"]).darkened(0.03)]
+	for fam in ["L", "M", "D"]:
+		for v in 2:
+			_grass_texs.append(Assets.tex(
+					"res://assets/sprites/env/grass_%s%d.png" % [fam, v + 1]))
 	_rock_deep = colors.get("rock_deep", Color("#565248"))
 	_water_lake = colors.get("water_lake", _water_lake)
 	_water_river = colors.get("water_river", _water_river)
@@ -143,22 +151,30 @@ func _draw_tiles() -> void:
 	if map == null:
 		return
 	var ts := float(map.ts)
-	# проход 1: земля (трава/осыпи) — вода и скалы рисуются блобами поверх
+	# проход 1: земля (трава/осыпи) — вода и скалы рисуются блобами поверх.
+	# v1.32: трава — текстурные тайлы (стиль видео dual-grid); текстура
+	# отсутствует (не импортирована) — откат к плоской заливке _grass_at
 	for y in map.h:
 		for x in map.w:
 			var tile: int = map.grid[y][x]
 			var rect := Rect2(x * map.ts, y * map.ts, map.ts, map.ts)
-			var base := _grass_at(x, y)
 			match tile:
 				map.TILE_GRASS, map.TILE_TREE:
-					_drawer.draw_rect(rect, base)
-					_draw_grass_detail(x, y, rect, base, ts)
+					var tex: Texture2D = _grass_texture_at(x, y)
+					if tex != null:
+						_drawer.draw_texture_rect(tex, rect, false)
+					else:
+						_drawer.draw_rect(rect, _grass_at(x, y))
+					_draw_grass_detail(x, y, rect, ts)
 				map.TILE_DEADROCK:
 					_draw_deadrock(x, y, rect, ts)
 	# проход 2: скальная гряда и вода — ОРГАНИЧНЫЕ блобы (marching squares,
 	# сглаживание Безье — стиль RimWorld/Dwarf Fortress, не по тайлам)
 	_draw_rock_blobs(ts)
 	_draw_water_blobs(ts)
+	# v1.32: травяная бахрома по кромкам воды и скал — травинки «обнимают»
+	# берег, как в видео (листья свисаются на границах тайлов)
+	_draw_grass_fringe(ts)
 
 
 ## Надстройки (v1.28.1 — отдельный дешёвый слой): зоны, дороги, плиты
@@ -536,8 +552,21 @@ func _grass_at(x: int, y: int) -> Color:
 	return shade.darkened(0.01 * -j)
 
 
-## Трава: пучки травинок + редкие камешки + ЦВЕТОЧНЫЕ ПОЛЯНЫ (v1.27):
-## крупноячеистый шум выделяет луга, на них по хэшу цветут 2–4 цветка
+## Текстура травяного тайла: семейство тонов — крупный шум (пятна луга,
+## тот же масштаб, что выбирает и _grass_at), вариант внутри семейства —
+## хэш тайла (соседние тайлы всегда разные, повтор 32px не ловится глазом).
+func _grass_texture_at(x: int, y: int) -> Texture2D:
+	if _grass_texs.is_empty():
+		return null
+	var fam := clampi(int(_noise2(x / 7.0, y / 7.0, 3, 11)), 0, 2)
+	var v: int = _hash(x, y, 2)
+	return _grass_texs[fam * 2 + v]
+
+
+## Трава: редкие камешки + ЦВЕТОЧНЫЕ ПОЛЯНЫ (v1.27) поверх текстурного
+## тайла (v1.32: пучки травинок теперь живут В текстуре — tools/
+## make_video_grass.py — и живом слое колыхания city_view.gd).
+## Крупноячеистый шум выделяет луга, на них по хэшу цветут 2–4 цветка
 ## (белый/жёлтый/розовый/василёк/мак) — поляны, а не рассыпанный горох.
 const FLOWER_COLS := [
 	Color("#f2f0e4"), Color("#e8d44d"), Color("#e88bb0"),
@@ -545,16 +574,7 @@ const FLOWER_COLS := [
 ]
 
 
-func _draw_grass_detail(x: int, y: int, rect: Rect2, base: Color, ts: float) -> void:
-	var dark := base.darkened(0.14)
-	var light := base.lightened(0.08)
-	# пучки: 3 травинки с изломом — земля не «пластмассит»
-	for i in 3:
-		var h := _hash(x * 3 + i, y * 7 + i, 100)
-		var px := rect.position.x + 4.0 + float(h % int(ts - 8.0))
-		var py := rect.position.y + 5.0 + float((h / 7) % int(ts - 10.0))
-		var col := dark if i % 2 == 0 else light
-		_drawer.draw_line(Vector2(px, py), Vector2(px + 1.0, py - 3.0 - float(h % 3)), col, 1.0)
+func _draw_grass_detail(x: int, y: int, rect: Rect2, ts: float) -> void:
 	# камешек: редкий серый бугорок
 	if _hash(x * 13, y * 3, 200) == 0:
 		_drawer.draw_circle(rect.position + Vector2(8.0 + float(_hash(x, y, 40) % 14), 9.0), 1.8,
@@ -576,6 +596,49 @@ func _draw_grass_detail(x: int, y: int, rect: Rect2, base: Color, ts: float) -> 
 			_drawer.draw_circle(c + Vector2(-1.0, 1.0), 0.9, fcol)
 			_drawer.draw_circle(c + Vector2(1.0, 1.0), 0.9, fcol)
 			_drawer.draw_circle(c, 0.7, Color("#e8c94d"))
+
+
+## Травяная бахрома по кромкам воды и скальных гряд (v1.32, стиль видео):
+## пары травинок на травяной стороне контура — берег «порастает» травой,
+## граница читается мягкой, а не геометричной. Кэш контуров уже построен
+## (_water_cached/_rock_cached), идём по точкам сглаженного контура.
+func _draw_grass_fringe(ts: float) -> void:
+	var dark: Color = colors.get("grass2", Color("#498938")).darkened(0.18)
+	var light: Color = colors.get("grass", Color("#5ca046")).lightened(0.14)
+	for entry in _water_cached:
+		if String(entry["kind"]) == "swamp" or not bool(entry.get("simple", true)):
+			continue
+		_fringe_loop(entry["loop"], _poly_centroid(entry["loop"]), ts, dark, light)
+	for entry in _rock_cached:
+		_fringe_loop(entry["loop"], _poly_centroid(entry["loop"]), ts, dark, light)
+
+
+func _fringe_loop(loop: PackedVector2Array, centroid: Vector2, ts: float,
+		dark: Color, light: Color) -> void:
+	if loop.size() < 8:
+		return
+	# нормаль наружу = от центроида; точки контура плотные (4 subdivision
+	# на ребро) — шаг 2 даёт травинку каждые ~4–5 px. Травинки тянутся
+	# ВВЕРХ с наклоном наружу — силуэт берега «дышит» (v1.32: длиннее
+	# и гуще первого варианта, иначе кромка читалась жёсткой)
+	var i := 0
+	for p in loop:
+		if i % 2 != 0:
+			i += 1
+			continue
+		i += 1
+		var n := (p - centroid).normalized()
+		if n == Vector2.ZERO:
+			continue
+		var base := p + n * (ts * 0.07)
+		var ln := 4.5 + float(_hash(i, i * 7, 4))
+		var lean := Vector2(n.x * 0.7, -1.0).normalized() * ln
+		var col := dark if i % 4 < 2 else light
+		_drawer.draw_line(base, base + lean, col, 1.4)
+		if i % 6 == 0:
+			var base2 := base + n * 2.5 + Vector2(2.5, 0)
+			_drawer.draw_line(base2, base2 + lean * 0.85,
+					light if col == dark else dark, 1.1)
 
 
 ## Вода v1.27.1 — ОРГАНИЧНЫЕ водоёмы (референс RimWorld/Dwarf Fortress):
@@ -638,8 +701,15 @@ func _draw_water_blobs(ts: float) -> void:
 			# мелкие кляксы не идут (замечание заказчика 2026-10-28)
 			continue
 		if depth % 2 == 1:
-			var c := _poly_centroid(loop)
-			_fill_loop_cached(loop, entry["tris"], _grass_at(int(c.x / ts), int(c.y / ts)))
+			# остров: та же текстурная трава, что и на материке (v1.32),
+			# откат — плоская _grass_at
+			for t: Vector2i in entry["tiles"]:
+				var gtex: Texture2D = _grass_texture_at(t.x, t.y)
+				var grect := Rect2(Vector2(t) * ts, Vector2(ts, ts))
+				if gtex != null:
+					_drawer.draw_texture_rect(gtex, grect, false)
+				else:
+					_drawer.draw_rect(grect, _grass_at(t.x, t.y))
 			_stroke_on_loop(loop, ts * 0.6, Color("#6d8a4e").darkened(0.05))
 			continue
 		_fill_loop_cached(loop, entry["tris"],
