@@ -1,5 +1,16 @@
 # АССЕТЫ
 
+## v1.32 — трава и деревья «как в видео» (2026-10-29)
+- `tools/make_video_grass.py` (Python+PIL): 6 бесшовных тайлов травы
+  32×32 (`env/grass_L1..D2.png`) — 3 тона-семейства × 2 варианта;
+  слои: пятна → крап → пучки травинок. Превью `tools/grass_preview.png`.
+- `tools/make_video_trees.py` (Python+PIL): 10 деревьев «кроноблобами»
+  (`env/tree_oak|oak2|pine|pine2|birch|birch2|autumn|lime|lime2|fruit2.png`)
+  — круги-лобсы + 4 тона с дизерингом Байера + ствол с раструбом;
+  превью-полоса `tools/video_preview.png`. Оба генератора детерминированы
+  (хэш-шум), перегенерация = просто запустить скрипт.
+
+
 ## M11 — свои спрайты-генератор + дом-пак (2026-10-18)
 - `tools/make_wishlist_sprites.py` (Blender headless) — деревья с явным стволом
   (генератор кроны+дизеринг: `env/tree_oak|pine|birch|autumn|fruit2|old.png`),
