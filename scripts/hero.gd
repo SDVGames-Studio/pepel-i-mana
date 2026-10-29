@@ -39,7 +39,7 @@ var _temp_armor := 0
 # --- статы героя (v1.24): сила/ловкость/выносливость/интеллект/мудрость ------
 static var _ha: Dictionary = {}   # кэш balance.json -> hero_attributes (тесты подменяют)
 
-const LANTERN_ENERGY := 1.15
+const LANTERN_ENERGY := 1.35   # v1.33.1: тёплый фонарь заметнее на тёмной базе данжа
 
 
 ## Конфиг статов героя (balance.json -> hero_attributes); читается один раз.

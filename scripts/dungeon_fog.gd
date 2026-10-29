@@ -12,7 +12,9 @@ var ts := 32
 var visited: Dictionary = {}      # изученные полы (накопительно)
 var visible_now: Dictionary = {}  # полы в поле зрения героя сейчас
 # «память»: изученное вне света темнее живого обзора, но читается
-const MEMORY_ALPHA := 0.55
+# (v1.33.1: 0.45 — на тёмной реалистичной базе память не проваливается
+# в черноту, силуэты коридоров остаются ориентиром)
+const MEMORY_ALPHA := 0.45
 
 
 func setup(dungeon_gen: Object, tile_size: int) -> void:
