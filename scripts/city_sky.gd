@@ -251,7 +251,9 @@ func _draw() -> void:
 	else:
 		# лунные тени: слабые, холодные; облака тоже дают ночные тени
 		_draw_cloud_shadows(t, nf, mood, vis, weather, tilt, true)
-		_draw_object_shadows(t, nf, vis, Color(0.55, 0.62, 0.85, 0.07), true)
+		# v1.31.1: лунные тени ТЁМНЫЕ (бледно-голубые полигоны поверх ночного
+		# мира читались белёсыми пятнами на воде и у зданий — заказчик)
+		_draw_object_shadows(t, nf, vis, Color(0.02, 0.03, 0.06, 0.10), true)
 
 
 ## ---------- тени облаков (правки приёмки v1.29.1) ----------
@@ -366,6 +368,17 @@ func _build_objs() -> void:
 						else (2.4 if kind == map.TREE_MEDIUM else 3.0))
 				_objs.append([0, Vector2((x + 0.5) * ts, (y + 0.92) * ts), h])
 			elif g == map.TILE_ROCK or g == map.TILE_ORE:
+				# v1.31.1: рудная жила БЕЗ скал (кристаллы на земле) тень не
+				# отбрасывает — «жилы по две тени» (заказчик)
+				if g == map.TILE_ORE:
+					var solo := true
+					for d5 in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
+						var n5: Vector2i = Vector2i(x, y) + d5
+						if map.in_bounds(n5) and int(map.grid[n5.y][n5.x]) == map.TILE_ROCK:
+							solo = false
+							break
+					if solo:
+						continue
 				rock_cells[Vector2i(x, y)] = true
 	# v1.29.1 (правки приёмки): скала — МАССИВ, тень у него одна. Раньше
 	# каждый тайл отбрасывал свою — гряда «рассыпалась» на полосы.
@@ -461,16 +474,15 @@ func _draw_rock_shadow(rect: Rect2, h: float, t: float, nf: float,
 	var tr := rect.position + Vector2(rect.size.x, 0)
 	var bl := rect.position + Vector2(0, rect.size.y)
 	var br := rect.end
-	# нижняя полоса (юг): между подошвой и смещённой подошвой
-	if off.y > 1.0:
+	# ОДНА L-фигура (юг+бок единым полигоном): раньше два отдельных
+	# четырёхугольника читались «двойной тенью» (v1.31.1, заказчик)
+	if off.x >= 0.0:
 		draw_colored_polygon(PackedVector2Array([
-			bl, br, br + Vector2(0, off.y), bl + Vector2(0, off.y)]), col)
-	# боковая полоса: между боковой гранью и смещённой гранью
-	if absf(off.x) > 1.0:
-		var top_e := tr if off.x > 0.0 else tl
-		var bot_e := br if off.x > 0.0 else bl
+			tr, br, bl, bl + Vector2(0, off.y), bl + off, br + off, tr + off]), col)
+	else:
 		draw_colored_polygon(PackedVector2Array([
-			top_e, bot_e, bot_e + Vector2(off.x, off.y), top_e + Vector2(off.x, off.y)]), col)
+			tl, br, bl, bl + Vector2(0, off.y), bl + off, br + off, tl + off]), col)
+
 
 
 ## Тень прямоугольного объекта — выпуклая оболочка «подошва + подошва+смещение».

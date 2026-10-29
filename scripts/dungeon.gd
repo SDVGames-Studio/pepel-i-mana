@@ -196,7 +196,7 @@ func _build_darkness() -> void:
 	# тёмные, но читаемые — фонарь героя важен, но не единственный источник
 	# видимости. Амбиент биома поднимаем к «тусклая луна» лерпом.
 	_ambient_base = Color(String(biome["ambient"])).lerp(
-			Color(0.40, 0.40, 0.46), 0.42)
+			Color(0.85, 0.85, 0.92), 0.80)
 	dark.color = _ambient_base
 	_darkness = dark
 	add_child(dark)

@@ -322,8 +322,18 @@ func _loop_is_simple(loop: PackedVector2Array) -> bool:
 				continue   # соседние сегменты
 			var c: Vector2 = loop[j]
 			var d: Vector2 = loop[(j + 1) % n]
-			if Geometry2D.segment_intersects_segment(a, b, c, d) != Vector2.INF:
-				return false
+			var hit: Variant = Geometry2D.segment_intersects_segment(a, b, c, d)
+			if hit == null:
+				continue
+			var hv: Vector2 = hit
+			if hv == Vector2.INF or (is_nan(hv.x) and is_nan(hv.y)):
+				continue
+			# касание концами (общие вершины/углы) — не дефект
+			if hv.is_equal_approx(a) or hv.is_equal_approx(b):
+				continue
+			if hv.is_equal_approx(c) or hv.is_equal_approx(d):
+				continue
+			return false
 	return true
 
 
@@ -575,7 +585,7 @@ func _draw_grass_detail(x: int, y: int, rect: Rect2, base: Color, ts: float) -> 
 ## кувшинки и камыши на берегу.
 func _draw_water_blobs(ts: float) -> void:
 	var deep_col: Color = colors.get("water_deep", colors["water"].darkened(0.28))
-	var shore_col: Color = colors.get("shore", Color("#c8b183"))
+	var shore_col: Color = colors.get("shore", Color("#d9c69b"))   # v1.31.1: белее
 	# v1.28.1: контуры+триангуляция — из кэша (маска воды меняется только
 	# со сменой сетки); пересчёт — по _blob_cache_dirty из rebake(heavy)
 	if _blob_cache_dirty:
@@ -587,9 +597,14 @@ func _draw_water_blobs(ts: float) -> void:
 		var smootheds: Array = []
 		for rl in raw:
 			smootheds.append(_smooth_loop(rl))
-		for sm in smootheds:
+		for ri in raw.size():
+			var sm: PackedVector2Array = smootheds[ri]
+			if not _loop_is_simple(sm):
+				# v1.31.1: сглаживание сломало контур — берём СЫРОЙ контур
+				# (он всегда простой; квадратные ступени гасит обводка песка)
+				sm = raw[ri]
+				smootheds[ri] = sm
 			var tiles := _loop_tiles(sm, ts)
-			var simple := _loop_is_simple(sm)
 			# v1.29.1: тип водоёма считает КАРТА (он нужен и путям/броду);
 			# локальный расчёт по силуэту — страховка для карт без неё
 			var kind := ""
@@ -599,13 +614,12 @@ func _draw_water_blobs(ts: float) -> void:
 				kind = _water_kind(sm, ts)
 			for t: Vector2i in tiles:
 				_water_tile_kind[t] = kind
-			# v1.30.1: сглаженный контур бывает САМОПЕРЕСЕКАЮЩИМСЯ — триангуляция
-			# и обводки такого контура дают мусорные «пятна» чужого цвета
-			# (песок поверх травы). Деградация: заливка по тайлам, без обводок.
+			# v1.31.1: не-простой сглаженный контур заменён СЫРЫМ выше — здесь
+			# контур всегда простой, гладкие края и обводки у каждого водоёма
 			_water_cached.append({"loop": sm,
-					"tris": Geometry2D.triangulate_polygon(sm) if simple else PackedInt32Array(),
+					"tris": Geometry2D.triangulate_polygon(sm),
 					"depth": _loop_depth(sm, smootheds),
-					"kind": kind, "tiles": tiles, "simple": simple})
+					"kind": kind, "tiles": tiles, "simple": true})
 		_rock_cached = _build_rock_cache()
 		_blob_cache_dirty = false
 	for entry in _water_cached:
@@ -680,6 +694,18 @@ func _draw_water_blobs(ts: float) -> void:
 							ts * 0.34, Color("#6b7d4f", 0.35))
 					_drawer.draw_circle(rect.position + Vector2(ts * 0.65, ts * 0.35),
 							ts * 0.22, Color("#7a8d55", 0.28))
+	# вокруг БОЛОТ — тёмно-зелёная земля с камышами (v1.31.1, заказчик)
+	for y in map.h:
+		for x in map.w:
+			var st := Vector2i(x, y)
+			if map.grid[y][x] != map.TILE_GRASS or not _near_water(st):
+				continue
+			if _shore_kind(st) != "swamp":
+				continue
+			var srect := Rect2(Vector2(st) * ts, Vector2(ts, ts))
+			_drawer.draw_rect(srect, Color("#3f4a33", 0.55))
+			if _hash(x * 3, y * 5, 23) % 3 < 2:
+				_draw_reeds(Vector2(st) * ts, ts, x, y)
 	# берег (v1.28): грязевые проплешины на прибрежной траве — топь у озёр
 	# и болот; у реки берег песчаный и чистый, только редкий камыш
 	for y in map.h:

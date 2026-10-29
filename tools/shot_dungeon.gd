@@ -31,10 +31,36 @@ func _initialize() -> void:
 	process_frame.connect(_on_frame)
 
 
+func _find_dungeon(node: Node) -> Node:
+	for c in node.get_children():
+		var sc = c.get_script()
+		if sc != null and String((sc as Script).resource_path).ends_with("dungeon.gd"):
+			return c
+		var f := _find_dungeon(c)
+		if f != null:
+			return f
+	return null
+
+
 func _on_frame() -> void:
 	_frames += 1
 	if _frames < 50:
 		return
+	var dungeon2: Node = _find_dungeon(root)
+	if dungeon2 != null:
+		var gen = dungeon2.get("gen")
+		var floors := 0
+		if gen != null:
+			for y2 in gen.h:
+				for x2 in gen.w:
+					if int(gen.grid[y2][x2]) == int(gen.TILE_FLOOR):
+						floors += 1
+		var hero2 = dungeon2.get("hero")
+		var dark = dungeon2.get("_darkness")
+		print("diag: floors=%d hero=%s dark=%s view=%s" % [floors,
+				hero2.global_position if hero2 != null else "нет",
+				(dark.color if dark != null else "нет"),
+				dungeon2.get_node_or_null("Darkness") != null])
 	var img: Image = root.get_texture().get_image()
 	img.save_png("res://tools/shot_dungeon.png")
 	print("shot: сохранён tools/shot_dungeon.png")
