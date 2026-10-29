@@ -171,7 +171,7 @@ func _generate_once(seed_value: int, params: Dictionary) -> void:
 	# тайлов, classify_water() узнаёт болотце по размеру; сухой центр обязателен,
 	# иначе болотце сольётся с озером
 	for i in int(params.get("swamps", 2)):
-		_swamp_blob(_random_grass_tile(rng), rng)
+		_swamp_blob(_random_swamp_tile(rng), rng)
 	# вся вода на этот момент — озёра и болота; обрывки реки их не трогают
 	var keep := {}
 	for y in h:
@@ -315,6 +315,26 @@ func _random_grass_tile(rng: RandomNumberGenerator) -> Vector2i:
 		if grid[p.y][p.x] == TILE_GRASS:
 			return p
 	return _random_inner_tile(rng)
+
+
+## Центр болота (v1.30.1): трава И никакой воды в радиусе 6 — два болотца
+## или болото+озеро, слившись, превышали порог 16 тайлов и классифицировались
+## ОЗЕРОМ (синий блоб с песком — «болото и озеро одно и то же», заказчик).
+func _random_swamp_tile(rng: RandomNumberGenerator) -> Vector2i:
+	for i in 12:
+		var p := _random_grass_tile(rng)
+		var clear := true
+		for dy in range(-6, 7):
+			for dx in range(-6, 7):
+				var n := p + Vector2i(dx, dy)
+				if in_bounds(n) and grid[n.y][n.x] == TILE_WATER:
+					clear = false
+					break
+			if not clear:
+				break
+		if clear:
+			return p
+	return _random_grass_tile(rng)
 
 
 ## Пятно круглой формы из тайлов kind (не поверх друг друга — вода поверх скалы допустима).
