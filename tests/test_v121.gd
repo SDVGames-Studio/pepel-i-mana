@@ -161,27 +161,33 @@ func _test_v121_quarry() -> void:
 					if sim.map.grid[y2][x2] == sim.map.TILE_DEADROCK:
 						deadrock_seen = true
 	_check(deadrock_seen, "выработанная скала остаётся пустой породой (не травой)")
-	# на пустую породу можно поставить шахту (в радиусе 2) — у ЛЮБОЙ
-	# выработанной: шахтёр мог закончить не ту гряду, что rock_t (v1.30.1,
-	# флак по таймингу тиков на CI)
-	var mine_ok := false
-	if deadrock_seen:
-		var anchors: Array = [rock_t]
-		for y3 in sim.map.h:
-			for x3 in sim.map.w:
-				if sim.map.grid[y3][x3] == sim.map.TILE_DEADROCK:
-					anchors.append(Vector2i(x3, y3))
-		for a in anchors:
-			if mine_ok:
-				break
-			for dy in range(-2, 3):
-				if mine_ok:
+	# на пустую породу можно поставить шахту (в радиусе 2). Детерминизм
+	# (v1.30.1): шахтёр по таймингу мог выработать ИНТЕРЬЕЙР гряды — вокруг
+	# только скалы, строить негде (флак на CI). Принудительно вырабатываем
+	# КРАЙНЮЮ скалу (у травы) и проверяем правило, а не расписание шахтёра.
+	var edge_rock := Vector2i(-1, -1)
+	for y4 in sim.map.h:
+		for x4 in sim.map.w:
+			if sim.map.grid[y4][x4] != sim.map.TILE_ROCK:
+				continue
+			for d4 in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
+				var n4: Vector2i = Vector2i(x4, y4) + d4
+				if sim.map.in_bounds(n4) and sim.map.grid[n4.y][n4.x] == sim.map.TILE_GRASS:
+					edge_rock = Vector2i(x4, y4)
 					break
-				for dx in range(-2, 3):
-					var t: Vector2i = a + Vector2i(dx, dy)
-					if sim.placement_block("mine", t) == "" and sim.is_buildable_rect("mine", t):
-						mine_ok = true
-						break
+			if edge_rock != Vector2i(-1, -1):
+				break
+		if edge_rock != Vector2i(-1, -1):
+			break
+	var mine_ok := false
+	if edge_rock != Vector2i(-1, -1):
+		sim.map.grid[edge_rock.y][edge_rock.x] = sim.map.TILE_DEADROCK
+		sim.map.rock_hp.erase(edge_rock)
+		for dy in range(-2, 3):
+			for dx in range(-2, 3):
+				var t: Vector2i = edge_rock + Vector2i(dx, dy)
+				if sim.placement_block("mine", t) == "" and sim.is_buildable_rect("mine", t):
+					mine_ok = true
 		_check(mine_ok, "у пустой породы ставится шахта")
 
 
