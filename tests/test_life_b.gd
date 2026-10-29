@@ -319,6 +319,15 @@ func _test_m14_i() -> void:
 	_check(sim.map.is_walkable(water_t), "мост соединил берега")
 	_check(sim.map.bridges.has(water_t), "мост зарегистрирован в карте")
 
+	# туман ночью темнеет вместе с миром (v1.30.2, «белая река ночью»)
+	var W: Script = load("res://scripts/city_weather.gd")
+	var t_day: Color = W.night_tint(0.0)
+	var t_night: Color = W.night_tint(1.0)
+	_check(t_day.r >= 0.99 and t_day.g >= 0.99,
+			"вуаль тумана днём нейтральная")
+	_check(t_night.r <= 0.39 and t_night.b > t_night.r,
+			"вуаль тумана ночью тёмная и холодная (не белая)")
+
 	# лодка и лошадь: предметы и слот маунта
 	var items: Dictionary = _read_json("res://data/items.json")
 	var item_defs := {}

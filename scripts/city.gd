@@ -326,6 +326,8 @@ func _process(delta: float) -> void:
 	if _weather_fx != null:
 		_weather_fx.weather = sim.weather
 		_weather_fx.season = sim.season()
+		_weather_fx.night = _night_amount()
+		_weather_fx.map_span = Vector2(sim.map.w * sim.map.ts, sim.map.h * sim.map.ts)
 	_process_events()
 	_update_hover()
 	# герой не проваливается за край: позиция зажата в границах карты,
@@ -802,19 +804,28 @@ func _bld_name(type_id: String) -> String:
 	return type_id
 
 
-func _update_daylight() -> void:
+## Фактор ночи 0..1 (рассвет/закат — плавный fade). Общий для света и погоды
+## (v1.30.2: туманная вуаль темнеет вместе с миром).
+func _night_amount() -> float:
 	var day_len := float(cfg["day_length"])
 	var nf := float(cfg["night_fraction"])
 	var fade := 8.0
 	var t := fmod(sim.time, day_len)
 	var night_start := day_len * (1.0 - nf)
-	var amount := 0.0
 	if t >= night_start:
-		amount = 1.0
-	elif t >= night_start - fade:
-		amount = (t - (night_start - fade)) / fade
-	elif t <= fade:
-		amount = 1.0 - t / fade
+		return 1.0
+	if t >= night_start - fade:
+		return (t - (night_start - fade)) / fade
+	if t <= fade:
+		return 1.0 - t / fade
+	return 0.0
+
+
+func _update_daylight() -> void:
+	var day_len := float(cfg["day_length"])
+	var nf := float(cfg["night_fraction"])
+	var t := fmod(sim.time, day_len)
+	var amount := _night_amount()
 	# v1.27: свет дня задаёт солнечный цикл — характер дня и краска фазы
 	# (рассвет/золотой час/закат по палитре этого дня)
 	var sky := SKY
