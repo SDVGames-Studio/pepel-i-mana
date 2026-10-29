@@ -136,21 +136,27 @@ func _test_stage2_aspect2() -> void:
 		bridge_ok = bridge_ok and m.is_solid(water_sample)
 	_check(bridge_ok, "мост открывает воду для путей, без моста вода сплошная")
 	# v1.31: броды-мелководье — «на 10 клеток реки один проход, минимум один
-	# на реку»; брод проходим для всех; три типа воды раздельны (компоненты
-	# не смешиваются, озёро/болото не прилегают к реке)
-	var fords_ok: bool = m.fords.size() > 0
-	for f: Vector2i in m.fords:
-		if m.grid[f.y][f.x] != m.TILE_WATER or m.water_kind_at(f) != "river":
+	# на реку»; брод проходим для всех; три типа воды раздельны. Тестовые
+	# карты _make_sim без реки — броды проверяем на карте С рекой (сид 7)
+	var rm = load("res://scripts/city_map.gd").new()
+	var rcfg: Dictionary = (sim.cfg as Dictionary).duplicate(true)
+	rcfg["river"] = true
+	rcfg["map_w"] = 80
+	rcfg["map_h"] = 60
+	rm.generate(7, rcfg)
+	var fords_ok: bool = rm.fords.size() > 0
+	for f: Vector2i in rm.fords:
+		if rm.grid[f.y][f.x] != rm.TILE_WATER or rm.water_kind_at(f) != "river":
 			fords_ok = false
-		if not m.is_walkable(f):
+		if not rm.is_walkable(f):
 			fords_ok = false
 	_check(fords_ok, "броды лежат на реке и проходимы")
 	var per_river := true
 	var seen_r := {}
-	for y2 in m.h:
-		for x2 in m.w:
+	for y2 in rm.h:
+		for x2 in rm.w:
 			var rt := Vector2i(x2, y2)
-			if m.grid[rt.y][rt.x] != m.TILE_WATER or seen_r.has(rt) 					or m.water_kind_at(rt) != "river":
+			if rm.grid[rt.y][rt.x] != rm.TILE_WATER or seen_r.has(rt) 					or rm.water_kind_at(rt) != "river":
 				continue
 			var rc: Array = [rt]
 			seen_r[rt] = true
@@ -159,27 +165,27 @@ func _test_stage2_aspect2() -> void:
 			while qi2 < rc.size():
 				var ct: Vector2i = rc[qi2]
 				qi2 += 1
-				if m.fords.has(ct):
+				if rm.fords.has(ct):
 					fords_n += 1
 				for d2 in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
 					var nt: Vector2i = ct + d2
-					if nt.x >= 0 and nt.y >= 0 and nt.x < m.w and nt.y < m.h 							and not seen_r.has(nt) and m.grid[nt.y][nt.x] == m.TILE_WATER 							and m.water_kind_at(nt) == "river":
+					if nt.x >= 0 and nt.y >= 0 and nt.x < rm.w and nt.y < rm.h 							and not seen_r.has(nt) and rm.grid[nt.y][nt.x] == rm.TILE_WATER 							and rm.water_kind_at(nt) == "river":
 						seen_r[nt] = true
 						rc.append(nt)
 			if fords_n < 1 or fords_n > maxi(1, int(rc.size() / 10) + 1):
 				per_river = false
 	_check(per_river, "на каждой реке 1 брод на ~10 тайлов (минимум один)")
 	var apart := true
-	for y3 in m.h:
-		for x3 in m.w:
+	for y3 in rm.h:
+		for x3 in rm.w:
 			var at := Vector2i(x3, y3)
-			if m.grid[at.y][at.x] != m.TILE_WATER:
+			if rm.grid[at.y][at.x] != rm.TILE_WATER:
 				continue
-			var kind_here: String = m.water_kind_at(at)
+			var kind_here: String = rm.water_kind_at(at)
 			for d3 in [Vector2i(1, 0), Vector2i(0, 1)]:
 				var nb: Vector2i = at + d3
-				if nb.x < m.w and nb.y < m.h and m.grid[nb.y][nb.x] == m.TILE_WATER:
-					var kind_nb: String = m.water_kind_at(nb)
+				if nb.x < rm.w and nb.y < rm.h and rm.grid[nb.y][nb.x] == rm.TILE_WATER:
+					var kind_nb: String = rm.water_kind_at(nb)
 					if kind_here != kind_nb:
 						apart = false
 	_check(apart, "три типа водоёмов не прилегают друг к другу (река/озеро/болото раздельны)")
