@@ -657,6 +657,7 @@ func _draw_water_blobs(ts: float) -> void:
 		if area > 12.0 * ts * ts:
 			var wcol: Color = _water_river if kind == "river" else _water_lake
 			_stroke_inside(loop, 0.955, 1.5, Color(wcol.lightened(0.25), 0.45))
+	_draw_fords(ts)
 	_draw_swamp_blobs(ts)
 	# украшения по тайлам внутри контура — у каждой воды свои
 	for y in map.h:
@@ -695,6 +696,32 @@ func _draw_water_blobs(ts: float) -> void:
 				var reed_rarity := 5 if near_kind == "river" else 23
 				if _hash(x * 3, y * 5, 23) % reed_rarity < 3:
 					_draw_reeds(Vector2(t) * ts, ts, x, y)
+
+
+## Мелководье-брод (v1.31): тайл реки, где переходят вброд — светлая
+## вода, видно песчаное дно и камешки, рябь по краям. Читается проходом.
+func _draw_fords(ts: float) -> void:
+	for t: Vector2i in map.fords:
+		if not map.in_bounds(t) or map.grid[t.y][t.x] != map.TILE_WATER:
+			continue
+		var rect := Rect2(Vector2(t) * ts, Vector2(ts, ts))
+		var shallow := _water_river.lightened(0.34)
+		_drawer.draw_rect(rect, shallow)
+		# песчаное дно проступает сквозь воду
+		var h1 := _hash(t.x, t.y, 77)
+		for i in 3:
+			var h2 := _hash(t.x * 11 + i, t.y * 7 + i, 100)
+			var c := rect.position + Vector2(4.0 + float(h2 % int(ts - 8.0)),
+					4.0 + float((h2 / 7) % int(ts - 8.0)))
+			_drawer.draw_circle(c, 2.0 + float(h2 % 2), Color("#c8b183", 0.65))
+		# рябь по углам и камешки-ориентиры
+		_drawer.draw_arc(rect.position + Vector2(ts * 0.3, ts * 0.3), ts * 0.18,
+				0.0, PI, 8, Color(1.0, 1.0, 0.9, 0.5), 1.0)
+		_drawer.draw_arc(rect.position + Vector2(ts * 0.7, ts * 0.62), ts * 0.16,
+				PI, TAU, 8, Color(1.0, 1.0, 0.9, 0.5), 1.0)
+		if h1 % 2 == 0:
+			_drawer.draw_circle(rect.get_center() + Vector2(-3.0, 2.0), 1.6, Color("#8a8478"))
+			_drawer.draw_circle(rect.get_center() + Vector2(4.0, -2.0), 1.2, Color("#9a958a"))
 
 
 ## Тип водоёма по силуэту (правки приёмки v1.29.1: «если болото то болото,

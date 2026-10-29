@@ -29,6 +29,7 @@ var tree_growth := {}           # Vector2i -> float: дни роста дере�
 var logs := {}                  # Vector2i -> {size: int}: поваленные брёвна на земле (v1.21.2) —
                                 # герой валит, лесопилка подбирает и пилит
 var bridges := {}               # Vector2i -> true: мосты через воду (M14-I)
+var fords := {}                 # Vector2i -> true: мелководье-брод (v1.31)
 var water_kind := {}            # Vector2i -> "lake"|"river"|"swamp" — тип водоёма
                                 # для отрисовки (цвет воды, песчаная кромка)
 var anomaly_tile := Vector2i.ZERO   # вход в данж (у аномалии)
@@ -52,11 +53,13 @@ func generate(seed_value: int, params: Dictionary) -> void:
 	tree_growth = {}
 	logs = {}
 	bridges = {}
+	fords = {}
 	for attempt in 20:
 		_generate_once(seed_value + attempt * 1013, params)
 		if _connected():
 			break
 	classify_water()
+	mark_fords()
 	_setup_astar()
 	mark_terrain_solid()
 
@@ -77,6 +80,9 @@ func mark_terrain_solid() -> void:
 			astar_raider.set_point_solid(t, solid)
 	for p: Vector2i in bridges:
 		_apply_tile_weight(p)
+	for p: Vector2i in fords:
+		astar.set_point_weight_scale(p, 1.6)
+		astar_raider.set_point_weight_scale(p, 1.6)
 
 
 ## Вес тайла для A*: земля 1.0, дорога 0.4 (set_road), мост — 0.7
@@ -240,6 +246,37 @@ func _generate_once(seed_value: int, params: Dictionary) -> void:
 ## осколки выглядели «глазами-линзами» с песчаной кромкой. Компонент воды, в
 ## котором НЕТ ни одного тайла озёр/болот (они перечислены до реки) и меньше
 ## 20 тайлов, — речной обрывок: возвращаем траву.
+## Мелководье-броды (v1.31, заказчик): «на 10 клеток реки один проход,
+## минимум один на реку» — по броду герой и жители переходят реку пешком.
+## Детерминировано по компоненте (порядок тайлов по y,x) — одинаково
+## после загрузки сейва. Публичная: save_game зовёт для старых сейвов.
+func mark_fords() -> void:
+	fords = {}
+	var seen := {}
+	for y in h:
+		for x in w:
+			var start := Vector2i(x, y)
+			if grid[y][x] != TILE_WATER or String(water_kind.get(start, "")) != "river" or seen.has(start):
+				continue
+			var comp: Array = [start]
+			seen[start] = true
+			var qi := 0
+			while qi < comp.size():
+				var t: Vector2i = comp[qi]
+				qi += 1
+				for d in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
+					var n: Vector2i = t + d
+					if in_bounds(n) and grid[n.y][n.x] == TILE_WATER 							and not seen.has(n) and String(water_kind.get(n, "")) == "river":
+						seen[n] = true
+						comp.append(n)
+			comp.sort_custom(func(a, b) -> bool:
+				return a.y < b.y or (a.y == b.y and a.x < b.x))
+			var want := maxi(1, int(comp.size() / 10))
+			for i in want:
+				var idx := clampi(int(float(i) * float(comp.size()) / float(want)), 0, comp.size() - 1)
+				fords[comp[idx]] = true
+
+
 func _trim_river_stubs(keep: Dictionary) -> void:
 	var seen := {}
 	for y in h:
@@ -365,6 +402,18 @@ func _generate_river(rng: RandomNumberGenerator) -> void:
 		var cx := base_x + sin(float(y) / period * TAU + phase) * amp
 		# наклон русла ограничен — река течёт плавно, без ступенек
 		cx = clampf(cx, last_cx - 0.6, last_cx + 0.6) if last_cx > -90.0 else cx
+		# v1.31: река ОБХОДИТ озёра и болота — три типа воды не сливаются
+		# («не должны быть одно в другом», заказчик)
+		for side in 8:
+			var blocked := false
+			for dx2 in 2:
+				var tx := int(cx) + dx2
+				if tx >= 1 and tx < w - 1 and grid[y][tx] == TILE_WATER:
+					blocked = true
+					break
+			if not blocked:
+				break
+			cx += 1.0 if side < 4 else -1.0
 		last_cx = cx
 		for x in range(maxi(1, int(cx) - 2), mini(w - 1, int(cx) + 3)):
 			# городское ядро без реки: старт/аномалия/выход + кольцо стен
@@ -470,7 +519,7 @@ func tree_kind(tile: Vector2i) -> int:
 ## Проходимость ландшафта (без учёта зданий). Руда и выработанный массив —
 ## как скала: непроходимы. Мост (M14-I) делает водный тайл проходимым.
 func is_nature_walkable(p: Vector2i) -> bool:
-	if in_bounds(p) and bridges.has(p):
+	if in_bounds(p) and (bridges.has(p) or fords.has(p)):
 		return true
 	if not in_bounds(p):
 		return false
