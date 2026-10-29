@@ -161,14 +161,27 @@ func _test_v121_quarry() -> void:
 					if sim.map.grid[y2][x2] == sim.map.TILE_DEADROCK:
 						deadrock_seen = true
 	_check(deadrock_seen, "выработанная скала остаётся пустой породой (не травой)")
-	# на пустую породу можно поставить шахту (в радиусе 2)
+	# на пустую породу можно поставить шахту (в радиусе 2) — у ЛЮБОЙ
+	# выработанной: шахтёр мог закончить не ту гряду, что rock_t (v1.30.1,
+	# флак по таймингу тиков на CI)
 	var mine_ok := false
-	for dy in range(-2, 3):
-		for dx in range(-2, 3):
-			var t: Vector2i = rock_t + Vector2i(dx, dy)
-			if sim.placement_block("mine", t) == "" and sim.is_buildable_rect("mine", t):
-				mine_ok = true
 	if deadrock_seen:
+		var anchors: Array = [rock_t]
+		for y3 in sim.map.h:
+			for x3 in sim.map.w:
+				if sim.map.grid[y3][x3] == sim.map.TILE_DEADROCK:
+					anchors.append(Vector2i(x3, y3))
+		for a in anchors:
+			if mine_ok:
+				break
+			for dy in range(-2, 3):
+				if mine_ok:
+					break
+				for dx in range(-2, 3):
+					var t: Vector2i = a + Vector2i(dx, dy)
+					if sim.placement_block("mine", t) == "" and sim.is_buildable_rect("mine", t):
+						mine_ok = true
+						break
 		_check(mine_ok, "у пустой породы ставится шахта")
 
 
