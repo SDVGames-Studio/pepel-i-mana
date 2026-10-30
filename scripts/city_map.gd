@@ -41,6 +41,7 @@ var world_exit_tile := Vector2i.ZERO  # край города — выход н�
 # уровнями. Отвес плато непроходим; единственный путь наверх — лестница.
 var height := {}                # Vector2i -> int
 var stairs := {}                # Vector2i -> true
+var plateau_cfg := {}           # тюнинг рельефа (city.json → plateaus) — лифт и пр.
 var astar = null                 # пути жителей/героя: ворота всегда проходимы
 var astar_raider = null          # пути мутантов: закрытые ворота — стена (v1.26)
 
@@ -67,6 +68,7 @@ func generate(seed_value: int, params: Dictionary, hydro := {}) -> void:
 	river_origin = {}
 	height = {}
 	stairs = {}
+	plateau_cfg = params.get("plateaus", {})
 	var river_on := bool(hydro.get("river", params.get("river", true)))
 	var lakes_n := int(params["lakes"])
 	var swamps_n := int(params.get("swamps", 2))
@@ -350,6 +352,20 @@ func height_at(p: Vector2i) -> int:
 ## Тайл-лестница — единственный разрешённый переход между уровнями.
 func is_stair(p: Vector2i) -> bool:
 	return stairs.has(p)
+
+
+## Визуальный подъём плато (v1.36.1, правка приёмки: «нет ощущения
+## подъёма»): пикселей на уровень высоты — юниты, деревья и здания на
+## плато стоят выше равнины, и плоскость плато читается подъёмом, а не
+## плоской текстурой. Тюнинг: city.json → plateaus → lift.
+func plateau_lift_px() -> float:
+	return float(ts) * float(plateau_cfg.get("lift", 0.30))
+
+
+## Секунды анимации подъёма на один уровень — по лестнице юнит именно
+## «поднимается», а не телепортируется на новую высоту.
+func plateau_lift_time() -> float:
+	return maxf(0.05, float(plateau_cfg.get("lift_time", 0.30)))
 
 
 ## Переход между соседями по высоте: тот же уровень или лестница на

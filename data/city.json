@@ -13,7 +13,9 @@
 		"radius_max": 5,
 		"terrace_chance": 0.45,
 		"stairs_max": 2,
-		"core_clear": 12
+		"core_clear": 12,
+		"lift": 0.34,
+		"lift_time": 0.30
 	},
 	"trees": 190,
 	"resident_speed": 70.0,

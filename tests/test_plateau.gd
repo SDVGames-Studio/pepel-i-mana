@@ -221,3 +221,23 @@ func _raider_hp_after(sim, raider: Dictionary, from_tile: Vector2i,
 	var n: int = sim.hero_slash(sim.map.tile_center_px(from_tile), facing,
 			float(sim.map.ts) * 2.0, 90.0, dmg)
 	return int(raider.get("hp", -1)) if n > 0 else -1
+
+
+## Визуальный подъём (v1.36.1, правка приёмки «нет ощущения подъёма»):
+## юниты/статика на плато приподняты над равниной, подъём анимируется
+## по лестнице. Данные — на карте (city_view только потребляет).
+func _test_plateau_lift() -> void:
+	print("[Многоуровневый рельеф: визуальный подъём]")
+	var cfg: Dictionary = _read_json("res://data/city.json")
+	var lift_cfg: float = float(cfg.get("plateaus", {}).get("lift", 0.30))
+	var map = load("res://scripts/city_map.gd").new()
+	map.generate(42, cfg)
+	_check(is_equal_approx(map.plateau_lift_px(), float(map.ts) * lift_cfg),
+			"подъём плато берётся из city.json → plateaus.lift (%d%% тайла за уровень)"
+					% int(round(lift_cfg * 100.0)))
+	_check(map.plateau_lift_px() >= 6.0,
+			"подъём заметен глазу (≥6 px за уровень, сейчас %.1f)" % map.plateau_lift_px())
+	_check(map.plateau_lift_time() >= 0.1,
+			"подъём анимируется по лестнице (lift_time %.2f с за уровень)"
+					% map.plateau_lift_time())
+	_check(map.height.size() > 0, "карта отдаёт уровни для подъёма юнитов")

@@ -73,6 +73,24 @@ func _goto_plateau(city: Node, game: Node) -> void:
 	if hero == null or stair.x < 0:
 		print("shot_plateau: героя или лестницы нет")
 		return
+	if OS.get_environment("SHOT_TOP") != "":
+		# v1.36.1: герой стоит НА плато у южной кромки — виден визуальный
+		# подъём юнита над равниной (и кромка-срез с тенью)
+		var rim := stair
+		for t: Vector2i in best:
+			if map.height_at(t) != map.height_at(stair):
+				continue
+			var south: Vector2i = t + Vector2i(0, 1)
+			if map.in_bounds(south) and map.height_at(south) < map.height_at(t):
+				if rim == stair or t.y > rim.y:
+					rim = t
+		hero.position = (Vector2(rim) + Vector2(0.5, 0.5)) * map.ts
+		var cam2: Camera2D = hero.get_node_or_null("Camera")
+		if cam2 != null:
+			cam2.zoom = Vector2(2.6, 2.6)
+		print("shot_plateau: герой НА плато у кромки %s (уровень %d)"
+				% [rim, map.height_at(rim)])
+		return
 	# камера у подножия лестницы — виден и срез, и ступени, и тень
 	var ground: Vector2i = stair
 	for d in [Vector2i(0, 1), Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, -1)]:

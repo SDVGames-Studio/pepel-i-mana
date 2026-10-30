@@ -52,6 +52,11 @@ var _bld_short: Dictionary = {}     # тип здания → ключ крат�
 var _bld_loc: Dictionary = {}       # тип здания → ключ полного названия (bld.*)
 var _zone_colors: Dictionary = {}
 var city = null                 # сцена города — для проверки цели зачарования (неглубокая ссылка)
+# v1.36.1 (правка приёмки «нет ощущения подъёма»): сглаженный визуальный
+# подъём юнитов по уровням рельефа — ключ → текущий подъём в пикселях.
+# Стоящий на плато юнит выше равнины на уровень×lift; по лестнице высота
+# ДОЕЗЖАЕТ к цели (lift_time на уровень) — герой именно поднимается.
+var _lift_db: Dictionary = {}
 
 # цвета куч по ресурсу (M6)
 var _pile_colors := {
@@ -327,6 +332,50 @@ func _process(delta: float) -> void:
 	queue_redraw()
 
 
+## Высота юнита в пикселях (уровень тайла × lift) — мгновенное значение.
+func _lift_target(pos: Vector2) -> float:
+	return float(map.height_at(map.tile_of_px(pos))) * map.plateau_lift_px()
+
+
+## Сглаженный подъём юнита: высота анимируется к цели со скоростью
+## «один уровень за lift_time» — на лестнице виден шаг вверх/вниз. Ключи —
+## id юнитов; на равнине записи не копятся (стираются при нуле).
+func _entity_lift(key: String, pos: Vector2) -> float:
+	if _lift_db.size() > 512:
+		_lift_db.clear()   # после больших волн: перезаймётся незаметно
+	var target := _lift_target(pos)
+	if not _lift_db.has(key):
+		_lift_db[key] = target
+		return target
+	var cur: float = _lift_db[key]
+	if cur != target:
+		var speed: float = map.plateau_lift_px() / map.plateau_lift_time()
+		cur = move_toward(cur, target, speed * get_process_delta_time())
+	if cur == 0.0 and target == 0.0:
+		_lift_db.erase(key)
+	else:
+		_lift_db[key] = cur
+	return cur
+
+
+## Подъём статичного объекта (дерево/здание/куча) — без анимации,
+## статика не ходит: просто уровень × lift.
+func _static_lift(tile: Vector2i) -> float:
+	return float(map.height_at(tile)) * map.plateau_lift_px()
+
+
+## Подъём здания: прямоугольник 2×2 может стоять на кромке двух уровней —
+## берём МАКСИМАЛЬНЫЙ уровень клеток, вся коробка на одной высоте.
+func _bld_lift(b: Dictionary) -> float:
+	var t: Vector2i = b["tile"]
+	var w: int = sim.bld_w(b)
+	var lv := 0
+	for dy in w:
+		for dx in w:
+			lv = maxi(lv, map.height_at(t + Vector2i(dx, dy)))
+	return float(lv) * map.plateau_lift_px()
+
+
 ## Пересобрать кэш деревьев (вызывает city.gd при sim.terrain_dirty).
 ## v1.22: заодно пересобирается статичный сортированный набор (деревья+здания)
 ## — снос/перенос здания тоже меняет порядок слоя.
@@ -341,6 +390,9 @@ func mark_trees_dirty() -> void:
 ## дерева), в кадре одна команда текстуры вместо круга тени + спрайта.
 func _build_tree_desc(tile: Vector2i, ts: float) -> Array:
 	var bottom := Vector2(tile.x * ts + ts / 2.0, tile.y * ts + ts * 0.92)
+	# v1.36.1: дерево на плато стоит выше равнины — вся статика плато
+	# приподнята на уровень×lift, одна плоскость с юнитами
+	bottom.y -= _static_lift(tile)
 	if map.saplings.has(tile):
 		return [bottom.y, "sapling", tile, null, Rect2(), Rect2(), bottom, 0.0]
 	var kind: int = map.tree_kind(tile)
@@ -433,22 +485,25 @@ func _draw_world_sorted() -> void:
 		_static_sorted_blds = sim.buildings.size()
 		_static_sorted = _trees_cache.duplicate(false)
 		for b in sim.buildings:
-			# Y-якорь — нижняя линия прямоугольника здания (2×2: tile.y + 1)
+			# Y-якорь — нижняя линия прямоугольника здания (2×2: tile.y + 1);
+			# v1.36.1: здание на плато приподнято вместе с плоскостью плато
 			var bw: int = sim.bld_w(b)
-			_static_sorted.append([float(Vector2(b["tile"]).y + bw - 1) * ts + ts - 2.0, "bld", b])
+			_static_sorted.append([float(Vector2(b["tile"]).y + bw - 1) * ts + ts - 2.0
+					- _bld_lift(b), "bld", b])
 		_static_sorted.sort_custom(func(a, b) -> bool: return float(a[0]) < float(b[0]))
 	# динамический набор — короткий: брёвна, останки, кучи, звери, скот, люди, герой
 	var dyn: Array = []
 	# поваленные брёвна (v1.21.2): герой валит — лесопилка унесёт и распилит
 	for tile: Vector2i in map.logs.keys():
-		dyn.append([float(tile.y) * ts + ts * 0.78, "log", tile])
+		dyn.append([float(tile.y) * ts + ts * 0.78 - _static_lift(tile), "log", tile])
 	# останки павших врагов (v1.23): лежат, пока кто-то не снесёт на кладбище
 	for c in sim.corpses:
 		var ct: Vector2i = c["tile"]
-		dyn.append([float(ct.y) * ts + ts * 0.7, "corpse", c])
+		dyn.append([float(ct.y) * ts + ts * 0.7 - _static_lift(ct), "corpse", c])
 	for b in sim.buildings:
 		if bool(b["done"]) and (b as Dictionary).has("pile") and _pile_total(b) >= 0.5:
-			dyn.append([float(Vector2(b["tile"]).y + sim.bld_w(b) - 1) * ts + ts * 0.88, "pile", b])
+			dyn.append([float(Vector2(b["tile"]).y + sim.bld_w(b) - 1) * ts + ts * 0.88
+					- _bld_lift(b), "pile", b])
 	for a in sim.animals:
 		dyn.append([Vector2(a["pos"]).y, "animal", a])
 	for a in sim.livestock:
@@ -591,6 +646,7 @@ func _draw_founded_cemetery() -> void:
 func _draw_corpse(c: Dictionary) -> void:
 	var ts := float(map.ts)
 	var pos: Vector2 = map.tile_center_px(Vector2i(c["tile"])) + Vector2(0, ts * 0.15)
+	pos.y -= _static_lift(Vector2i(c["tile"]))   # v1.36.1: плоскость плато
 	var rot := clampf(float(c.get("rot", 0.0)) / 3.0, 0.0, 1.0)
 	var col := Color(0.24, 0.2, 0.18).lerp(Color(0.42, 0.4, 0.34), rot)
 	_draw_shadow(pos + Vector2(0, 4), ts * 0.34)
@@ -611,6 +667,7 @@ func _draw_corpse(c: Dictionary) -> void:
 func _draw_log_at(tile: Vector2i) -> void:
 	var ts := float(map.ts)
 	var c: Vector2 = map.tile_center_px(tile) + Vector2(0, ts * 0.2)
+	c.y -= _static_lift(tile)   # v1.36.1: плоскость плато
 	var size: int = int((map.logs[tile] as Dictionary).get("size", 1))
 	var w := ts * 0.55 + ts * 0.18 * float(size)
 	var col := Color("#8d6e63") if size < 3 else Color("#6d4c33")
@@ -711,6 +768,7 @@ func _draw_pile(b: Dictionary) -> void:
 	if total < 0.5:
 		return
 	var corner: Vector2 = Vector2(b["tile"]) * ts + Vector2(ts * 0.78, ts * 0.88)
+	corner.y -= _bld_lift(b)   # v1.36.1: куча стоит на плоскости плато
 	var size := 8.0 + minf(10.0, total / 3.0)
 	var tint: Color = _pile_colors.get(key, Color(0.8, 0.8, 0.8)).lightened(0.25)
 	Assets.draw_ref(self, PILE_SPRITES.get(key, "k:73"), corner, size, false, tint)
@@ -720,6 +778,8 @@ func _draw_pile(b: Dictionary) -> void:
 ## остался, добавились олени, кабаны, птицы и волки (векторные, в стиле мира).
 func _draw_animal(a: Dictionary) -> void:
 	var pos: Vector2 = a["pos"]
+	# v1.36.1: зверь на плато стоит выше равнины (подъём сглаживается)
+	pos.y -= _entity_lift("an%d" % int(a["id"]), a["pos"])
 	var vel := Vector2.ZERO
 	var pth: PackedVector2Array = a.get("path", PackedVector2Array())
 	if not pth.is_empty():
@@ -771,6 +831,7 @@ func _draw_fauna_animal(a: Dictionary, kind: String, pos: Vector2, vel: Vector2)
 ## Скот на пастбищах (M10): коровы/овцы/свиньи/куры, детёныши мельче.
 func _draw_stock(a: Dictionary) -> void:
 	var pos: Vector2 = a["pos"]
+	pos.y -= _entity_lift("stk%d" % int(a["id"]), a["pos"])   # v1.36.1: высота плато
 	var kind := String(a["kind"])
 	var adult := bool(a["adult"])
 	var size := 26.0 if adult else 16.0
@@ -786,6 +847,7 @@ func _draw_stock(a: Dictionary) -> void:
 ## у палатки периодически выкрикивает зазывку-облачко.
 func _draw_wanderer(w: Dictionary) -> void:
 	var pos: Vector2 = w["pos"]
+	pos.y -= _entity_lift("wand%d" % int(w["id"]), w["pos"])   # v1.36.1: высота плато
 	var pth: PackedVector2Array = w.get("path", PackedVector2Array())
 	var moving := not pth.is_empty() and pos.distance_to(pth[pth.size() - 1]) > 2.0
 	var dir := String(w.get("dir", "front"))
@@ -856,6 +918,9 @@ func _draw_building(b: Dictionary) -> void:
 	var ts := float(map.ts)
 	var bw: int = sim.bld_w(b)
 	var rect := Rect2(Vector2(b["tile"]) * ts, Vector2(ts * float(bw), ts * float(bw)))
+	# v1.36.1: здание на плато приподнято вместе с плоскостью плато —
+	# вся коробка (заливка, дверь, метки, надпись) на высоте уровня
+	rect.position.y -= _bld_lift(b)
 	var type_id := String(b["type"])
 	var col: Color = _bld_fill.get(type_id, Color(0.91, 0.85, 0.62))
 	var anchor: Vector2 = Vector2(rect.get_center().x, rect.end.y - 2.0)
@@ -1036,6 +1101,7 @@ func _draw_raider(r: Dictionary) -> void:
 	var ref: String = refs.get(kind, "e:mutant")
 	var size := rad * 2.8
 	var lift := 0.0
+	var hl := _entity_lift("raid%d" % int(r["id"]), pos)   # v1.36.1: высота плато
 	var tint := Color.WHITE
 	if kind == "forest_spirit" or kind == "forest_boss":
 		# духи парят: синус повыше и медленнее, свечение бирюзой
@@ -1046,12 +1112,13 @@ func _draw_raider(r: Dictionary) -> void:
 	var pth: PackedVector2Array = r.get("path", PackedVector2Array())
 	if not pth.is_empty():
 		vx = (pth[0] - pos).x
-	Assets.draw_ref(self, ref, pos + Vector2(0, -absf(sin(phase)) * 1.5 - lift), size, vx < -1.0, tint)
+	Assets.draw_ref(self, ref, pos + Vector2(0, -absf(sin(phase)) * 1.5 - lift - hl), size, vx < -1.0, tint)
 	if int(r["hp"]) < int(r["max_hp"]):
 		var frac := clampf(float(r["hp"]) / float(r["max_hp"]), 0.0, 1.0)
-		draw_rect(Rect2(pos + Vector2(-12, -rad - 8), Vector2(24, 4)), Color(0.15, 0.1, 0.1))
-		draw_rect(Rect2(pos + Vector2(-12, -rad - 8), Vector2(24.0 * frac, 4)), Color(0.9, 0.25, 0.25))
+		draw_rect(Rect2(pos + Vector2(-12, -rad - 8 - hl), Vector2(24, 4)), Color(0.15, 0.1, 0.1))
+		draw_rect(Rect2(pos + Vector2(-12, -rad - 8 - hl), Vector2(24.0 * frac, 4)), Color(0.9, 0.25, 0.25))
 	# осадный мутант и босс леса выделены — видно, кто главный
+	# (кольцо — метка тайла, остаётся на «земле» без лифта)
 	if kind == "brute" or kind == "forest_boss":
 		var ring := Color(0.9, 0.3, 0.2, 0.6) if kind == "brute" else Color(0.5, 0.9, 0.4, 0.7)
 		draw_arc(pos, rad + 3.0, 0.0, TAU, 20, ring, 2.0)
@@ -1128,6 +1195,9 @@ func _draw_resident(r: Dictionary) -> void:
 	var phase := float(r["id"]) * 1.7 + _anim_time * (7.0 if moving else 1.5)
 	var bob := absf(sin(phase)) * (1.6 if moving else 0.4)
 	var radius := 7.0 if child else 9.0
+	# v1.36.1: стоя на плато, житель выше равнины (подъём анимируется
+	# на лестнице) — высота ощущается, а не плоская текстура
+	var lift := _entity_lift("res%d" % int(r["id"]), pos)
 	var ail := String(r.get("ail", ""))
 	if ail == "sick":
 		col = col.lerp(Color(0.7, 0.95, 0.6), 0.5)
@@ -1135,7 +1205,7 @@ func _draw_resident(r: Dictionary) -> void:
 		col = col.lerp(Color(1.0, 0.45, 0.45), 0.5)
 	if sleeping:
 		col = col.darkened(0.4)
-	var center := pos + Vector2(0, -3.0 - bob)
+	var center := pos + Vector2(0, -3.0 - bob - lift)
 	# тело — готовая текстурка (v1.21.5): одна команда вместо пяти
 	var body := _res_sprite(col, radius)
 	var half := float(body.get_width()) * 0.5
@@ -1153,23 +1223,23 @@ func _draw_resident(r: Dictionary) -> void:
 		draw_line(top + Vector2(-4.0 * clash, -3.0), top + Vector2(4.0 * clash, 3.0), Color("#e0e0e0"), 1.5)
 		draw_line(top + Vector2(-4.0 * clash, 3.0), top + Vector2(4.0 * clash, -3.0), Color("#e0e0e0"), 1.5)
 	# груз носильщика (M6): узел цвета ресурса; бревно/сырой камень (v1.21) —
-	# покрупнее: видно, что тащит лесоруб и шахтёр
+	# покрупнее: видно, что тащит лесоруб и шахтёр (несёт на теле — с лифтом)
 	if float(r.get("carry", 0.0)) > 0.0:
 		var bag: Color = _pile_colors.get(String(r.get("carry_res", "")), Color(0.8, 0.7, 0.5))
-		draw_circle(pos + Vector2(radius + 2.0, -4.0), 3.4, bag.darkened(0.1))
-		draw_circle(pos + Vector2(radius + 1.2, -4.8), 1.6, bag.lightened(0.15))
+		draw_circle(center + Vector2(radius + 2.0, -1.0), 3.4, bag.darkened(0.1))
+		draw_circle(center + Vector2(radius + 1.2, -1.8), 1.6, bag.lightened(0.15))
 	if int(r.get("log_size", 0)) > 0:
 		var log_col := Color("#8d6e63") if int(r["log_size"]) < 3 else Color("#6d4c33")
-		draw_circle(pos + Vector2(radius + 3.0, -4.0), 4.2, log_col.darkened(0.2))
-		draw_circle(pos + Vector2(radius + 1.8, -5.2), 1.8, log_col.lightened(0.2))
+		draw_circle(center + Vector2(radius + 3.0, -1.0), 4.2, log_col.darkened(0.2))
+		draw_circle(center + Vector2(radius + 1.8, -2.2), 1.8, log_col.lightened(0.2))
 	elif float(r.get("raw", 0.0)) > 0.0 or float(r.get("carry_iron", 0.0)) > 0.0 \
 			or float(r.get("carry_stone", 0.0)) > 0.0:
-		draw_circle(pos + Vector2(radius + 3.0, -4.0), 4.2, Color("#9e9e9e").darkened(0.15))
-		draw_circle(pos + Vector2(radius + 1.8, -5.2), 1.8, Color("#bdbdbd"))
+		draw_circle(center + Vector2(radius + 3.0, -1.0), 4.2, Color("#9e9e9e").darkened(0.15))
+		draw_circle(center + Vector2(radius + 1.8, -2.2), 1.8, Color("#bdbdbd"))
 	# разговор-облачко (M12): реплика над головой болтающих
 	var chat_key := String(r.get("chat_key", ""))
 	if chat_key != "" and String(r["state"]) == "chat":
-		_draw_speech_bubble(pos, Loc.t(chat_key))
+		_draw_speech_bubble(center, Loc.t(chat_key))
 
 
 func _is_elder_golem(r: Dictionary) -> bool:
@@ -1194,8 +1264,11 @@ func _draw_speech_bubble(pos: Vector2, text: String) -> void:
 
 ## Герой в общем сортированном слое (M12): тело и меч рисует сам герой
 ## в переданный canvas, спрайт-нода в городе скрыта.
+## v1.36.1: на плато герой стоит выше равнины (подъём анимируется на
+## лестнице) — высота ощущается, а не выглядит плоской текстурой.
 func _draw_hero(hero) -> void:
-	hero.draw_body(self, hero.global_position)
+	var lift := _entity_lift("hero", hero.global_position)
+	hero.draw_body(self, hero.global_position + Vector2(0, -lift))
 
 
 func _draw_ghost() -> void:
