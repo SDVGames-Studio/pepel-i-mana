@@ -442,6 +442,54 @@ func _shrunk_loop(loop: PackedVector2Array, f: float) -> PackedVector2Array:
 var _fill_debug_count := 0
 
 
+## Прогоны контура, где наружная нормаль смотрит в сторону dir_v (общая
+## геометрия «языка высоты»: v1.37 — срез/тень скал, v1.37.1 — объём озёр).
+## Возвращает массив прогонов [[точка, нормаль]...] по порядку обхода.
+func dir_runs(loop: PackedVector2Array, c: Vector2, dir_v: Vector2,
+		dot_min: float, min_len: int) -> Array:
+	var runs: Array = []
+	var run: Array = []
+	var n := loop.size()
+	for i in n + 1:
+		var idx := i % n
+		var p: Vector2 = loop[idx]
+		var q: Vector2 = loop[(idx + 1) % n]
+		var dir := q - p
+		if dir.length() < 0.001:
+			continue
+		var nrm := Vector2(dir.y, -dir.x).normalized()
+		if nrm.dot(p - c) < 0.0:
+			nrm = -nrm   # наружу от центроида
+		if nrm.dot(dir_v) >= dot_min:
+			run.append([p, nrm])
+		else:
+			if run.size() >= min_len:
+				runs.append(run)
+			run = []
+	if run.size() >= min_len:
+		runs.append(run)
+	return runs
+
+
+## Обводка прогона со смещением вдоль нормали: off>0 — ВНУТРЬ региона
+## (минус наружная нормаль), тень/вынос наружу — stroke_run_out.
+func stroke_run(run: Array, off: float, width: float, col: Color) -> void:
+	var pts := PackedVector2Array()
+	for e in run:
+		pts.append((e[0] as Vector2) - (e[1] as Vector2) * off)
+	pts.append(pts[0])
+	_drawer.draw_polyline(pts, col, width)
+
+
+## Обводка прогона со смещением НАРУЖУ (тень на траве за контуром).
+func stroke_run_out(run: Array, off: float, width: float, col: Color) -> void:
+	var pts := PackedVector2Array()
+	for e in run:
+		pts.append((e[0] as Vector2) + (e[1] as Vector2) * off)
+	pts.append(pts[0])
+	_drawer.draw_polyline(pts, col, width)
+
+
 ## Заливка региона: полигон (контур теперь простой — починен сшивкой),
 ## при отказе триангуляции — деградация к тайлам по центрам.
 ## Заливка региона: кэшированная триангуляция (быстрый путь, v1.28.1) или

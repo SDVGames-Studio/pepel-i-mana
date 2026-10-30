@@ -65,9 +65,15 @@ func draw_blobs(ts: float) -> void:
 		var base := base_color().lightened(opt("tone_amp", 0.05) * tone - opt("tone_amp", 0.05) * 0.5)
 		var area: float = t._loop_area(loop)
 		if area <= 6.0 * ts * ts:
-			# малый валун: без кромок — просто масса с тёмным подножием
+			# малый валун/руда (v1.37.1): тоже читается приподнятым —
+			# мини-срез (2 тона) и тень, но без штрихов и зелени
+			_foot_shadow(loop, c, ts)
 			t._fill_loop_cached(loop, entry["tris"], base)
-			_stroke_bottom_rim(loop, ts, base)
+			_stroke_run(run_of(loop, c), 0.0, 2.0, base.darkened(opt("cut_dark", 0.30) + 0.10))
+			_stroke_run(run_of(loop, c), ts * 0.08, ts * 0.16,
+					base.darkened(opt("cut_dark", 0.30)))
+			_stroke_run(run_of(loop, c), ts * 0.20, ts * 0.08,
+					base.lightened(opt("cut_light", 0.14)))
 			continue
 		# 1) ТЕНЬ у подножия — ДО заливки: мягкие полосы на траве к югу
 		_foot_shadow(loop, c, ts)
@@ -105,41 +111,27 @@ func draw_blobs(ts: float) -> void:
 			draw_tile_detail(x, y, g == t.map.TILE_ORE, ts)
 
 
-## Прогоны контура, где наружная нормаль смотрит в сторону dir_v
-## (юг — тень/срез, восток — ребро): [[p, нормаль]...] подряд по обходу.
+## Весь южный прогон одним куском (для малых масс — без дробления).
+func run_of(loop: PackedVector2Array, c: Vector2) -> Array:
+	var runs: Array = t.dir_runs(loop, c, Vector2(0, 1), 0.15, 3)
+	if runs.is_empty():
+		runs = t.dir_runs(loop, c, Vector2(0, -1), 0.15, 3)
+	return runs[0] if not runs.is_empty() else []
+
+
+## Прогоны контура — общая геометрия city_terrain.dir_runs (v1.37.1);
+## здесь только тонкие обёртки под старые имена.
 func _dir_runs(loop: PackedVector2Array, c: Vector2, dir_v: Vector2,
 		dot_min: float, min_len: int) -> Array:
-	var runs: Array = []
-	var run: Array = []
-	var n := loop.size()
-	for i in n + 1:
-		var idx := i % n
-		var p: Vector2 = loop[idx]
-		var q: Vector2 = loop[(idx + 1) % n]
-		var dir := q - p
-		if dir.length() < 0.001:
-			continue
-		var nrm := Vector2(dir.y, -dir.x).normalized()
-		if nrm.dot(p - c) < 0.0:
-			nrm = -nrm   # наружу от центроида
-		if nrm.dot(dir_v) >= dot_min:
-			run.append([p, nrm])
-		else:
-			if run.size() >= min_len:
-				runs.append(run)
-			run = []
-	if run.size() >= min_len:
-		runs.append(run)
-	return runs
+	return t.dir_runs(loop, c, dir_v, dot_min, min_len)
 
 
-## Обводка прогона со смещением вдоль нормали (отрицательное — внутрь массы).
 func _stroke_run(run: Array, off: float, width: float, col: Color) -> void:
-	var pts := PackedVector2Array()
-	for e in run:
-		pts.append((e[0] as Vector2) - (e[1] as Vector2) * off)
-	pts.append(pts[0])
-	t._drawer.draw_polyline(pts, col, width)
+	t.stroke_run(run, off, width, col)
+
+
+func _stroke_run_off(run: Array, off: float, width: float, col: Color) -> void:
+	t.stroke_run_out(run, off, width, col)
 
 
 ## Трёхтоновый СРЕЗ по южной дуге (снизу вверх от контура: контактное
@@ -187,13 +179,13 @@ func _foot_shadow(loop: PackedVector2Array, c: Vector2, ts: float) -> void:
 		_stroke_run_off(run, off + ts * 0.24, ts * 0.22, Color(0.05, 0.08, 0.05, a0 * 0.45))
 
 
-## Обводка прогона со смещением НАРУЖУ (тень ложится на траву за контуром).
-func _stroke_run_off(run: Array, off: float, width: float, col: Color) -> void:
-	var pts := PackedVector2Array()
-	for e in run:
-		pts.append((e[0] as Vector2) + (e[1] as Vector2) * off)
-	pts.append(pts[0])
-	t._drawer.draw_polyline(pts, col, width)
+## Обводка прогона со смещением НАРУЖУ (тень ложится на траву за контуром)
+## — общая city_terrain.stroke_run_out (v1.37.1, обёртка убрана).
+## Тёмное подножие по нижней дуге: малые валуны (страховка).
+func _stroke_bottom_rim(loop: PackedVector2Array, ts: float, base: Color) -> void:
+	var c: Vector2 = t._poly_centroid(loop)
+	for run in t.dir_runs(loop, c, Vector2(0, 1), 0.25, 4):
+		t.stroke_run(run, 0.0, ts * 0.14, base.darkened(0.22))
 
 
 ## Редкие пучки травы на верхней грани («редкая зелень сверху» —
@@ -214,14 +206,6 @@ func _top_grass(top: PackedVector2Array, ts: float) -> void:
 		for b in 2:
 			var lean := Vector2(1.4 * (1 if b == 0 else -1), -4.5 - float(h % 3))
 			t._drawer.draw_line(blades, blades + lean, dark if b == 0 else light, 1.3)
-
-
-## Тёмное подножие по нижней дуге контура: сегменты с нормалью вниз
-## (малые валуны и страховка больших масс).
-func _stroke_bottom_rim(loop: PackedVector2Array, ts: float, base: Color) -> void:
-	var c: Vector2 = t._poly_centroid(loop)
-	for run in _dir_runs(loop, c, Vector2(0, 1), 0.25, 4):
-		_stroke_run(run, 0.0, ts * 0.14, base.darkened(0.22))
 
 
 ## Фактура тайла: трещины добычи (скала «оседает») и руда кристаллами.

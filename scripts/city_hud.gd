@@ -741,6 +741,19 @@ func _build() -> void:
 	_hint_label = _label(20)
 	_hint_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	bottom.add_child(_hint_label)
+	# v1.37.1: версия игры в правом нижнем углу города — сразу видно,
+	# какая сборка запущена (путаница «правки не поменялись» приёмки)
+	var ver := _label(12)
+	ver.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
+	ver.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+	ver.position = Vector2(-52.0, -22.0)
+	ver.modulate = Color(1, 1, 1, 0.45)
+	var vf := FileAccess.open("res://data/version.json", FileAccess.READ)
+	if vf != null:
+		var vd: Variant = JSON.parse_string(vf.get_as_text())
+		vf.close()
+		ver.text = "v" + String((vd as Dictionary).get("version", "?"))
+	root.add_child(ver)
 	# кей-бар: горячие клавиши всегда перед глазами (M11)
 	var keybar := PanelContainer.new()
 	keybar.add_theme_stylebox_override("panel", _panel_style(true))

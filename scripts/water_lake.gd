@@ -22,6 +22,9 @@ func opt(key: String, def: float) -> float:
 
 
 ## Тело озера: заливка + мель-пояс + глубина (вызывается из прохода блобов).
+## v1.37.1 (фидбек «озёра не поменялись»): направленный ОБЪЁМ воды —
+## у южного берега вода темнее (глубина у устоя берега), у северного —
+## светлый блеск: вода читается углублением, согласованно со светом с СЗ.
 func draw_body(entry: Dictionary, ts: float) -> void:
 	var loop: PackedVector2Array = entry["loop"]
 	var base: Color = t._water_lake
@@ -41,6 +44,16 @@ func draw_body(entry: Dictionary, ts: float) -> void:
 		t._stroke_inside(loop, 0.45, ts * 0.7, Color(deep, opt("deep_alpha2", 0.45)))
 	elif area > 18.0 * ts * ts:
 		t._stroke_inside(loop, 0.60, ts * 0.8, Color(deep, opt("deep_alpha", 0.4)))
+	# направленная глубина: тёмный пояс ВНУТРИ у южного берега, блик у северного
+	var c: Vector2 = t._poly_centroid(loop)
+	var w_side := maxf(ts * 0.18, w_sh * 0.8)
+	for run in t.dir_runs(loop, c, Vector2(0, 1), 0.35, 5):
+		t.stroke_run(run, w_side * 0.55, w_side,
+				Color(deep, opt("side_deep_alpha", 0.30)))
+	for run2 in t.dir_runs(loop, c, Vector2(0, -1), 0.35, 5):
+		t.stroke_run(run2, w_side * 0.55, w_side * 0.8,
+				Color(base.lightened(opt("shallow_light", 0.20) + 0.08),
+						opt("side_glint_alpha", 0.30)))
 
 
 ## Блики: светлые чёрточки по хэшу (прорежены, сплошной крап «шумел»).

@@ -578,7 +578,9 @@
 				"shallow_width": 0.45,
 				"shallow_small": 0.26,
 				"deep_alpha": 0.35,
-				"deep_alpha2": 0.45
+				"deep_alpha2": 0.45,
+				"side_deep_alpha": 0.30,
+				"side_glint_alpha": 0.30
 			},
 			"river": {
 				"shallow_light": 0.2,
