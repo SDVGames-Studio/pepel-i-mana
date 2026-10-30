@@ -26,13 +26,12 @@ func _initialize() -> void:
 	game.new_city()
 	var city: Node = load("res://scenes/city.tscn").instantiate()
 	root.add_child(city)
-	_goto_water.call_deferred(city, game)
+	_game = game
+	_city = city
 	process_frame.connect(_on_frame)
 
 
 func _goto_water(city: Node, game: Node) -> void:
-	_game = game
-	_city = city
 	var sim = game.city_sim
 	var map = sim.map
 	# крупнейший компонент воды (не болото) — к его центру
@@ -107,11 +106,98 @@ func _goto_water(city: Node, game: Node) -> void:
 
 func _on_frame() -> void:
 	_frames += 1
+	if _frames % 10 == 0:
+		print("shot_water: frame %d" % _frames)
 	# телепорт после выпечки ландшафта (двойная выпечка v1.30.1 успевает)
 	if _frames == 20:
 		_goto_water(_city, _game)
+	if _frames == 30 and OS.get_environment("SHOT_NOSKY") != "":
+		_hide_node(_city, "city_sky.gd")
+	if _frames == 30 and OS.get_environment("SHOT_NOROCK") != "":
+		_norock()
+	if _frames == 30 and OS.get_environment("SHOT_PROBE") != "":
+		_probe()
 	if _frames < 70:
 		return
+	var img: Image = root.get_texture().get_image()
+	if img != null:
+		img.save_png("res://tools/shot_water.png")
+		print("shot_water: сохранён tools/shot_water.png")
+	quit(0)
+
+
+## Спрятать узел по скрипту (SHOT_NOSKY): небо/тени city_sky.
+func _hide_node(root: Node, script_name: String) -> void:
+	for ch in root.get_children():
+		var sc: Script = ch.get_script()
+		if sc != null and String(sc.resource_path).ends_with(script_name):
+			ch.visible = false
+			print("shot_water: скрыт %s" % script_name)
+			return
+	print("shot_water: %s не найден" % script_name)
+
+
+## Убрать скалы из кэша (SHOT_NOROCK) — А/Б источник серых полос.
+func _norock() -> void:
+	for ch in _city.get_children():
+		var sc: Script = ch.get_script()
+		if sc != null and String(sc.resource_path).ends_with("city_terrain.gd"):
+			ch._rock_cached = []
+			ch.queue_redraw()
+			print("shot_water: скалы убраны из кэша")
+			return
+
+
+## Дамп типов тайлов вокруг героя (SHOT_PROBE=1): W вода, R скала/руда,
+## T дерево, D мёртвая порода, . трава; в скобках — тип воды по карте.
+func _probe() -> void:
+	var sim = _game.city_sim
+	var map = sim.map
+	# блобы воды в кэше террейна: видимость/размер/заливка
+	var ter = _city.get_node_or_null("Terrain")
+	if ter == null:
+		for n in [_city, _city.get_parent()]:
+			if n == null:
+				continue
+			for ch in n.get_children():
+				var sc: Script = ch.get_script()
+				if sc != null and String(sc.resource_path).ends_with("city_terrain.gd"):
+					ter = ch
+	print("probe terrain: %s" % [ter])
+	if ter != null:
+		print("probe blobs: %d" % [ter._water_cached.size()])
+		var raws: Array = ter._mask_loops(func(t: Vector2i) -> bool:
+			return map.grid[t.y][t.x] == map.TILE_WATER)
+		print("probe raw loops: %d" % [raws.size()])
+		for rl in raws:
+			print("  raw loop pts=%d area=%.1f" % [rl.size(), ter._loop_area(rl)])
+		for e in ter._water_cached:
+			print("  blob kind=%s tiles=%d loop=%d tris=%d simple=%s" % [
+					e["kind"], e["tiles"].size(), e["loop"].size(),
+					e["tris"].size(), e.get("simple")])
+	var ht: Vector2i = map.tile_of_px(_city.get("hero").position)
+	for dy in range(-8, 9):
+		var row := ""
+		for dx in range(-6, 7):
+			var t := ht + Vector2i(dx, dy)
+			if not map.in_bounds(t):
+				row += " ##"
+				continue
+			var g: int = map.grid[t.y][t.x]
+			var ch := "."
+			if g == map.TILE_WATER:
+				ch = "W"
+			elif g == map.TILE_ROCK or g == map.TILE_ORE:
+				ch = "R"
+			elif g == map.TILE_TREE:
+				ch = "T"
+			elif g == map.TILE_DEADROCK:
+				ch = "D"
+			if ch == "W":
+				ch += "(" + map.water_kind_at(t).left(1) + ")"
+			row += " " + ch
+		print("probe %3d:%s" % [ht.y + dy, row])
+	quit(0)
 	var img: Image = root.get_texture().get_image()
 	img.save_png("res://tools/shot_water.png")
 	print("shot_water: сохранён tools/shot_water.png")

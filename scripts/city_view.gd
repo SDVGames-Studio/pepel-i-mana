@@ -78,7 +78,11 @@ func setup(city_map, city_sim, city_cfg: Dictionary) -> void:
 		fauna_cfg = parsed if parsed is Dictionary else {}
 	var c: Dictionary = city_cfg["colors"]
 	for key in c:
-		colors[key] = Color(String(c[key]))
+		# v1.34.1: water_tune — словарь тюнинга (не цвет), его не парсим
+		if c[key] is String:
+			colors[key] = Color(String(c[key]))
+		elif c[key] is Dictionary:
+			colors[key] = c[key]
 	for prof in city_cfg["professions"]:
 		_prof_colors[String(prof["id"])] = Color(String(prof["color"]))
 		_prof_sprites[String(prof["id"])] = String(prof.get("sprite", ""))
