@@ -123,7 +123,11 @@ const BLOCKS := [
 
 	["res://tests/test_fog.gd", [
 	"_test_fog",
-]]
+]],
+
+	["res://tests/test_world2.gd", [
+	"_test_world2_hydro",
+]],
 ]
 
 

@@ -36,35 +36,51 @@
 		"road": {
 			"color": "#6e5f4a",
 			"cost": 0.5
+		},
+		"river": {
+			"_note": "v2: русло на глобали — проходимый брод, но дороже равнины",
+			"color": "#57b2d4",
+			"cost": 1.4
 		}
+	},
+	"hydro": {
+		"_note": "v2 «Мир v2» этап 1: карта высот (наклон N→S) → скалы на севере, океан на юге + внутренние моря, реки из скал к морю (меандры), озёра/болота по влажности",
+		"noise_cell": 9,
+		"slope_top": 0.72,
+		"slope_bot": 0.18,
+		"hill_threshold": 0.62,
+		"sea_width": [2, 4],
+		"inner_seas_min": 0,
+		"inner_seas_max": 2,
+		"sea_level": 0.3,
+		"sea_radius": [3, 5],
+		"rivers_min": 1,
+		"rivers_max": 3,
+		"main_band": 9,
+		"meander": 0.35,
+		"lakes_min": 0,
+		"lakes_max": 3,
+		"lake_radius": [2, 4],
+		"lake_moist": 0.6,
+		"swamps_min": 2,
+		"swamps_max": 5,
+		"swamp_radius": [2, 3],
+		"swamp_height": 0.5,
+		"swamp_moist": 0.58,
+		"city_pick_radius": 7
 	},
 	"blobs": {
 		"forest": 16,
-		"hills": 10,
-		"waste": 9,
-		"water": 9,
-		"swamp": 6
+		"waste": 9
 	},
 	"blob_radius": {
 		"forest": [
 			3,
 			6
 		],
-		"hills": [
-			3,
-			5
-		],
 		"waste": [
 			4,
 			7
-		],
-		"water": [
-			3,
-			5
-		],
-		"swamp": [
-			3,
-			5
 		]
 	},
 	"pois": {

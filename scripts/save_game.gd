@@ -271,6 +271,8 @@ static func _world_block(wmap, wsim) -> Dictionary:
 			"city_tile": [wmap.city_tile.x, wmap.city_tile.y],
 			"fog": _tile_keys(wmap.fog),
 			"pois": wmap.pois,
+			"river": _tile_keys(wmap.river),
+			"water_kind": _tile_vals(wmap.water_kind),
 		},
 		"sim": {
 			"day": int(wsim.day),
@@ -715,6 +717,13 @@ static func _apply_world(game, wd: Variant) -> String:
 		map.pois.append(poi)
 		max_poi_id = maxi(max_poi_id, poi["id"])
 	map._poi_id = max_poi_id + 1
+	# гидрология (v2): русла и типы воды — до сборки путей (река дороже)
+	map.river = {}
+	for e in md.get("river", []):
+		map.river[Vector2i(int(e[0]), int(e[1]))] = true
+	map.water_kind = {}
+	for e in md.get("water_kind", []):
+		map.water_kind[Vector2i(int(e[0]), int(e[1]))] = String(e[2])
 	map._setup_astar()   # веса — по перекрытой сетке (дороги уже в тайлах)
 	var sim = load(WORLD_SIM_SCRIPT).new()
 	sim.setup(map, cfg, 12345)

@@ -368,7 +368,9 @@ func new_city() -> void:
 	var map_script: Script = load(CITY_MAP_SCRIPT)
 	var sim_script: Script = load(CITY_SIM_SCRIPT)
 	var city_map = map_script.new()
-	city_map.generate(randi(), cfg)
+	# v2 («Мир v2»): клетка мира несёт свои водоёмы в локацию города —
+	# река на глобале = река в городе (ответ №117)
+	city_map.generate(randi(), cfg, world_map.city_hydro())
 	city_sim = sim_script.new()
 	city_sim.setup(city_map, cfg, start_residents, start_level)
 	city_sim.conflicts = conflicts_enabled

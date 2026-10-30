@@ -56,6 +56,9 @@ func _draw() -> void:
 		for x in map.w:
 			var p := Vector2i(x, y)
 			draw_rect(Rect2(Vector2(x, y) * ts, Vector2(ts, ts)), _tile_color(p), true)
+	# реки (v2, гидрология): лента русла между центрами речных тайлов —
+	# поверх биома, до тумана (неисследованное скрыто, как и всё)
+	_draw_rivers(ts)
 	# туман войны: неисследованное скрыто
 	var fog_color := Color(0.04, 0.04, 0.07, 1.0)
 	for y in map.h:
@@ -105,6 +108,33 @@ func _draw() -> void:
 	var bob := absf(sin(_time * 6.0)) * 2.0
 	draw_circle(hero_px + Vector2(0, 6), 6.0, Color(0, 0, 0, 0.3))
 	Assets.draw_ref(self, "img:knight", hero_px + Vector2(0, -2 - bob), 26.0)
+
+
+## Реки (v2, гидрология «Мир v2»): лента русла — линии между центрами
+## соседних речных тайлов (юг/восток и две диагонали, без дублей), светлая
+## жила по центру. Одиночный тайл — кружок. Только исследованные тайлы.
+func _draw_rivers(ts: float) -> void:
+	if map.river == null or map.river.is_empty():
+		return
+	var biomes: Dictionary = map.cfg.get("biomes", {})
+	var col := Color(String(biomes.get("river", {}).get("color", "#57b2d4")))
+	var vein := col.lightened(0.25)
+	var links := [Vector2i(0, 1), Vector2i(1, 0), Vector2i(1, 1), Vector2i(-1, 1)]
+	for t: Vector2i in map.river:
+		if not map.is_explored(t):
+			continue
+		var c: Vector2 = map.tile_center_px(t)
+		var linked := false
+		for d: Vector2i in links:
+			var n := t + d
+			if map.river.has(n) and map.is_explored(n):
+				var nc: Vector2 = map.tile_center_px(n)
+				draw_line(c, nc, col, ts * 0.5)
+				draw_line(c, nc, vein, ts * 0.16)
+				linked = true
+		if not linked:
+			draw_circle(c, ts * 0.26, col)
+			draw_circle(c, ts * 0.09, vein)
 
 
 func _tile_color(p: Vector2i) -> Color:

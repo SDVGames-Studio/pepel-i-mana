@@ -41,7 +41,11 @@ var astar_raider: AStarGrid2D = null  # пути мутантов: закрыт�
 
 
 ## Генерация по seed: детерминированная, связная (от старта достижимы все проходимые тайлы).
-func generate(seed_value: int, params: Dictionary) -> void:
+## v2 («Мир v2», этап 1): гидро-контекст клетки мира (world_map.city_hydro())
+## решает, какие водоёмы есть в локации: река на глобальной клетке = река
+## в городе (ответ №117); озеро-сосед → минимум одно озеро; болото рядом →
+## минимум одно болото. hydro={} — старое поведение по params (для тестов).
+func generate(seed_value: int, params: Dictionary, hydro := {}) -> void:
 	w = int(params["map_w"])
 	h = int(params["map_h"])
 	ts = int(params["tile_size"])
@@ -56,8 +60,15 @@ func generate(seed_value: int, params: Dictionary) -> void:
 	bridges = {}
 	fords = {}
 	river_origin = {}
+	var river_on := bool(hydro.get("river", params.get("river", true)))
+	var lakes_n := int(params["lakes"])
+	var swamps_n := int(params.get("swamps", 2))
+	if bool(hydro.get("lake", false)):
+		lakes_n = maxi(lakes_n, 1)
+	if bool(hydro.get("swamp", false)):
+		swamps_n = maxi(swamps_n, 1)
 	for attempt in 20:
-		_generate_once(seed_value + attempt * 1013, params)
+		_generate_once(seed_value + attempt * 1013, params, river_on, lakes_n, swamps_n)
 		if _connected():
 			break
 	classify_water()
@@ -169,9 +180,14 @@ func refresh_tile_solid(p: Vector2i) -> void:
 		astar_raider.set_point_solid(p, solid)
 
 
-func _generate_once(seed_value: int, params: Dictionary) -> void:
+func _generate_once(seed_value: int, params: Dictionary,
+		river_on := true, lakes_n := -1, swamps_n := -1) -> void:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = seed_value
+	if lakes_n < 0:
+		lakes_n = int(params["lakes"])
+	if swamps_n < 0:
+		swamps_n = int(params.get("swamps", 2))
 	grid = []
 	for y in h:
 		var row := []
@@ -180,18 +196,19 @@ func _generate_once(seed_value: int, params: Dictionary) -> void:
 		grid.append(row)
 	# река ПЕРВОЙ (v1.31.2): чистый плавный меандр — никакие обходы не
 	# искажают русло (обход v1.31 делал диагональные засечки-«непонятные
-	# водоёмы», заказчик); озёра и болота ложатся ПОЗАДИ неё с зазором
-	if bool(params.get("river", true)):
+	# водоёмы», заказчик); озёра и болота ложатся ПОЗАДИ неё с зазором.
+	# v2: река появляется только если она есть на клетке мира (hydro)
+	if river_on:
 		_generate_river(rng)
 		_trim_river_stubs({})
 	# озёра (v1.29.4): почти круглый овал с мягкой рябью контура — ровные
 	# красивые берега у КАЖДОГО озера (оси по сетке). v1.31.2: центр не ближе
 	# 8 тайлов до любой воды — озёра никогда не сливаются ни с рекой, ни
 	# друг с другом (каждое — отдельный ровный овал с песчаным берегом)
-	for i in int(params["lakes"]):
+	for i in lakes_n:
 		_lake_blob(_random_clear_tile(rng, 8), rng)
 	# болота (v1.29.3): свой малый гладкий овал — центр в 6 тайлах от воды
-	for i in int(params.get("swamps", 2)):
+	for i in swamps_n:
 		_swamp_blob(_random_clear_tile(rng, 6), rng)
 		# скальные ГРЯДЫ (M11): не россыпь одиночных камней, а единые массивы —
 	# большое пятно плюс сателлиты внахлёст; в них живёт руда и их добывают.

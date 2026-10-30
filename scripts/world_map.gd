@@ -8,6 +8,13 @@ extends RefCounted
 ##       cleared_day, used} — kind: city|dungeon|ruins|camp|settlement|
 ##       caravan|obelisk; biome — биом данжа из dungeon.json ("" у городской
 ##       аномалии, она выбирает биом как раньше); faction — traders|bandits|cult.
+##
+## Гидрология («Мир v2», этап 1): карта высот (наклон N→S + шум) → скалы
+## на севере, океан на юге + внутренние моря, реки из скал к морю (жадный
+## спуск + меандр), озёра/болота по влажности. Река — ОВЕРЛЕЙ (river):
+## тайл остаётся сушей и проходим (брод), но дороже; grid-вода (море/озёра)
+## непроходима, как раньше. Клетка города несёт свои водоёмы в локацию
+## города — city_hydro() (река на глобале = река в городе, ответ №117).
 
 const TILE_PLAINS := 0
 const TILE_WATER := 1
@@ -22,6 +29,9 @@ var h := 0
 var ts := 32
 var cfg: Dictionary = {}
 var grid: Array = []
+var height: Array = []          # высоты 0..1 (гидрология) — по строкам, как grid
+var river: Dictionary = {}      # Vector2i -> true: русло (оверлей, проходим)
+var water_kind: Dictionary = {} # Vector2i -> "sea"|"lake": тип grid-воды
 var city_tile := Vector2i.ZERO      # город игрока — стартовая локация
 var pois: Array = []                # точки интереса, см. шапку
 var fog: Dictionary = {}            # Vector2i -> true: исследованные тайлы
@@ -56,49 +66,414 @@ func _generate_once(seed_value: int, params: Dictionary) -> void:
 		row.resize(w)
 		row.fill(TILE_PLAINS)
 		grid.append(row)
-	# пятна биомов, не у краёв (как озёра и скалы города)
+	var hcfg: Dictionary = params.get("hydro", {})
+	# гидрология («Мир v2»): высоты → скалы → море → реки → город →
+	# влажность → озёра/болота; лес/пепел — блобами, как раньше
+	_build_heights(hcfg)
+	_build_hills(hcfg)
+	_build_sea(hcfg)
+	_build_rivers(hcfg)
+	# город: от центра, приоритет — тайл с рекой («город на клетке с рекой»)
+	city_tile = _pick_city_tile(hcfg)
+	_clear_around_land(city_tile, 2)
+	_build_moisture(hcfg)
+	_build_lakes_swamps(hcfg)
+	# пятна леса и пепла (не поверх воды/болот/русел)
 	var blobs: Dictionary = params.get("blobs", {})
 	var radii: Dictionary = params.get("blob_radius", {})
-	var kinds := {"forest": TILE_FOREST, "hills": TILE_HILL, "waste": TILE_WASTE, "water": TILE_WATER, "swamp": TILE_SWAMP}
+	var kinds := {"forest": TILE_FOREST, "waste": TILE_WASTE}
 	for key in blobs:
+		if not kinds.has(key):
+			continue
 		for i in int(blobs[key]):
 			var r: Array = radii.get(key, [3, 5])
 			_blob(_random_inner_tile(), _rng.randi_range(int(r[0]), int(r[1])), kinds[key])
-	# город в центре, вокруг чистая равнина
-	city_tile = Vector2i(w / 2, h / 2)
-	_clear_around(city_tile, 3)
 	pois = []
 	_poi_id = 1
 	_place_pois(params)
 	_draw_roads()
 
 
-## Пятна круглой формы (как в city_map.gd).
+## Пятно круглой формы (как в city_map.gd). v2: вода/болото/русло не затираем —
+## гидрология важнее декоративного пятна леса/пепла.
 func _blob(center: Vector2i, radius: int, kind: int) -> void:
 	for y in range(center.y - radius, center.y + radius + 1):
 		for x in range(center.x - radius, center.x + radius + 1):
 			if x < 0 or y < 0 or x >= w or y >= h:
 				continue
+			var t := Vector2i(x, y)
 			if Vector2(x, y).distance_to(Vector2(center)) <= radius:
+				if grid[y][x] == TILE_WATER or grid[y][x] == TILE_SWAMP or river.has(t):
+					continue
 				grid[y][x] = kind
 
 
-func _clear_around(center: Vector2i, radius: int) -> void:
+## Очистка вокруг города (v2): лес/скалы/пепел → равнина, ГИДРОЛОГИЮ (воду,
+## болота, русло) сохраняем — окрестности города на глобале показывают свои
+## водоёмы, и клетка несёт их в локацию города.
+func _clear_around_land(center: Vector2i, radius: int) -> void:
 	for y in range(center.y - radius, center.y + radius + 1):
 		for x in range(center.x - radius, center.x + radius + 1):
-			if x >= 0 and y >= 0 and x < w and y < h:
-				grid[y][x] = TILE_PLAINS
+			if x < 0 or y < 0 or x >= w or y >= h:
+				continue
+			var t: int = grid[y][x]
+			if t == TILE_WATER or t == TILE_SWAMP:
+				continue
+			grid[y][x] = TILE_PLAINS
 
 
 func _random_inner_tile() -> Vector2i:
 	return Vector2i(_rng.randi_range(4, w - 5), _rng.randi_range(4, h - 5))
 
 
-## Случайный проходимый тайл (страховка генерации POI).
+# --- гидрология («Мир v2», этап 1) ------------------------------------------
+# Высоты: value-noise крупными ячейками + общий наклон N→S (север высок,
+# юг низ — реки потекут к морю на юге). Ответ №117: «по рельефу
+# (общий наклон N→S + меандры)».
+
+func _build_heights(hcfg: Dictionary) -> void:
+	var cell := int(hcfg.get("noise_cell", 9))
+	var gw := int(ceil(w / float(cell))) + 2
+	var gh := int(ceil(h / float(cell))) + 2
+	var gvals: Array = []
+	for j in gh:
+		var row := []
+		for i in gw:
+			row.append(_rng.randf())
+		gvals.append(row)
+	height = []
+	var slope_top := float(hcfg.get("slope_top", 0.72))
+	var slope_bot := float(hcfg.get("slope_bot", 0.18))
+	for y in h:
+		var fy := float(y) / cell
+		var j0 := int(fy)
+		var ty := _smooth_step(fy - j0)
+		var row := []
+		row.resize(w)
+		for x in w:
+			var fx := float(x) / cell
+			var i0 := int(fx)
+			var tx := _smooth_step(fx - i0)
+			var a: float = gvals[j0][i0]
+			var b: float = gvals[j0][i0 + 1]
+			var c: float = gvals[j0 + 1][i0]
+			var d: float = gvals[j0 + 1][i0 + 1]
+			var noise := lerpf(lerpf(a, b, tx), lerpf(c, d, tx), ty)
+			var base := lerpf(slope_top, slope_bot, float(y) / float(maxi(1, h - 1)))
+			row[x] = clampf(base * 0.72 + noise * 0.28, 0.0, 1.0)
+		height.append(row)
+
+
+static func _smooth_step(t: float) -> float:
+	return t * t * (3.0 - 2.0 * t)
+
+
+func height_at(p: Vector2i) -> float:
+	if not in_bounds(p):
+		return 0.0
+	return float(height[p.y][p.x])
+
+
+## Скалы/холмы — по высоте: северная гряда + пятна на возвышенностях.
+## На юге (ниже порога) — редкие останцы-островки, чтобы рельеф юга не был
+## плоской скатертью.
+func _build_hills(hcfg: Dictionary) -> void:
+	var threshold := float(hcfg.get("hill_threshold", 0.62))
+	for y in h:
+		for x in w:
+			if float(height[y][x]) > threshold:
+				grid[y][x] = TILE_HILL
+	var outliers := _rng.randi_range(0, 2)
+	for i in outliers:
+		var c := Vector2i(_rng.randi_range(4, w - 5), _rng.randi_range(int(h * 0.55), h - 6))
+		var r := _rng.randi_range(1, 2)
+		for y in range(c.y - r, c.y + r + 1):
+			for x in range(c.x - r, c.x + r + 1):
+				if x < 0 or y < 0 or x >= w or y >= h:
+					continue
+				if Vector2(x, y).distance_to(Vector2(c)) <= r:
+					grid[y][x] = TILE_HILL
+
+
+## Море (ответ №118: «и океан по краю, и внутренние моря — случайно»):
+## океан — волнистая полоса на юге (реки текут к нему с севера); внутренние
+## моря — 0..2 больших пятна воды на низинах.
+func _build_sea(hcfg: Dictionary) -> void:
+	water_kind = {}
+	var range: Array = hcfg.get("sea_width", [2, 4])
+	var widths: Array = []
+	for x in w:
+		widths.append(float(_rng.randi_range(int(range[0]), int(range[1]))))
+	# сгладить кромку скользящим средним — берег волнистый, без «пилы»
+	for x in w:
+		var s := 0.0
+		var n := 0
+		for dx in range(-2, 3):
+			var nx := clampi(x + dx, 0, w - 1)
+			s += float(widths[nx])
+			n += 1
+		widths[x] = s / float(n)
+	for x in w:
+		var wd := int(round(widths[x]))
+		for y in range(h - wd, h):
+			grid[y][x] = TILE_WATER
+			water_kind[Vector2i(x, y)] = "sea"
+	# внутренние моря на низинах (случайно при создании мира)
+	var seas := _rng.randi_range(int(hcfg.get("inner_seas_min", 0)), int(hcfg.get("inner_seas_max", 2)))
+	for i in seas:
+		var cands: Array = []
+		for y in range(int(h * 0.3), h - 5):
+			for x in range(3, w - 4):
+				if float(height[y][x]) < float(hcfg.get("sea_level", 0.30)) and grid[y][x] == TILE_PLAINS:
+					cands.append(Vector2i(x, y))
+		if cands.is_empty():
+			continue
+		var center: Vector2i = cands[_rng.randi_range(0, cands.size() - 1)]
+		var rad: Array = hcfg.get("sea_radius", [3, 5])
+		_water_blob(center, _rng.randi_range(int(rad[0]), int(rad[1])), "sea")
+
+
+## Пятно воды (море/озеро): grid-вода + тип; через болото не льём.
+func _water_blob(center: Vector2i, radius: int, kind: String) -> void:
+	for y in range(center.y - radius, center.y + radius + 1):
+		for x in range(center.x - radius, center.x + radius + 1):
+			if x < 0 or y < 0 or x >= w or y >= h:
+				continue
+			if Vector2(x, y).distance_to(Vector2(center)) <= radius:
+				grid[y][x] = TILE_WATER
+				water_kind[Vector2i(x, y)] = kind
+
+
+## Реки: 1..3 русла из северных скал к морю — жадный спуск по высотам
+## со случайным меандром (ответ №117). Главная река стартует ближе всех
+## к центру и меандрирует слабее — город часто стоит на ней. Русло —
+## оверлей: тайл проходим (брод на глобали), но дороже; grid не меняется.
+func _build_rivers(hcfg: Dictionary) -> void:
+	river = {}
+	var count := _rng.randi_range(int(hcfg.get("rivers_min", 1)), int(hcfg.get("rivers_max", 3)))
+	for i in count:
+		var main := i == 0
+		var start := _river_start(main, hcfg)
+		_flow_river(start, float(hcfg.get("meander", 0.35)) * (0.7 if main else 1.0))
+
+
+## Старт русла: скальный тайл в верхней половине; главная река — самый
+## близкий к центральной оси из горстки кандидатов. Фолбэки: любой холм →
+## самое высокое место верхней трети.
+func _river_start(main: bool, hcfg: Dictionary) -> Vector2i:
+	var band := int(hcfg.get("main_band", 9))
+	var cands: Array = []
+	var any_hill: Array = []
+	for y in range(2, int(h * 0.45)):
+		for x in w:
+			if grid[y][x] != TILE_HILL:
+				continue
+			any_hill.append(Vector2i(x, y))
+			if not main or absi(x - w / 2) <= band:
+				cands.append(Vector2i(x, y))
+	if cands.is_empty():
+		cands = any_hill
+	if not cands.is_empty():
+		if not main:
+			return cands[_rng.randi_range(0, cands.size() - 1)]
+		# главная: кандидаты по близости к центру, берём из пятёрки лучших
+		cands.sort_custom(func(a, b) -> bool:
+			return absi(int(a.x) - w / 2) < absi(int(b.x) - w / 2))
+		var top := mini(5, cands.size())
+		return cands[_rng.randi_range(0, top - 1)]
+	# скал нет — самое высокое место верхней трети
+	var best := Vector2i(w / 2, 2)
+	var best_h := -1.0
+	for y in range(2, int(h * 0.33)):
+		for x in w:
+			if float(height[y][x]) > best_h:
+				best_h = float(height[y][x])
+				best = Vector2i(x, y)
+	return best
+
+
+## Течёт, пока не дойдёт до воды (устье), другого русла (приток) или края.
+## Самопересечения штрафуются (меандр может завивать русло петлёй), обрыв —
+## только если русло окружило само себя целиком.
+func _flow_river(start: Vector2i, meander: float) -> void:
+	var max_len := int(h * 2.2)
+	var pos := start
+	var last := Vector2i(0, 1)
+	var steps := 0
+	var own := {}   # тайлы ЭТОГО русла
+	var dirs := [Vector2i(0, 1), Vector2i(-1, 1), Vector2i(1, 1),
+			Vector2i(-1, 0), Vector2i(1, 0), Vector2i(-1, -1), Vector2i(1, -1), Vector2i(0, -1)]
+	while steps < max_len and in_bounds(pos):
+		if grid[pos.y][pos.x] == TILE_WATER:
+			break   # устье: море или озеро
+		if river.has(pos) and steps > 0:
+			break   # приток в другую реку
+		river[pos] = true
+		own[pos] = true
+		steps += 1
+		var best := Vector2i.ZERO
+		var best_score := 9.0
+		var boxed := true
+		for d: Vector2i in dirs:
+			var n := pos + d
+			if not in_bounds(n):
+				continue
+			var score := float(height[n.y][n.x]) + _rng.randf() * meander
+			if d.y < 0:
+				score += 0.22   # река стремится на юг, к морю
+			if d == -last:
+				score += 0.45   # не разворачиваться на 180°
+			if own.has(n):
+				score += 0.60   # не завиваться в себя петлёй
+				if river.has(n):
+					score += 10.0   # свой пройденный тайл — почти стена
+			else:
+				boxed = false
+			if score < best_score:
+				best_score = score
+				best = d
+		if best == Vector2i.ZERO or boxed:
+			break
+		last = best
+		pos += best
+
+
+## Влажность: юг влажнее + рядом с водой (море/озеро/русло) — по ней
+## распределяются озёра и болота («озёра/болота по влажности», директива).
+func _build_moisture(hcfg: Dictionary) -> void:
+	var cell := int(hcfg.get("noise_cell", 9))
+	var gw := int(ceil(w / float(cell))) + 2
+	var gh := int(ceil(h / float(cell))) + 2
+	var gvals: Array = []
+	for j in gh:
+		var row := []
+		for i in gw:
+			row.append(_rng.randf())
+		gvals.append(row)
+	_moist = []
+	for y in h:
+		var fy := float(y) / cell
+		var j0 := int(fy)
+		var ty := _smooth_step(fy - j0)
+		var row := []
+		row.resize(w)
+		for x in w:
+			var fx := float(x) / cell
+			var i0 := int(fx)
+			var tx := _smooth_step(fx - i0)
+			var a: float = gvals[j0][i0]
+			var b: float = gvals[j0][i0 + 1]
+			var c: float = gvals[j0 + 1][i0]
+			var d: float = gvals[j0 + 1][i0 + 1]
+			var noise := lerpf(lerpf(a, b, tx), lerpf(c, d, tx), ty)
+			var base := lerpf(0.30, 0.62, float(y) / float(maxi(1, h - 1)))
+			row[x] = base * 0.7 + noise * 0.3
+		_moist.append(row)
+	# близость к воде поднимает влажность (радиус 2)
+	for y in h:
+		for x in w:
+			var t := Vector2i(x, y)
+			if grid[y][x] != TILE_WATER and not river.has(t):
+				continue
+			for dy in range(-2, 3):
+				for dx in range(-2, 3):
+					var n := t + Vector2i(dx, dy)
+					if in_bounds(n):
+						_moist[n.y][n.x] += 0.09 * float(3 - maxi(absi(dx), absi(dy)))
+
+
+var _moist: Array = []   # влажность 0..1+, по строкам
+
+
+## Озёра — низины с высокой влажностью; болота — влажные низины рядом
+## с водой/русами. Оба не ближе 2 тайлов к городу (город не в воде),
+## но могут оказаться в 2–3 — тогда клетка города унаследует их.
+func _build_lakes_swamps(hcfg: Dictionary) -> void:
+	var lake_n := _rng.randi_range(int(hcfg.get("lakes_min", 0)), int(hcfg.get("lakes_max", 3)))
+	var swamp_n := _rng.randi_range(int(hcfg.get("swamps_min", 2)), int(hcfg.get("swamps_max", 5)))
+	var lake_cands: Array = []
+	var swamp_cands: Array = []
+	for y in range(2, h - 2):
+		for x in range(2, w - 2):
+			var t := Vector2i(x, y)
+			if grid[y][x] != TILE_PLAINS or river.has(t):
+				continue
+			if Vector2(t).distance_to(Vector2(city_tile)) < 2.0:
+				continue
+			var ht := float(height[y][x])
+			var mo := float(_moist[y][x])
+			if ht > 0.22 and ht < 0.55 and mo > float(hcfg.get("lake_moist", 0.60)):
+				lake_cands.append(t)
+			if ht < float(hcfg.get("swamp_height", 0.50)) and mo > float(hcfg.get("swamp_moist", 0.58)):
+				swamp_cands.append(t)
+	for i in lake_n:
+		if lake_cands.is_empty():
+			break
+		var c: Vector2i = lake_cands[_rng.randi_range(0, lake_cands.size() - 1)]
+		var rad: Array = hcfg.get("lake_radius", [2, 4])
+		_water_blob(c, _rng.randi_range(int(rad[0]), int(rad[1])), "lake")
+	for i in swamp_n:
+		if swamp_cands.is_empty():
+			break
+		var c: Vector2i = swamp_cands[_rng.randi_range(0, swamp_cands.size() - 1)]
+		var rad: Array = hcfg.get("swamp_radius", [2, 3])
+		_swamp_blob(c, _rng.randi_range(int(rad[0]), int(rad[1])))
+
+
+## Болото — пятна проходимой топи (не поверх воды).
+func _swamp_blob(center: Vector2i, radius: int) -> void:
+	for y in range(center.y - radius, center.y + radius + 1):
+		for x in range(center.x - radius, center.x + radius + 1):
+			if x < 0 or y < 0 or x >= w or y >= h:
+				continue
+			if Vector2(x, y).distance_to(Vector2(center)) <= radius and grid[y][x] != TILE_WATER:
+				grid[y][x] = TILE_SWAMP
+
+
+## Город: спираль от центра, приоритет — тайл с рекой (город на реке —
+## река повторится в локации, ответ №117). Не вода и не болото.
+func _pick_city_tile(hcfg: Dictionary) -> Vector2i:
+	var center := Vector2i(w / 2, h / 2)
+	var radius := int(hcfg.get("city_pick_radius", 7))
+	var fallback := center
+	for r in range(radius + 1):
+		for dy in range(-r, r + 1):
+			for dx in range(-r, r + 1):
+				if maxi(absi(dx), absi(dy)) != r:
+					continue
+				var t := center + Vector2i(dx, dy)
+				if not in_bounds(t) or grid[t.y][t.x] == TILE_WATER or grid[t.y][t.x] == TILE_SWAMP:
+					continue
+				if river.has(t):
+					return t
+				if t == center or fallback == center:
+					fallback = t
+	return fallback
+
+
+## Гидро-контекст клетки города для генерации локации города:
+## река на самом тайле; озеро в соседней клетке (город на берегу);
+## болото в радиусе 3. Локация повторяет эти водоёмы (директива «Мир v2»).
+func city_hydro() -> Dictionary:
+	var out := {"river": river.has(city_tile), "lake": false, "swamp": false}
+	for d: Vector2i in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
+		var n := city_tile + d
+		if in_bounds(n) and grid[n.y][n.x] == TILE_WATER \
+				and String(water_kind.get(n, "lake")) == "lake":
+			out["lake"] = true
+	for dy in range(-3, 4):
+		for dx in range(-3, 4):
+			var n := city_tile + Vector2i(dx, dy)
+			if in_bounds(n) and grid[n.y][n.x] == TILE_SWAMP:
+				out["swamp"] = true
+	return out
+
+
+## Случайный проходимый тайл (страховка генерации POI); не русло реки.
 func _walkable_random() -> Vector2i:
 	for attempt in 300:
 		var p := _random_inner_tile()
-		if is_walkable(p):
+		if is_walkable(p) and not river.has(p):
 			return p
 	return city_tile
 
@@ -128,10 +503,13 @@ func nearest_walkable(tile: Vector2i) -> Vector2i:
 	return city_tile
 
 
-## Цена тайла для времени пути (биом; дорога быстрее равнины).
+## Цена тайла для времени пути (биом; дорога быстрее равнины). Русло —
+## брод: дороже равнины, но проходим (река на глобали не режет пути).
 func tile_cost(p: Vector2i) -> float:
 	if not is_walkable(p):
 		return 0.0
+	if river.has(p):
+		return float(cfg.get("biomes", {}).get("river", {}).get("cost", 1.4))
 	var biomes: Dictionary = cfg["biomes"]
 	match grid[p.y][p.x]:
 		TILE_PLAINS: return float(biomes["plains"]["cost"])
@@ -225,11 +603,12 @@ func _place_kind(kind: String, biome: String, dmin: int, dmax: int, count: int, 
 
 
 ## Свободный проходимый тайл в кольце расстояний от города, подальше от прочих POI.
+## v2: не на русло реки (POI на берегу, не посреди брода).
 func _find_spot(dmin: int, dmax: int) -> Vector2i:
 	for attempt in 300:
 		var p := _random_inner_tile()
 		var dist := int(Vector2(p).distance_to(Vector2(city_tile)))
-		if dist < dmin or dist > dmax or not is_walkable(p):
+		if dist < dmin or dist > dmax or not is_walkable(p) or river.has(p):
 			continue
 		if _poi_near(p, 4) != null:
 			continue
@@ -237,7 +616,8 @@ func _find_spot(dmin: int, dmax: int) -> Vector2i:
 	# страховка: ослабляем требование разрежения
 	for attempt in 300:
 		var p := _random_inner_tile()
-		if Vector2(p).distance_to(Vector2(city_tile)) >= float(dmin) and is_walkable(p) and _poi_near(p, 2) == null:
+		if Vector2(p).distance_to(Vector2(city_tile)) >= float(dmin) and is_walkable(p) \
+				and not river.has(p) and _poi_near(p, 2) == null:
 			return p
 	return Vector2i(-1, -1)
 
@@ -394,5 +774,6 @@ func _road_l(from: Vector2i, to: Vector2i) -> void:
 
 
 func _set_road(p: Vector2i) -> void:
-	if in_bounds(p) and is_walkable(p) and p != city_tile:
+	# v2: через реку дорога не кладётся (переправа — не тракт)
+	if in_bounds(p) and is_walkable(p) and p != city_tile and not river.has(p):
 		grid[p.y][p.x] = TILE_ROAD
