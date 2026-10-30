@@ -595,8 +595,15 @@
 			"rocks": {
 				"color": "#857e71",
 				"tone_amp": 0.05,
-				"top_light": 0.08,
-				"foot_dark": 0.1
+				"top_light": 0.13,
+				"top_shrink": 0.80,
+				"foot_dark": 0.1,
+				"cut_light": 0.14,
+				"cut_dark": 0.30,
+				"cut_h": 0.34,
+				"shadow_alpha": 0.20,
+				"shadow_off": 0.30,
+				"top_grass": 0.35
 			}
 		},
 		"plateau": {

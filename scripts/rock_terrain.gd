@@ -1,13 +1,20 @@
 extends RefCounted
 ## СКАЛЫ И РУДНЫЕ ЖИЛЫ — рендер и настройка (v1.34.2, выделено из
-## city_terrain.gd). Тюнинг без кода.
+## city_terrain.gd; переработано v1.37.0 по поручению приёмки: «вот бы
+## ещё скалы так» — гряды тем же языком ВЫСОТЫ, что и плато).
+##
+## Гряда читается приподнятым массивом (схема Hills, как plateau_terrain):
+##   верхняя грань (свет с СЗ, заметно светлее) + редкая зелень сверху
+##   → трёхтоновый СРЕЗ по южной дуге (свет-полоса / тело / тёмное основание)
+##   → контактная тень и мягкая тень на траве у подножия.
+## Фасеты и трещины добычи остались; руда — кристаллы с блеском.
 ##
 ## Тюнинг: data/city.json → colors → "water_tune" → "rocks":
-##   color     — базовый цвет породы (тон дышит по блобу ±tone_amp)
-##   tone_amp  — амплитуда дыхания тона между массивами
-##   top_light — насколько светлее вершина (светлая грань сверху)
-##   foot_dark — насколько темнее подножие (полоса по нижней дуге)
-## Руда (TILE_ORE) рисуется кристаллами с блеском поверх породы.
+##   color/tone_amp — базовый цвет породы (дышит по блобу)
+##   top_light/top_shrink — верхняя грань (свет и сжатие контура)
+##   cut_light/cut_dark/cut_h — срез (яркость полос и высота в тайлах)
+##   shadow_alpha/shadow_off — тень у подножия
+##   top_grass — шанс пучка травы на верхней грани («шапки» референсов)
 
 var t   # city_terrain — контекст (drawer, map, цвета, геометрия блобов)
 
@@ -30,7 +37,7 @@ func build_cache() -> Array:
 	var out: Array = []
 	for raw in raw_loops:
 		var sm: PackedVector2Array = t._smooth_loop(raw)
-		# v1.34.1: чистка контура — дубли/коллинеарные точки роняют ear-clipping
+		# v1.34.1: чистка контура — дубли и коллинеарные точки роняют ear-clipping
 		var clean: PackedVector2Array = t._clean_loop(sm)
 		var tris: PackedInt32Array = Geometry2D.triangulate_polygon(clean) \
 				if clean.size() >= 3 else PackedInt32Array()
@@ -53,34 +60,41 @@ func draw_blobs(ts: float) -> void:
 			continue
 		var loop: PackedVector2Array = entry["loop"]
 		var c: Vector2 = t._poly_centroid(loop)
-		# v1.29.4 «натуральная гора»: тон дышит по блобу, светлая грань
-		# сверху, тёмное подножие полосой по нижней половине контура,
-		# крупные фасеты вместо крапинок
+		# тон дышит по блобу — массивы не одинаковые
 		var tone: float = t._noise2(c.x / (ts * 3.0), c.y / (ts * 3.0), 30, 91) / 29.0
 		var base := base_color().lightened(opt("tone_amp", 0.05) * tone - opt("tone_amp", 0.05) * 0.5)
-		t._fill_loop_cached(loop, entry["tris"], base)
 		var area: float = t._loop_area(loop)
-		if area > 6.0 * ts * ts:
-			var top: PackedVector2Array = t._shrunk_loop(loop, 0.80)
-			for i in top.size():
-				top[i] += Vector2(-ts * 0.03, -ts * 0.06)
-			t._fill_loop_cached(top, Geometry2D.triangulate_polygon(top),
-					base.lightened(opt("top_light", 0.08)))
-			var foot: PackedVector2Array = t._shrunk_loop(loop, 0.80)
-			for i in foot.size():
-				foot[i] += Vector2(0, ts * 0.09)
-			t._fill_loop_cached(foot, Geometry2D.triangulate_polygon(foot),
-					base.darkened(opt("foot_dark", 0.10)))
-			# фасеты: 3–5 мягких сколов ГЛУБОКО внутри силуэта (v1.29.4)
-			var r_in := sqrt(area / PI) * 0.45
-			var n := 3 + int(area / (26.0 * ts * ts))
-			for f in mini(n, 5):
-				var a0 := TAU * float(t._hash(f * 31, int(c.x), 100)) / 100.0
-				var p0 := c + Vector2(cos(a0), sin(a0) * 0.75) * r_in
-				var rr := sqrt(area / PI) * (0.22 + 0.1 * float(t._hash(f * 7, int(c.y), 100)) / 100.0)
-				var fc := base.darkened(0.05) if f % 2 == 0 else base.lightened(0.05)
-				t._draw_ellipse(p0, rr, rr * 0.72, Color(fc, 0.55))
+		if area <= 6.0 * ts * ts:
+			# малый валун: без кромок — просто масса с тёмным подножием
+			t._fill_loop_cached(loop, entry["tris"], base)
 			_stroke_bottom_rim(loop, ts, base)
+			continue
+		# 1) ТЕНЬ у подножия — ДО заливки: мягкие полосы на траве к югу
+		_foot_shadow(loop, c, ts)
+		# 2) тело массы — средний тон породы
+		t._fill_loop_cached(loop, entry["tris"], base)
+		# 3) ВЕРХНЯЯ ГРАНЬ: сжатый контур, поднятый к СЗ — свет ложится
+		# сверху-слева, гряда читается объёмом (как вершины плато)
+		var top: PackedVector2Array = t._shrunk_loop(loop, opt("top_shrink", 0.80))
+		for i in top.size():
+			top[i] += Vector2(-ts * 0.02, -ts * 0.07)
+		t._fill_loop_cached(top, Geometry2D.triangulate_polygon(top),
+				base.lightened(opt("top_light", 0.10)))
+		# 4) СРЕЗ по южной дуге — трёхтоновая кромка обрыва (язык плато)
+		_cut_rim(loop, c, ts, base)
+		# восточное ребро — тонкая тёмная линия: объём против света с СЗ
+		_edge_rim(loop, c, ts, base)
+		# 5) фасеты: мягкие сколы на верхней грани (v1.29.4)
+		var r_in := sqrt(area / PI) * 0.45
+		var n := 3 + int(area / (26.0 * ts * ts))
+		for f in mini(n, 5):
+			var a0 := TAU * float(t._hash(f * 31, int(c.x), 100)) / 100.0
+			var p0 := c + Vector2(cos(a0), sin(a0) * 0.75) * r_in
+			var rr := sqrt(area / PI) * (0.22 + 0.1 * float(t._hash(f * 7, int(c.y), 100)) / 100.0)
+			var fc := base.darkened(0.05) if f % 2 == 0 else base.lightened(0.05)
+			t._draw_ellipse(p0, rr, rr * 0.72, Color(fc, 0.55))
+		# 6) редкая зелень на верхней грани — «шапки» референсов скал
+		_top_grass(top, ts)
 	# трещины добычи и руда — по тайлам внутри массива
 	for y in t.map.h:
 		for x in t.map.w:
@@ -91,24 +105,123 @@ func draw_blobs(ts: float) -> void:
 			draw_tile_detail(x, y, g == t.map.TILE_ORE, ts)
 
 
-## Тёмное подножие по нижней дуге контура: сегменты с нормалью вниз.
+## Прогоны контура, где наружная нормаль смотрит в сторону dir_v
+## (юг — тень/срез, восток — ребро): [[p, нормаль]...] подряд по обходу.
+func _dir_runs(loop: PackedVector2Array, c: Vector2, dir_v: Vector2,
+		dot_min: float, min_len: int) -> Array:
+	var runs: Array = []
+	var run: Array = []
+	var n := loop.size()
+	for i in n + 1:
+		var idx := i % n
+		var p: Vector2 = loop[idx]
+		var q: Vector2 = loop[(idx + 1) % n]
+		var dir := q - p
+		if dir.length() < 0.001:
+			continue
+		var nrm := Vector2(dir.y, -dir.x).normalized()
+		if nrm.dot(p - c) < 0.0:
+			nrm = -nrm   # наружу от центроида
+		if nrm.dot(dir_v) >= dot_min:
+			run.append([p, nrm])
+		else:
+			if run.size() >= min_len:
+				runs.append(run)
+			run = []
+	if run.size() >= min_len:
+		runs.append(run)
+	return runs
+
+
+## Обводка прогона со смещением вдоль нормали (отрицательное — внутрь массы).
+func _stroke_run(run: Array, off: float, width: float, col: Color) -> void:
+	var pts := PackedVector2Array()
+	for e in run:
+		pts.append((e[0] as Vector2) - (e[1] as Vector2) * off)
+	pts.append(pts[0])
+	t._drawer.draw_polyline(pts, col, width)
+
+
+## Трёхтоновый СРЕЗ по южной дуге (снизу вверх от контура: контактное
+## тёмное основание → тело породы → светлая полоса под верхней гранью) +
+## короткие штрихи-напластования поперёк среза.
+func _cut_rim(loop: PackedVector2Array, c: Vector2, ts: float, base: Color) -> void:
+	var cut_h := ts * opt("cut_h", 0.34)
+	for run in _dir_runs(loop, c, Vector2(0, 1), 0.30, 6):
+		# контактная тень — по самому контуру
+		_stroke_run(run, 0.0, 2.0, base.darkened(opt("cut_dark", 0.30) + 0.12))
+		# тёмное основание среза
+		_stroke_run(run, cut_h * 0.22, ts * 0.11, base.darkened(opt("cut_dark", 0.30)))
+		# тело среза — основной тон
+		_stroke_run(run, cut_h * 0.52, ts * 0.20, base)
+		# светлая полоса у верхней грани (свет с СЗ ловит кромку)
+		_stroke_run(run, cut_h * 0.88, ts * 0.09, base.lightened(opt("cut_light", 0.14)))
+		# напластования: штрихи поперёк среза каждые ~0.55 тайла
+		var acc := 0.0
+		for i in run.size():
+			var e: Array = run[i]
+			var p: Vector2 = e[0]
+			var nrm: Vector2 = e[1]
+			if i > 0:
+				acc += p.distance_to(run[i - 1][0])
+			if acc < ts * 0.55:
+				continue
+			acc = 0.0
+			var from := p - nrm * (cut_h * 0.10)
+			var to := p - nrm * (cut_h * 0.80)
+			t._drawer.draw_line(from, to, Color(base.darkened(0.24), 0.7), 1.4)
+
+
+## Восточное ребро: тонкая тёмная линия — масса повёрнута к свету с СЗ.
+func _edge_rim(loop: PackedVector2Array, c: Vector2, ts: float, base: Color) -> void:
+	for run in _dir_runs(loop, c, Vector2(1, 0), 0.55, 5):
+		_stroke_run(run, ts * 0.05, ts * 0.08, base.darkened(0.18))
+
+
+## Мягкая тень на траве у подножия: полосы южнее контура с затуханием.
+func _foot_shadow(loop: PackedVector2Array, c: Vector2, ts: float) -> void:
+	var a0 := opt("shadow_alpha", 0.20)
+	var off := ts * opt("shadow_off", 0.30)
+	for run in _dir_runs(loop, c, Vector2(0, 1), 0.30, 6):
+		_stroke_run_off(run, off, ts * 0.26, Color(0.05, 0.08, 0.05, a0))
+		_stroke_run_off(run, off + ts * 0.24, ts * 0.22, Color(0.05, 0.08, 0.05, a0 * 0.45))
+
+
+## Обводка прогона со смещением НАРУЖУ (тень ложится на траву за контуром).
+func _stroke_run_off(run: Array, off: float, width: float, col: Color) -> void:
+	var pts := PackedVector2Array()
+	for e in run:
+		pts.append((e[0] as Vector2) + (e[1] as Vector2) * off)
+	pts.append(pts[0])
+	t._drawer.draw_polyline(pts, col, width)
+
+
+## Редкие пучки травы на верхней грани («редкая зелень сверху» —
+## референсы скал): по тайлям грани, шанс top_grass.
+func _top_grass(top: PackedVector2Array, ts: float) -> void:
+	var chance := opt("top_grass", 0.35)
+	if chance <= 0.0:
+		return
+	var dark := Color("#4e7a36").darkened(0.15)
+	var light := Color("#6f9a4c")
+	for tk: Vector2i in t._loop_tiles(top, ts):
+		var h: int = t._hash(tk.x * 5, tk.y * 3, 100)
+		if float(h) >= chance * 100.0:
+			continue
+		var blades: Vector2 = t.map.tile_center_px(tk) + Vector2(
+				float(t._hash(tk.x, tk.y, 7) - 3) * 1.6,
+				float(t._hash(tk.y, tk.x, 5) - 3) * 1.2)
+		for b in 2:
+			var lean := Vector2(1.4 * (1 if b == 0 else -1), -4.5 - float(h % 3))
+			t._drawer.draw_line(blades, blades + lean, dark if b == 0 else light, 1.3)
+
+
+## Тёмное подножие по нижней дуге контура: сегменты с нормалью вниз
+## (малые валуны и страховка больших масс).
 func _stroke_bottom_rim(loop: PackedVector2Array, ts: float, base: Color) -> void:
-	var cy: float = t._poly_centroid(loop).y
-	var band := PackedVector2Array()
-	var open := false
-	for i in loop.size() + 1:
-		var p: Vector2 = loop[i % loop.size()]
-		var below: bool = p.y > cy + ts * 0.15
-		if below and not open:
-			open = true
-			band.clear()
-		if open:
-			band.append(p)
-		if open and not below and band.size() >= 3:
-			t._stroke_on_loop(band, ts * 0.42, base.darkened(0.22))
-			open = false
-	if open and band.size() >= 3:
-		t._stroke_on_loop(band, ts * 0.42, base.darkened(0.22))
+	var c: Vector2 = t._poly_centroid(loop)
+	for run in _dir_runs(loop, c, Vector2(0, 1), 0.25, 4):
+		_stroke_run(run, 0.0, ts * 0.14, base.darkened(0.22))
 
 
 ## Фактура тайла: трещины добычи (скала «оседает») и руда кристаллами.
