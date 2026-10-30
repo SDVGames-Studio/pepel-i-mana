@@ -106,12 +106,9 @@ func _bake_guard() -> void:
 ## v1.28.1 (фикс фризов): полная перевыпечка земли = тысячи draw-команд
 ## травы (~0.3 с), а вызывалась на каждое обустройство клетки/дорогу.
 var _rebake_count := 0
-var _blob_cache_ver := -1     # версия сетки, на которую построен кэш блобов
-var _blob_cache_dirty := true # кэш требует пересчёта (первый bake или смена сетки)
-var _water_cached: Array = []   # [{loop, tris, depth, kind, tiles}...]
-var _water_covered: Dictionary = {}   # v1.34.1: тайлы, залитые блобами
-var _rock_cached: Array = []    # [{loop, tris}...]
-var _water_tile_kind: Dictionary = {}   # Vector2i -> "lake"|"river"|"swamp"
+var _blob_cache_ver := -1     # v1.38.0: кэши блобов воды/скал удалены вместе
+var _blob_cache_dirty := true  # с их рендером; версия сетки осталась для
+                               # перевыпечки при изменениях рельефа
 
 
 func rebake(heavy := false, grid_ver := -1) -> void:
@@ -152,28 +149,15 @@ func _draw() -> void:
 ## борозды, точки пастбищ, заборы) и каменные плиты площади. Раньше это
 ## пересобиралось живым слоем каждый кадр (~500 команд), теперь живёт
 ## в текстуре ландшафта и меняется только по sim.static_dirty (rebake).
-var _lake_view = null    # water_lake.gd — рендер озера (v1.34.2)
-var _river_view = null   # water_river.gd — рендер реки
-var _swamp_view = null   # water_swamp.gd — рендер болота
-var _rock_view = null    # rock_terrain.gd — рендер скал и жил
+## v1.38.0 (поручение заказчика): код отрисовки скал/жил и водоёмов
+## (rock_terrain.gd, water_lake/river/swamp.gd, блобы-«органика»,
+## кромки, ряби, камыши) УДАЛЕН ПОЛНОСТЬЮ — вода и скалы рисуются
+## плоской заливкой по типу. Переделка визуала природы с нуля —
+## этап «Природа 2.0» (следующий чат).
 var _plateau_view = null # plateau_terrain.gd — рендер плато и утёсов (v1.36)
 
 
-## Вью-файлы воды и скал: один тип — один файл, тюнинг в data/city.json
-## (colors → "water_tune"). Подключаются лениво при первой выпечке.
 func _ensure_views() -> void:
-	if _lake_view == null:
-		_lake_view = load("res://scripts/water_lake.gd").new()
-		_lake_view.setup(self)
-	if _river_view == null:
-		_river_view = load("res://scripts/water_river.gd").new()
-		_river_view.setup(self)
-	if _swamp_view == null:
-		_swamp_view = load("res://scripts/water_swamp.gd").new()
-		_swamp_view.setup(self)
-	if _rock_view == null:
-		_rock_view = load("res://scripts/rock_terrain.gd").new()
-		_rock_view.setup(self)
 	if _plateau_view == null:
 		_plateau_view = load("res://scripts/plateau_terrain.gd").new()
 		_plateau_view.setup(self)
@@ -184,9 +168,7 @@ func _draw_tiles() -> void:
 		return
 	_ensure_views()
 	var ts := float(map.ts)
-	# проход 1: земля (трава/осыпи) — вода и скалы рисуются блобами поверх.
-	# v1.32: трава — текстурные тайлы (стиль видео dual-grid); текстура
-	# отсутствует (не импортирована) — откат к плоской заливке _grass_at
+	# проход 1: земля (трава/осыпи) — вода и скалы рисуются поверх
 	for y in map.h:
 		for x in map.w:
 			var tile: int = map.grid[y][x]
@@ -201,17 +183,12 @@ func _draw_tiles() -> void:
 					_draw_grass_detail(x, y, rect, ts)
 				map.TILE_DEADROCK:
 					_draw_deadrock(x, y, rect, ts)
-	# проход 2: скальная гряда и вода — ОРГАНИЧНЫЕ блобы (marching squares,
-	# сглаживание Безье — стиль RimWorld/Dwarf Fortress, не по тайлам)
-	_rock_view.draw_blobs(ts)
-	_draw_water_blobs(ts)
-	# проход 3: плато и утёсы (v1.36) — верхние грани, срезы-кромки по схеме
-	# Hills, лестницы-проходы и тени у подножия; после воды/скал, чтобы тени
-	# ложились на готовый ландшафт
+	# проход 2: вода и скалы — плоская заливка по типу (v1.38.0)
+	_draw_water_flat(ts)
+	_draw_rocks_flat(ts)
+	# проход 3: плато и утёсы (v1.36) — верхние грани, срезы-кромки
+	# по схеме Hills, лестницы-проходы и тени у подножия
 	_plateau_view.draw_plateaus(ts)
-	# v1.32: травяная бахрома по кромкам воды и скал — травинки «обнимают»
-	# берег, как в видео (листья свисаются на границах тайлов)
-	_draw_grass_fringe(ts)
 
 
 ## Надстройки (v1.28.1 — отдельный дешёвый слой): зоны, дороги, плиты
@@ -728,297 +705,66 @@ func _draw_grass_detail(x: int, y: int, rect: Rect2, ts: float) -> void:
 			_drawer.draw_circle(c + Vector2(1.0, 1.0), 0.9, fcol)
 			_drawer.draw_circle(c, 0.7, Color("#e8c94d"))
 
-
-## Травяная бахрома по кромкам воды и скальных гряд (v1.32, стиль видео):
-## пары травинок на травяной стороне контура — берег «порастает» травой,
-## граница читается мягкой, а не геометричной. Кэш контуров уже построен
-## (_water_cached/_rock_cached), идём по точкам сглаженного контура.
-func _draw_grass_fringe(ts: float) -> void:
-	var dark: Color = colors.get("grass2", Color("#498938")).darkened(0.18)
-	var light: Color = colors.get("grass", Color("#5ca046")).lightened(0.14)
-	for entry in _water_cached:
-		if String(entry["kind"]) == "swamp" or not bool(entry.get("simple", true)):
-			continue
-		_fringe_loop(entry["loop"], _poly_centroid(entry["loop"]), ts, dark, light)
-	for entry in _rock_cached:
-		# v1.34.1: у честно-тайловых скал (не заполнены) бахромы нет
-		if not bool(entry.get("simple", true)):
-			continue
-		_fringe_loop(entry["loop"], _poly_centroid(entry["loop"]), ts, dark, light)
+## ---------- вода и скалы: плоская заливка (v1.38.0) --------------------------
+## Поручение заказчика 2026-10-30: код отрисовки скал/жил и водоёмов удалён
+## полностью (блобы, кромки, ряби, камыши, глубины). Вода и скалы — плоские
+## тайлы по типу; полный передел визуала природы — этап «Природа 2.0».
 
 
-func _fringe_loop(loop: PackedVector2Array, centroid: Vector2, ts: float,
-		dark: Color, light: Color) -> void:
-	if loop.size() < 8:
-		return
-	# нормаль наружу = от центроида; точки контура плотные (4 subdivision
-	# на ребро) — шаг 2 даёт травинку каждые ~4–5 px. Травинки тянутся
-	# ВВЕРХ с наклоном наружу — силуэт берега «дышит» (v1.32: длиннее
-	# и гуще первого варианта, иначе кромка читалась жёсткой)
-	var i := 0
-	for p in loop:
-		if i % 2 != 0:
-			i += 1
-			continue
-		i += 1
-		var n := (p - centroid).normalized()
-		if n == Vector2.ZERO:
-			continue
-		var base := p + n * (ts * 0.07)
-		var ln := 4.5 + float(_hash(i, i * 7, 4))
-		var lean := Vector2(n.x * 0.7, -1.0).normalized() * ln
-		var col := dark if i % 4 < 2 else light
-		_drawer.draw_line(base, base + lean, col, 1.4)
-		if i % 6 == 0:
-			var base2 := base + n * 2.5 + Vector2(2.5, 0)
-			_drawer.draw_line(base2, base2 + lean * 0.85,
-					light if col == dark else dark, 1.1)
-
-
-## Вода v1.27.1 — ОРГАНИЧНЫЕ водоёмы (референс RimWorld/Dwarf Fortress):
-## контур по marching squares, сглаженный Безье; заливка с глубиной,
-## песчаная кромка-обводка, светлая линия уреза. Острова в воде и пруды
-## на островах обрабатываются вложенностью контуров. Поверх — блики,
-## кувшинки и камыши на берегу.
-func _draw_water_blobs(ts: float) -> void:
-	var shore_col: Color = colors.get("shore", Color("#d9c69b"))   # v1.31.1: белее
-	# v1.28.1: контуры+триангуляция — из кэша (маска воды меняется только
-	# со сменой сетки); пересчёт — по _blob_cache_dirty из rebake(heavy)
-	if _blob_cache_dirty:
-		_water_cached = []
-		_water_covered = {}
-		_water_tile_kind = {}
-		var raw: Array = _mask_loops(func(t: Vector2i) -> bool:
-			return map.grid[t.y][t.x] == map.TILE_WATER)
-		raw.sort_custom(func(a, b) -> bool: return _loop_area(a) > _loop_area(b))
-		var smootheds: Array = []
-		for rl in raw:
-			smootheds.append(_smooth_loop(rl))
-		for ri in raw.size():
-			var sm: PackedVector2Array = smootheds[ri]
-			if not _loop_is_simple(sm):
-				# v1.31.1: сглаживание сломало контур — берём СЫРОЙ контур
-				# (он всегда простой; квадратные ступени гасит обводка песка)
-				sm = raw[ri]
-				smootheds[ri] = sm
-			# v1.34.1: чистка контура — дубли и коллинеарные точки роняют
-			# ear-clipping (Geometry2D.triangulate_polygon), заливка не
-			# рисовалась и водоём оставался серой «сухой рекой» (скриншоты
-			# приёмки v1.34.0). Чистый контур триангулируется почти всегда,
-			# крайний случай — честные тайлы (simple=false ниже).
-			var clean := _clean_loop(sm)
-			if clean.size() >= 3:
-				sm = clean
-				smootheds[ri] = sm
-			var tiles := _loop_tiles(sm, ts)
-			# v1.29.1: тип водоёма считает КАРТА (он нужен и путям/броду);
-			# локальный расчёт по силуэту — страховка для карт без неё
-			var kind := ""
-			if not tiles.is_empty():
-				kind = map.water_kind_at(tiles[0])
-			if kind == "":
-				kind = _water_kind(sm, ts)
-			for t: Vector2i in tiles:
-				_water_tile_kind[t] = kind
-			# v1.31.1: не-простой сглаженный контур заменён СЫРЫМ выше — здесь
-			# контур всегда простой, гладкие края и обводки у каждого водоёма
-			var tris: PackedInt32Array = Geometry2D.triangulate_polygon(sm)
-			# v1.34.1: обрывки контуров (1 тайл) — не «болото», иначе топь
-			# рисуется поверх реки; настоящие болота считает карта
-			if kind == "swamp" and tiles.size() <= 1:
-				kind = "lake"
-			for t: Vector2i in tiles:
-				_water_covered[t] = true
-			_water_cached.append({"loop": sm,
-					"tris": tris,
-					"depth": _loop_depth(sm, smootheds),
-					"kind": kind, "tiles": tiles,
-					"simple": not tris.is_empty()})
-		_rock_cached = _rock_view.build_cache()
-		_blob_cache_dirty = false
-	for entry in _water_cached:
-		var loop: PackedVector2Array = entry["loop"]
-		var depth: int = int(entry["depth"])
-		var kind := String(entry["kind"])
-		var simple := bool(entry.get("simple", true))
-		if not simple:
-			# мусорный контур: честные квадратные тайлы цветом воды
-			for t: Vector2i in entry["tiles"]:
-				_drawer.draw_rect(Rect2(Vector2(t) * ts, Vector2(ts, ts)),
-						_water_river if kind == "river" else _water_lake)
-			continue
-		if kind == "swamp":
-			# болото рисуется ЧЕСТНЫМИ квадратными тайлами — сглаживанию
-			# мелкие кляксы не идут (замечание заказчика 2026-10-28)
-			continue
-		if depth % 2 == 1:
-			# остров: та же текстурная трава, что и на материке (v1.32),
-			# откат — плоская _grass_at
-			for t: Vector2i in entry["tiles"]:
-				var gtex: Texture2D = _grass_texture_at(t.x, t.y)
-				var grect := Rect2(Vector2(t) * ts, Vector2(ts, ts))
-				if gtex != null:
-					_drawer.draw_texture_rect(gtex, grect, false)
-				else:
-					_drawer.draw_rect(grect, _grass_at(t.x, t.y))
-			_stroke_on_loop(loop, ts * 0.6, Color("#6d8a4e").darkened(0.05))
-			continue
-		# v1.34.2: тело водоёма рисует файл своего типа (мель/глубина)
-		if kind == "river":
-			_river_view.draw_body(entry, ts)
-		else:
-			_lake_view.draw_body(entry, ts)
-	# берег (волна 6): песок ВНУТРИ кромки воды. Раньше штрих шёл по контуру
-	# шириной 0.9 тайла — на узкой реке съедал всю воду («реки мутные»), а на
-	# малых водоёмах выплёскивался на соседние скалы («текстуры залазят»)
-	for entry in _water_cached:
-		if String(entry["kind"]) == "swamp" or not bool(entry.get("simple", true)):
-			continue
-		var loop: PackedVector2Array = entry["loop"]
-		if int(entry["depth"]) % 2 == 1:
-			continue
-		var kind := String(entry["kind"])
-		var area := _loop_area(loop)
-		# v1.29.4: ширина песка — по размеру водоёма: у малых прудов тонкая
-		# (раньше кромка съедала воду — оставалась «голубая щёлочка в глазке»)
-		var w := ts * 0.16
-		if area > 12.0 * ts * ts:
-			w = ts * 0.3
-		if kind == "lake" and area > 30.0 * ts * ts:
-			w = ts * 0.55
-		_stroke_inside(loop, 0.985, w, shore_col)
-		# влажный блеск у кромки — только у средних и больших водоёмов
-		if area > 12.0 * ts * ts:
-			var wcol: Color = _water_river if kind == "river" else _water_lake
-			_stroke_inside(loop, 0.955, 1.5, Color(wcol.lightened(0.25), 0.45))
-	_river_view.draw_fords(ts)
-	_swamp_view.draw_blobs(ts)
-	# v1.34.1: гарантия заливки — узкие реки распадаются в marching
-	# squares на вырожденные контуры (площадь 0), их тайлы не покрывал
-	# ни один блоб и просвечивал серый фон («сухая река» на скриншотах
-	# приёмки v1.34.0). Каждый незалитый тайл красим цветом его типа.
+## Вода: плоский цвет по типу водоёма (озеро/река/болото), брод — светлее
+## с песчаным дном (игровой ориентир переправы).
+func _draw_water_flat(ts: float) -> void:
+	var swamp := Color(String(colors.get("water_tune", {}).get("swamp", {})
+			.get("color", "#46523a")))
 	for y in map.h:
 		for x in map.w:
 			if map.grid[y][x] != map.TILE_WATER:
 				continue
 			var t := Vector2i(x, y)
-			if _water_covered.has(t):
-				continue
-			var k := water_kind_at(t)
-			var col := Color("#46523a") if k == "swamp" 					else (_water_river if k == "river" else _water_lake)
-			_drawer.draw_rect(Rect2(Vector2(t) * ts, Vector2(ts, ts)), col)
-	# украшения по тайлам внутри контура — у каждой воды свои
+			var rect := Rect2(Vector2(t) * ts, Vector2(ts, ts))
+			var kind: String = map.water_kind_at(t)
+			var col := _water_river if kind == "river" else (_water_lake if kind == "lake" else swamp)
+			_drawer.draw_rect(rect, col)
+			if map.fords.has(t):
+				_drawer.draw_rect(rect, col.lightened(0.32))
+				for i in 3:
+					var h: int = _hash(t.x * 11 + i, t.y * 7 + i, 100)
+					var c := rect.position + Vector2(4.0 + float(h % int(ts - 8.0)),
+							4.0 + float((h / 7) % int(ts - 8.0)))
+					_drawer.draw_circle(c, 2.0 + float(h % 2), Color("#c8b183", 0.65))
+
+
+## Скалы и руда: плоский камень; руда — кристалльные точки (видно, куда
+## ставить шахту); трещины по мере выработки остаются (информация добычи).
+func _draw_rocks_flat(ts: float) -> void:
+	var base := Color(String(colors.get("water_tune", {}).get("rocks", {})
+			.get("color", "#857e71")))
+	var hp_max := _rock_hp_default
 	for y in map.h:
 		for x in map.w:
-			if map.grid[y][x] != map.TILE_WATER:
+			var g: int = map.grid[y][x]
+			if g != map.TILE_ROCK and g != map.TILE_ORE:
 				continue
-			var rect := Rect2(x * ts, y * ts, ts, ts)
-			var kind: String = _water_tile_kind.get(Vector2i(x, y), "lake")
-			if kind == "swamp":
-				continue   # болото украшено в _draw_swamp_blobs
-			if kind == "river":
-				_river_view.draw_flow(x, y, rect, ts)
-			else:
-				_lake_view.draw_detail(x, y, rect, ts)
-				if _water_deep(x, y) <= 2 and _hash(x, y, 17) == 0:
-					_lake_view.draw_lilies(Vector2(x * ts, y * ts), ts, x, y)
-				# v1.34: круги ряби на открытой воде — редкие статичные
-				# двойные кольца (референс a602a024: кольца вокруг лилий)
-				if _water_deep(x, y) >= 6 and _hash(x, y, 53) % 9 == 0:
-					_lake_view.draw_ripple(Vector2(x * ts, y * ts), ts)
-				# v1.34: камыши на мели — пучки торчат из воды у кромки
-				if _water_deep(x, y) <= 2 and _hash(x * 7, y * 3, 61) % 4 == 0:
-					_draw_water_reeds(Vector2(x * ts, y * ts), ts, x, y)
-				# тина (v1.28): болотная плёнка на отмелях озёр
-				if _water_deep(x, y) <= 1 and _hash(x * 3, y * 7, 29) % 3 == 0:
-					_drawer.draw_circle(rect.position + Vector2(ts * 0.4, ts * 0.5),
-							ts * 0.34, Color("#6b7d4f", 0.35))
-					_drawer.draw_circle(rect.position + Vector2(ts * 0.65, ts * 0.35),
-							ts * 0.22, Color("#7a8d55", 0.28))
-	# вокруг БОЛОТ — тёмно-зелёная земля с камышами (v1.31.1, заказчик)
-	for y in map.h:
-		for x in map.w:
-			var st := Vector2i(x, y)
-			if map.grid[y][x] != map.TILE_GRASS or not _near_water(st):
-				continue
-			if _shore_kind(st) != "swamp":
-				continue
-			var srect := Rect2(Vector2(st) * ts, Vector2(ts, ts))
-			_drawer.draw_rect(srect, Color("#3f4a33", 0.55))
-			if _hash(x * 3, y * 5, 23) % 3 < 2:
-				_draw_reeds(Vector2(st) * ts, ts, x, y)
-	# берег (v1.28): грязевые проплешины на прибрежной траве — топь у озёр
-	# и болот; у реки берег песчаный и чистый, только редкий камыш
-	for y in map.h:
-		for x in map.w:
 			var t := Vector2i(x, y)
-			if map.grid[y][x] == map.TILE_GRASS and _near_water(t):
-				var near_kind := _shore_kind(t)
-				var rect2 := Rect2(Vector2(t) * ts, Vector2(ts, ts))
-				if near_kind != "river" and _hash(x * 13, y * 3, 31) % 5 == 0:
-					_drawer.draw_circle(rect2.get_center() + Vector2(3, -2),
-							ts * 0.3, Color("#5f5142", 0.55))
-					_drawer.draw_circle(rect2.get_center() + Vector2(-4, 3),
-							ts * 0.2, Color("#6b5c4a", 0.45))
-				var reed_rarity := 5 if near_kind == "river" else 23
-				if _hash(x * 3, y * 5, 23) % reed_rarity < 3:
-					_draw_reeds(Vector2(t) * ts, ts, x, y)
-## Тип водоёма по силуэту (правки приёмки v1.29.1: «если болото то болото,
-## если озеро или река — они разные»): вытянутая лента — река, малое
-## компактное пятно — болотце (квадратные тайлы), остальное — озеро.
-func _water_kind(loop: PackedVector2Array, ts: float) -> String:
-	var mn: Vector2 = loop[0]
-	var mx: Vector2 = loop[0]
-	for p in loop:
-		mn = Vector2(minf(mn.x, p.x), minf(mn.y, p.y))
-		mx = Vector2(maxf(mx.x, p.x), maxf(mx.y, p.y))
-	var size := mx - mn
-	var long_side := maxf(size.x, size.y)
-	var short_side := maxf(1.0, minf(size.x, size.y))
-	if long_side / short_side >= 2.8:
-		return "river"
-	if _loop_area(loop) <= 16.0 * ts * ts:
-		return "swamp"
-	return "lake"
-
-
-## Тайлы внутри контура (по центрам клеток) — для квадратных болот и
-## справочника «тайл -> тип воды».
-func _loop_tiles(loop: PackedVector2Array, ts: float) -> Array:
-	var out: Array = []
-	for y in map.h:
-		for x in map.w:
-			if Geometry2D.is_point_in_polygon(Vector2((x + 0.5) * ts, (y + 0.5) * ts), loop):
-				out.append(Vector2i(x, y))
-	return out
-## Тип водоёма в тайле («lake» | «river» | «swamp») — цвета воды и кромка.
-## Первоисточник — карта (water_kind), локальный — страховка.
-func water_kind_at(t: Vector2i) -> String:
-	var k: String = map.water_kind_at(t)
-	return k if k != "" else String(_water_tile_kind.get(t, "lake"))
-
-
-## Сколько водных соседей по 8 направлениям (глубина плиты).
-func _water_deep(x: int, y: int) -> int:
-	var n := 0
-	for dy in range(-1, 2):
-		for dx in range(-1, 2):
-			if dx == 0 and dy == 0:
-				continue
-			var t := Vector2i(x + dx, y + dy)
-			if map.in_bounds(t) and map.grid[t.y][t.x] == map.TILE_WATER:
-				n += 1
-	return n
-## Заполненный эллипс полигоном (для глыб гряды).
-func _draw_ellipse(center: Vector2, rx: float, ry: float, col: Color) -> void:
-	if rx <= 0.5 or ry <= 0.5:
-		return
-	var pts := PackedVector2Array()
-	for i in 18:
-		var a := TAU * float(i) / 18.0
-		pts.append(center + Vector2(cos(a) * rx, sin(a) * ry))
-	_drawer.draw_colored_polygon(pts, col)
-
+			var rect := Rect2(Vector2(t) * ts, Vector2(ts, ts))
+			_drawer.draw_rect(rect, base if g == map.TILE_ROCK else base.darkened(0.08))
+			if g == map.TILE_ORE:
+				var gold: bool = _hash(x, y, 4) == 0
+				var col := Color("#e0b13e") if gold else Color("#b0684a")
+				for i in 3:
+					var h: int = _hash(x * 13 + i, y * 17 + i, 100)
+					var fx := rect.position.x + 6.0 + float(h % int(ts - 12.0))
+					var fy := rect.position.y + 9.0 + float((h / 3) % int(ts - 16.0))
+					_draw_diamond(Vector2(fx, fy), 2.4 + float(h % 3), col)
+					_draw_diamond(Vector2(fx - 1.0, fy - 1.2), 1.1, col.lightened(0.4))
+			elif map.rock_hp.has(t):
+				var frac: float = clampf(float(map.rock_hp[t]) / maxf(1.0, hp_max), 0.0, 1.0)
+				if frac < 0.66:
+					_drawer.draw_line(rect.position + Vector2(ts * 0.3, ts * 0.35),
+							rect.position + Vector2(ts * 0.5, ts * 0.7), Color(0.12, 0.11, 0.09, 0.85), 1.6)
+				if frac < 0.33:
+					_drawer.draw_line(rect.position + Vector2(ts * 0.65, ts * 0.2),
+							rect.position + Vector2(ts * 0.5, ts * 0.55), Color(0.12, 0.11, 0.09, 0.85), 1.4)
 
 ## Ромб-кристалл (руда) с центром center и полудиагональю r.
 func _draw_diamond(center: Vector2, r: float, col: Color) -> void:
@@ -1028,49 +774,3 @@ func _draw_diamond(center: Vector2, r: float, col: Color) -> void:
 		center + Vector2(0, -r), center + Vector2(r * 0.7, 0),
 		center + Vector2(0, r), center + Vector2(-r * 0.7, 0),
 	]), col)
-
-
-## Камыши (v1.27): 2–4 стебля с тёмной шишкой — болотная кромка водоёмов.
-func _draw_reeds(origin: Vector2, ts: float, x: int, y: int) -> void:
-	var stem := Color("#4e6b34")
-	var head := Color("#7a5230")
-	var n := 2 + _hash(x, y, 5) % 3
-	for i in n:
-		var h := _hash(x * 7 + i, y * 11 + i, 100)
-		var base := origin + Vector2(5.0 + float(h % int(ts - 10.0)), ts * 0.85)
-		var lean := 1.6 + float(h % 3) * 0.8
-		var top := base + Vector2(lean, -ts * (0.5 + 0.14 * float(h % 3)))
-		_drawer.draw_line(base, top, stem, 1.4)
-		_drawer.draw_line(top, top + Vector2(lean * 0.5, -3.0), stem, 1.1)
-		# шишка камыша — короткая тёмная капсула на конце
-		_drawer.draw_line(top + Vector2(lean * 0.5, -3.0), top + Vector2(lean * 0.6, -7.0), head, 2.4)
-		_drawer.draw_circle(top + Vector2(lean * 0.6, -7.0), 1.2, head.darkened(0.2))
-
-
-## Камыши на мели (v1.34): пучок растёт ИЗ воды — тёмное основание-плёс,
-## стебли чуть темче береговых. Рисуется поверх мель-пояса.
-func _draw_water_reeds(origin: Vector2, ts: float, x: int, y: int) -> void:
-	var base := origin + Vector2(ts * 0.5, ts * 0.72)
-	_drawer.draw_circle(base, ts * 0.20, Color("#2c3f33", 0.55))
-	_drawer.draw_circle(base + Vector2(2.0, 1.0), ts * 0.12, Color("#22322a", 0.45))
-	_draw_reeds(origin + Vector2(0, ts * 0.18), ts * 1.05, x, y)
-
-
-func _near_water(t: Vector2i) -> bool:
-	for d in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
-		var n: Vector2i = t + d
-		if map.in_bounds(n) and map.grid[n.y][n.x] == map.TILE_WATER:
-			return true
-	return false
-
-
-## Тип воды у берега (для грязи/камышей на прибрежной траве): вид ближайшего
-## водного соседа; река — если хоть один сосед речной.
-func _shore_kind(t: Vector2i) -> String:
-	for dy in range(-1, 2):
-		for dx in range(-1, 2):
-			var n := t + Vector2i(dx, dy)
-			if map.in_bounds(n) and map.grid[n.y][n.x] == map.TILE_WATER:
-				if String(_water_tile_kind.get(n, "lake")) == "river":
-					return "river"
-	return "lake"
