@@ -1090,9 +1090,13 @@ func _test_m14_c() -> void:
 			"промах по пустому месту не даёт добычи")
 
 	# --- пни под каждый тип дерева (замечание 2026-10-20) ---
+	# v1.39.0: деревья «Природы 2.0» — 5 видов пака ForgottenMemories,
+	# палитры пней самостоятельные (вариант по хэшу тайла) — их не меньше,
+	# чем видов деревьев
 	var city_view = load("res://scripts/city_view.gd")
-	_check(city_view.STUMP_PALS.size() == city_view.TREE_REFS.size(),
-			"вариантов пней столько же, сколько типов деревьев (%d)" % city_view.STUMP_PALS.size())
+	_check(city_view.STUMP_PALS.size() >= city_view.TREE_REFS.size(),
+			"палитр пней не меньше, чем видов деревьев (%d >= %d)" % [
+				city_view.STUMP_PALS.size(), city_view.TREE_REFS.size()])
 
 	# --- T13: туман — радиус открытия меньше и клик разрешён ---
 	_check(int(world_cfg.get("fog_reveal_radius", 99)) < int(world_cfg.get("reveal_radius", 0)),

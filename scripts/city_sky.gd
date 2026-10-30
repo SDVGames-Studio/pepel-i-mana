@@ -474,14 +474,27 @@ func _draw_rock_shadow(rect: Rect2, h: float, t: float, nf: float,
 	var tr := rect.position + Vector2(rect.size.x, 0)
 	var bl := rect.position + Vector2(0, rect.size.y)
 	var br := rect.end
+	# вырожденные направления (почти горизонтальный свет off.y≈0/отрицательный
+	# или свет строго сверху off.x≈0): L-фигура самопересекается и роняет
+	# триангуляцию (шум в логе с v1.29.4) — честная выпуклая оболочка
+	# «подошва + подошва со смещением»
+	if off.y < 0.5 or absf(off.x) < 0.5:
+		var hull := Geometry2D.convex_hull(PackedVector2Array([
+			tl, tr, bl, br, tl + off, tr + off, bl + off, br + off]))
+		if hull.size() >= 3:
+			draw_colored_polygon(hull, col)
+		return
 	# ОДНА L-фигура (юг+бок единым полигоном): раньше два отдельных
-	# четырёхугольника читались «двойной тенью» (v1.31.1, заказчик)
+	# четырёхугольника читались «двойной тенью» (v1.31.1, заказчик).
+	# Ветка влево (v1.39.0): старый порядок вершин с диагональю tl→br
+	# самопересекался (триангуляция падала каждый кадр) — зеркальный L.
 	if off.x >= 0.0:
 		draw_colored_polygon(PackedVector2Array([
 			tr, br, bl, bl + Vector2(0, off.y), bl + off, br + off, tr + off]), col)
 	else:
 		draw_colored_polygon(PackedVector2Array([
-			tl, br, bl, bl + Vector2(0, off.y), bl + off, br + off, tl + off]), col)
+			tr, br, br + Vector2(0, off.y), bl + off, tl + off,
+			tl + Vector2(0, off.y), tl]), col)
 
 
 

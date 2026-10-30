@@ -34,6 +34,7 @@ var _road_warned := false       # тост «нет камня» не спами
 var _modulate: CanvasModulate
 var _static_body: StaticBody2D
 var _terrain: Node2D = null     # статический слой ландшафта (перерисовка по dirty, M11)
+var _water: Node2D = null       # живая вода «Природы 2.0» (v1.39.0)
 var _near_anomaly := false
 var _near_armory: Dictionary = {}   # оружейка рядом с героем (E — комплект героя)
 var _equip_panel = null         # панель экипировки и крафта (M14-B, клавиша I)
@@ -75,6 +76,11 @@ func _ready() -> void:
 	_terrain = load("res://scripts/city_terrain.gd").new()
 	_terrain.setup(map, cfg, sim)
 	add_child(_terrain)
+	# живая вода «Природы 2.0» (v1.39.0): анимация/пена/рябь/камыши —
+	# над запечённой землёй, под тенями и жителями
+	_water = load("res://scripts/water_terrain.gd").new()
+	_water.setup(_terrain, _terrain.colors)
+	add_child(_water)
 	# тени солнечного цикла (v1.27): под объектами, над ландшафтом
 	_sky_shadows = SKY.new()
 	_sky_shadows.mode = "shadows"

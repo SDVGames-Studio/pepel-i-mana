@@ -155,12 +155,24 @@ func _draw() -> void:
 ## плоской заливкой по типу. Переделка визуала природы с нуля —
 ## этап «Природа 2.0» (следующий чат).
 var _plateau_view = null # plateau_terrain.gd — рендер плато и утёсов (v1.36)
+var _rock_view = null    # rock_terrain.gd — скалы/жилы «Природы 2.0» (v1.39.0)
 
 
 func _ensure_views() -> void:
 	if _plateau_view == null:
 		_plateau_view = load("res://scripts/plateau_terrain.gd").new()
 		_plateau_view.setup(self)
+	if _rock_view == null:
+		_rock_view = load("res://scripts/rock_terrain.gd").new()
+		_rock_view.setup(self)
+
+
+## Кэш блобов скал: перестраивается при смене версии сетки (выработка
+## породы, мост) — та же метка dirty, что управляла блобами воды до v1.38.0.
+func _rebuild_rock_cache() -> void:
+	if _rock_view != null and _blob_cache_dirty:
+		_rock_cached = _rock_view.build_cache()
+		_blob_cache_dirty = false
 
 
 func _draw_tiles() -> void:
@@ -181,11 +193,14 @@ func _draw_tiles() -> void:
 					else:
 						_drawer.draw_rect(rect, _grass_at(x, y))
 					_draw_grass_detail(x, y, rect, ts)
+					_draw_grass_prop(x, y, rect, ts)
 				map.TILE_DEADROCK:
 					_draw_deadrock(x, y, rect, ts)
-	# проход 2: вода и скалы — плоская заливка по типу (v1.38.0)
-	_draw_water_flat(ts)
-	_draw_rocks_flat(ts)
+	# проход 2: скалы и жилы — «Природа 2.0» (v1.39.0): фактурные утёсы
+	# с травяными шапками языком высот плато (rock_terrain.gd).
+	# Вода в духовке НЕ рисуется: она живая (water_terrain.gd, город).
+	_rebuild_rock_cache()
+	_rock_view.draw_blobs(ts)
 	# проход 3: плато и утёсы (v1.36) — верхние грани, срезы-кромки
 	# по схеме Hills, лестницы-проходы и тени у подножия
 	_plateau_view.draw_plateaus(ts)
@@ -705,66 +720,46 @@ func _draw_grass_detail(x: int, y: int, rect: Rect2, ts: float) -> void:
 			_drawer.draw_circle(c + Vector2(1.0, 1.0), 0.9, fcol)
 			_drawer.draw_circle(c, 0.7, Color("#e8c94d"))
 
-## ---------- вода и скалы: плоская заливка (v1.38.0) --------------------------
-## Поручение заказчика 2026-10-30: код отрисовки скал/жил и водоёмов удалён
-## полностью (блобы, кромки, ряби, камыши, глубины). Вода и скалы — плоские
-## тайлы по типу; полный передел визуала природы — этап «Природа 2.0».
+## ---------- Природа 2.0 (v1.39.0) -------------------------------------------
+## Вода — живой слой (water_terrain.gd, добавлен городом над ландшафтом);
+## скалы/жилы — rock_terrain.gd (проход 2 духовки). Здесь остались только
+## статичные пропсы травы и ромб-кристалл руды (общая утилита).
+
+var _rock_cached: Array = []   # блобы скал (кэш, перестройка по grid_ver)
+var _prop_texs: Dictionary = {}  # имя -> Texture2D (кусты/камни пака)
 
 
-## Вода: плоский цвет по типу водоёма (озеро/река/болото), брод — светлее
-## с песчаным дном (игровой ориентир переправы).
-func _draw_water_flat(ts: float) -> void:
-	var swamp := Color(String(colors.get("water_tune", {}).get("swamp", {})
-			.get("color", "#46523a")))
-	for y in map.h:
-		for x in map.w:
-			if map.grid[y][x] != map.TILE_WATER:
-				continue
-			var t := Vector2i(x, y)
-			var rect := Rect2(Vector2(t) * ts, Vector2(ts, ts))
-			var kind: String = map.water_kind_at(t)
-			var col := _water_river if kind == "river" else (_water_lake if kind == "lake" else swamp)
-			_drawer.draw_rect(rect, col)
-			if map.fords.has(t):
-				_drawer.draw_rect(rect, col.lightened(0.32))
-				for i in 3:
-					var h: int = _hash(t.x * 11 + i, t.y * 7 + i, 100)
-					var c := rect.position + Vector2(4.0 + float(h % int(ts - 8.0)),
-							4.0 + float((h / 7) % int(ts - 8.0)))
-					_drawer.draw_circle(c, 2.0 + float(h % 2), Color("#c8b183", 0.65))
+## Пропсы на лугу: кусты и валуны ForgottenMemories — редкие, по хэшу
+## (маскируют «пустоту» ровного газона; у воды гуще — по соседству).
+func _draw_grass_prop(x: int, y: int, rect: Rect2, ts: float) -> void:
+	if _prop_texs.is_empty():
+		for n in ["bush2_a", "bush2_b", "bush2_c", "bush2_d", "stone2_a", "stone2_b"]:
+			_prop_texs[n] = Assets.tex("res://assets/sprites/props/%s.png" % n)
+	var h: int = _hash(x * 17, y * 11, 1000)
+	var near_water := false
+	for d: Vector2i in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
+		var p: Vector2i = Vector2i(x, y) + d
+		if map.in_bounds(p) and map.grid[p.y][p.x] == map.TILE_WATER:
+			near_water = true
+			break
+	# шанс: у воды 8%, на лугу 2.2%
+	var threshold := 80 if near_water else 22
+	if h >= threshold:
+		return
+	var idx: int = _hash(x * 3, y * 5, _prop_texs.size())
+	var name: String = _prop_texs.keys()[idx]
+	var tex: Texture2D = _prop_texs[name]
+	if tex == null:
+		return
+	var scale := (0.42 + 0.14 * float(_hash(x, y, 7))) * ts
+	var s := scale / float(tex.get_height())
+	var w := tex.get_width() * s
+	var pos := rect.get_center() + Vector2(
+			float(_hash(x * 5, y, 9) - 4) * ts * 0.02,
+			float(_hash(x, y * 5, 9) - 4) * ts * 0.02)
+	_drawer.draw_texture_rect(tex, Rect2(
+			Vector2(pos.x - w * 0.5, pos.y - scale * 0.62), Vector2(w, scale)), false)
 
-
-## Скалы и руда: плоский камень; руда — кристалльные точки (видно, куда
-## ставить шахту); трещины по мере выработки остаются (информация добычи).
-func _draw_rocks_flat(ts: float) -> void:
-	var base := Color(String(colors.get("water_tune", {}).get("rocks", {})
-			.get("color", "#857e71")))
-	var hp_max := _rock_hp_default
-	for y in map.h:
-		for x in map.w:
-			var g: int = map.grid[y][x]
-			if g != map.TILE_ROCK and g != map.TILE_ORE:
-				continue
-			var t := Vector2i(x, y)
-			var rect := Rect2(Vector2(t) * ts, Vector2(ts, ts))
-			_drawer.draw_rect(rect, base if g == map.TILE_ROCK else base.darkened(0.08))
-			if g == map.TILE_ORE:
-				var gold: bool = _hash(x, y, 4) == 0
-				var col := Color("#e0b13e") if gold else Color("#b0684a")
-				for i in 3:
-					var h: int = _hash(x * 13 + i, y * 17 + i, 100)
-					var fx := rect.position.x + 6.0 + float(h % int(ts - 12.0))
-					var fy := rect.position.y + 9.0 + float((h / 3) % int(ts - 16.0))
-					_draw_diamond(Vector2(fx, fy), 2.4 + float(h % 3), col)
-					_draw_diamond(Vector2(fx - 1.0, fy - 1.2), 1.1, col.lightened(0.4))
-			elif map.rock_hp.has(t):
-				var frac: float = clampf(float(map.rock_hp[t]) / maxf(1.0, hp_max), 0.0, 1.0)
-				if frac < 0.66:
-					_drawer.draw_line(rect.position + Vector2(ts * 0.3, ts * 0.35),
-							rect.position + Vector2(ts * 0.5, ts * 0.7), Color(0.12, 0.11, 0.09, 0.85), 1.6)
-				if frac < 0.33:
-					_drawer.draw_line(rect.position + Vector2(ts * 0.65, ts * 0.2),
-							rect.position + Vector2(ts * 0.5, ts * 0.55), Color(0.12, 0.11, 0.09, 0.85), 1.4)
 
 ## Ромб-кристалл (руда) с центром center и полудиагональю r.
 func _draw_diamond(center: Vector2, r: float, col: Color) -> void:

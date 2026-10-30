@@ -134,6 +134,13 @@ const BLOCKS := [
 	"_test_plateau_combat",
 	"_test_plateau_lift",
 ]],
+
+	["res://tests/test_nature2.gd", [
+	"_test_nature2_assets",
+	"_test_nature2_water_cache",
+	"_test_nature2_rocks",
+	"_test_nature2_tuning",
+]],
 ]
 
 

@@ -720,12 +720,11 @@ func _draw_stump(bottom: Vector2, ts: float, variant: int) -> void:
 		draw_line(bottom + Vector2(-w * 0.2, -h * 1.6), bottom + Vector2(w * 0.1, -h * 0.3), Color("#4e342e"), 1.1)
 
 
-# v1.32 «Деревья как в видео»: пухлые кроноблобы с дизерингом (генератор
-# tools/make_video_trees.py): дуб ×2, сосна ×2, берёза ×2, липа ×2,
-# осеннее и плодовое — все 10 слотов разные.
-const TREE_REFS := ["e:tree_oak", "e:tree_pine", "e:tree_birch", "e:tree_autumn",
-		"e:tree_oak2", "e:tree_lime", "e:tree_fruit2", "e:tree_birch2",
-		"e:tree_pine2", "e:tree_lime2"]
+# «Природа 2.0» (v1.39.0): деревья ForgottenMemories (пак заказчика,
+# tools/make_nature2.py, приглушены под гамму): клён, мана-дерево,
+# берёза, сосна, ива. Индекс = вариант пня в STUMP_PALS (по палитре).
+const TREE_REFS := ["e:tree2_red", "e:tree2_pine", "e:tree2_birch",
+		"e:tree2_teal", "e:tree2_willow"]
 
 
 static func _hash(x: int, y: int, n: int) -> int:
