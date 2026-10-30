@@ -258,6 +258,9 @@ func _make_sim(level: String = "normal") -> Object:
 	# v1.28: в тестах карта без реки — фиксированные координаты проверок
 	var gen_cfg: Dictionary = (cfg as Dictionary).duplicate(true)
 	gen_cfg["river"] = false
+	# v1.36: старые модули проверяют фиксированную геометрию — карта без
+	# плато; рельеф со уровнями тестирует свой модуль test_plateau.gd
+	gen_cfg["plateaus"] = {}
 	gen_cfg["map_w"] = 80   # геометрия под фиксированные координаты тестов
 	gen_cfg["map_h"] = 60
 	city_map.generate(7, gen_cfg)

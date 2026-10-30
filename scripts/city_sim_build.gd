@@ -365,6 +365,10 @@ func _try_relocate_bld(b: Dictionary) -> bool:
 func is_buildable_tile(tile: Vector2i, type_id := "") -> bool:
 	if not map.in_bounds(tile) or tile == map.anomaly_tile:
 		return false
+	# v1.36: лестница — единственный проход на плато (№113), строить на
+	# ней нельзя: иначе город замурует сам себе выход наверх
+	if map.is_stair(tile):
+		return false
 	# главная площадь (правки v1.20): в радиусе plaza.radius клеток строить нельзя
 	if type_id != "bridge" and near_plaza(tile):
 		return false

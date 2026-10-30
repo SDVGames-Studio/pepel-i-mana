@@ -186,6 +186,8 @@ static func _city_block(sim) -> Dictionary:
 			"logs": _tile_vals(m.logs),
 			"bridges": _tile_keys(m.bridges),
 			"fords": _tile_keys(m.fords),
+			"height": _tile_vals(m.height),
+			"stairs": _tile_keys(m.stairs),
 		},
 		"residents": _residents_save(sim),
 		"sim": _city_sim_block(sim),
@@ -654,6 +656,13 @@ static func _apply_city_map(map, md: Variant, cfg: Dictionary) -> String:
 		map.fords[Vector2i(int(e2[0]), int(e2[1]))] = true
 	if map.fords.is_empty():
 		map.mark_fords()   # старые сейвы (до v1.31): броды размечаются заново
+	# рельеф (v1.36): уровни плато и лестницы-проходы; старые сейвы — равнина
+	map.height = {}
+	for e in md.get("height", []):
+		map.height[Vector2i(int(e[0]), int(e[1]))] = int(e[2])
+	map.stairs = {}
+	for e in md.get("stairs", []):
+		map.stairs[Vector2i(int(e[0]), int(e[1]))] = true
 	map.saplings = {}
 	for e in md.get("saplings", []):
 		map.saplings[Vector2i(int(e[0]), int(e[1]))] = {"t": float(e[2].get("t", 0.0))}

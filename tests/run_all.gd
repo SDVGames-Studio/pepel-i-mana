@@ -128,6 +128,11 @@ const BLOCKS := [
 	["res://tests/test_world2.gd", [
 	"_test_world2_hydro",
 ]],
+
+	["res://tests/test_plateau.gd", [
+	"_test_plateau_gen",
+	"_test_plateau_combat",
+]],
 ]
 
 

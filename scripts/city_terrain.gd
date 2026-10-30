@@ -156,6 +156,7 @@ var _lake_view = null    # water_lake.gd — рендер озера (v1.34.2)
 var _river_view = null   # water_river.gd — рендер реки
 var _swamp_view = null   # water_swamp.gd — рендер болота
 var _rock_view = null    # rock_terrain.gd — рендер скал и жил
+var _plateau_view = null # plateau_terrain.gd — рендер плато и утёсов (v1.36)
 
 
 ## Вью-файлы воды и скал: один тип — один файл, тюнинг в data/city.json
@@ -173,6 +174,9 @@ func _ensure_views() -> void:
 	if _rock_view == null:
 		_rock_view = load("res://scripts/rock_terrain.gd").new()
 		_rock_view.setup(self)
+	if _plateau_view == null:
+		_plateau_view = load("res://scripts/plateau_terrain.gd").new()
+		_plateau_view.setup(self)
 
 
 func _draw_tiles() -> void:
@@ -201,6 +205,10 @@ func _draw_tiles() -> void:
 	# сглаживание Безье — стиль RimWorld/Dwarf Fortress, не по тайлам)
 	_rock_view.draw_blobs(ts)
 	_draw_water_blobs(ts)
+	# проход 3: плато и утёсы (v1.36) — верхние грани, срезы-кромки по схеме
+	# Hills, лестницы-проходы и тени у подножия; после воды/скал, чтобы тени
+	# ложились на готовый ландшафт
+	_plateau_view.draw_plateaus(ts)
 	# v1.32: травяная бахрома по кромкам воды и скал — травинки «обнимают»
 	# берег, как в видео (листья свисаются на границах тайлов)
 	_draw_grass_fringe(ts)

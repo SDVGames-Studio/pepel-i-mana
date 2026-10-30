@@ -220,7 +220,9 @@ func _shoot_towers(dt: float, tcfg: Dictionary) -> void:
 			mult = float(tcfg.get("kit_damage_mult", 2.0))
 		if has_law("martial_law"):
 			mult *= float(law_param("martial_law", "tower_mult", 1.0))   # военное положение (M14-H)
-		_hit_raider(target, int(round((float(tcfg.get("tower_damage", 2)) + research_sum("tower_damage")) * mult)))
+		# v1.36: вышка на плато бьёт сверху с бонусом высоты (№113)
+		_hit_raider(target, int(round((float(tcfg.get("tower_damage", 2)) + research_sum("tower_damage")) * mult)),
+				b["tile"])
 
 
 func _nearest_raider(from_px: Vector2, radius_px: float) -> Dictionary:
@@ -258,7 +260,10 @@ func _raider_update(r: Dictionary, dt: float, tcfg: Dictionary) -> bool:
 			if hero_d <= float(p["attack_range"]) + 12.0:
 				if float(r["atk_cd"]) <= 0.0:
 					r["atk_cd"] = float(p["attack_cooldown"])
-					events.append({"type": "hero_hit", "dmg": int(p["damage"])})
+					# v1.36: герой на плато — мутант снизу бьёт слабее (№113)
+					var hero_dmg := int(round(float(p["damage"])
+							* map.plateau_def_mult(map.tile_of_px(r["pos"]), map.tile_of_px(hero_pos))))
+					events.append({"type": "hero_hit", "dmg": hero_dmg})
 				return true
 			if _raider_move_to(r, map.tile_of_px(hero_pos), float(p["speed"]) * dt):
 				return true
@@ -399,7 +404,13 @@ func _walkable_next_to(tile: Vector2i) -> Vector2i:
 ## Урон мутанту (вышка, страж, герой). Слабость к школе не учитывается — урон физический.
 ## v1.23: павший с телом остаётся останками — их унесут на кладбище;
 ## духи, призраки и элементали бесплотны, от них не остаётся даже костей.
-func _hit_raider(r: Dictionary, dmg: int) -> void:
+## v1.36: src_tile — откуда нанесён удар (оборонный бонус плато, №113):
+## атакующий сверху бьёт больнее, по защитнику сверху — слабее.
+func _hit_raider(r: Dictionary, dmg: int, src_tile := Vector2i(-9999, -9999)) -> void:
+	var mult := 1.0
+	if src_tile != Vector2i(-9999, -9999):
+		mult = map.plateau_def_mult(src_tile, map.tile_of_px(r["pos"]))
+	dmg = int(round(float(dmg) * mult))
 	r["hp"] = int(r["hp"]) - dmg
 	if int(r["hp"]) <= 0:
 		_drop_corpse(r)
@@ -429,13 +440,14 @@ func _drop_corpse(r: Dictionary) -> void:
 ## Удар героя в городе (участие в обороне): дуга в сторону курсора. Возвращает, скольких задел.
 func hero_slash(origin_px: Vector2, facing: Vector2, range_px: float, arc_deg: float, dmg: int) -> int:
 	var hits := 0
+	var hero_tile: Vector2i = map.tile_of_px(origin_px)
 	for r in raiders.duplicate():
 		var to: Vector2 = (r["pos"] as Vector2) - origin_px
 		if to.length() > range_px + float(r["p"]["radius"]):
 			continue
 		if absf(facing.angle_to(to)) > deg_to_rad(arc_deg) / 2.0:
 			continue
-		_hit_raider(r, dmg)
+		_hit_raider(r, dmg, hero_tile)
 		hits += 1
 	if raid_active and raiders.is_empty():
 		_raid_end(true)
@@ -450,7 +462,7 @@ func hero_shoot(origin_px: Vector2, facing: Vector2, range_px: float, dmg: int) 
 	var to: Vector2 = (target["pos"] as Vector2) - origin_px
 	if absf(facing.angle_to(to)) > 0.3:
 		return 0
-	_hit_raider(target, dmg)
+	_hit_raider(target, dmg, map.tile_of_px(origin_px))
 	if raid_active and raiders.is_empty():
 		_raid_end(true)
 	return 1

@@ -6,6 +6,15 @@
 	"swamps": 2,
 	"rocks": 3,
 	"ore_spots": 8,
+	"plateaus": {
+		"count_min": 2,
+		"count_max": 3,
+		"radius_min": 3,
+		"radius_max": 5,
+		"terrace_chance": 0.45,
+		"stairs_max": 2,
+		"core_clear": 12
+	},
 	"trees": 190,
 	"resident_speed": 70.0,
 	"day_length": 120.0,
@@ -587,6 +596,17 @@
 				"top_light": 0.08,
 				"foot_dark": 0.1
 			}
+		},
+		"plateau": {
+			"stone": "#8a8072",
+			"stone_dark": "#5d574c",
+			"lip_dark": 0.24,
+			"top_light": 0.06,
+			"top_light2": 0.10,
+			"face_h1": 0.38,
+			"face_h2": 0.60,
+			"terrace_face_mult": 1.3,
+			"shadow_alpha": 0.22
 		}
 	},
 	"start": {

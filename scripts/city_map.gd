@@ -36,8 +36,13 @@ var water_kind := {}            # Vector2i -> "lake"|"river"|"swamp" — тип 
 var anomaly_tile := Vector2i.ZERO   # вход в данж (у аномалии)
 var spawn_tile := Vector2i.ZERO     # старт героя и жителей
 var world_exit_tile := Vector2i.ZERO  # край города — выход на карту мира (M8)
-var astar: AStarGrid2D = null         # пути жителей/героя: ворота всегда проходимы
-var astar_raider: AStarGrid2D = null  # пути мутантов: закрытые ворота — стена (v1.26)
+# Многоуровневый рельеф (№113–115): height — уровень тайла (0 равнина,
+# 1 плато, 2 терраса выше), stairs — тайлы-проходы (лестницы) между
+# уровнями. Отвес плато непроходим; единственный путь наверх — лестница.
+var height := {}                # Vector2i -> int
+var stairs := {}                # Vector2i -> true
+var astar = null                 # пути жителей/героя: ворота всегда проходимы
+var astar_raider = null          # пути мутантов: закрытые ворота — стена (v1.26)
 
 
 ## Генерация по seed: детерминированная, связная (от старта достижимы все проходимые тайлы).
@@ -60,6 +65,8 @@ func generate(seed_value: int, params: Dictionary, hydro := {}) -> void:
 	bridges = {}
 	fords = {}
 	river_origin = {}
+	height = {}
+	stairs = {}
 	var river_on := bool(hydro.get("river", params.get("river", true)))
 	var lakes_n := int(params["lakes"])
 	var swamps_n := int(params.get("swamps", 2))
@@ -167,7 +174,7 @@ func water_kind_at(p: Vector2i) -> String:
 func is_solid(p: Vector2i, for_raider := false) -> bool:
 	if astar == null or not in_bounds(p):
 		return false
-	var g := astar_raider if for_raider else astar
+	var g = astar_raider if for_raider else astar
 	return g.is_point_solid(p)
 
 
@@ -189,6 +196,11 @@ func _generate_once(seed_value: int, params: Dictionary,
 	if swamps_n < 0:
 		swamps_n = int(params.get("swamps", 2))
 	grid = []
+	# рельеф пересоздаётся на КАЖДОЙ попытке генерации (generate() крутит
+	# _generate_once до связной карты — иначе высоты прошлой попытки
+	# «протекают» на новую сетку)
+	height = {}
+	stairs = {}
 	for y in h:
 		var row := []
 		row.resize(w)
@@ -261,6 +273,11 @@ func _generate_once(seed_value: int, params: Dictionary,
 	_clear_around(spawn_tile, 3)
 	_clear_around(anomaly_tile, 2)
 	_clear_around(world_exit_tile, 2)
+	# ПЛАТО (этап «Многоуровневый рельеф», №113–115): поднимаем травяные
+	# массивы на уровень 1 (иногда с террасой уровня 2) и прорубаем
+	# лестницы-проходы. Сетка grid не меняется — плато остаётся травой
+	# (деревья/стройка на нём разрешены), высота живёт в height.
+	_generate_plateaus(rng, params)
 
 
 ## Обрывки реки (v1.29.4): ядро города и край карты режут меандр на куски —
@@ -321,6 +338,235 @@ func _trim_river_stubs(keep: Dictionary) -> void:
 			if not has_keep and comp.size() < 20:
 				for t2: Vector2i in comp:
 					grid[t2.y][t2.x] = TILE_GRASS
+
+
+## ---------- многоуровневый рельеф (этап №2 «Рельеф, вода, данжи») ----------
+
+## Уровень тайла: 0 равнина, 1 плато, 2 терраса (нет в словаре — равнина).
+func height_at(p: Vector2i) -> int:
+	return int(height.get(p, 0))
+
+
+## Тайл-лестница — единственный разрешённый переход между уровнями.
+func is_stair(p: Vector2i) -> bool:
+	return stairs.has(p)
+
+
+## Переход между соседями по высоте: тот же уровень или лестница на
+## одном из концов. Правило для связности и A* (отвес непроходим, №113).
+func step_ok(a: Vector2i, b: Vector2i) -> bool:
+	if stairs.has(a) or stairs.has(b):
+		return true
+	return height_at(a) == height_at(b)
+
+
+## Генерация плато (v1.36): травяные массивы поднимаются на уровень 1,
+## с шансом terrace_chance внутри — терраса уровня 2 (схема Hills:
+## 2–3 уровня). Плато ложится только на траву, вдали от воды/скал
+## (обрыв над водой перерезал бы берег) и вне городского ядра. Лестницы
+## прорубаются на кромке КАЖДОЙ связной области — наверх всегда есть
+## путь. Тюнинг: data/city.json → "plateaus".
+func _generate_plateaus(rng: RandomNumberGenerator, params: Dictionary) -> void:
+	var pcfg: Dictionary = params.get("plateaus", {})
+	if pcfg.is_empty():
+		return
+	var count := int(pcfg.get("count", 2))
+	if pcfg.has("count_min"):
+		count = rng.randi_range(int(pcfg["count_min"]), int(pcfg.get("count_max", count)))
+	var rad_min := int(pcfg.get("radius_min", 3))
+	var rad_max := int(pcfg.get("radius_max", 5))
+	var terrace_chance := float(pcfg.get("terrace_chance", 0.45))
+	var centers: Array = []
+	var core := int(pcfg.get("core_clear", 12))   # от центра города (ядро застройки)
+	var cx := w / 2
+	var cy := h / 2
+	for i in count:
+		var blob: Array = []
+		for attempt in 14:
+			var center := Vector2i(rng.randi_range(6, w - 7), rng.randi_range(6, h - 7))
+			if Vector2(center).distance_to(Vector2(cx, cy)) < core + rad_max:
+				continue
+			var near := false
+			for c: Vector2i in centers:
+				if Vector2(center).distance_to(Vector2(c)) < rad_max * 2 + 3:
+					near = true
+			if near:
+				continue
+			blob = _plateau_blob(center, rng, rng.randi_range(rad_min, rad_max))
+			if not blob.is_empty() and _plateau_fits(blob):
+				centers.append(center)
+				break
+			blob = []
+		if blob.is_empty():
+			continue
+		for t: Vector2i in blob:
+			height[t] = 1
+		# терраса уровня 2: уменьшенная копия блоба вокруг его центра масс
+		# (только тайлы, уже принадлежащие плато, — терраса не выходит за кромку)
+		if rng.randf() < terrace_chance and blob.size() >= 12:
+			var lvl1 := {}
+			for t1: Vector2i in blob:
+				lvl1[t1] = true
+			var inner := _shrink_blob(blob, 0.5).filter(func(t2): return lvl1.has(t2))
+			if inner.size() >= 4:
+				for t2: Vector2i in inner:
+					height[t2] = 2
+	_carve_stairs(pcfg)
+
+
+## Овал плато с мягкими гармониками кромки (как у водоёмов, но слабее):
+## список тайлов; пустой — не влез на карту.
+func _plateau_blob(center: Vector2i, rng: RandomNumberGenerator, radius: int) -> Array:
+	var out: Array = []
+	var ph := rng.randf() * TAU
+	var rx := float(radius) * rng.randf_range(1.0, 1.25)
+	var ry := float(radius) * rng.randf_range(0.8, 1.05)
+	var rad := int(ceil(maxf(rx, ry))) + 1
+	for y in range(maxi(1, center.y - rad), mini(h - 1, center.y + rad + 1)):
+		for x in range(maxi(1, center.x - rad), mini(w - 1, center.x + rad + 1)):
+			var dx := (float(x) - float(center.x)) / rx
+			var dy := (float(y) - float(center.y)) / ry
+			var ang := atan2(float(y) - float(center.y), float(x) - float(center.x))
+			var k := 1.0 + 0.06 * sin(2.0 * ang + ph)
+			if dx * dx + dy * dy <= k * k:
+				out.append(Vector2i(x, y))
+	return out
+
+
+## Плато уместно: все тайлы — трава/деревья, и в кольце вокруг нет
+## воды и скал (иначе обрыв нависал бы над берегом/грядой).
+func _plateau_fits(blob: Array) -> bool:
+	var ring := {}
+	for t: Vector2i in blob:
+		var g: int = grid[t.y][t.x]
+		if g != TILE_GRASS and g != TILE_TREE:
+			return false
+		for d in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
+			ring[t + d] = true
+	for n: Vector2i in ring:
+		if not in_bounds(n):
+			return false
+		var g2: int = grid[n.y][n.x]
+		if g2 == TILE_WATER or g2 == TILE_ROCK or g2 == TILE_ORE:
+			return false
+	return true
+
+
+## Сжать блоб к центру масс (терраса меньше плато).
+func _shrink_blob(blob: Array, f: float) -> Array:
+	var c := Vector2.ZERO
+	for t: Vector2i in blob:
+		c += Vector2(t)
+	c /= float(maxi(1, blob.size()))
+	var out: Array = []
+	for t: Vector2i in blob:
+		var p := c + (Vector2(t) - c) * f
+		var q := Vector2i(roundi(p.x), roundi(p.y))
+		if not out.has(q):
+			out.append(q)
+	return out
+
+
+## Лестницы: по каждой 4-связной области высоты>0 — переход 1↔0 на кромке
+## (до stairs_max, разнесённые), и если в области есть терраса 2 — ещё
+## и переход 2↔1. Лестница — тайл ВЕРХНЕГО из двух уровней. База лестницы
+## (нижний сосед) предпочитается достижимой по равнине — иначе лестница
+## может выйти в непроходимый карман у воды.
+func _carve_stairs(pcfg: Dictionary) -> void:
+	stairs = {}
+	var max_stairs := int(pcfg.get("stairs_max", 2))
+	var ground_reach := _reachable_ground(spawn_tile)
+	var seen := {}
+	for y in h:
+		for x in w:
+			var start := Vector2i(x, y)
+			if height_at(start) == 0 or seen.has(start):
+				continue
+			var comp: Array = [start]
+			seen[start] = true
+			var has2 := height_at(start) == 2
+			var qi := 0
+			while qi < comp.size():
+				var t: Vector2i = comp[qi]
+				qi += 1
+				for d in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
+					var n: Vector2i = t + d
+					if in_bounds(n) and height_at(n) > 0 and not seen.has(n):
+						seen[n] = true
+						if height_at(n) == 2:
+							has2 = true
+						comp.append(n)
+			_carve_component_stairs(
+					comp.filter(func(t1): return height_at(t1) == 1), max_stairs, ground_reach)
+			if has2:
+				_carve_component_stairs(
+						comp.filter(func(t2): return height_at(t2) == 2), 1, ground_reach)
+
+
+## Достижимость по РАВНИНЕ (уровень 0): где гарантированно ходит герой
+## до всяких плато — оттуда и должна начинаться лестница.
+func _reachable_ground(from: Vector2i) -> Dictionary:
+	var seen := {from: true}
+	var queue: Array = [from]
+	while not queue.is_empty():
+		var p: Vector2i = queue.pop_front()
+		for d in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
+			var n: Vector2i = p + d
+			if in_bounds(n) and not seen.has(n) and is_nature_walkable(n) \
+					and height_at(n) == 0:
+				seen[n] = true
+				queue.append(n)
+	return seen
+
+
+## Лестницы одной области: кромочные тайлы уровня L с проходимым соседом
+## уровня L-1 (база в reachable — в приоритете); первый — первый годный,
+## остальные — дальние от уже взятых.
+func _carve_component_stairs(comp: Array, want: int, ground_reach: Dictionary) -> void:
+	if comp.is_empty():
+		return
+	var lvl := height_at(comp[0])
+	var rim: Array = []
+	for t: Vector2i in comp:
+		if height_at(t) != lvl:
+			continue
+		for d in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
+			var n: Vector2i = t + d
+			if in_bounds(n) and height_at(n) == lvl - 1 and is_nature_walkable(n):
+				rim.append(t)
+				break
+	if rim.is_empty():
+		return
+	# приоритет: лестницы с достижимой по равнине базой (для 1↔0); для 2↔1
+	# база — плато, ground_reach не различает, проверка ниже просто не сузит
+	var good: Array = []
+	for t: Vector2i in rim:
+		for d in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
+			var n: Vector2i = t + d
+			if ground_reach.has(n):
+				good.append(t)
+				break
+	if not good.is_empty():
+		rim = good
+	var first: Vector2i = rim[0]
+	stairs[first] = true
+	var taken: Array = [first]
+	while taken.size() < want and rim.size() > taken.size():
+		var best: Vector2i = first
+		var best_d := -1.0
+		for t: Vector2i in rim:
+			if stairs.has(t):
+				continue
+			var near_d := 1e9
+			for s: Vector2i in taken:
+				near_d = minf(near_d, Vector2(t).distance_to(Vector2(s)))
+			if near_d > best_d:
+				best_d = near_d
+				best = t
+		if best_d <= 0.0:
+			break
+		stairs[best] = true
+		taken.append(best)
 
 
 ## Центр для озера/болота (v1.31.2): трава И никакой воды в радиусе rad —
@@ -479,10 +725,18 @@ func _clear_around(center: Vector2i, radius: int) -> void:
 
 ## Связность: от старта BFS-ом достижимы аномалия, выход на карту мира
 ## и заметная доля суши (иначе герой не дойдёт до края — карта перегенерируется).
+## v1.36: BFS ходит и по уровням (step_ok) — плато достижимо только через
+## лестницу, значит проверка требует корректно прорубленных проходов:
+## КАЖДЫЙ тайл высоты>0 обязан быть достижим от старта.
 func _connected() -> bool:
 	var reachable := _reachable_from(spawn_tile)
-	return reachable.has(anomaly_tile) and reachable.has(world_exit_tile) \
-			and reachable.size() >= w * h / 2
+	if not (reachable.has(anomaly_tile) and reachable.has(world_exit_tile) \
+			and reachable.size() >= w * h / 2):
+		return false
+	for t: Vector2i in height:
+		if not reachable.has(t):
+			return false
+	return true
 
 
 func _reachable_from(from: Vector2i) -> Dictionary:
@@ -492,10 +746,37 @@ func _reachable_from(from: Vector2i) -> Dictionary:
 		var p: Vector2i = queue.pop_front()
 		for d in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
 			var n: Vector2i = p + d
-			if in_bounds(n) and not seen.has(n) and is_nature_walkable(n):
+			if in_bounds(n) and not seen.has(n) and is_nature_walkable(n) \
+					and step_ok(p, n):
 				seen[n] = true
 				queue.append(n)
 	return seen
+
+
+## Оборонный бонус высоты (№113, число — data/balance.json → plateau):
+## защитник ВЫШЕ атакующего получает снижение урона (def_bonus),
+## атакующий сверху бьёт больнее (atk_bonus). Равные уровни — 1.0.
+## Вызывается боем города (city_sim_threat) для героя/вышек/мутантов.
+static var _plateau_bal: Dictionary = {}
+
+
+func plateau_def_mult(atk_tile: Vector2i, def_tile: Vector2i) -> float:
+	var la := height_at(atk_tile)
+	var ld := height_at(def_tile)
+	if ld > la:
+		return 1.0 - _plateau_cfg("def_bonus", 0.30)
+	if la > ld:
+		return 1.0 + _plateau_cfg("atk_bonus", 0.15)
+	return 1.0
+
+
+static func _plateau_cfg(key: String, def: float) -> float:
+	if _plateau_bal.is_empty():
+		var f := FileAccess.open("res://data/balance.json", FileAccess.READ)
+		_plateau_bal = JSON.parse_string(f.get_as_text()) if f != null else {}
+		if f != null:
+			f.close()
+	return float(_plateau_bal.get("plateau", {}).get(key, def))
 
 
 func in_bounds(p: Vector2i) -> bool:
@@ -564,13 +845,12 @@ func _setup_astar() -> void:
 	astar_raider = _new_astar()
 
 
-## Свежая сетка A* с общими настройками карты (v1.26: сеток две — своя и мутантов).
-func _new_astar() -> AStarGrid2D:
-	var g := AStarGrid2D.new()
-	g.region = Rect2i(0, 0, w, h)
-	g.cell_size = Vector2(ts, ts)
-	g.diagonal_mode = AStarGrid2D.DIAGONAL_MODE_NEVER
-	g.update()
+## Свежая сетка A* с общими настройками карты (v1.26: сеток две — своя и
+## мутантов). v1.36: сетка — map_astar.gd, ребро тайл→тайл существует
+## только при равном уровне или через лестницу (отвес непроходим, №113).
+func _new_astar():
+	var g = load("res://scripts/map_astar.gd").new()
+	g.setup(w, h, ts, height, stairs)
 	return g
 
 
@@ -636,8 +916,8 @@ func path_px(from_px: Vector2, to_tile: Vector2i, for_raider := false) -> Packed
 	var from_tile := Vector2i(from_px / ts)
 	if not in_bounds(from_tile) or not in_bounds(to_tile) or not is_walkable(to_tile):
 		return PackedVector2Array()
-	var grid := astar_raider if for_raider else astar
-	var ids := grid.get_id_path(from_tile, to_tile)
+	var grid = astar_raider if for_raider else astar
+	var ids: Array = grid.get_id_path(from_tile, to_tile)
 	var points := PackedVector2Array()
 	for id: Vector2i in ids:
 		points.append(Vector2(id.x * ts + ts / 2.0, id.y * ts + ts / 2.0))

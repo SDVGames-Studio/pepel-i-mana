@@ -514,7 +514,7 @@ func _grow_up(r: Dictionary) -> void:
 func _has_trait_flag(r: Dictionary, flag: String) -> bool:
 	return false
 
-func _hit_raider(r: Dictionary, dmg: int) -> void:
+func _hit_raider(r: Dictionary, dmg: int, src_tile := Vector2i(-9999, -9999)) -> void:
 	pass
 
 func _hunt(r: Dictionary, dt: float) -> void:

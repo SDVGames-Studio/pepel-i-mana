@@ -70,6 +70,11 @@
 	"rewards": {
 		"coin_mult_per_nest_level": 0.25
 	},
+	"plateau": {
+		"_note": "оборонный бонус высоты (этап «Многоуровневый рельеф», №113): def_bonus — на столько слабее бьёт атакующий снизу по защитнику наверху; atk_bonus — на столько сильнее бьёт атакующий сверху",
+		"def_bonus": 0.30,
+		"atk_bonus": 0.15
+	},
 	"equipment": {
 		"chest_chance": 0.3,
 		"bonus_per_tier": 0.06,

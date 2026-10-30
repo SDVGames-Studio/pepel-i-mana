@@ -1064,7 +1064,8 @@ func _defender_update(r: Dictionary, dt: float, dmg: float, cd: float) -> void:
 		r["atk_cd"] = maxf(0.0, float(r.get("atk_cd", 0.0)) - dt)
 		if float(r["atk_cd"]) <= 0.0:
 			r["atk_cd"] = cd
-			_hit_raider(target, int(round(dmg * mult)))
+			# v1.36: страж на плато бьёт мутанта снизу с бонусом высоты (№113)
+			_hit_raider(target, int(round(dmg * mult)), map.tile_of_px(r["pos"]))
 			_grow_combat(r, cd)   # бой прокачивает воина, силу и ловкость (v1.23)
 		r["state"] = "guard"
 	else:
