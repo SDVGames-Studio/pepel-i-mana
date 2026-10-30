@@ -37,6 +37,7 @@ var pois: Array = []                # точки интереса, см. шап�
 var fog: Dictionary = {}            # Vector2i -> true: исследованные тайлы
 var astar: AStarGrid2D = null
 var boats_enabled := false   # лодки (M14-I): вода проходима, но медленна
+var _terrain_bake = null     # v1.35.1: кэш запечённого рельефа (world_view.gd)
 var _rng := RandomNumberGenerator.new()
 var _poi_id := 1
 
@@ -47,6 +48,7 @@ func generate(seed_value: int, params: Dictionary) -> void:
 	w = int(params["map_w"])
 	h = int(params["map_h"])
 	ts = int(params["tile_size"])
+	_terrain_bake = null   # карта новая — кэш рельефа устарел
 	_rng.seed = seed_value
 	for attempt in 20:
 		_generate_once(seed_value + attempt * 977, params)

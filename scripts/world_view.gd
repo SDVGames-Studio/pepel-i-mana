@@ -2,6 +2,14 @@ extends Node2D
 const Assets := preload("res://scripts/assets.gd")
 ## Отрисовка карты мира (M8): биомы цветом, туман войны, точки интереса,
 ## маршрут героя. Только показ — логика в world_map.gd/world_sim.gd.
+##
+## v1.35.1 (правки приёмки «Мир v2» этапа 1): ландшафт ЗАПЕКАЕТСЯ в текстуру
+## светотеневым рельефом — билинейное сглаживание цветов биомов и высот
+## (никаких квадратных тайлов), освещение с северо-запада (склоны читаются
+## рельефом, а не пятном цвета), высотная подсветка + скальный тон у вершин,
+## светлая мель у берегов. Выпечка кэшируется на карте мира (map._terrain_bake)
+## — сцена пересоздаётся, текстура живёт, пока жива карта. Дороги — линии,
+## туман — «облачная» масса из кружков с мягкой волнистой кромкой.
 
 const KIND_COLORS := {
 	"city": "#7cb342",
@@ -51,26 +59,23 @@ func _draw() -> void:
 	if map == null:
 		return
 	var ts := float(map.ts)
-	# тайлы: биомы цветом (дороги поверх)
-	for y in map.h:
-		for x in map.w:
-			var p := Vector2i(x, y)
-			draw_rect(Rect2(Vector2(x, y) * ts, Vector2(ts, ts)), _tile_color(p), true)
-	# реки (v2, гидрология): лента русла между центрами речных тайлов —
-	# поверх биома, до тумана (неисследованное скрыто, как и всё)
+	# v1.35.1: запечённый светотеневой рельеф (кэш на карте) — вместо
+	# квадратных тайлов: биомы и высоты сглажены, склоны освещены с СЗ
+	if map.get("_terrain_bake") == null:
+		_bake_terrain()
+	draw_texture_rect(map._terrain_bake,
+			Rect2(Vector2.ZERO, Vector2(map.w * ts, map.h * ts)), false)
+	# реки (v2, гидрология): лента русла между центрами речных тайлов
 	_draw_rivers(ts)
-	# туман войны: неисследованное скрыто
+	_draw_roads(ts)
+	# туман войны: неисследованное скрыто «облачной» массой кружков —
+	# мягкая волнистая кромка вместо прямой сетки (v1.35.1)
 	var fog_color := Color(0.04, 0.04, 0.07, 1.0)
 	for y in map.h:
 		for x in map.w:
-			var p := Vector2i(x, y)
-			if not map.is_explored(p):
-				draw_rect(Rect2(Vector2(x, y) * ts, Vector2(ts, ts)), fog_color, true)
-	# границы исследованной области — мягкая кромка
-	for p: Vector2i in map.fog:
-		if not map.is_explored(p + Vector2i(1, 0)) or not map.is_explored(p + Vector2i(-1, 0)) \
-				or not map.is_explored(p + Vector2i(0, 1)) or not map.is_explored(p + Vector2i(0, -1)):
-			draw_rect(Rect2(Vector2(p) * ts, Vector2(ts, ts)), Color(0.1, 0.1, 0.16, 0.6), false)
+			if not map.is_explored(Vector2i(x, y)):
+				draw_circle(Vector2(float(x) + 0.5, float(y) + 0.5) * ts,
+						ts * 0.72, fog_color)
 	# точки интереса (только найденные)
 	for poi in map.pois:
 		if not bool(poi["discovered"]):
@@ -137,29 +142,152 @@ func _draw_rivers(ts: float) -> void:
 			draw_circle(c, ts * 0.09, vein)
 
 
-func _tile_color(p: Vector2i) -> Color:
-	var biomes: Dictionary = map.cfg["biomes"]
-	match int(map.grid[p.y][p.x]):
-		map.TILE_PLAINS: return Color(String(biomes["plains"]["color"]))
-		map.TILE_WATER:
-			# v1.34: светлая мель-кромка — водный тайл у суши чуть светлее
-			var wc := Color(String(biomes["water"]["color"]))
-			for d in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
-				var n: Vector2i = p + d
-				if n.x >= 0 and n.y >= 0 and n.x < map.w and n.y < map.h 						and int(map.grid[n.y][n.x]) != map.TILE_WATER:
-					return wc.lightened(0.13)
-			return wc
-		map.TILE_FOREST: return Color(String(biomes["forest"]["color"]))
-		map.TILE_HILL: return Color(String(biomes["hills"]["color"]))
-		map.TILE_WASTE: return Color(String(biomes["waste"]["color"]))
-		map.TILE_ROAD: return Color(String(biomes["road"]["color"]))
-		map.TILE_SWAMP:
-			# болото (M14-I): тина с кочками-камышами
-			var base := Color(String(biomes.get("swamp", {}).get("color", "#5a6b4a")))
-			if (p.x + p.y) % 3 == 0:
-				return base.lightened(0.08)
-			return base
-	return Color.SILVER
+## ---------- запечённый светотеневой рельеф (v1.35.1) ----------
+## Поле тайлов → гладкая карта: цвета биомов и высоты сглаживаются
+## билинейно (границы биомов и берега — плавные, без сетки квадратов),
+## затем рельеф подсвечивается светом с северо-запада: северо-западные
+## склоны светлее, юго-восточные темнее — высота читается как высота,
+## а не как пятно цвета. Вершины получают скальный тон и высотную
+## подсветку, у берегов светлая мель. Выпечка 3 суб-пикселя/тайл →
+## масштабирование билинейно до полного размера (быстро, гладко).
+
+const BAKE_SUB := 3   # суб-пикселей на тайл при выпечке
+const BAKE_ROCK := Color("#8a8276")   # скальный тон вершин
+
+
+func _bake_terrain() -> void:
+	var biomes: Dictionary = map.cfg.get("biomes", {})
+	var plains := Color(String(biomes.get("plains", {}).get("color", "#5d7a3a")))
+	var water := Color(String(biomes.get("water", {}).get("color", "#2e5f7a")))
+	var forest := Color(String(biomes.get("forest", {}).get("color", "#3e5a2a")))
+	var hills := Color(String(biomes.get("hills", {}).get("color", "#6e6a63")))
+	var waste := Color(String(biomes.get("waste", {}).get("color", "#7a6a55")))
+	var swamp := Color(String(biomes.get("swamp", {}).get("color", "#5a6b4a")))
+	var hill_thr := float(map.cfg.get("hydro", {}).get("hill_threshold", 0.62))
+	# базовые цвета тайлов: дороги красятся линией поверх — в поле они
+	# равнина; лёгкая пятнистость по хэшу тайла оживляет массу биома
+	var cols: Array = []
+	var wmask: Array = []
+	for y in map.h:
+		var rowc: Array = []
+		var roww: Array = []
+		rowc.resize(map.w)
+		roww.resize(map.w)
+		for x in map.w:
+			var c := plains
+			var t: int = map.grid[y][x]
+			match t:
+				map.TILE_WATER:
+					c = water
+				map.TILE_FOREST:
+					c = forest
+				map.TILE_HILL:
+					c = hills
+				map.TILE_WASTE:
+					c = waste
+				map.TILE_SWAMP:
+					c = swamp
+			roww[x] = 1.0 if t == map.TILE_WATER else 0.0
+			rowc[x] = c.lightened(0.02 * float(_hash2(x, y, 5) - 2))
+		cols.append(rowc)
+		wmask.append(roww)
+	var iw := int(map.w) * BAKE_SUB
+	var ih := int(map.h) * BAKE_SUB
+	# проход 1: сглаженное поле высот (сосед для светотени — чтение из сетки)
+	var hgrid: Array = []
+	for py in ih:
+		var fy := (float(py) + 0.5) / float(BAKE_SUB) - 0.5
+		var row: Array = []
+		row.resize(iw)
+		for px in iw:
+			var fx := (float(px) + 0.5) / float(BAKE_SUB) - 0.5
+			row[px] = _bilinear_f(map.height, fx, fy)
+		hgrid.append(row)
+	# проход 2: цвет пикселя — сглаженный биом + светотень + высота + мель
+	var img := Image.create_empty(iw, ih, false, Image.FORMAT_RGB8)
+	for py in ih:
+		var fy := (float(py) + 0.5) / float(BAKE_SUB) - 0.5
+		for px in iw:
+			var fx := (float(px) + 0.5) / float(BAKE_SUB) - 0.5
+			var col: Color = _bilinear_col(cols, fx, fy)
+			var wm := _bilinear_f(wmask, fx, fy)
+			var hgt := float(hgrid[py][px])
+			var nw := float(hgrid[maxi(0, py - BAKE_SUB)][maxi(0, px - BAKE_SUB)])
+			# свет с северо-запада: пиксель выше СЗ-соседа — освещён, ниже — тень
+			var shade := clampf(1.0 + (hgt - nw) * 6.5, 0.5, 1.45)
+			shade *= 1.0 - 0.72 * clampf(wm, 0.0, 1.0)   # воду не рельефим
+			col = col * (0.88 + 0.22 * hgt) * shade
+			# вершины — скальный тон (по высоте, поверх биома)
+			col = col.lerp(BAKE_ROCK, clampf((hgt - (hill_thr - 0.05)) * 2.6, 0.0, 0.78))
+			# светлая мель у кромки воды
+			col = col.lightened(0.12 * (1.0 - absf(wm * 2.0 - 1.0)))
+			img.set_pixel(px, py, col)
+	img.resize(map.w * map.ts, map.h * map.ts, Image.INTERPOLATE_BILINEAR)
+	map._terrain_bake = ImageTexture.create_from_image(img)
+
+
+## Билинейная выборка числового поля (центры тайлов — целые координаты).
+func _bilinear_f(field: Array, fx: float, fy: float) -> float:
+	var fh: int = field.size()
+	var fw: int = (field[0] as Array).size()
+	var x0 := floori(fx)
+	var y0 := floori(fy)
+	var tx := fx - float(x0)
+	var ty := fy - float(y0)
+	var xa := clampi(x0, 0, fw - 1)
+	var xb := clampi(x0 + 1, 0, fw - 1)
+	var ya := clampi(y0, 0, fh - 1)
+	var yb := clampi(y0 + 1, 0, fh - 1)
+	var a := float(field[ya][xa])
+	var b := float(field[ya][xb])
+	var c := float(field[yb][xa])
+	var d := float(field[yb][xb])
+	return lerpf(lerpf(a, b, tx), lerpf(c, d, tx), ty)
+
+
+## Билинейная выборка поля цветов — плавные границы биомов.
+func _bilinear_col(field: Array, fx: float, fy: float) -> Color:
+	var fh: int = field.size()
+	var fw: int = (field[0] as Array).size()
+	var x0 := floori(fx)
+	var y0 := floori(fy)
+	var tx := fx - float(x0)
+	var ty := fy - float(y0)
+	var xa := clampi(x0, 0, fw - 1)
+	var xb := clampi(x0 + 1, 0, fw - 1)
+	var ya := clampi(y0, 0, fh - 1)
+	var yb := clampi(y0 + 1, 0, fh - 1)
+	var a: Color = field[ya][xa]
+	var b: Color = field[ya][xb]
+	var c: Color = field[yb][xa]
+	var d: Color = field[yb][xb]
+	return a.lerp(b, tx).lerp(c.lerp(d, tx), ty)
+
+
+static func _hash2(x: int, y: int, n: int) -> int:
+	var v := int((x * 73856093) ^ (y * 19349663))
+	return absi(v) % maxi(1, n)
+
+
+## Старые тракты (v1.35.1): линии между соседними дорожными тайлами —
+## гладкие тропы вместо квадратов цвета дороги.
+func _draw_roads(ts: float) -> void:
+	var col := Color(String(map.cfg.get("biomes", {}).get("road", {}).get("color", "#6e5f4a")))
+	var links := [Vector2i(1, 0), Vector2i(0, 1)]
+	for y in map.h:
+		for x in map.w:
+			if int(map.grid[y][x]) != map.TILE_ROAD:
+				continue
+			var t := Vector2i(x, y)
+			var c: Vector2 = map.tile_center_px(t)
+			var linked := false
+			for d: Vector2i in links:
+				var n := t + d
+				if map.in_bounds(n) and int(map.grid[n.y][n.x]) == map.TILE_ROAD:
+					draw_line(c, map.tile_center_px(n), col, ts * 0.3)
+					linked = true
+			if not linked:
+				draw_circle(c, ts * 0.16, col)
 
 
 func _draw_poi(poi: Dictionary, ts: float) -> void:

@@ -138,13 +138,21 @@ func _test_world2_hydro() -> void:
 	_check(lakes > 0 and swamps > 0,
 			"озеро/болото клетки мира переходят в город (%d/%d тайлов)" % [lakes, swamps])
 
-	# сейв: русла и типы воды сохраняются и восстанавливаются
+	# сейв: русла, типы воды и высоты рельефа сохраняются и восстанавливаются
 	var sv: Script = load("res://scripts/save_game.gd")
 	var block: Dictionary = sv._world_block(map2, _fake_world_sim(map2))
 	_check(block["map"].has("river") and (block["map"]["river"] as Array).size() == map2.river.size(),
 			"русла уходят в сейв (%d)" % (block["map"]["river"] as Array).size())
 	_check(block["map"].has("water_kind") and (block["map"]["water_kind"] as Array).size() == map2.water_kind.size(),
 			"типы воды уходят в сейв (%d)" % (block["map"]["water_kind"] as Array).size())
+	var hrows: Array = block["map"].get("height", [])
+	var h_ok: bool = hrows.size() == map2.h
+	if h_ok:
+		for y in mini(3, map2.h):
+			for x in mini(5, map2.w):
+				if absf(float(hrows[y][x]) - float(map2.height[y][x])) > 0.002:
+					h_ok = false
+	_check(h_ok, "высоты рельефа уходят в сейв (строк %d)" % hrows.size())
 	print("[Мир v2 / этап 1] готово")
 
 

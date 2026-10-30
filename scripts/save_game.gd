@@ -273,6 +273,7 @@ static func _world_block(wmap, wsim) -> Dictionary:
 			"pois": wmap.pois,
 			"river": _tile_keys(wmap.river),
 			"water_kind": _tile_vals(wmap.water_kind),
+			"height": _height_rows(wmap),
 		},
 		"sim": {
 			"day": int(wsim.day),
@@ -323,6 +324,19 @@ static func _grid_rows(m) -> Array:
 		var row := ""
 		for x in m.w:
 			row += str(int(m.grid[y][x]))
+		rows.append(row)
+	return rows
+
+
+## Высоты (v1.35.1): карта рельефа для светотени — строки округлённых
+## чисел, чтобы сейв оставался компактным (восстанавливается при загрузке).
+static func _height_rows(wmap) -> Array:
+	var rows: Array = []
+	for y in wmap.h:
+		var row: Array = []
+		row.resize(wmap.w)
+		for x in wmap.w:
+			row[x] = roundf(float(wmap.height[y][x]) * 1000.0) / 1000.0
 		rows.append(row)
 	return rows
 
@@ -724,6 +738,19 @@ static func _apply_world(game, wd: Variant) -> String:
 	map.water_kind = {}
 	for e in md.get("water_kind", []):
 		map.water_kind[Vector2i(int(e[0]), int(e[1]))] = String(e[2])
+	# высоты рельефа (v1.35.1): светотень после загрузки совпадает с картой
+	# (каркас генерится сидом 0 — без восстановления тени «плыли» бы);
+	# в старых сейвах ключа нет — остаётся каркасная карта высот
+	var hrows: Array = md.get("height", [])
+	if hrows.size() == map.h and not hrows.is_empty() and (hrows[0] as Array).size() == map.w:
+		map.height = []
+		for row in hrows:
+			var hrow: Array = []
+			hrow.resize(map.w)
+			for x in map.w:
+				hrow[x] = float(row[x]) if x < row.size() else 0.0
+			map.height.append(hrow)
+	map._terrain_bake = null   # кэш рельефа пересоберётся по новым высотам
 	map._setup_astar()   # веса — по перекрытой сетке (дороги уже в тайлах)
 	var sim = load(WORLD_SIM_SCRIPT).new()
 	sim.setup(map, cfg, 12345)
