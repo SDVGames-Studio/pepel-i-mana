@@ -210,17 +210,19 @@ func _bake_terrain() -> void:
 		for px in iw:
 			var fx := (float(px) + 0.5) / float(BAKE_SUB) - 0.5
 			var col: Color = _bilinear_col(cols, fx, fy)
-			var wm := _bilinear_f(wmask, fx, fy)
+			var wmk := clampf(_bilinear_f(wmask, fx, fy), 0.0, 1.0)
+			var land := 1.0 - wmk
 			var hgt := float(hgrid[py][px])
 			var nw := float(hgrid[maxi(0, py - BAKE_SUB)][maxi(0, px - BAKE_SUB)])
-			# свет с северо-запада: пиксель выше СЗ-соседа — освещён, ниже — тень
-			var shade := clampf(1.0 + (hgt - nw) * 6.5, 0.5, 1.45)
-			shade *= 1.0 - 0.72 * clampf(wm, 0.0, 1.0)   # воду не рельефим
-			col = col * (0.88 + 0.22 * hgt) * shade
+			# свет с северо-запада — ТОЛЬКО на суше; вода держит свой цвет
+			# (v1.35.2: раньше множитель «не рельефить воду» чернил воду
+			# до чёрной массы — внутренние моря читались дырой в карте)
+			var shade := clampf(1.0 + (hgt - nw) * 6.5 * land, 0.55, 1.45)
+			col = col * ((0.88 + 0.22 * hgt) * land + (1.0 - 0.06 * wmk) * wmk) * shade
 			# вершины — скальный тон (по высоте, поверх биома)
-			col = col.lerp(BAKE_ROCK, clampf((hgt - (hill_thr - 0.05)) * 2.6, 0.0, 0.78))
+			col = col.lerp(BAKE_ROCK, clampf((hgt - (hill_thr - 0.05)) * 2.6, 0.0, 0.78) * land)
 			# светлая мель у кромки воды
-			col = col.lightened(0.12 * (1.0 - absf(wm * 2.0 - 1.0)))
+			col = col.lightened(0.12 * (1.0 - absf(wmk * 2.0 - 1.0)))
 			img.set_pixel(px, py, col)
 	img.resize(map.w * map.ts, map.h * map.ts, Image.INTERPOLATE_BILINEAR)
 	map._terrain_bake = ImageTexture.create_from_image(img)
