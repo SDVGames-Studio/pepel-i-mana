@@ -137,7 +137,7 @@ func _ensure_cache() -> void:
 					_swamp_tiles.append(t)
 				if map.fords.has(t):
 					_ford_tiles.append(t)
-			elif g == map.TILE_GRASS and _near_swamp(t):
+			elif g == map.TILE_GRASS and _near_swamp8(t):
 				_swamp_near.append(t)
 	_bake_dirty = true
 
@@ -501,12 +501,17 @@ func _draw_reeds(ts: float) -> void:
 		_out.draw_line(top, top + Vector2(sway * 0.4, -4.0), Color("#7a5230"), 2.2)
 
 
-func _near_swamp(t: Vector2i) -> bool:
-	for d: Vector2i in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
-		var n: Vector2i = t + d
-		if map.in_bounds(n) and map.grid[n.y][n.x] == map.TILE_WATER \
-				and map.water_kind_at(n) == "swamp":
-			return true
+## Земля болота: вода болота в ЛЮБОМ из 8 соседей — кольцо без разрывов
+## на диагоналях (v1.39.2, заказчик: «должна полностью окружать»).
+func _near_swamp8(t: Vector2i) -> bool:
+	for dy in range(-1, 2):
+		for dx in range(-1, 2):
+			if dx == 0 and dy == 0:
+				continue
+			var n: Vector2i = t + Vector2i(dx, dy)
+			if map.in_bounds(n) and map.grid[n.y][n.x] == map.TILE_WATER \
+					and map.water_kind_at(n) == "swamp":
+				return true
 	return false
 
 

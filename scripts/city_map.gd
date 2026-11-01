@@ -222,8 +222,11 @@ func _generate_once(seed_value: int, params: Dictionary,
 	for i in lakes_n:
 		_lake_blob(_random_clear_tile(rng, 8), rng)
 	# болота (v1.29.3): свой малый гладкий овал — центр в 6 тайлах от воды
+	var swamp_centers: Array = []
 	for i in swamps_n:
-		_swamp_blob(_random_clear_tile(rng, 6), rng)
+		var sc := _random_clear_tile(rng, 6)
+		swamp_centers.append(sc)
+		_swamp_blob(sc, rng)
 		# скальные ГРЯДЫ (M11): не россыпь одиночных камней, а единые массивы —
 	# большое пятно плюс сателлиты внахлёст; в них живёт руда и их добывают.
 	# v1.29.4: сателлита ДВА со случайными смещениями — силуэт органичнее;
@@ -267,6 +270,9 @@ func _generate_once(seed_value: int, params: Dictionary,
 			grid[p.y][p.x] = TILE_TREE
 			tree_size[p] = _roll_tree_size(rng.randf())
 			placed += 1
+	# тёмный лес вокруг болот (v1.39.2, заказчик): деревья растут кольцом
+	# в 1-2 тайлах от воды болота — рендерятся тёмными (city_view)
+	_plant_swamp_trees(swamp_centers, rng)
 	# старт в центре, аномалия — у правого края, выход на карту мира — у левого;
 	# вокруг них чистая трава
 	spawn_tile = Vector2i(w / 2, h / 2)
@@ -614,6 +620,35 @@ func _random_inner_tile(rng: RandomNumberGenerator) -> Vector2i:
 func _lake_blob(center: Vector2i, rng: RandomNumberGenerator) -> void:
 	var rx := rng.randf_range(3.4, 4.6)
 	_smooth_water_blob(center, rng, rx, rx / rng.randf_range(1.15, 1.4))
+
+
+## Тёмный лес у болот (v1.39.2): травяные тайлы в радиусе 2 от воды
+## болота получают дерево с шансом 0.45 — кольцо мрачного леса.
+func _plant_swamp_trees(centers: Array, rng: RandomNumberGenerator) -> void:
+	for c: Vector2i in centers:
+		for dy in range(-4, 5):
+			for dx in range(-4, 5):
+				var p := c + Vector2i(dx, dy)
+				if not in_bounds(p) or grid[p.y][p.x] != TILE_GRASS:
+					continue
+				if not _near_swamp_water(p):
+					continue
+				if rng.randf() < 0.3:
+					grid[p.y][p.x] = TILE_TREE
+					# у болота деревья не глушат топь: малые/средние
+					tree_size[p] = TREE_SMALL if rng.randf() < 0.5 else TREE_MEDIUM
+
+
+## Есть ли вода болота в 8 соседях тайла.
+func _near_swamp_water(p: Vector2i) -> bool:
+	for dy in range(-1, 2):
+		for dx in range(-1, 2):
+			if dx == 0 and dy == 0:
+				continue
+			var n := p + Vector2i(dx, dy)
+			if in_bounds(n) and grid[n.y][n.x] == TILE_WATER:
+				return true
+	return false
 
 
 ## Болото (v1.29.4): малый гладкий овал (до ~11 тайлов) + лужа-сателлит

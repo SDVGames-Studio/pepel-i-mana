@@ -95,6 +95,54 @@ func _test_nature2_water_cache() -> void:
 	water._coast = []
 	water._ensure_cache()
 	_check(water._coast.size() == coast_a, "кэш воды детерминирован")
+	# кольцо тёмной земли ПОЛНОЕ (v1.39.2): каждая трава, чей 8-сосед —
+	# вода болота, в _swamp_near (диагонали не рвут кольцо)
+	var ok_ring := true
+	var ring_expect := 0
+	for y in map.h:
+		for x in map.w:
+			if map.grid[y][x] != map.TILE_GRASS:
+				continue
+			var adj := false
+			for dy in range(-1, 2):
+				for dx in range(-1, 2):
+					if dx == 0 and dy == 0:
+						continue
+					var n := Vector2i(x, y) + Vector2i(dx, dy)
+					if map.in_bounds(n) and map.grid[n.y][n.x] == map.TILE_WATER 							and map.water_kind_at(n) == "swamp":
+						adj = true
+			if adj:
+				ring_expect += 1
+				if not water._swamp_near.has(Vector2i(x, y)):
+					ok_ring = false
+	_check(ok_ring and ring_expect > 0,
+			"кольцо тёмной земли полное (%d тайлов)" % ring_expect)
+
+
+func _test_nature2_swamp_trees() -> void:
+	print("[Природа 2.0: тёмный лес болот]")
+	# хотя бы на одном из сидов у болота растут деревья (кольцо леса)
+	var cfg: Dictionary = _read_json("res://data/city.json")
+	var found := false
+	for seed_value in [11, 42, 777, 5150, 90210]:
+		var map = load("res://scripts/city_map.gd").new()
+		map.generate(seed_value, cfg)
+		var near_trees := 0
+		for y in map.h:
+			for x in map.w:
+				if map.grid[y][x] != map.TILE_TREE:
+					continue
+				for dy in range(-2, 3):
+					for dx in range(-2, 3):
+						var n := Vector2i(x, y) + Vector2i(dx, dy)
+						if map.in_bounds(n) and map.grid[n.y][n.x] == map.TILE_WATER 								and map.water_kind_at(n) == "swamp":
+							near_trees += 1
+		if near_trees > 0:
+			found = true
+	_check(found, "у болот посажен тёмный лес (хоть один сид)")
+	# тёмные варианты деревьев есть в атласе и видны через refs
+	for ref in ["e:tree2_dark_pine", "e:tree2_dark_willow"]:
+		_check(Assets.sprite(ref) != null, "тёмное дерево %s" % ref)
 
 
 func _test_nature2_rocks() -> void:

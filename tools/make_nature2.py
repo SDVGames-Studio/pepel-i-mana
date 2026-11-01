@@ -326,6 +326,27 @@ def build_rock_sprites():
             print("  %s %s" % (name, im.size))
 
 
+def darken(img, mult=0.55, sat=0.65, tint=(0.86, 0.95, 0.82)):
+    """Тёмное болотное дерево: приглушить, затемнить, сдвиг в хвойную
+    зелень (референс заказчика: тёмные деревья у болот)."""
+    a = np.array(img.convert("RGBA"), dtype=float)
+    rgb = a[:, :, :3]
+    gray = rgb @ np.array([0.299, 0.587, 0.114])
+    rgb = gray[:, :, None] + (rgb - gray[:, :, None]) * sat
+    rgb = rgb * mult * np.array(tint)
+    return Image.fromarray(np.dstack([np.clip(rgb, 0, 255), a[:, :, 3:4]]).astype(np.uint8), "RGBA")
+
+
+def build_dark_trees():
+    """Тёмные деревья для окружения болот (v1.39.2): ива и сосна пака,
+    сильно затемнённые и приглушённые."""
+    for src, out in [("tree2_willow", "tree2_dark_willow"),
+                     ("tree2_pine", "tree2_dark_pine")]:
+        im = Image.open(os.path.join(OUT_ENV, src + ".png")).convert("RGBA")
+        darken(im).save(os.path.join(OUT_ENV, out + ".png"))
+        print("  %s.png" % out)
+
+
 # ---------- превью ----------
 def build_preview():
     names = ["n2_water_lake", "n2_water_river", "n2_water_swamp"]
@@ -365,6 +386,8 @@ def main():
         build_rock_sprites()
     else:
         print("Пак скал не найден, пропускаю: %s" % ROCK_PACK)
+    print("Тёмные деревья болот ->")
+    build_dark_trees()
     build_preview()
     print("Готово.")
 

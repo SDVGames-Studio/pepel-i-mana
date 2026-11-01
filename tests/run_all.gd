@@ -138,6 +138,7 @@ const BLOCKS := [
 	["res://tests/test_nature2.gd", [
 	"_test_nature2_assets",
 	"_test_nature2_water_cache",
+	"_test_nature2_swamp_trees",
 	"_test_nature2_rocks",
 	"_test_nature2_tuning",
 ]],

@@ -401,6 +401,11 @@ func _build_tree_desc(tile: Vector2i, ts: float) -> Array:
 	var scale := ts * 1.9 if kind == map.TREE_SMALL \
 			else (ts * 2.4 if kind == map.TREE_MEDIUM else ts * 3.0)
 	var ref: String = TREE_REFS[_hash(tile.x, tile.y, TREE_REFS.size())]
+	# тёмный лес у болот (v1.39.2, заказчик): деревья в 2 тайлах от воды
+	# болота рисуются затемнёнными вариантами (мрачная хвоя/ива)
+	if _near_swamp(tile):
+		# хвоя чаще (компактнее), огромная ива — редкость
+		ref = "e:tree2_dark_pine" if _hash(tile.x, tile.y, 5) < 4 else "e:tree2_dark_willow" 
 	var t: Texture2D = Assets.sprite(ref)
 	var src := Rect2(Vector2.ZERO, t.get_size())
 	if t is AtlasTexture:
@@ -725,6 +730,21 @@ func _draw_stump(bottom: Vector2, ts: float, variant: int) -> void:
 # берёза, сосна, ива. Индекс = вариант пня в STUMP_PALS (по палитре).
 const TREE_REFS := ["e:tree2_red", "e:tree2_pine", "e:tree2_birch",
 		"e:tree2_teal", "e:tree2_willow"]
+
+## Тёмные деревья болот (v1.39.2): мрачная ива и хвоя — для деревьев,
+## растущих в кольце тёмной земли вокруг болот.
+const DARK_TREE_REFS := ["e:tree2_dark_pine", "e:tree2_dark_willow"]
+
+
+## Вода болота в радиусе 2 тайлов (для тёмного леса).
+func _near_swamp(tile: Vector2i) -> bool:
+	for dy in range(-2, 3):
+		for dx in range(-2, 3):
+			var n := tile + Vector2i(dx, dy)
+			if map.in_bounds(n) and map.grid[n.y][n.x] == map.TILE_WATER \
+					and map.water_kind_at(n) == "swamp":
+				return true
+	return false
 
 
 static func _hash(x: int, y: int, n: int) -> int:
