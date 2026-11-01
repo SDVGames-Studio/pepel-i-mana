@@ -252,10 +252,14 @@ func _update_travel(delta: float) -> void:
 		var to_next: Vector2 = next - hero_px
 		var dist := to_next.length()
 		if dist <= step:
+			# v1.40.4: hero_tile = тайл, в который ПРИШЛИ (path[1] до
+			# удаления), а не path[0] — раньше hero_tile весь путь оставался
+			# на старте, и туман рассеивался только по прибытии (оф-бай-один)
+			var reached: Vector2i = path[1]
 			hero_px = next
 			step -= dist
 			path.remove_at(1)
-			hero_tile = path[0]
+			hero_tile = reached
 			_reveal(hero_tile)
 			_scout_tracks()
 		else:

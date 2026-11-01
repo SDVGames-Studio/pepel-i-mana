@@ -37,11 +37,20 @@ func _on_frame() -> void:
 		m.reveal_around(m.city_tile + Vector2i(10, 4), 4)
 		m.reveal_around(m.city_tile + Vector2i(-8, -5), 4)
 		print("shot_world2: раскрыты два пятна в тумане (стирание)")
+	elif _frames == 5 and OS.get_environment("SHOT_WALK2") != "":
+		var m = _world.map
+		# реальный клик-переход в туман: герой идёт, камера следует
+		_world.start_travel_to(m.city_tile + Vector2i(14, 9))
+		print("shot_world2: старт перехода в туман (ходьба)")
 	elif _frames == 5 and OS.get_environment("SHOT_FOG") == "":
 		_reveal_all()
 	if _frames == 5 and OS.get_environment("SHOT_FOG") != "":
 		_zoom_only()
-	if _frames < 40:
+	if OS.get_environment("SHOT_WALK2") != "":
+		# ждём, пока герой уйдёт далеко в туман
+		if _frames < 320:
+			return
+	elif _frames < 40:
 		return
 	var out := "res://tools/shot_world2.png"
 	if OS.get_environment("SHOT_FOG") != "":
