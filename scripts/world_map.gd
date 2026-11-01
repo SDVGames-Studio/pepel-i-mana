@@ -41,6 +41,8 @@ var sea_mode := "both"          # рандом мира (№118): "ocean" — о
 var city_tile := Vector2i.ZERO      # город игрока — стартовая локация
 var pois: Array = []                # точки интереса, см. шапку
 var fog: Dictionary = {}            # Vector2i -> true: исследованные тайлы
+var fog_ver := 0                    # v1.40.1: счётчик раскрытий — view
+                                    # перепекает статичный слой (туман)
 var astar: AStarGrid2D = null
 var boats_enabled := false   # лодки (M14-I): вода проходима, но медленна
 var _terrain_bake = null     # v1.35.1: кэш запечённого рельефа (world_view.gd)
@@ -808,6 +810,7 @@ func _setup_fog() -> void:
 
 ## Открыть круг тайлов; попавшие в круг POI становятся найденными.
 func reveal_around(center: Vector2i, radius: int) -> void:
+	fog_ver += 1
 	for y in range(center.y - radius, center.y + radius + 1):
 		for x in range(center.x - radius, center.x + radius + 1):
 			var p := Vector2i(x, y)

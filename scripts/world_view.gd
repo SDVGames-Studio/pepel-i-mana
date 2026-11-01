@@ -45,52 +45,71 @@ var hero_px := Vector2.ZERO
 var hero_tile := Vector2i.ZERO
 var selected_tile := Vector2i(-1, -1)
 var _time := 0.0
+var _vp: SubViewport = null    # духовка статики (v1.40.1)
+var _sd: Node2D = null
+var _static_tex: Texture2D = null
+var _bake_fog_ver := -1
 
 
 func setup(world_map) -> void:
 	map = world_map
+	_vp = SubViewport.new()
+	_vp.size = Vector2i(map.w * map.ts, map.h * map.ts)
+	_vp.transparent_bg = true
+	_vp.render_target_update_mode = SubViewport.UPDATE_DISABLED
+	_vp.canvas_item_default_texture_filter = Viewport.DEFAULT_CANVAS_ITEM_TEXTURE_FILTER_NEAREST
+	add_child(_vp)
+	_sd = Node2D.new()
+	_sd.draw.connect(_draw_static)
+	_vp.add_child(_sd)
+	_static_tex = _vp.get_texture()
+
+
+func _ready() -> void:
+	_do_bake()
 
 
 func _process(delta: float) -> void:
 	_time += delta
+	# туман раскрылся — перепечь статику (из _process, не из _draw — урок
+	# v1.39.1: сигнатура draw вне режима рисования спамит ошибками)
+	if map != null and map.get("fog_ver") != null and _bake_fog_ver != int(map.fog_ver):
+		_do_bake()
+
+
+## Запечь статику карты: рельеф + реки + дороги + туман (не из _draw!).
+func _do_bake() -> void:
+	if _vp == null or not is_inside_tree() or map == null:
+		return
+	if map.get("_terrain_bake") == null:
+		_bake_terrain()
+	_bake_fog_ver = int(map.fog_ver)
+	_sd.queue_redraw()
+	_vp.render_target_update_mode = SubViewport.UPDATE_DISABLED
+	_vp.render_target_update_mode = SubViewport.UPDATE_ONCE
+
+
+## Содержимое запечки: рельеф-квад + реки + дороги + туман.
+## Всё рисуется В _sd (урок v1.39.1: голые draw_* рисуют в чужой канвас
+## и отбрасываются движком).
+func _draw_static() -> void:
+	var ts := float(map.ts)
+	_sd.draw_texture_rect(map._terrain_bake,
+			Rect2(Vector2.ZERO, Vector2(map.w * ts, map.h * ts)), false)
+	_rivers_into(_sd, ts)
+	_roads_into(_sd, ts)
+	_fog_into(_sd, ts)
 
 
 func _draw() -> void:
 	if map == null:
 		return
 	var ts := float(map.ts)
-	# v1.35.1: запечённый светотеневой рельеф (кэш на карте) — вместо
-	# квадратных тайлов: биомы и высоты сглажены, склоны освещены с СЗ
-	if map.get("_terrain_bake") == null:
-		_bake_terrain()
-	draw_texture_rect(map._terrain_bake,
-			Rect2(Vector2.ZERO, Vector2(map.w * ts, map.h * ts)), false)
-	# реки (v2, гидрология): лента русла между центрами речных тайлов
-	_draw_rivers(ts)
-	_draw_roads(ts)
-	# туман войны — ПЕРГАМЕНТ (v1.40, вариант открытого вопроса №112):
-	# неисследованное скрыто тёплой «бумагой» карты (референс 76b0d14c —
-	# «живая» карта на пергаменте; фон #D9C49A из РЕФЕРЕНСЫ-СТИЛЬ),
-	# лёгкая пятнистость — как старая бумага. Включается fog.parchment
-	# в world.json; пустое значение возвращает прежнюю мглу.
-	var fog_cfg: Dictionary = map.cfg.get("fog", {})
-	if String(fog_cfg.get("parchment", "")) != "":
-		var parch := Color(String(fog_cfg.get("parchment", "#d9c49a")))
-		var parch_dark := Color(String(fog_cfg.get("parchment_dark", "#a8905e")))
-		for y in map.h:
-			for x in map.w:
-				if not map.is_explored(Vector2i(x, y)):
-					var shade := parch_dark.lerp(parch,
-							float(_hash2(x, y, 7)) / 7.0)
-					draw_circle(Vector2(float(x) + 0.5, float(y) + 0.5) * ts,
-							ts * 0.72, shade)
-	else:
-		var fog_color := Color(0.04, 0.04, 0.07, 1.0)
-		for y in map.h:
-			for x in map.w:
-				if not map.is_explored(Vector2i(x, y)):
-					draw_circle(Vector2(float(x) + 0.5, float(y) + 0.5) * ts,
-							ts * 0.72, fog_color)
+	# v1.40.1: статичный слой (рельеф + реки + дороги + туман) — одним
+	# квадом из запечки; перепекается при раскрытии тумана (fog_ver)
+	if _static_tex != null:
+		draw_texture_rect(_static_tex,
+				Rect2(Vector2.ZERO, Vector2(map.w * ts, map.h * ts)), false)
 	# точки интереса (только найденные и на исследованной земле —
 	# на пергаменте маркеров нет, v1.40)
 	for poi in map.pois:
@@ -133,10 +152,8 @@ func _draw() -> void:
 	Assets.draw_ref(self, "img:knight", hero_px + Vector2(0, -2 - bob), 26.0)
 
 
-## Реки (v2, гидрология «Мир v2»): лента русла — линии между центрами
-## соседних речных тайлов (юг/восток и две диагонали, без дублей), светлая
-## жила по центру. Одиночный тайл — кружок. Только исследованные тайлы.
-func _draw_rivers(ts: float) -> void:
+## Реки — рисуются в канвас (в запечку; вызывается из _draw_static).
+func _rivers_into(canvas: CanvasItem, ts: float) -> void:
 	if map.river == null or map.river.is_empty():
 		return
 	var biomes: Dictionary = map.cfg.get("biomes", {})
@@ -152,12 +169,12 @@ func _draw_rivers(ts: float) -> void:
 			var n := t + d
 			if map.river.has(n) and map.is_explored(n):
 				var nc: Vector2 = map.tile_center_px(n)
-				draw_line(c, nc, col, ts * 0.5)
-				draw_line(c, nc, vein, ts * 0.16)
+				canvas.draw_line(c, nc, col, ts * 0.5)
+				canvas.draw_line(c, nc, vein, ts * 0.16)
 				linked = true
 		if not linked:
-			draw_circle(c, ts * 0.26, col)
-			draw_circle(c, ts * 0.09, vein)
+			canvas.draw_circle(c, ts * 0.26, col)
+			canvas.draw_circle(c, ts * 0.09, vein)
 
 
 ## ---------- запечённый светотеневой рельеф (v1.35.1) ----------
@@ -168,8 +185,13 @@ func _draw_rivers(ts: float) -> void:
 ## а не как пятно цвета. Вершины получают скальный тон и высотную
 ## подсветку, у берегов светлая мель. Выпечка 3 суб-пикселя/тайл →
 ## масштабирование билинейно до полного размера (быстро, гладко).
+## v1.40.1: СТАТИКА карты (рельеф + реки + дороги + туман) запекается в
+## собственный SubViewport — в кадре один квад (раньше туман был ~1500
+## кружков + реки/дороги по всей карте КАЖДЫЙ кадр — это держало карту
+## на 1–3 FPS). Перепечка при раскрытии тумана (map.fog_ver). Туман —
+## ОБЛАКА (светло-серые кучные массы). Разрешение запечки 3→6 суб-пикс.
 
-const BAKE_SUB := 3   # суб-пикселей на тайл при выпечке
+const BAKE_SUB := 6   # суб-пикселей на тайл при выпечке (v1.40.1: резче, «мыла» меньше)
 const BAKE_ROCK := Color("#8a8276")   # скальный тон вершин
 
 
@@ -302,7 +324,8 @@ static func _hash2(x: int, y: int, n: int) -> int:
 
 ## Старые тракты (v1.35.1): линии между соседними дорожными тайлами —
 ## гладкие тропы вместо квадратов цвета дороги.
-func _draw_roads(ts: float) -> void:
+## Дороги — рисуются в канвас (в запечку).
+func _roads_into(canvas: CanvasItem, ts: float) -> void:
 	var col := Color(String(map.cfg.get("biomes", {}).get("road", {}).get("color", "#6e5f4a")))
 	var links := [Vector2i(1, 0), Vector2i(0, 1)]
 	for y in map.h:
@@ -315,10 +338,41 @@ func _draw_roads(ts: float) -> void:
 			for d: Vector2i in links:
 				var n := t + d
 				if map.in_bounds(n) and int(map.grid[n.y][n.x]) == map.TILE_ROAD:
-					draw_line(c, map.tile_center_px(n), col, ts * 0.3)
+					canvas.draw_line(c, map.tile_center_px(n), col, ts * 0.3)
 					linked = true
 			if not linked:
-				draw_circle(c, ts * 0.16, col)
+				canvas.draw_circle(c, ts * 0.16, col)
+
+
+## Туман войны — ОБЛАКА (v1.40.1, правка приёмки «туман облаками»):
+## светло-серые кучные массы — два слоя полупрозрачных кружков; перекрытия
+## дают плотную сердцевину и рваный светлый край. Стиль — world.json →
+## fog.style: clouds (по умолчанию) | parchment (№112) | dark (мгла).
+func _fog_into(canvas: CanvasItem, ts: float) -> void:
+	var fog_cfg: Dictionary = map.cfg.get("fog", {})
+	var style := String(fog_cfg.get("style", "clouds"))
+	for y in map.h:
+		for x in map.w:
+			if map.is_explored(Vector2i(x, y)):
+				continue
+			var c := Vector2(float(x) + 0.5, float(y) + 0.5) * ts
+			var h := float(_hash2(x, y, 7)) / 7.0
+			match style:
+				"parchment":
+					var parch := Color(String(fog_cfg.get("parchment", "#d9c49a")))
+					var parch_dark := Color(String(fog_cfg.get("parchment_dark", "#a8905e")))
+					canvas.draw_circle(c, ts * 0.72, parch_dark.lerp(parch, h))
+				"dark":
+					canvas.draw_circle(c, ts * 0.72, Color(0.04, 0.04, 0.07, 1.0))
+				_:
+					# облака: широкий мягкий слой + плотная сердцевина
+					var light := Color(String(fog_cfg.get("cloud_light", "#c9cfd6")))
+					var dark := Color(String(fog_cfg.get("cloud_dark", "#9aa3ad")))
+					var wisp := light.lerp(dark, h)
+					canvas.draw_circle(c, ts * (0.95 + 0.12 * h),
+							Color(wisp.r, wisp.g, wisp.b, 0.55))
+					canvas.draw_circle(c, ts * (0.66 + 0.1 * h),
+							Color(wisp.r * 0.96, wisp.g * 0.96, wisp.b, 0.8))
 
 
 func _draw_poi(poi: Dictionary, ts: float) -> void:

@@ -6,7 +6,7 @@
   "day_seconds": 1.4,
   "tiles_per_day": 22.0,
   "reveal_radius": 5,
-  "fog_reveal_radius": 2,
+  "fog_reveal_radius": 3,
   "city_reveal_radius": 9,
   "biomes": {
     "plains": {
@@ -409,8 +409,10 @@
     ]
   },
   "fog": {
-    "_note": "№112 (вариант агента, показать на приёмке): пергаментная карта — неисследованное скрыто тёплым пергаментом, а не чёрной мглой",
-    "parchment": "#d9c49a",
-    "parchment_dark": "#a8905e"
+    "_note": "v1.40.1: туман войны — облака (светло-серые кучные массы с рваным краем). fog.style: clouds|parchment|dark; пергамент №112 остался опцией.",
+    "style": "clouds",
+    "parchment": "",
+    "cloud_light": "#c9cfd6",
+    "cloud_dark": "#9aa3ad"
   }
 }
