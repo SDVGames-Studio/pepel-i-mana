@@ -49,6 +49,10 @@ var _vp: SubViewport = null    # духовка статики (v1.40.1)
 var _sd: Node2D = null
 var _static_tex: Texture2D = null
 var _bake_fog_ver := -1
+# туман (v1.40.2): отдельная текстура ПОЛНОГО покрытия, раскрытие = стирание
+var _fog_img: Image = null
+var _fog_tex: Texture2D = null
+var _fog_hts := 16.0           # полтайла на пиксель тумана
 
 
 func setup(world_map) -> void:
@@ -67,14 +71,15 @@ func setup(world_map) -> void:
 
 func _ready() -> void:
 	_do_bake()
+	_build_fog_layer()
 
 
 func _process(delta: float) -> void:
 	_time += delta
-	# туман раскрылся — перепечь статику (из _process, не из _draw — урок
-	# v1.39.1: сигнатура draw вне режима рисования спамит ошибками)
-	if map != null and map.get("fog_ver") != null and _bake_fog_ver != int(map.fog_ver):
-		_do_bake()
+	# раскрытие тумана: стираем круги из текстуры (дёшево, каждый шаг)
+	if map != null and map.get("fog_new") != null and not (map.fog_new as Array).is_empty():
+		_erase_fog(map.fog_new)
+		map.fog_new.clear()
 
 
 ## Запечь статику карты: рельеф + реки + дороги + туман (не из _draw!).
@@ -89,16 +94,16 @@ func _do_bake() -> void:
 	_vp.render_target_update_mode = SubViewport.UPDATE_ONCE
 
 
-## Содержимое запечки: рельеф-квад + реки + дороги + туман.
-## Всё рисуется В _sd (урок v1.39.1: голые draw_* рисуют в чужой канвас
-## и отбрасываются движком).
+## Содержимое запечки: рельеф-квад + реки + дороги (БЕЗ тумана — v1.40.2:
+## туман живёт отдельной текстурой и стирается по тайлам при раскрытии,
+## статика карты больше НЕ перепекается при ходьбе — это и роняло FPS).
+## Всё рисуется В _sd (урок v1.39.1: голые draw_* отбрасываются движком).
 func _draw_static() -> void:
 	var ts := float(map.ts)
 	_sd.draw_texture_rect(map._terrain_bake,
 			Rect2(Vector2.ZERO, Vector2(map.w * ts, map.h * ts)), false)
 	_rivers_into(_sd, ts)
 	_roads_into(_sd, ts)
-	_fog_into(_sd, ts)
 
 
 func _draw() -> void:
@@ -109,6 +114,10 @@ func _draw() -> void:
 	# квадом из запечки; перепекается при раскрытии тумана (fog_ver)
 	if _static_tex != null:
 		draw_texture_rect(_static_tex,
+				Rect2(Vector2.ZERO, Vector2(map.w * ts, map.h * ts)), false)
+	# туман поверх (чёрная пелена с дырами на раскрытом)
+	if _fog_tex != null:
+		draw_texture_rect(_fog_tex,
 				Rect2(Vector2.ZERO, Vector2(map.w * ts, map.h * ts)), false)
 	# точки интереса (только найденные и на исследованной земле —
 	# на пергаменте маркеров нет, v1.40)
@@ -344,35 +353,82 @@ func _roads_into(canvas: CanvasItem, ts: float) -> void:
 				canvas.draw_circle(c, ts * 0.16, col)
 
 
-## Туман войны — ОБЛАКА (v1.40.1, правка приёмки «туман облаками»):
-## светло-серые кучные массы — два слоя полупрозрачных кружков; перекрытия
-## дают плотную сердцевину и рваный светлый край. Стиль — world.json →
-## fog.style: clouds (по умолчанию) | parchment (№112) | dark (мгла).
-func _fog_into(canvas: CanvasItem, ts: float) -> void:
+## Туман войны — ЧЁРНАЯ ПЕЛЕНА (v1.40.2, правка приёмки: «убери облака,
+## оставь чёрную пелену»; прежние стили clouds/parchment доступны через
+## fog.style). Софтверный слой в ПОЛОВИННОМ разрешении: построение —
+## один раз (кружки мглы по всем нераскрытым тайлам), раскрытие —
+## стирание кругов по map.fog_new + update текстуры (дёшево при ходьбе).
+func _build_fog_layer() -> void:
+	if map == null:
+		return
+	_fog_hts = map.ts / 2.0
+	var fw := int(map.w * _fog_hts)
+	var fh := int(map.h * _fog_hts)
+	_fog_img = Image.create_empty(fw, fh, false, Image.FORMAT_RGBA8)
 	var fog_cfg: Dictionary = map.cfg.get("fog", {})
-	var style := String(fog_cfg.get("style", "clouds"))
+	var style := String(fog_cfg.get("style", "dark"))
+	var light := Color(String(fog_cfg.get("cloud_light", "#c9cfd6")))
+	var dark := Color(String(fog_cfg.get("cloud_dark", "#9aa3ad")))
 	for y in map.h:
 		for x in map.w:
 			if map.is_explored(Vector2i(x, y)):
 				continue
-			var c := Vector2(float(x) + 0.5, float(y) + 0.5) * ts
+			var c := Vector2(float(x) + 0.5, float(y) + 0.5) * _fog_hts
 			var h := float(_hash2(x, y, 7)) / 7.0
 			match style:
 				"parchment":
 					var parch := Color(String(fog_cfg.get("parchment", "#d9c49a")))
 					var parch_dark := Color(String(fog_cfg.get("parchment_dark", "#a8905e")))
-					canvas.draw_circle(c, ts * 0.72, parch_dark.lerp(parch, h))
-				"dark":
-					canvas.draw_circle(c, ts * 0.72, Color(0.04, 0.04, 0.07, 1.0))
-				_:
-					# облака: широкий мягкий слой + плотная сердцевина
-					var light := Color(String(fog_cfg.get("cloud_light", "#c9cfd6")))
-					var dark := Color(String(fog_cfg.get("cloud_dark", "#9aa3ad")))
+					_stamp_circle(parch_dark.lerp(parch, h), c, _fog_hts * 0.9)
+				"clouds":
 					var wisp := light.lerp(dark, h)
-					canvas.draw_circle(c, ts * (0.95 + 0.12 * h),
-							Color(wisp.r, wisp.g, wisp.b, 0.55))
-					canvas.draw_circle(c, ts * (0.66 + 0.1 * h),
-							Color(wisp.r * 0.96, wisp.g * 0.96, wisp.b, 0.8))
+					_stamp_circle(Color(wisp.r, wisp.g, wisp.b, 0.85), c, _fog_hts * (0.95 + 0.12 * h))
+				_:
+					# чёрная пелена: мягкая волнистая кромка кружками (v1.35.1)
+					var shade := 0.03 + 0.03 * h
+					_stamp_circle(Color(shade, shade, shade + 0.03, 1.0), c, _fog_hts * 0.8)
+	_fog_tex = ImageTexture.create_from_image(_fog_img)
+
+
+## Штамп кружка в Image тумана (сборка слоя, один раз).
+func _stamp_circle(col: Color, center: Vector2, r: float) -> void:
+	var fw := _fog_img.get_width()
+	var fh := _fog_img.get_height()
+	var y0 := maxi(0, int(center.y - r))
+	var y1 := mini(fh - 1, int(center.y + r))
+	var x0 := maxi(0, int(center.x - r))
+	var x1 := mini(fw - 1, int(center.x + r))
+	var r2 := r * r
+	for py in range(y0, y1 + 1):
+		var dy := float(py) + 0.5 - center.y
+		for px in range(x0, x1 + 1):
+			var dx := float(px) + 0.5 - center.x
+			if dx * dx + dy * dy <= r2:
+				_fog_img.set_pixel(px, py, col)
+
+
+## Стирание раскрытых тайлов: чистые круги радиусом «раскрытие + запас»
+## (кромка мглы нераскрытых соседей естественно налезает на край — мягко).
+func _erase_fog(tiles: Array) -> void:
+	if _fog_img == null or _fog_tex == null:
+		return
+	var fw := _fog_img.get_width()
+	var fh := _fog_img.get_height()
+	var r := (float(map.cfg.get("fog_reveal_radius", 3)) + 1.0) * _fog_hts
+	var r2 := r * r
+	for t: Vector2i in tiles:
+		var c := Vector2(float(t.x) + 0.5, float(t.y) + 0.5) * _fog_hts
+		var y0 := maxi(0, int(c.y - r))
+		var y1 := mini(fh - 1, int(c.y + r))
+		var x0 := maxi(0, int(c.x - r))
+		var x1 := mini(fw - 1, int(c.x + r))
+		for py in range(y0, y1 + 1):
+			var dy := float(py) + 0.5 - c.y
+			for px in range(x0, x1 + 1):
+				var dx := float(px) + 0.5 - c.x
+				if dx * dx + dy * dy <= r2:
+					_fog_img.set_pixel(px, py, Color(0, 0, 0, 0))
+	_fog_tex.update(_fog_img)
 
 
 func _draw_poi(poi: Dictionary, ts: float) -> void:

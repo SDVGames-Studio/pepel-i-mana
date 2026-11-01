@@ -409,8 +409,8 @@
     ]
   },
   "fog": {
-    "_note": "v1.40.1: туман войны — облака (светло-серые кучные массы с рваным краем). fog.style: clouds|parchment|dark; пергамент №112 остался опцией.",
-    "style": "clouds",
+    "_note": "v1.40.2: чёрная пелена (выбор заказчика). Стили: dark | clouds | parchment(№112).",
+    "style": "dark",
     "parchment": "",
     "cloud_light": "#c9cfd6",
     "cloud_dark": "#9aa3ad"

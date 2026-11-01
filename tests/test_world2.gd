@@ -221,3 +221,29 @@ func _test_world2_regions() -> void:
 			_check(c.a == 1.0, "цвет региона %s/%s парсится" % [String(e2["id"]), String(tn)])
 	# пергаментный туман (№112, вариант агента): конфиг на месте
 	_check(String(cfg["fog"]["parchment"]) != "", "пергаментный туман настроен (№112)")
+
+
+## Туман — чёрная пелена со стиранием (v1.40.2): reveal_around отдаёт
+## только НОВЫЕ тайлы в fog_new (повторное раскрытие не стирает заново).
+func _test_world2_fog_erase() -> void:
+	print("[Мир v2 / этап 2: стирание тумана]")
+	var cfg: Dictionary = _read_json("res://data/world.json")
+	var map = load("res://scripts/world_map.gd").new()
+	map.generate(4242, cfg)
+	var city: Vector2i = map.city_tile
+	map.fog.clear()
+	map.reveal_around(city, 5)
+	var first: int = (map.fog_new as Array).size()
+	_check(first >= 40, "первое раскрытие открывает круг (%d тайлов)" % first)
+	# все новые тайлы действительно новые и у города
+	var ok_new := true
+	for t: Vector2i in map.fog_new:
+		if map.fog.get(t) != true or Vector2(t).distance_to(Vector2(city)) > 5.5:
+			ok_new = false
+	_check(ok_new, "fog_new содержит только что раскрытые тайлы")
+	map.reveal_around(city, 5)
+	_check((map.fog_new as Array).is_empty(),
+			"повторное раскрытие того же места не даёт новых тайлов")
+	map.reveal_around(city + Vector2i(4, 0), 3)
+	_check((map.fog_new as Array).size() > 0,
+			"соседнее раскрытие даёт новые тайлы (рассеяние по мере ходьбы)")
