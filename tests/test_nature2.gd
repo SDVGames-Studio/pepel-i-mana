@@ -116,7 +116,7 @@ func _test_nature2_water_cache() -> void:
 				if not water._swamp_near.has(Vector2i(x, y)):
 					ok_ring = false
 	_check(ok_ring and ring_expect > 0,
-			"кольцо тёмной земли полное (%d тайлов)" % ring_expect)
+			"кольцо тёмной земли полное, с деревьями (%d тайлов)" % ring_expect)
 
 
 func _test_nature2_swamp_trees() -> void:

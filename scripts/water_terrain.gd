@@ -137,7 +137,7 @@ func _ensure_cache() -> void:
 					_swamp_tiles.append(t)
 				if map.fords.has(t):
 					_ford_tiles.append(t)
-			elif g == map.TILE_GRASS and _near_swamp8(t):
+			elif (g == map.TILE_GRASS or g == map.TILE_TREE) 					and _near_swamp8(t):
 				_swamp_near.append(t)
 	_bake_dirty = true
 
@@ -318,28 +318,22 @@ func _static_river_coast(t: Vector2i, sides: Array, ts: float) -> void:
 			_round_corner(_sd, t, sides[i], sides[j], ts, grass)
 
 
-## Болото — ОРГАНИЧЕСКОЕ: та же кромка, что у озера, но мутная:
-## светлый оттенок тины у берега + тёмная кромка воды (грязный край).
+## Болото — ОРГАНИЧЕСКОЕ, кромка БЕЗ мель-пояса и скруглений (v1.39.3,
+## фидбек: «серые полосы по краям», «углы скошены» — на мутной воде они
+## читаются грязью): только тёмная кромка топи по краю.
 func _static_swamp_coast(t: Vector2i, sides: Array, ts: float) -> void:
-	var grass: Color = colors.get("grass", Color("#5ca046"))
 	var fill := _swamp_fill()
-	var shallow := Color(fill.lightened(0.16), 0.7)
-	var edge := Color(fill.darkened(0.32), 0.55)
+	var edge := Color(fill.darkened(0.34), 0.6)
 	for side: Vector2i in sides:
-		_shallow_strip(_sd, t, side, ts, shallow)
-		# тонкая тёмная линия по самому краю — грязная кромка топи
 		var p := Vector2(t) * ts
 		if side == Vector2i(0, -1):
-			_sd.draw_rect(Rect2(p, Vector2(ts, 2.0)), edge)
+			_sd.draw_rect(Rect2(p, Vector2(ts, 3.0)), edge)
 		elif side == Vector2i(0, 1):
-			_sd.draw_rect(Rect2(p + Vector2(0, ts - 2.0), Vector2(ts, 2.0)), edge)
+			_sd.draw_rect(Rect2(p + Vector2(0, ts - 3.0), Vector2(ts, 3.0)), edge)
 		elif side == Vector2i(-1, 0):
-			_sd.draw_rect(Rect2(p, Vector2(2.0, ts)), edge)
+			_sd.draw_rect(Rect2(p, Vector2(3.0, ts)), edge)
 		else:
-			_sd.draw_rect(Rect2(p + Vector2(ts - 2.0, 0), Vector2(2.0, ts)), edge)
-	for i in sides.size():
-		for j in range(i + 1, sides.size()):
-			_round_corner(_sd, t, sides[i], sides[j], ts, grass)
+			_sd.draw_rect(Rect2(p + Vector2(ts - 3.0, 0), Vector2(3.0, ts)), edge)
 
 
 ## Кочки и оконца болота — на тайлах топи (детерминировано).
