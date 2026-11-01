@@ -296,6 +296,36 @@ def build_props():
         print("  props/stone2_%s.png %s" % ("ab"[i], spr.size))
 
 
+# ---------- валуны гряд (craftpix 974061, правки приёмки v1.39.1) ----------
+ROCK_PACK = (r"F:\востановление кхорно юнитов\assets"
+             r"\craftpix-net-974061-free-rocks-and-stones-top-down-pixel-art"
+             r"\PNG\Objects_separately")
+
+
+def build_rock_sprites():
+    """Валуны «Rocks and stones top-down» (CraftPix free): 4 материала
+    x 5 размеров (64..16px, один объект с разной степенью детализации):
+      a = Rock4 — серые камни с травинками (мастер: серо-синий, перемап);
+      b = Rock2 — рыже-бурый массив (лёгкое приглушение);
+      c = Rock7 — бурый валун-гриб (лёгкое приглушение);
+      o = Rock8 — тёмный камень с оранжевыми прожилками (РУДА).
+    Материал гряды — крупными пятнами шума, размер — по «краёвости»
+    тайла, варианты — отражения. no_shadow-версии (тень своя)."""
+    lut_gray = grad_lut([(0.0, "#566070"), (0.5, "#7a8492"), (1.0, "#aab4c0")])
+    for fam, out, mode in [("4", "a", "remap"), ("2", "b", "soft"),
+                           ("7", "c", "soft"), ("8", "o", "soft")]:
+        for s in range(1, 6):
+            src = os.path.join(ROCK_PACK, "Rock%s_%d_no_shadow.png" % (fam, s))
+            im = Image.open(src).convert("RGBA")
+            if mode == "remap":
+                im = remap_to_gradient(im, lut_gray, (118, 128, 140))
+            else:
+                im = desaturate(im, 0.88, 0.96)
+            name = "rock2_%s%d.png" % (out, s) if out != "o" else "ore2_%d.png" % s
+            im.save(os.path.join(OUT_ENV, name))
+            print("  %s %s" % (name, im.size))
+
+
 # ---------- превью ----------
 def build_preview():
     names = ["n2_water_lake", "n2_water_river", "n2_water_swamp"]
@@ -330,6 +360,11 @@ def main():
     build_stone()
     build_trees()
     build_props()
+    if os.path.isdir(ROCK_PACK):
+        print("Валуны craftpix 974061 ->")
+        build_rock_sprites()
+    else:
+        print("Пак скал не найден, пропускаю: %s" % ROCK_PACK)
     build_preview()
     print("Готово.")
 

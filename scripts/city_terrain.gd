@@ -195,7 +195,7 @@ func _draw_tiles() -> void:
 					_draw_grass_detail(x, y, rect, ts)
 					_draw_grass_prop(x, y, rect, ts)
 				map.TILE_DEADROCK:
-					_draw_deadrock(x, y, rect, ts)
+					_rock_view.draw_deadrock(x, y, rect, ts)
 	# проход 2: скалы и жилы — «Природа 2.0» (v1.39.0): фактурные утёсы
 	# с травяными шапками языком высот плато (rock_terrain.gd).
 	# Вода в духовке НЕ рисуется: она живая (water_terrain.gd, город).
@@ -549,9 +549,9 @@ func _draw_roads_baked() -> void:
 	var col: Color = colors.get("road", Color("#6e5f4a"))
 	for tile: Vector2i in map.road:
 		var rect := Rect2(Vector2(tile) * map.ts, Vector2(map.ts, map.ts))
-		_drawer.draw_rect(rect, col)
-		_drawer.draw_circle(rect.position + Vector2(map.ts * 0.3, map.ts * 0.4), 2.0, col.lightened(0.2))
-		_drawer.draw_circle(rect.position + Vector2(map.ts * 0.65, map.ts * 0.65), 1.6, col.lightened(0.15))
+		_drawer2.draw_rect(rect, col)
+		_drawer2.draw_circle(rect.position + Vector2(map.ts * 0.3, map.ts * 0.4), 2.0, col.lightened(0.2))
+		_drawer2.draw_circle(rect.position + Vector2(map.ts * 0.65, map.ts * 0.65), 1.6, col.lightened(0.15))
 
 
 ## Зоны (M6, v1.22 в духовке): заливка типа, борозды поля, точки пастбища,
@@ -567,19 +567,19 @@ func _draw_zones_baked() -> void:
 			var tile: Vector2i = z["cells"][i]
 			var rect := Rect2(Vector2(tile) * map.ts, Vector2(map.ts, map.ts))
 			var filled: bool = float(z["progress"][i]) >= fill_work
-			_drawer.draw_rect(rect, Color(col.r, col.g, col.b, 0.42 if filled else 0.32))
+			_drawer2.draw_rect(rect, Color(col.r, col.g, col.b, 0.42 if filled else 0.32))
 			if String(z["type"]) == "field":
 				for k: int in 3:
 					var y: float = rect.position.y + map.ts * (0.25 + 0.25 * k)
-					_drawer.draw_line(Vector2(rect.position.x + 4, y),
+					_drawer2.draw_line(Vector2(rect.position.x + 4, y),
 							Vector2(rect.position.x + map.ts - 4, y),
 							col.darkened(0.3 if filled else 0.15),
 							1.5 if filled else 1.0)
 				if filled:
-					_drawer.draw_rect(rect.grow(-2), col.darkened(0.15), false, 1.5)
+					_drawer2.draw_rect(rect.grow(-2), col.darkened(0.15), false, 1.5)
 			else:
-				_drawer.draw_circle(rect.position + Vector2(10, 20), 3.0, col.darkened(0.35))
-				_drawer.draw_circle(rect.position + Vector2(22, 12), 3.0, col.darkened(0.35))
+				_drawer2.draw_circle(rect.position + Vector2(10, 20), 3.0, col.darkened(0.35))
+				_drawer2.draw_circle(rect.position + Vector2(22, 12), 3.0, col.darkened(0.35))
 		if String(z["type"]) == "pasture":
 			_draw_zone_fence_baked(z)
 
@@ -604,9 +604,9 @@ func _draw_zone_fence_baked(z: Dictionary) -> void:
 		if not inside.has(c + Vector2i(0, -1)):
 			edges.append([p, p + Vector2(ts, 0), p + Vector2(ts * 0.5, 0)])
 		for e in edges:
-			_drawer.draw_line(e[0], e[1], wood, 2.5)
-			_drawer.draw_line(e[2], e[2] + Vector2(0, -8), dark, 2.5)
-			_drawer.draw_circle(e[2] + Vector2(0, -8), 1.6, dark)
+			_drawer2.draw_line(e[0], e[1], wood, 2.5)
+			_drawer2.draw_line(e[2], e[2] + Vector2(0, -8), dark, 2.5)
+			_drawer2.draw_circle(e[2] + Vector2(0, -8), 1.6, dark)
 
 
 ## Каменные плиты площади 2×2 (правки v1.20, v1.22 в духовке). Пульс «места
@@ -617,13 +617,13 @@ func _draw_plaza_baked() -> void:
 	var ts := float(map.ts)
 	var origin := Vector2(sim.plaza) * ts
 	var rect := Rect2(origin, Vector2(ts * 2.0, ts * 2.0))
-	_drawer.draw_rect(rect, Color("#9aa0a8"))
+	_drawer2.draw_rect(rect, Color("#9aa0a8"))
 	for i in 4:
 		var cx := origin.x + ts * (0.5 + float(i % 2))
 		var cy := origin.y + ts * (0.5 + float(i / 2))
-		_drawer.draw_rect(Rect2(cx - ts * 0.42, cy - ts * 0.42, ts * 0.84, ts * 0.84), Color("#8a9098"))
-	_drawer.draw_rect(rect, Color("#5d6470"), false, 2.0)
-	_drawer.draw_circle(origin + Vector2(ts, ts), ts * 0.16, Color("#e8e2d0"))
+		_drawer2.draw_rect(Rect2(cx - ts * 0.42, cy - ts * 0.42, ts * 0.84, ts * 0.84), Color("#8a9098"))
+	_drawer2.draw_rect(rect, Color("#5d6470"), false, 2.0)
+	_drawer2.draw_circle(origin + Vector2(ts, ts), ts * 0.16, Color("#e8e2d0"))
 
 
 ## Детерминированный «шум» тайла: 0..n-1 (одинаков при каждой перерисовке).
@@ -632,25 +632,8 @@ static func _hash(x: int, y: int, n: int, salt: int = 0) -> int:
 	return absi(v) % maxi(1, n)
 
 
-## Пустая порода выработанного массива (v1.21): тёмная осыпь щебня — по ней
-## видно, что гряда вычерпана, и сюда можно ставить шахту.
-func _draw_deadrock(x: int, y: int, rect: Rect2, ts: float) -> void:
-	var base := Color("#4a463f").lightened(0.03 * float(_hash(x, y, 3) - 1))
-	_drawer.draw_rect(rect, base)
-	# щебень: крупные тёмные глыбы и мелкая крошка по хэшу
-	for i in 5:
-		var h := _hash(x * 7 + i, y * 13 + i, 100)
-		var cx := rect.position.x + 4.0 + float(h % int(ts - 8.0))
-		var cy := rect.position.y + 5.0 + float((h / 4) % int(ts - 10.0))
-		var r := 1.4 + float(h % 3) * 0.7
-		_drawer.draw_circle(Vector2(cx, cy), r, base.darkened(0.18 if i % 2 == 0 else 0.08))
-	# блик блужающего металла — намёк на жилы под породой
-	var hx := _hash(x, y * 3, 4)
-	if hx == 0:
-		_drawer.draw_circle(rect.get_center() + Vector2(3.0, -4.0), 1.4, Color("#8a7f6a"))
-	_drawer.draw_rect(rect, Color("#2e2b26"), false, 1.0)
-
-
+## Пустая порода выработанного массива — рисует rock_terrain.gd (v1.39.1:
+## каменная текстура — «шапка снята, видно камень»).
 ## Трава: плавные пятна (билинейный шум, без прямых краёв блоков) + зерно яркости.
 func _noise2(xf: float, yf: float, n: int, salt: int) -> float:
 	var x0 := int(floorf(xf))

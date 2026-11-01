@@ -607,16 +607,17 @@
       "shadow_alpha": 0.22
     },
     "rock2": {
-      "color": "#646e79",
+      "color": "#5f6875",
       "tone_alpha": 0.2,
-      "top_light": 0.12,
+      "top_light": 0.2,
       "top_shrink": 0.8,
-      "cut_light": 0.14,
+      "cut_light": 0.1,
       "cut_dark": 0.3,
       "lip_dark": 0.24,
       "cap_chance": 0.12,
-      "skirt_chance": 0.4,
-      "shadow_alpha": 0.2
+      "skirt_chance": 0.45,
+      "shadow_alpha": 0.22,
+      "face_h": 0.68
     },
     "water2": {
       "anim_fps": 5,
