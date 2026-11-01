@@ -384,9 +384,9 @@ func _build_fog_layer() -> void:
 					var wisp := light.lerp(dark, h)
 					_stamp_circle(Color(wisp.r, wisp.g, wisp.b, 0.85), c, _fog_hts * (0.95 + 0.12 * h))
 				_:
-					# чёрная пелена: мягкая волнистая кромка кружками (v1.35.1)
-					var shade := 0.03 + 0.03 * h
-					_stamp_circle(Color(shade, shade, shade + 0.03, 1.0), c, _fog_hts * 0.8)
+					# СПЛОШНАЯ чёрная пелена (v1.40.3, заказчик): единый
+					# цвет без фактуры, кромка — рваная от кружков
+					_stamp_circle(Color(0.02, 0.02, 0.045, 1.0), c, _fog_hts * 0.95)
 	_fog_tex = ImageTexture.create_from_image(_fog_img)
 
 

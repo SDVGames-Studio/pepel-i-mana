@@ -232,6 +232,7 @@ func _test_world2_fog_erase() -> void:
 	map.generate(4242, cfg)
 	var city: Vector2i = map.city_tile
 	map.fog.clear()
+	map.fog_new.clear()   # генерация уже наполнила (city_reveal) — чистим
 	map.reveal_around(city, 5)
 	var first: int = (map.fog_new as Array).size()
 	_check(first >= 40, "первое раскрытие открывает круг (%d тайлов)" % first)
@@ -241,9 +242,11 @@ func _test_world2_fog_erase() -> void:
 		if map.fog.get(t) != true or Vector2(t).distance_to(Vector2(city)) > 5.5:
 			ok_new = false
 	_check(ok_new, "fog_new содержит только что раскрытые тайлы")
+	map.fog_new.clear()   # view сливает список каждый кадр (эмуляция)
 	map.reveal_around(city, 5)
 	_check((map.fog_new as Array).is_empty(),
 			"повторное раскрытие того же места не даёт новых тайлов")
+	map.fog_new.clear()
 	map.reveal_around(city + Vector2i(4, 0), 3)
 	_check((map.fog_new as Array).size() > 0,
 			"соседнее раскрытие даёт новые тайлы (рассеяние по мере ходьбы)")

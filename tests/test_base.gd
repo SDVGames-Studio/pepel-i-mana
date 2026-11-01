@@ -498,6 +498,10 @@ func sim_m8_setup(map_b, scfg: Dictionary) -> void:
 			"camp":
 				camp_strength0 += float(poi["strength"])
 	sim.mark_cleared(int(ruin["id"]))
+	# v1.40.3: легендарные странники сами зачищают POI (legend "clear") и
+	# рандомно пере-зачищали руину под конец прогона — флейк «сгустившийся
+	# заново данж снова принимает героя». Странники не предмет этого теста.
+	sim.legends = []
 	_check(int(ruin["cleared_day"]) == 0, "зачистка локации отмечается в мире")
 	_check(not sim.poi_enterable(ruin), "в зачищенный данж нельзя войти, пока он не сгустится заново")
 	var caravan_tile0: Vector2i = caravan["tile"]

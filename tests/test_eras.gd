@@ -633,6 +633,10 @@ func _test_m8() -> void:
 	scfg["sim"]["resettle_chance"] = 1.0
 	scfg["sim"]["dungeon_reset_days"] = 3
 	scfg["sim"]["caravan_move_days"] = 2
+	# v1.40.3: странники спавнятся заново каждый setup и рандомно
+	# пере-зачищают тестовую руину (legend "clear") — флейк «сгустившийся
+	# заново данж снова принимает героя». Убираем их из этого сценария.
+	scfg.erase("legends")
 	sim_m8_setup(map_b, scfg)
 
 

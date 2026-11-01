@@ -813,7 +813,8 @@ func _setup_fog() -> void:
 ## Открыть круг тайлов; попавшие в круг POI становятся найденными.
 func reveal_around(center: Vector2i, radius: int) -> void:
 	fog_ver += 1
-	fog_new.clear()
+	# fog_new накапливается до разбора view'ом (параллельные раскрытия —
+	# следы симуляции, обелиски — не теряют тайлы стирания)
 	for y in range(center.y - radius, center.y + radius + 1):
 		for x in range(center.x - radius, center.x + radius + 1):
 			var p := Vector2i(x, y)

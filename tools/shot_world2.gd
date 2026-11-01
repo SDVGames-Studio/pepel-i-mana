@@ -30,8 +30,14 @@ func _initialize() -> void:
 
 func _on_frame() -> void:
 	_frames += 1
-	# SHOT_FOG=1: НЕ снимать туман — показать пергаментную карту (№112)
-	if _frames == 5 and OS.get_environment("SHOT_FOG") == "":
+	# SHOT_FOG=1: НЕ снимать туман — показать пелену/облака
+	# SHOT_WALK=1: раскрыть два пятна в тумане (проверка стирания)
+	if _frames == 5 and OS.get_environment("SHOT_WALK") != "":
+		var m = _world.map
+		m.reveal_around(m.city_tile + Vector2i(10, 4), 4)
+		m.reveal_around(m.city_tile + Vector2i(-8, -5), 4)
+		print("shot_world2: раскрыты два пятна в тумане (стирание)")
+	elif _frames == 5 and OS.get_environment("SHOT_FOG") == "":
 		_reveal_all()
 	if _frames == 5 and OS.get_environment("SHOT_FOG") != "":
 		_zoom_only()
