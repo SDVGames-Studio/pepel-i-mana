@@ -29,12 +29,22 @@ func _test_world2_hydro() -> void:
 		map.generate(seed_value, cfg)
 		var label := "сид %d" % seed_value
 
-		# океан на юге: нижняя строка — вода
+		# море по режиму мира (№118): ocean/both — вода у южного края;
+		# inner — внутреннее море в середине карты, южный край — суша
 		var sea := true
 		for x in map.w:
 			if int(map.grid[map.h - 1][x]) != map.TILE_WATER:
 				sea = false
-		_check(sea, label + ": океан лежит вдоль южного края")
+		if map.sea_mode == "inner":
+			var mid_water := false
+			for y in range(int(map.h * 0.3), map.h - 5):
+				for x in range(3, map.w - 4):
+					if int(map.grid[y][x]) == map.TILE_WATER:
+						mid_water = true
+			_check(mid_water, label + ": мир «inner» несёт внутреннее море")
+			_check(not sea, label + ": мир «inner» без океана у южного края")
+		else:
+			_check(sea, label + ": океан лежит вдоль южного края (режим %s)" % map.sea_mode)
 
 		# река: течёт с севера и впадает в воду (море/озеро) или доходит до юга
 		var river_top := false
@@ -161,3 +171,53 @@ func _fake_world_sim(map) -> RefCounted:
 	var sim: RefCounted = load("res://scripts/world_sim.gd").new()
 	sim.setup(map, _read_json("res://data/world.json"), 7)
 	return sim
+
+
+## Биом-регионы и пергаментный туман — «Мир v2» этап 2 (v1.40):
+## режим моря — рандом мира; снег/вулкан/пустыня/мёртвель красят сушу
+## и дорожают путь; вода/болото не перекрашиваются; регионы в сейве.
+func _test_world2_regions() -> void:
+	print("[Мир v2 / этап 2: биом-регионы и пергамент]")
+	var cfg: Dictionary = _read_json("res://data/world.json")
+	var ids: Array = []
+	for e: Dictionary in cfg["regions"]["list"]:
+		ids.append(String(e["id"]))
+
+	var modes := {}
+	var region_found := {}
+	for seed_value in SEEDS + [777, 5150, 90210]:
+		var map = load("res://scripts/world_map.gd").new()
+		map.generate(seed_value, cfg)
+		modes[map.sea_mode] = true
+		_check(map.sea_mode in ["ocean", "inner", "both"],
+				"сид %d: режим моря корректен (%s)" % [seed_value, map.sea_mode])
+		# регионы: валидные id, только на суше, не на болоте
+		var ok_tiles := true
+		for t: Vector2i in map.region:
+			if not ids.has(String(map.region[t])):
+				ok_tiles = false
+			if int(map.grid[t.y][t.x]) == map.TILE_WATER 					or int(map.grid[t.y][t.x]) == map.TILE_SWAMP:
+				ok_tiles = false
+		_check(ok_tiles, "сид %d: регионы валидны и только на суше" % seed_value)
+		if not map.region.is_empty():
+			for t2: Vector2i in map.region:
+				region_found[String(map.region[t2])] = true
+		# цена пути: в регионе дороже базовой
+		var any_region: Vector2i = map.region.keys()[0] if not map.region.is_empty() else Vector2i(-1, -1)
+		if any_region.x >= 0:
+			var rd: Dictionary = map.region_def(String(map.region[any_region]))
+			var base: float = float(cfg["biomes"]["plains"]["cost"])
+			if int(map.grid[any_region.y][any_region.x]) == map.TILE_PLAINS:
+				_check(absf(map.tile_cost(any_region) - base * float(rd["cost_mult"])) < 0.001,
+						"сид %d: регион дорожает путь (x%s)" % [seed_value, String(rd["cost_mult"])])
+	# рандом мира даёт разные режимы на серии сидов
+	_check(modes.size() >= 2, "режим моря рандомится по сидам (%s)" % [modes.keys()])
+	# хотя бы один регион встретился на серии сидов
+	_check(region_found.size() >= 2, "регионы встречаются на картах (%s)" % [region_found.keys()])
+	# цвета регионов парсятся
+	for e2: Dictionary in cfg["regions"]["list"]:
+		for tn in e2["colors"]:
+			var c := Color(String(e2["colors"][tn]))
+			_check(c.a == 1.0, "цвет региона %s/%s парсится" % [String(e2["id"]), String(tn)])
+	# пергаментный туман (№112, вариант агента): конфиг на месте
+	_check(String(cfg["fog"]["parchment"]) != "", "пергаментный туман настроен (№112)")

@@ -1,321 +1,416 @@
 {
-	"tile_size": 32,
-	"map_w": 72,
-	"map_h": 52,
-	"hero_speed": 200.0,
-	"day_seconds": 1.4,
-	"tiles_per_day": 22.0,
-	"reveal_radius": 5,
-	"fog_reveal_radius": 2,
-	"city_reveal_radius": 9,
-	"biomes": {
-		"plains": {
-			"color": "#5d7a3a",
-			"cost": 1.0
-		},
-		"water": {
-			"color": "#2e5f7a",
-			"cost": 0.0
-		},
-		"forest": {
-			"color": "#3e5a2a",
-			"cost": 1.6
-		},
-		"hills": {
-			"color": "#6e6a63",
-			"cost": 2.0
-		},
-		"waste": {
-			"color": "#7a6a55",
-			"cost": 2.0
-		},
-		"swamp": {
-			"color": "#5a6b4a",
-			"cost": 2.5
-		},
-		"road": {
-			"color": "#6e5f4a",
-			"cost": 0.5
-		},
-		"river": {
-			"_note": "v2: русло на глобали — проходимый брод, но дороже равнины",
-			"color": "#57b2d4",
-			"cost": 1.4
-		}
-	},
-	"hydro": {
-		"_note": "v2 «Мир v2» этап 1: карта высот (наклон N→S) → скалы на севере, океан на юге + внутренние моря, реки из скал к морю (меандры), озёра/болота по влажности",
-		"noise_cell": 9,
-		"slope_top": 0.72,
-		"slope_bot": 0.18,
-		"hill_threshold": 0.62,
-		"sea_width": [2, 4],
-		"inner_seas_min": 0,
-		"inner_seas_max": 2,
-		"sea_level": 0.3,
-		"sea_radius": [3, 5],
-		"rivers_min": 1,
-		"rivers_max": 3,
-		"main_band": 9,
-		"meander": 0.35,
-		"lakes_min": 0,
-		"lakes_max": 3,
-		"lake_radius": [2, 4],
-		"lake_moist": 0.6,
-		"swamps_min": 2,
-		"swamps_max": 5,
-		"swamp_radius": [2, 3],
-		"swamp_height": 0.5,
-		"swamp_moist": 0.58,
-		"city_pick_radius": 7
-	},
-	"blobs": {
-		"forest": 16,
-		"waste": 9
-	},
-	"blob_radius": {
-		"forest": [
-			3,
-			6
-		],
-		"waste": [
-			4,
-			7
-		]
-	},
-	"pois": {
-		"ruins": 3,
-		"camps": 4,
-		"obelisks": 2,
-		"settlements": [
-			"traders",
-			"cult",
-			"traders"
-		],
-		"caravans": 1,
-		"trade_camps": 1,
-		"dragon_castles": 1,
-		"vampire_keeps": 1,
-		"lich_towers": 1,
-		"dungeon_biomes": [
-			"ruins",
-			"mutant_forest",
-			"crystal_caves",
-			"ash_wastes",
-			"cursed_hall",
-			"demon_lair",
-			"swamp_mire",
-			"midnight_crypt",
-			"yaga_hut"
-		]
-	},
-	"distances": {
-		"city_dungeon": [
-			3,
-			5
-		],
-		"settlement": [
-			10,
-			20
-		],
-		"caravan": [
-			8,
-			18
-		],
-		"trade_camp": [
-			6,
-			14
-		],
-		"dungeon": [
-			12,
-			30
-		],
-		"ruins": [
-			8,
-			26
-		],
-		"camp": [
-			8,
-			24
-		],
-		"obelisk": [
-			18,
-			34
-		],
-		"dragon_castle": [
-			20,
-			36
-		],
-		"vampire_keep": [
-			20,
-			34
-		],
-		"lich_tower": [
-			16,
-			30
-		]
-	},
-	"sim": {
-		"camp_growth_min": 0.0,
-		"camp_growth_max": 2.0,
-		"siege_chance_per_day": 0.06,
-		"siege_range": 26,
-		"siege_days": 3,
-		"settlement_defense": 12.0,
-		"resettle_min_days": 5,
-		"resettle_chance": 0.35,
-		"dungeon_reset_days": 10,
-		"caravan_move_days": 4,
-		"start_strength": {
-			"camp": 4,
-			"dungeon": 6,
-			"ruins": 5,
-			"settlement": 8,
-			"dragon_castle": 12,
-			"vampire_keep": 14,
-			"lich_tower": 12
-		}
-	},
-	"legends": {
-		"_note": "v1.22: легендарные странники живут на карте сами — ходят к дальним данжам и зачищают их (гонка за лут), иногда гостят в городе; герой может позвать их к себе",
-		"move_tiles_per_day": 2,
-		"clear_days": [
-			2,
-			3
-		],
-		"visit_days": 3,
-		"rest_days": [
-			2,
-			4
-		],
-		"visit_chance": 0.25,
-		"city_keepout": 6,
-		"defs": [
-			{
-				"id": "grey_cloak",
-				"loc": "legend.grey_cloak",
-				"prof": "hunter",
-				"color": "#7ec8e3",
-				"skill": 3.0,
-				"flavor": "legend.grey_cloak.flavor"
-			},
-			{
-				"id": "margo",
-				"loc": "legend.margo",
-				"prof": "trader",
-				"color": "#ffd54f",
-				"skill": 3.0,
-				"flavor": "legend.margo.flavor"
-			},
-			{
-				"id": "kayen",
-				"loc": "legend.kayen",
-				"prof": "guard",
-				"color": "#e8907a",
-				"skill": 3.0,
-				"flavor": "legend.kayen.flavor"
-			}
-		]
-	},
-	"encounters": {
-		"_note": "v1.22: случайные встречи в пути — бросок на каждый день дороги",
-		"chance_per_day": 0.25,
-		"kinds": {
-			"ambush": {
-				"w": 20,
-				"coins": [
-					4,
-					10
-				],
-				"scale": 0.7
-			},
-			"merchant": {
-				"w": 15
-			},
-			"wounded": {
-				"w": 15,
-				"food_cost": 5,
-				"rep": 8
-			},
-			"cache": {
-				"w": 15,
-				"coins": [
-					5,
-					15
-				]
-			},
-			"storm": {
-				"w": 20,
-				"food_frac": 0.1
-			},
-			"pilgrim": {
-				"w": 15,
-				"coins_cost": 5,
-				"rep": 10
-			}
-		}
-	},
-	"nests": {
-		"max_level": 3,
-		"level_days": 4,
-		"plunder_per_day": 1.0,
-		"coin_per_plunder": 1.0,
-		"fortify_scale_per_level": 0.1,
-		"siege_boost_per_level": 0.15,
-		"big_raid_level": 3,
-		"track_chance": 0.3,
-		"track_chance_min": 0.25,
-		"track_hide_per_level": 0.15,
-		"track_len_min": 3,
-		"track_len_max": 6,
-		"track_len_shrink_per_level": 0.12,
-		"track_ttl": 5,
-		"spot_radius": 2
-	},
-	"trade": {
-		"start_coins": 15,
-		"buy": {
-			"food": 2,
-			"wood": 2,
-			"stone": 3,
-			"crystal": 9,
-			"tools": 6,
-			"metal": 5,
-			"iron": 4,
-			"seeds": 4
-		},
-		"sell_mult": 0.5,
-		"camp_discount": 0.7,
-		"barter": [
-			{
-				"give": "food",
-				"get": "wood",
-				"give_n": 3,
-				"get_n": 2
-			},
-			{
-				"give": "stone",
-				"get": "food",
-				"give_n": 2,
-				"get_n": 2
-			},
-			{
-				"give": "wood",
-				"get": "stone",
-				"give_n": 3,
-				"get_n": 2
-			}
-		],
-		"rune_price": 25,
-		"camp_coins_min": 8,
-		"camp_coins_max": 16,
-		"ruins_coins_min": 3,
-		"ruins_coins_max": 8,
-		"dragon_coins_min": 30,
-		"dragon_coins_max": 60,
-		"vampire_coins_min": 20,
-		"vampire_coins_max": 40,
-		"lich_coins_min": 12,
-		"lich_coins_max": 25
-	}
+  "tile_size": 32,
+  "map_w": 72,
+  "map_h": 52,
+  "hero_speed": 200.0,
+  "day_seconds": 1.4,
+  "tiles_per_day": 22.0,
+  "reveal_radius": 5,
+  "fog_reveal_radius": 2,
+  "city_reveal_radius": 9,
+  "biomes": {
+    "plains": {
+      "color": "#5d7a3a",
+      "cost": 1.0
+    },
+    "water": {
+      "color": "#2e5f7a",
+      "cost": 0.0
+    },
+    "forest": {
+      "color": "#3e5a2a",
+      "cost": 1.6
+    },
+    "hills": {
+      "color": "#6e6a63",
+      "cost": 2.0
+    },
+    "waste": {
+      "color": "#7a6a55",
+      "cost": 2.0
+    },
+    "swamp": {
+      "color": "#5a6b4a",
+      "cost": 2.5
+    },
+    "road": {
+      "color": "#6e5f4a",
+      "cost": 0.5
+    },
+    "river": {
+      "_note": "v2: русло на глобали — проходимый брод, но дороже равнины",
+      "color": "#57b2d4",
+      "cost": 1.4
+    }
+  },
+  "hydro": {
+    "_note": "v2 «Мир v2» этап 1: карта высот (наклон N→S) → скалы на севере, океан на юге + внутренние моря, реки из скал к морю (меандры), озёра/болота по влажности",
+    "noise_cell": 9,
+    "slope_top": 0.72,
+    "slope_bot": 0.18,
+    "hill_threshold": 0.62,
+    "sea_width": [
+      2,
+      4
+    ],
+    "inner_seas_min": 0,
+    "inner_seas_max": 2,
+    "sea_level": 0.3,
+    "sea_radius": [
+      3,
+      5
+    ],
+    "rivers_min": 1,
+    "rivers_max": 3,
+    "main_band": 9,
+    "meander": 0.35,
+    "lakes_min": 0,
+    "lakes_max": 3,
+    "lake_radius": [
+      2,
+      4
+    ],
+    "lake_moist": 0.6,
+    "swamps_min": 2,
+    "swamps_max": 5,
+    "swamp_radius": [
+      2,
+      3
+    ],
+    "swamp_height": 0.5,
+    "swamp_moist": 0.58,
+    "city_pick_radius": 7
+  },
+  "blobs": {
+    "forest": 16,
+    "waste": 9
+  },
+  "blob_radius": {
+    "forest": [
+      3,
+      6
+    ],
+    "waste": [
+      4,
+      7
+    ]
+  },
+  "pois": {
+    "ruins": 3,
+    "camps": 4,
+    "obelisks": 2,
+    "settlements": [
+      "traders",
+      "cult",
+      "traders"
+    ],
+    "caravans": 1,
+    "trade_camps": 1,
+    "dragon_castles": 1,
+    "vampire_keeps": 1,
+    "lich_towers": 1,
+    "dungeon_biomes": [
+      "ruins",
+      "mutant_forest",
+      "crystal_caves",
+      "ash_wastes",
+      "cursed_hall",
+      "demon_lair",
+      "swamp_mire",
+      "midnight_crypt",
+      "yaga_hut"
+    ]
+  },
+  "distances": {
+    "city_dungeon": [
+      3,
+      5
+    ],
+    "settlement": [
+      10,
+      20
+    ],
+    "caravan": [
+      8,
+      18
+    ],
+    "trade_camp": [
+      6,
+      14
+    ],
+    "dungeon": [
+      12,
+      30
+    ],
+    "ruins": [
+      8,
+      26
+    ],
+    "camp": [
+      8,
+      24
+    ],
+    "obelisk": [
+      18,
+      34
+    ],
+    "dragon_castle": [
+      20,
+      36
+    ],
+    "vampire_keep": [
+      20,
+      34
+    ],
+    "lich_tower": [
+      16,
+      30
+    ]
+  },
+  "sim": {
+    "camp_growth_min": 0.0,
+    "camp_growth_max": 2.0,
+    "siege_chance_per_day": 0.06,
+    "siege_range": 26,
+    "siege_days": 3,
+    "settlement_defense": 12.0,
+    "resettle_min_days": 5,
+    "resettle_chance": 0.35,
+    "dungeon_reset_days": 10,
+    "caravan_move_days": 4,
+    "start_strength": {
+      "camp": 4,
+      "dungeon": 6,
+      "ruins": 5,
+      "settlement": 8,
+      "dragon_castle": 12,
+      "vampire_keep": 14,
+      "lich_tower": 12
+    }
+  },
+  "legends": {
+    "_note": "v1.22: легендарные странники живут на карте сами — ходят к дальним данжам и зачищают их (гонка за лут), иногда гостят в городе; герой может позвать их к себе",
+    "move_tiles_per_day": 2,
+    "clear_days": [
+      2,
+      3
+    ],
+    "visit_days": 3,
+    "rest_days": [
+      2,
+      4
+    ],
+    "visit_chance": 0.25,
+    "city_keepout": 6,
+    "defs": [
+      {
+        "id": "grey_cloak",
+        "loc": "legend.grey_cloak",
+        "prof": "hunter",
+        "color": "#7ec8e3",
+        "skill": 3.0,
+        "flavor": "legend.grey_cloak.flavor"
+      },
+      {
+        "id": "margo",
+        "loc": "legend.margo",
+        "prof": "trader",
+        "color": "#ffd54f",
+        "skill": 3.0,
+        "flavor": "legend.margo.flavor"
+      },
+      {
+        "id": "kayen",
+        "loc": "legend.kayen",
+        "prof": "guard",
+        "color": "#e8907a",
+        "skill": 3.0,
+        "flavor": "legend.kayen.flavor"
+      }
+    ]
+  },
+  "encounters": {
+    "_note": "v1.22: случайные встречи в пути — бросок на каждый день дороги",
+    "chance_per_day": 0.25,
+    "kinds": {
+      "ambush": {
+        "w": 20,
+        "coins": [
+          4,
+          10
+        ],
+        "scale": 0.7
+      },
+      "merchant": {
+        "w": 15
+      },
+      "wounded": {
+        "w": 15,
+        "food_cost": 5,
+        "rep": 8
+      },
+      "cache": {
+        "w": 15,
+        "coins": [
+          5,
+          15
+        ]
+      },
+      "storm": {
+        "w": 20,
+        "food_frac": 0.1
+      },
+      "pilgrim": {
+        "w": 15,
+        "coins_cost": 5,
+        "rep": 10
+      }
+    }
+  },
+  "nests": {
+    "max_level": 3,
+    "level_days": 4,
+    "plunder_per_day": 1.0,
+    "coin_per_plunder": 1.0,
+    "fortify_scale_per_level": 0.1,
+    "siege_boost_per_level": 0.15,
+    "big_raid_level": 3,
+    "track_chance": 0.3,
+    "track_chance_min": 0.25,
+    "track_hide_per_level": 0.15,
+    "track_len_min": 3,
+    "track_len_max": 6,
+    "track_len_shrink_per_level": 0.12,
+    "track_ttl": 5,
+    "spot_radius": 2
+  },
+  "trade": {
+    "start_coins": 15,
+    "buy": {
+      "food": 2,
+      "wood": 2,
+      "stone": 3,
+      "crystal": 9,
+      "tools": 6,
+      "metal": 5,
+      "iron": 4,
+      "seeds": 4
+    },
+    "sell_mult": 0.5,
+    "camp_discount": 0.7,
+    "barter": [
+      {
+        "give": "food",
+        "get": "wood",
+        "give_n": 3,
+        "get_n": 2
+      },
+      {
+        "give": "stone",
+        "get": "food",
+        "give_n": 2,
+        "get_n": 2
+      },
+      {
+        "give": "wood",
+        "get": "stone",
+        "give_n": 3,
+        "get_n": 2
+      }
+    ],
+    "rune_price": 25,
+    "camp_coins_min": 8,
+    "camp_coins_max": 16,
+    "ruins_coins_min": 3,
+    "ruins_coins_max": 8,
+    "dragon_coins_min": 30,
+    "dragon_coins_max": 60,
+    "vampire_coins_min": 20,
+    "vampire_coins_max": 40,
+    "lich_coins_min": 12,
+    "lich_coins_max": 25
+  },
+  "regions": {
+    "_note": "Мир v2 этап 2 (v1.40): режим моря — рандом мира; биом-регионы красят сушу и дорожают путь. snow — север, volcanic — у скал, desert — сухие низины, dead — глушь/пепелища (мёртвель).",
+    "sea_modes": {
+      "ocean": 1,
+      "inner": 1,
+      "both": 2
+    },
+    "list": [
+      {
+        "id": "snow",
+        "count_min": 1,
+        "count_max": 1,
+        "radius": [
+          6,
+          9
+        ],
+        "cost_mult": 1.15,
+        "moist_max": 0.5,
+        "colors": {
+          "plains": "#b6c2be",
+          "forest": "#54645a",
+          "hills": "#9aa2a8",
+          "waste": "#a8b0b2"
+        }
+      },
+      {
+        "id": "volcanic",
+        "count_min": 1,
+        "count_max": 2,
+        "radius": [
+          3,
+          5
+        ],
+        "cost_mult": 1.3,
+        "moist_max": 0.5,
+        "colors": {
+          "plains": "#4c434b",
+          "forest": "#3c343a",
+          "hills": "#5c5058",
+          "waste": "#544850"
+        }
+      },
+      {
+        "id": "desert",
+        "count_min": 1,
+        "count_max": 2,
+        "radius": [
+          4,
+          6
+        ],
+        "cost_mult": 1.2,
+        "moist_max": 0.45,
+        "colors": {
+          "plains": "#c2a468",
+          "forest": "#96854e",
+          "hills": "#a8905c",
+          "waste": "#a89468"
+        }
+      },
+      {
+        "id": "dead",
+        "count_min": 1,
+        "count_max": 2,
+        "radius": [
+          3,
+          5
+        ],
+        "cost_mult": 1.25,
+        "moist_max": 0.5,
+        "colors": {
+          "plains": "#6e6e64",
+          "forest": "#4c4a42",
+          "hills": "#5c5750",
+          "waste": "#5e5a52"
+        }
+      }
+    ]
+  },
+  "fog": {
+    "_note": "№112 (вариант агента, показать на приёмке): пергаментная карта — неисследованное скрыто тёплым пергаментом, а не чёрной мглой",
+    "parchment": "#d9c49a",
+    "parchment_dark": "#a8905e"
+  }
 }

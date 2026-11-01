@@ -68,17 +68,35 @@ func _draw() -> void:
 	# реки (v2, гидрология): лента русла между центрами речных тайлов
 	_draw_rivers(ts)
 	_draw_roads(ts)
-	# туман войны: неисследованное скрыто «облачной» массой кружков —
-	# мягкая волнистая кромка вместо прямой сетки (v1.35.1)
-	var fog_color := Color(0.04, 0.04, 0.07, 1.0)
-	for y in map.h:
-		for x in map.w:
-			if not map.is_explored(Vector2i(x, y)):
-				draw_circle(Vector2(float(x) + 0.5, float(y) + 0.5) * ts,
-						ts * 0.72, fog_color)
-	# точки интереса (только найденные)
+	# туман войны — ПЕРГАМЕНТ (v1.40, вариант открытого вопроса №112):
+	# неисследованное скрыто тёплой «бумагой» карты (референс 76b0d14c —
+	# «живая» карта на пергаменте; фон #D9C49A из РЕФЕРЕНСЫ-СТИЛЬ),
+	# лёгкая пятнистость — как старая бумага. Включается fog.parchment
+	# в world.json; пустое значение возвращает прежнюю мглу.
+	var fog_cfg: Dictionary = map.cfg.get("fog", {})
+	if String(fog_cfg.get("parchment", "")) != "":
+		var parch := Color(String(fog_cfg.get("parchment", "#d9c49a")))
+		var parch_dark := Color(String(fog_cfg.get("parchment_dark", "#a8905e")))
+		for y in map.h:
+			for x in map.w:
+				if not map.is_explored(Vector2i(x, y)):
+					var shade := parch_dark.lerp(parch,
+							float(_hash2(x, y, 7)) / 7.0)
+					draw_circle(Vector2(float(x) + 0.5, float(y) + 0.5) * ts,
+							ts * 0.72, shade)
+	else:
+		var fog_color := Color(0.04, 0.04, 0.07, 1.0)
+		for y in map.h:
+			for x in map.w:
+				if not map.is_explored(Vector2i(x, y)):
+					draw_circle(Vector2(float(x) + 0.5, float(y) + 0.5) * ts,
+							ts * 0.72, fog_color)
+	# точки интереса (только найденные и на исследованной земле —
+	# на пергаменте маркеров нет, v1.40)
 	for poi in map.pois:
 		if not bool(poi["discovered"]):
+			continue
+		if not map.is_explored(poi["tile"]):
 			continue
 		_draw_poi(poi, ts)
 	# следы бандитов (M12): стрелки на исследованных тайлах — ведут от гнезда
@@ -165,9 +183,15 @@ func _bake_terrain() -> void:
 	var swamp := Color(String(biomes.get("swamp", {}).get("color", "#5a6b4a")))
 	var hill_thr := float(map.cfg.get("hydro", {}).get("hill_threshold", 0.62))
 	# базовые цвета тайлов: дороги красятся линией поверх — в поле они
-	# равнина; лёгкая пятнистость по хэшу тайла оживляет массу биома
+	# равнина; лёгкая пятнистость по хэшу тайла оживляет массу биома.
+	# Биом-регионы (v1.40): снег/вулкан/пустыня/мёртвель перекрашивают
+	# сушу своими цветами из world.json → regions.list[].colors
 	var cols: Array = []
 	var wmask: Array = []
+	var tile_names := {
+		map.TILE_PLAINS: "plains", map.TILE_FOREST: "forest",
+		map.TILE_HILL: "hills", map.TILE_WASTE: "waste",
+	}
 	for y in map.h:
 		var rowc: Array = []
 		var roww: Array = []
@@ -187,6 +211,11 @@ func _bake_terrain() -> void:
 					c = waste
 				map.TILE_SWAMP:
 					c = swamp
+			var rid: String = map.region_at(Vector2i(x, y)) if map.get("region") != null else ""
+			if rid != "" and tile_names.has(t):
+				var rc: Dictionary = map.region_def(rid).get("colors", {})
+				if rc.has(tile_names[t]):
+					c = Color(String(rc[tile_names[t]]))
 			roww[x] = 1.0 if t == map.TILE_WATER else 0.0
 			rowc[x] = c.lightened(0.02 * float(_hash2(x, y, 5) - 2))
 		cols.append(rowc)

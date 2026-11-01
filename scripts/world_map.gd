@@ -32,6 +32,12 @@ var grid: Array = []
 var height: Array = []          # высоты 0..1 (гидрология) — по строкам, как grid
 var river: Dictionary = {}      # Vector2i -> true: русло (оверлей, проходим)
 var water_kind: Dictionary = {} # Vector2i -> "sea"|"lake": тип grid-воды
+var region: Dictionary = {}     # Vector2i -> String: биом-регион («Мир v2»
+                                # этап 2, v1.40): "snow"|"volcanic"|"desert"|
+                                # "dead" — перекрашивает сушу и дорожает путь
+var sea_mode := "both"          # рандом мира (№118): "ocean" — океан у южного
+                                # края, "inner" — только внутренние моря,
+                                # "both" — и то и другое
 var city_tile := Vector2i.ZERO      # город игрока — стартовая локация
 var pois: Array = []                # точки интереса, см. шапку
 var fog: Dictionary = {}            # Vector2i -> true: исследованные тайлы
@@ -69,6 +75,10 @@ func _generate_once(seed_value: int, params: Dictionary) -> void:
 		row.fill(TILE_PLAINS)
 		grid.append(row)
 	var hcfg: Dictionary = params.get("hydro", {})
+	region = {}
+	# режим моря — рандом мира (ответ №118: «океан по краю ИЛИ внутренние
+	# моря — случайно»): веса в world.json → regions.sea_modes
+	sea_mode = _roll_sea_mode()
 	# гидрология («Мир v2»): высоты → скалы → море → реки → город →
 	# влажность → озёра/болота; лес/пепел — блобами, как раньше
 	_build_heights(hcfg)
@@ -90,6 +100,9 @@ func _generate_once(seed_value: int, params: Dictionary) -> void:
 		for i in int(blobs[key]):
 			var r: Array = radii.get(key, [3, 5])
 			_blob(_random_inner_tile(), _rng.randi_range(int(r[0]), int(r[1])), kinds[key])
+	# биом-регионы («Мир v2» этап 2): снег/вулкан/пустыня/мёртвель —
+	# поверх суши, после пятен (мёртвель любит пепелища)
+	_build_regions(params.get("regions", {}))
 	pois = []
 	_poi_id = 1
 	_place_pois(params)
@@ -197,31 +210,52 @@ func _build_hills(hcfg: Dictionary) -> void:
 					grid[y][x] = TILE_HILL
 
 
-## Море (ответ №118: «и океан по краю, и внутренние моря — случайно»):
-## океан — волнистая полоса на юге (реки текут к нему с севера); внутренние
-## моря — 0..2 больших пятна воды на низинах.
+## Режим моря этого мира: взвешенный бросок по regions.sea_modes.
+func _roll_sea_mode() -> String:
+	var weights: Dictionary = cfg.get("regions", {}).get("sea_modes",
+			{"ocean": 1, "inner": 1, "both": 2})
+	var total := 0
+	for k in weights:
+		total += maxi(0, int(weights[k]))
+	var roll := _rng.randi_range(0, maxi(1, total) - 1)
+	for k: String in weights:
+		roll -= maxi(0, int(weights[k]))
+		if roll < 0:
+			return k
+	return "both"
+
+
+## Море (ответ №118: «океан по краю ИЛИ внутренние моря — рандом мира»,
+## режим выбран в _roll_sea_mode): океан — волнистая полоса на юге;
+## внутренние моря — большие пятна воды на низинах; both — и то и другое.
 func _build_sea(hcfg: Dictionary) -> void:
 	water_kind = {}
-	var range: Array = hcfg.get("sea_width", [2, 4])
-	var widths: Array = []
-	for x in w:
-		widths.append(float(_rng.randi_range(int(range[0]), int(range[1]))))
-	# сгладить кромку скользящим средним — берег волнистый, без «пилы»
-	for x in w:
-		var s := 0.0
-		var n := 0
-		for dx in range(-2, 3):
-			var nx := clampi(x + dx, 0, w - 1)
-			s += float(widths[nx])
-			n += 1
-		widths[x] = s / float(n)
-	for x in w:
-		var wd := int(round(widths[x]))
-		for y in range(h - wd, h):
-			grid[y][x] = TILE_WATER
-			water_kind[Vector2i(x, y)] = "sea"
-	# внутренние моря на низинах (случайно при создании мира)
-	var seas := _rng.randi_range(int(hcfg.get("inner_seas_min", 0)), int(hcfg.get("inner_seas_max", 2)))
+	if sea_mode != "inner":
+		var range: Array = hcfg.get("sea_width", [2, 4])
+		var widths: Array = []
+		for x in w:
+			widths.append(float(_rng.randi_range(int(range[0]), int(range[1]))))
+		# сгладить кромку скользящим средним — берег волнистый, без «пилы»
+		for x in w:
+			var s := 0.0
+			var n := 0
+			for dx in range(-2, 3):
+				var nx := clampi(x + dx, 0, w - 1)
+				s += float(widths[nx])
+				n += 1
+			widths[x] = s / float(n)
+		for x in w:
+			var wd := int(round(widths[x]))
+			for y in range(h - wd, h):
+				grid[y][x] = TILE_WATER
+				water_kind[Vector2i(x, y)] = "sea"
+	# внутренние моря на низинах; мир «inner» гарантирует хотя бы одно
+	var lo := int(hcfg.get("inner_seas_min", 0))
+	var hi := int(hcfg.get("inner_seas_max", 2))
+	if sea_mode == "inner":
+		lo = maxi(1, lo)
+		hi = maxi(lo, hi + 1)
+	var seas := _rng.randi_range(lo, hi)
 	for i in seas:
 		var cands: Array = []
 		for y in range(int(h * 0.3), h - 5):
@@ -471,6 +505,105 @@ func city_hydro() -> Dictionary:
 	return out
 
 
+# --- биом-регионы («Мир v2», этап 2, v1.40) ---------------------------------
+
+## Снег на севере, вулкан у скал, пустыня на сухих низинах, мёртвель —
+## у пепелищ и в глуши. Регионы красят сушу (view) и дорожают путь;
+## вода/болото не перекрашиваются.
+func _build_regions(rcfg: Dictionary) -> void:
+	var list: Array = rcfg.get("list", [])
+	for entry: Dictionary in list:
+		var id := String(entry.get("id", ""))
+		var count := _rng.randi_range(int(entry.get("count_min", 1)), int(entry.get("count_max", 1)))
+		for i in count:
+			var c := _region_center(id, entry)
+			if c == Vector2i(-1, -1):
+				continue
+			var rad: Array = entry.get("radius", [3, 5])
+			_region_blob(c, _rng.randi_range(int(rad[0]), int(rad[1])), id)
+
+
+## Центр региона по его «месту обитания»:
+##   snow — север (верхняя половина, желательно высоко);
+##   volcanic — высокие земли (у скального порога);
+##   desert — сухие низины (влажность ниже порога), юг/центр;
+##   dead — глушь с низкой влажностью или рядом с пеплом.
+func _region_center(id: String, entry: Dictionary) -> Vector2i:
+	var moist_thr := float(entry.get("moist_max", 0.5))
+	for attempt in 200:
+		var p := _random_inner_tile()
+		if not is_walkable(p) or grid[p.y][p.x] == TILE_SWAMP:
+			continue
+		var ht := float(height[p.y][p.x])
+		var mo := float(_moist[p.y][p.x])
+		match id:
+			"snow":
+				if p.y > int(h * 0.45) and ht < 0.55:
+					continue
+			"volcanic":
+				if ht < float(cfg.get("hydro", {}).get("hill_threshold", 0.62)) - 0.08:
+					continue
+			"desert":
+				if mo > moist_thr or p.y < int(h * 0.2):
+					continue
+			"dead":
+				if mo > moist_thr and not _near_tile(p, TILE_WASTE, 3):
+					continue
+			_:
+				pass
+		if _poi_near(p, 3) != null:
+			continue
+		return p
+	return Vector2i(-1, -1)
+
+
+## Есть ли тайл kind в радиусе r (по клеткам).
+func _near_tile(p: Vector2i, kind: int, r: int) -> bool:
+	for dy in range(-r, r + 1):
+		for dx in range(-r, r + 1):
+			var n := p + Vector2i(dx, dy)
+			if in_bounds(n) and grid[n.y][n.x] == kind:
+				return true
+	return false
+
+
+## Залить регион: суша (не вода/болото) в радиусе; кромка с мягкой
+## гармонической рябью (как у водоёмов) — не «вырезанные круги».
+func _region_blob(center: Vector2i, radius: int, id: String) -> void:
+	var ph1 := _rng.randf() * TAU
+	var ph2 := _rng.randf() * TAU
+	var a1 := _rng.randf_range(0.10, 0.20)
+	var a2 := _rng.randf_range(0.06, 0.12)
+	for y in range(center.y - radius * 2, center.y + radius * 2 + 1):
+		for x in range(center.x - radius * 2, center.x + radius * 2 + 1):
+			if x < 0 or y < 0 or x >= w or y >= h:
+				continue
+			var dx := float(x - center.x) / float(radius)
+			var dy := float(y - center.y) / float(radius)
+			if dx * dx + dy * dy > 4.0:
+				continue
+			var ang := atan2(float(y - center.y), float(x - center.x))
+			var k := 1.0 + a1 * sin(2.0 * ang + ph1) + a2 * sin(3.0 * ang + ph2)
+			if dx * dx + dy * dy > k * k:
+				continue
+			var t := Vector2i(x, y)
+			if grid[y][x] == TILE_WATER or grid[y][x] == TILE_SWAMP:
+				continue
+			region[t] = id
+
+
+func region_at(p: Vector2i) -> String:
+	return String(region.get(p, ""))
+
+
+## Определение региона (цвета/множитель цены) из world.json.
+func region_def(id: String) -> Dictionary:
+	for entry: Dictionary in cfg.get("regions", {}).get("list", []):
+		if String(entry.get("id", "")) == id:
+			return entry
+	return {}
+
+
 ## Случайный проходимый тайл (страховка генерации POI); не русло реки.
 func _walkable_random() -> Vector2i:
 	for attempt in 300:
@@ -510,17 +643,23 @@ func nearest_walkable(tile: Vector2i) -> Vector2i:
 func tile_cost(p: Vector2i) -> float:
 	if not is_walkable(p):
 		return 0.0
+	var cost := 0.0
 	if river.has(p):
-		return float(cfg.get("biomes", {}).get("river", {}).get("cost", 1.4))
-	var biomes: Dictionary = cfg["biomes"]
-	match grid[p.y][p.x]:
-		TILE_PLAINS: return float(biomes["plains"]["cost"])
-		TILE_FOREST: return float(biomes["forest"]["cost"])
-		TILE_HILL: return float(biomes["hills"]["cost"])
-		TILE_WASTE: return float(biomes["waste"]["cost"])
-		TILE_ROAD: return float(biomes["road"]["cost"])
-		TILE_SWAMP: return float(biomes.get("swamp", {}).get("cost", 2.5))
-	return 1.0
+		cost = float(cfg.get("biomes", {}).get("river", {}).get("cost", 1.4))
+	else:
+		var biomes: Dictionary = cfg["biomes"]
+		match grid[p.y][p.x]:
+			TILE_PLAINS: cost = float(biomes["plains"]["cost"])
+			TILE_FOREST: cost = float(biomes["forest"]["cost"])
+			TILE_HILL: cost = float(biomes["hills"]["cost"])
+			TILE_WASTE: cost = float(biomes["waste"]["cost"])
+			TILE_ROAD: cost = float(biomes["road"]["cost"])
+			TILE_SWAMP: cost = float(biomes.get("swamp", {}).get("cost", 2.5))
+	# регион дорожает путь (снег/вулкан/пустыня/мёртвель — суровая земля)
+	var rd: Dictionary = region_def(region_at(p))
+	if not rd.is_empty():
+		cost *= float(rd.get("cost_mult", 1.0))
+	return cost
 
 
 # --- точки интереса -------------------------------------------------------

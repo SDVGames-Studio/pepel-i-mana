@@ -30,15 +30,33 @@ func _initialize() -> void:
 
 func _on_frame() -> void:
 	_frames += 1
-	if _frames == 5:
+	# SHOT_FOG=1: НЕ снимать туман — показать пергаментную карту (№112)
+	if _frames == 5 and OS.get_environment("SHOT_FOG") == "":
 		_reveal_all()
+	if _frames == 5 and OS.get_environment("SHOT_FOG") != "":
+		_zoom_only()
 	if _frames < 40:
 		return
+	var out := "res://tools/shot_world2.png"
+	if OS.get_environment("SHOT_FOG") != "":
+		out = "res://tools/shot_world2_parchment.png"
 	var img: Image = root.get_texture().get_image()
 	if img != null:
-		img.save_png("res://tools/shot_world2.png")
-		print("shot_world2: сохранён tools/shot_world2.png")
+		img.save_png(out)
+		print("shot_world2: сохранён %s" % out)
 	quit(0)
+
+
+## Без вскрытия: зум на окрестности города (перtramент по краям).
+func _zoom_only() -> void:
+	var map = _world.map
+	if map == null:
+		return
+	var cam: Camera2D = _world.camera
+	if cam != null:
+		cam.zoom = Vector2(1.0, 1.0)
+		cam.position = Vector2(map.city_tile) * map.ts
+	print("shot_world2: пергаментный вариант (туман не снят)")
 
 
 ## Вскрыть туман, показать все POI, зумить камеру на всю карту.

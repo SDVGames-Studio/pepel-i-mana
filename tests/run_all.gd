@@ -127,6 +127,7 @@ const BLOCKS := [
 
 	["res://tests/test_world2.gd", [
 	"_test_world2_hydro",
+	"_test_world2_regions",
 ]],
 
 	["res://tests/test_plateau.gd", [

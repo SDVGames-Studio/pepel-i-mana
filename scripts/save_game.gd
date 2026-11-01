@@ -275,6 +275,8 @@ static func _world_block(wmap, wsim) -> Dictionary:
 			"pois": wmap.pois,
 			"river": _tile_keys(wmap.river),
 			"water_kind": _tile_vals(wmap.water_kind),
+			"region": _tile_vals(wmap.region),
+			"sea_mode": String(wmap.sea_mode),
 			"height": _height_rows(wmap),
 		},
 		"sim": {
@@ -747,6 +749,13 @@ static func _apply_world(game, wd: Variant) -> String:
 	map.water_kind = {}
 	for e in md.get("water_kind", []):
 		map.water_kind[Vector2i(int(e[0]), int(e[1]))] = String(e[2])
+	# биом-регионы и режим моря (v1.40 «Мир v2» этап 2); в старых сейвах
+	# ключа нет — регион остаётся пустым ({}), режим — каркасный "both"
+	map.region = {}
+	for e in md.get("region", []):
+		map.region[Vector2i(int(e[0]), int(e[1]))] = String(e[2])
+	if md.has("sea_mode"):
+		map.sea_mode = String(md["sea_mode"])
 	# высоты рельефа (v1.35.1): светотень после загрузки совпадает с картой
 	# (каркас генерится сидом 0 — без восстановления тени «плыли» бы);
 	# в старых сейвах ключа нет — остаётся каркасная карта высот
