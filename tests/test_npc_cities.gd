@@ -45,6 +45,30 @@ func _test_npc_cities_create() -> void:
 				"поселение %d: число жителей видно на карте" % int(poi["id"]))
 		_check(String(npc.entry_of(int(poi["id"]))["faction"]) == String(poi["faction"]),
 				"поселение %d: фракция совпадает с POI" % int(poi["id"]))
+		# стартовый посёлок (правки v1.41.1): избы под жителей + фермы, готовые
+		var houses := 0
+		var farms := 0
+		var all_done := true
+		for b in sim.buildings:
+			match String(b["type"]):
+				"house":
+					houses += 1
+				"farm":
+					farms += 1
+			if not bool(b.get("done", false)):
+				all_done = false
+		var per_house := maxi(1, int((sim.cfg as Dictionary).get("pop_per_house", 1)))
+		_check(houses >= ceili(float(start_n) / float(per_house)) and farms >= 1 and all_done,
+				"поселение %d: стартовый посёлок — избы (%d) и фермы (%d) готовы"
+				% [int(poi["id"]), houses, farms])
+		_check(sim.pop_cap() >= start_n + houses,
+				"поселение %d: избы поднимают лимит населения (%d мест)"
+				% [int(poi["id"]), sim.pop_cap()])
+	# ресурсы старта не потрачены посёлком (стройка — «прошлое», не подарок)
+	var sim0 = npc.city_of(int(_settlements_of(npc)[0]["id"]))
+	var start_res: Dictionary = (sim0.cfg["start"]["levels"] as Dictionary).get("normal", {})
+	_check(float(sim0.res.get("wood", 0.0)) <= float(start_res.get("wood", 55.0)),
+			"стартовые доски не ушли в посёлок (%.0f)" % float(sim0.res.get("wood", 0.0)))
 	# идемпотентно: повторный ensure не плодит города
 	npc.ensure(0)
 	_check(npc.cities.size() == want, "ensure идемпотентен")
@@ -76,10 +100,53 @@ func _test_npc_cities_grow() -> void:
 	sim.coins_sink.call(5)
 	_check(int(entry["coins"]) == coins0 + 5, "кошелёк города принимает монеты")
 	_check(int(sim.coins_source.call()) == coins0 + 5, "город платит из своего кошелька")
-	# событие-тосты дренируются (город без сцены не копит их)
+	# событие-тосты дренируются (город без сцены не копит их); фоновый тик —
+	# пакетный (правки v1.41.1): раз в tick_period, поэтому тикаем с запасом
 	sim.events.append({"type": "built"})
-	npc.tick(0.016)
+	npc.tick(float(ncfg_of(npc).get("tick_period", 0.5)) + 0.1)
 	_check((sim.events as Array).is_empty(), "тосты фонового города дренируются")
+
+
+func _test_npc_cities_throttle() -> void:
+	print("[Мир v2 / этап 3: города НПС — пакетный тик (FPS)]")
+	var npc := _make_npc()
+	npc.ensure(0)
+	var id := int(_settlements_of(npc)[0]["id"])
+	var sim = npc.city_of(id)
+	# короткие кадры копятся, время города стоит (дёшево); стоит набрать
+	# период — весь накопленный отрезок проживается одним пакетом
+	var t0 := float(sim.time)
+	for i in 10:
+		npc.tick(1.0 / 60.0)
+	_check(absf(float(sim.time) - t0) < 0.001,
+			"короткие кадры не дёргают симуляцию (копим период)")
+	npc.tick(float(ncfg_of(npc).get("tick_period", 0.5)))
+	_check(float(sim.time) > t0 + 0.5,
+			"накопленный отрезок проживается пакетом (%.2f сек)" % (float(sim.time) - t0))
+	# город в гостях — каждый кадр, без пакета
+	var t1 := float(sim.time)
+	npc.tick(1.0 / 60.0, id)
+	_check(float(sim.time) > t1,
+			"гостевой город тикает каждый кадр (%.3f)" % (float(sim.time) - t1))
+
+
+func _test_npc_cities_cap() -> void:
+	print("[Мир v2 / этап 3: лимит числа городов]")
+	var npc := _make_npc()
+	# 25 поселений на карте — городов не больше max_cities (правки v1.41.1)
+	var next_id := 1000
+	for i in 25:
+		var tile: Vector2i = npc.world_map._walkable_random()
+		if tile == Vector2i(-1, -1):
+			continue
+		npc.world_map.pois.append({"id": next_id, "kind": "settlement", "biome": "",
+				"faction": "traders", "tile": tile, "discovered": true,
+				"strength": 8.0, "state": "ok", "cleared_day": -1, "used": false})
+		next_id += 1
+	var max_cities := maxi(1, int(ncfg_of(npc).get("max_cities", 20)))
+	npc.ensure(0)
+	_check(npc.cities.size() <= max_cities,
+			"городов не больше лимита (%d ≤ %d)" % [npc.cities.size(), max_cities])
 
 
 func _test_npc_cities_defense() -> void:

@@ -33,12 +33,16 @@ func ncfg() -> Dictionary:
 ## Поселения без города получают его (идемпотентно). mature_days — сколько
 ## дней жизни «догнать» новому городу (миграция старых сейвов: миру N дней —
 ## поселенцы не новорожденные). Павших поселений здесь нет: их города
-## уничтожаются при падении (destroy).
+## уничтожаются при падении (destroy). Городов не больше max_cities
+## (правки приёмки v1.41.1: страховка от разрастания, по умолчанию 20).
 func ensure(mature_days := 0) -> void:
 	if world_map == null:
 		return
 	var cap := maxi(0, int(ncfg().get("mature_cap_days", 25)))
+	var max_cities := maxi(1, int(ncfg().get("max_cities", 20)))
 	for poi in world_map.pois:
+		if cities.size() >= max_cities:
+			break
 		if String(poi["kind"]) != "settlement" or String(poi["state"]) != "ok":
 			continue
 		if cities.has(int(poi["id"])):
@@ -62,6 +66,10 @@ func _create(poi: Dictionary, mature_days: int) -> void:
 	sim.setup(cmap, city_cfg, int(ncfg().get("start_residents", 8)),
 			String(ncfg().get("start_level", "normal")))
 	sim.autonomous = true   # живут сами, без старосты (№120)
+	# стартовый посёлок (правки приёмки v1.41.1): избы и фермы уже стоят —
+	# поселение с первого дня выглядит деревней, а не площадью в чистом поле
+	if bool(ncfg().get("hamlet", true)):
+		_build_hamlet(sim, int(ncfg().get("start_residents", 8)))
 	var entry := {
 		"poi_id": poi_id,
 		"faction": String(poi["faction"]),
@@ -82,6 +90,41 @@ func attach_wallet(entry: Dictionary) -> void:
 	var sim = entry["sim"]
 	sim.coins_sink = func(n: int) -> void: entry["coins"] = int(entry["coins"]) + n
 	sim.coins_source = func() -> int: return int(entry["coins"])
+
+
+## Стартовый посёлок (правки приёмки v1.41.1): «один дом на кучу горожан» —
+## город рос с ферма-кризисами, а дома в плане далеко. Поселение строится
+## УЖЕ обжитым: избы под первых жителей (по pop_per_house), пара ферм и
+## лесопилка — готовые, расставлены самостроем по районам. Ресурсы города
+## не тратятся (пул на время стройки накачиваем и возвращаем как был) —
+## это прошлое поселенцев, а не подарок экономике.
+func _build_hamlet(sim, residents_n: int) -> void:
+	var per_house := maxi(1, int(sim.cfg.get("pop_per_house", 1)))
+	var plan: Array = []
+	for i in ceili(float(residents_n) / float(per_house)):
+		plan.append("house")
+	for i in clampi(ceili(float(residents_n) / 5.0), 1, 3):
+		plan.append("farm")
+	if bool(ncfg().get("hamlet_sawmill", true)):
+		plan.append("sawmill")
+	var pool_backup: Dictionary = (sim.res as Dictionary).duplicate()
+	for key in pool_backup:
+		sim.res[key] = 999999.0
+	for type_id in plan:
+		var tile: Vector2i = sim._find_autobuild_tile(String(type_id))
+		if tile == Vector2i(-1, -1):
+			continue
+		if not sim.place_building(String(type_id), tile):
+			continue
+		var b: Dictionary = sim.building_at(tile)
+		if b.is_empty():
+			continue
+		b["progress"] = float(sim._def(b)["build_work"])
+		b["done"] = true
+		sim._set_bld_solid(b, true)
+	for key in pool_backup:
+		sim.res[key] = float(pool_backup[key])
+	sim.events.clear()   # тосты стройки прошлого никто не показывает
 
 
 ## Город поселения (city_sim) или null.
@@ -105,20 +148,35 @@ func destroy(poi_id: int) -> void:
 			poi.erase("npc_pop")
 
 
-## Тик всех городов: пауза — у каждого своя (tick сам проверяет), скорость —
-## как у города игрока («те же правила»: игрок ускорил время — мир ускорился).
-## skip_id — город, где сейчас герой: его скорость задаёт сцена, его события
-## читает сцена города (не дренируем), но живёт он так же, как остальные.
+## Тик всех городов. Город в гостях (skip_id) тикает КАЖДЫЙ кадр — герой
+## внутри, жизнь плавная. Фоновые города — ПАКЕТОМ раз в tick_period:
+## за кадр копим реальное время и проживаем разом (замер правок v1.41.1:
+## 3 города каждый кадр — 9.5 мс/кадр, пакетом — в десятки раз дешевле;
+## большие шаги времени безопасны: advance_days пути гоняет по 30 сек).
+## Скорость/пауза — как у города игрока («те же правила»).
+var _bg_accum := 0.0
+
+
 func tick(dt: float, skip_id := -1, ref_speed := 1) -> void:
+	var period := maxf(0.05, float(ncfg().get("tick_period", 0.5)))
 	for poi_id in cities:
 		var sim = cities[poi_id]["sim"]
 		if int(poi_id) == skip_id:
-			sim.tick(dt)   # гостевой город: тикает с паузой/скоростью сцены
+			sim.tick(dt)
 			continue
 		if not sim.paused and int(sim.speed) != ref_speed:
 			sim.speed = ref_speed
-		sim.tick(dt)
-		sim.events.clear()   # тосты чужого города никто не показывает; летопись помнит всё
+	_bg_accum += dt
+	if _bg_accum < period:
+		return
+	var batch := minf(_bg_accum, 2.0)   # долгая пауза меню — без гигантских скачков
+	_bg_accum = 0.0
+	for poi_id in cities:
+		if int(poi_id) == skip_id:
+			continue
+		var sim2 = cities[poi_id]["sim"]
+		sim2.tick(batch)
+		sim2.events.clear()   # тосты чужого города никто не показывает; летопись помнит всё
 	_sync_populations()
 
 
