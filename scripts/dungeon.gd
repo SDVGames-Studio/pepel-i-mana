@@ -97,6 +97,12 @@ func _ready() -> void:
 	# тогда виден только чёрный войд и герой без пола. Перерисовываем
 	# слой отложенно ещё два кадра подряд (дёшево, ~2k команд).
 	_view_redraw_guard()
+	# «Данжи v2» (v1.42): декали (мох/порча/трещины/пропсы) и живой свет
+	# (жаровни + холодные лужи + свечение порчи) по референсам этапа 4
+	var v2: Dictionary = params.get("v2", {})
+	var decals = load("res://scripts/dungeon_decals.gd").new()
+	decals.setup(gen, ts, biome, v2)
+	add_child(decals)
 	_build_walls()
 	_build_exit()
 	_build_chests()
@@ -106,6 +112,8 @@ func _ready() -> void:
 	_build_traps()
 	_build_boss()
 	_build_fauna()
+	_build_lights(v2)
+	_build_runes(v2)
 	# туман войны (v1.33): поверх мира, до HUD — неисследованное чёрное,
 	# изученное приглушено, видимое в свет герой — чистое
 	_fog = load("res://scripts/dungeon_fog.gd").new()
@@ -264,6 +272,29 @@ func _make_view() -> Node2D:
 	var view = DungeonViewScript.new()
 	view.setup(gen, ts, biome)
 	return view
+
+
+## «Данжи v2»: жаровни/лужи/порча — живой свет поверх мира (dungeon_lights.gd).
+func _build_lights(v2: Dictionary) -> void:
+	var lights = load("res://scripts/dungeon_lights.gd").new()
+	lights.setup(gen, ts, v2)
+	add_child(lights)
+
+
+## «Данжи v2»: рунные круги — интерактивные точки (dungeon_rune.gd).
+func _build_runes(v2: Dictionary) -> void:
+	var rune_script: Script = load("res://scripts/dungeon_rune.gd")
+	var school := "wild"
+	if Game.magic != null:
+		school = String(Game.magic.cfg.get("hero_school", "wild"))
+	var col: Color = Game.magic.school_color(school) if Game.magic != null \
+			else Color(0.62, 0.78, 1.0)
+	for tile: Vector2i in gen.rune_spawns:
+		var rune = rune_script.new()
+		rune.setup(col, float(ts) * 1.6)
+		rune.position = _tile_to_pos(tile)
+		rune.add_to_group("dungeon_runes")
+		add_child(rune)
 
 
 ## Отложенная переприсовка слоя тайлов: страховка от «сгоревшего» первого
@@ -904,6 +935,10 @@ func _update_hint() -> void:
 	if _near_ladder():
 		hud.set_hint(Loc.t("dungeon.hint_exit"))
 		return
+	var rune = _nearest_rune()
+	if rune != null:
+		hud.set_hint(Loc.t("dungeon.hint_rune"))
+		return
 	var trap = _nearest_trap(float(ts) * 1.3)
 	if trap != null:
 		hud.set_hint(Loc.t("dungeon.hint_trap"))
@@ -913,6 +948,20 @@ func _update_hint() -> void:
 		hud.set_hint(Loc.t("dungeon.hint_chest"))
 		return
 	hud.set_hint(Loc.t("dungeon.hint_spells"))
+
+
+## Ближайший неактивированный рунный круг в радиусе взаимодействия.
+func _nearest_rune():
+	var best = null
+	var best_d := float(ts) * 1.6
+	for r in get_tree().get_nodes_in_group("dungeon_runes"):
+		if r.used:
+			continue
+		var d: float = r.global_position.distance_to(hero.global_position)
+		if d < best_d:
+			best_d = d
+			best = r
+	return best
 
 
 func _near_ladder() -> bool:
@@ -939,6 +988,10 @@ func _try_interact() -> void:
 	if _near_ladder():
 		_leave_dungeon()
 		return
+	var rune = _nearest_rune()
+	if rune != null:
+		_activate_rune(rune)
+		return
 	var trap = _nearest_trap(float(ts) * 1.3)
 	if trap != null:
 		trap.disarm()
@@ -947,6 +1000,19 @@ func _try_interact() -> void:
 	var chest = _nearest_chest(float(ts) * 1.8)
 	if chest != null:
 		_open_chest(chest)
+
+
+## Активация рунного круга: мана + боевой запал, вспышка и тост (одноразово).
+func _activate_rune(rune) -> void:
+	var res: Dictionary = rune.activate(hero, params.get("v2", {}).get("rune", {}))
+	if res.is_empty():
+		return
+	var col: Color = rune.color
+	_add_fx("ring", col, 40.0, 0.8, rune.global_position)
+	if int(res.get("mana", 0)) > 0:
+		hud.toast(Loc.t("dungeon.rune_mana") % int(res["mana"]))
+	if int(res.get("buff", 0)) > 0:
+		hud.toast(Loc.t("dungeon.rune_buff") % [int(res["buff"]), int(res["seconds"])])
 
 
 ## Ближайшая заряженная ловушка в радиусе (issue #2): разминированные пропускаем.

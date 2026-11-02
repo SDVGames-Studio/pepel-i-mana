@@ -155,6 +155,13 @@ const BLOCKS := [
 	"_test_npc_cities_save",
 	"_test_npc_cities_hydro",
 ]],
+
+	["res://tests/test_dungeon2.gd", [
+	"_test_dungeon2_assets",
+	"_test_dungeon2_spots",
+	"_test_dungeon2_rune",
+	"_test_dungeon2_config",
+]],
 ]
 
 

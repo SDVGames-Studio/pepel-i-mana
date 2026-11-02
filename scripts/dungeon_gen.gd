@@ -15,6 +15,12 @@ var crystal_spawns: Array = []
 var trap_spawns: Array = []     # {tile, kind} — ловушки M7
 var start_tile := Vector2i.ZERO
 var exit_tile := Vector2i.ZERO
+# «Данжи v2» (v1.42, свет/материалы): жаровни на стенах комнат, холодные
+# лужи, рунные круги, «порченые» комнаты (порча-оверлей + красные трещины)
+var brazier_spawns: Array = []  # Vector2i (тайл пола у стены)
+var puddle_zones: Array = []    # Array[Vector2i] — кластер тайлов лужи
+var rune_spawns: Array = []     # Vector2i (центр комнаты)
+var corrupt_rooms: Array = []   # индексы комнат со «пепельной порчей»
 
 var _rng := RandomNumberGenerator.new()
 
@@ -35,12 +41,143 @@ func generate(seed_value: int, params: Dictionary) -> Object:
 	chest_spawns = []
 	crystal_spawns = []
 	trap_spawns = []
+	brazier_spawns = []
+	puddle_zones = []
+	rune_spawns = []
+	corrupt_rooms = []
 
 	_place_rooms(params)
 	_carve_corridors()
 	_pick_start_and_exit()
 	_place_spawns(params)
+	_place_v2_spots(params)
 	return self
+
+
+## «Данжи v2»: жаровни/лужи/руны/порча (свет и материалы этапа 4 «Мир v2»).
+## Параметры — dungeon.json → v2 (counts/min-max, для малых локаций — та же
+## пропорция, что остальному). Всё детерминировано от seed генератора.
+func _place_v2_spots(params: Dictionary) -> void:
+	var v2: Dictionary = params.get("v2", {})
+	var used := {}   # занятые тайлы (пересечение с прочими спотами не критично,
+	used[start_tile] = true   # но руны/жаровни не должны совпасть)
+	var shuffled := _shuffled_range(rooms.size())
+	shuffled = shuffled.filter(func(i: int) -> bool: return i != 0)
+	# 1) порченые комнаты («пепельная порча» — оверлей по референсу 5f017950):
+	#    не стартовая, дальше по списку перемешанных
+	var c_max := _v2_count(v2, "corrupt_rooms", rooms.size() - 1)
+	for i in shuffled:
+		if corrupt_rooms.size() >= c_max:
+			break
+		corrupt_rooms.append(i)
+	# 2) жаровни: тайл пола у стены комнаты. Первая — ВСЕГДА в стартовой
+	#    (герой сразу видит игру света «тёплый огонь + холодная тьма»),
+	#    дальше по комнатам; в порченых огонь выжжен — там красное свечение
+	var all_rooms := _shuffled_range(rooms.size())
+	var b_max := maxi(_v2_count(v2, "braziers", rooms.size()), 1)
+	var start_p := _brazier_in_room(rooms[0], used)
+	if start_p != Vector2i(-1, -1):
+		brazier_spawns.append(start_p)
+		used[start_p] = true
+	for i in all_rooms:
+		if brazier_spawns.size() >= b_max:
+			break
+		if i == 0 or corrupt_rooms.has(i):
+			continue
+		var p := _brazier_in_room(rooms[i], used)
+		if p != Vector2i(-1, -1):
+			brazier_spawns.append(p)
+			used[p] = true
+	# 3) руны: центры комнат (не старт), не в порченых — порча съедает магию
+	var r_max := _v2_count(v2, "runes", rooms.size() - 1)
+	for i in shuffled:
+		if rune_spawns.size() >= r_max:
+			break
+		if corrupt_rooms.has(i):
+			continue
+		var c := room_center(rooms[i])
+		if used.has(c) or c == exit_tile:
+			continue
+		rune_spawns.append(c)
+		used[c] = true
+	# 4) лужи: кластеры 3-6 соседних тайлов пола (комнаты и коридоры)
+	var p_max := _v2_count(v2, "puddles", 3)
+	var guard := 0
+	while puddle_zones.size() < p_max and guard < p_max * 60:
+		guard += 1
+		var seed_tile := Vector2i(_rng.randi_range(1, w - 2), _rng.randi_range(1, h - 2))
+		if not is_floor(seed_tile) or used.has(seed_tile) \
+				or seed_tile.distance_to(start_tile) < 4:
+			continue
+		var zone := _grow_puddle(seed_tile)
+		if zone.is_empty():
+			continue
+		var clash := false
+		for t in zone:
+			if used.has(t):
+				clash = true
+				break
+		if clash:
+			continue
+		puddle_zones.append(zone)
+		for t in zone:
+			used[t] = true
+
+
+## Перемешанный 0..n-1 СВОИМ ГПСЧ (Array.shuffle() мешает глобальным
+## рандомом — ломает воспроизводимость по сиду).
+func _shuffled_range(n: int) -> Array:
+	var arr := range(n)
+	for i in range(arr.size() - 1, 0, -1):
+		var j := _rng.randi_range(0, i)
+		var tmp = arr[i]
+		arr[i] = arr[j]
+		arr[j] = tmp
+	return arr
+
+
+## Число из v2-конфига (min..max), урезанное до lim (комнат/мест столько-то).
+func _v2_count(v2: Dictionary, key: String, lim: int) -> int:
+	var box: Dictionary = v2.get(key, {})
+	var n := _rng.randi_range(int(box.get("min", 1)), int(box.get("max", 2)))
+	return mini(n, lim)
+
+
+## Жаровня в комнате: пол рядом со стеной (северная стена комнаты — свет
+## «висит» на видимой грани, как факелы на референсах).
+func _brazier_in_room(room: Dictionary, used: Dictionary) -> Vector2i:
+	var rx := int(room["x"])
+	var ry := int(room["y"])
+	var rw := int(room["w"])
+	var rh := int(room["h"])
+	for attempt in 6:
+		var px := _rng.randi_range(rx, rx + rw - 1)
+		var py := ry + _rng.randi_range(0, 1)
+		var p := Vector2i(px, py)
+		if is_floor(p) and not used.has(p):
+			return p
+	var fallback := Vector2i(rx + rw / 2, ry)
+	return fallback if is_floor(fallback) and not used.has(fallback) else Vector2i(-1, -1)
+
+
+## Кластер тайлов лужи: от seed-тайла случайное блуждание по полу.
+func _grow_puddle(seed_tile: Vector2i) -> Array:
+	var target := 3 + _rng.randi_range(0, 3)
+	var zone: Array = [seed_tile]
+	var seen := {seed_tile: true}
+	var guard := 0
+	while zone.size() < target and guard < target * 12:
+		guard += 1
+		var from: Vector2i = zone[_rng.randi_range(0, zone.size() - 1)]
+		var dirs := [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]
+		var to: Vector2i = from + dirs[_rng.randi_range(0, 3)]
+		if not is_floor(to) or seen.has(to):
+			continue
+		seen[to] = true
+		zone.append(to)
+	if zone.size() < 2:
+		return []
+	return zone
 
 
 func tile_at(p: Vector2i) -> int:

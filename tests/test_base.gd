@@ -118,6 +118,7 @@ const REQUIRED_LOCALES := [
 	"city.guard_trained_toast", "chron.guard_trained",
 	"city.hunter_trained_toast", "chron.hunter_trained",
 	"city.dungeon_locked_hint", "city.dungeon_locked_toast", "dungeon.cleared_toast",
+	"dungeon.hint_rune", "dungeon.rune_mana", "dungeon.rune_buff",
 	"city.armory_hint", "city.armory_bought_toast", "city.armory_max_toast", "city.armory_no_metal_toast",
 	# --- M6: зоны, дороги, физическая логистика ---
 	"zone.field", "zone.pasture",

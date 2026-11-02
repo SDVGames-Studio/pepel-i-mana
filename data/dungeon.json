@@ -26,7 +26,9 @@
 			"loot_bonus": 2.0,
 			"pollution_on_visit": 3.0,
 			"wall_color": "#75675b",
-			"wall_sprite": "k:36"
+			"wall_sprite": "k:36",
+			"moss": false,
+			"crystals": false
 		},
 		"bandit_camp": {
 			"ambient": "#0e0a06",
@@ -45,7 +47,9 @@
 			"loot_bonus": 2.0,
 			"pollution_on_visit": 0.0,
 			"wall_color": "#7c6042",
-			"wall_sprite": "k:16"
+			"wall_sprite": "k:16",
+			"moss": false,
+			"crystals": false
 		},
 		"crystal_caves": {
 			"ambient": "#081014",
@@ -65,7 +69,9 @@
 			"loot_bonus": 1.0,
 			"pollution_on_visit": 1.0,
 			"wall_color": "#5c82a3",
-			"wall_sprite": "k:2"
+			"wall_sprite": "k:2",
+			"moss": false,
+			"crystals": true
 		},
 		"cursed_hall": {
 			"ambient": "#0a0812",
@@ -89,7 +95,9 @@
 			"loot_bonus": 2.0,
 			"pollution_on_visit": 2.0,
 			"wall_color": "#706882",
-			"wall_sprite": "k:59"
+			"wall_sprite": "k:59",
+			"moss": false,
+			"crystals": false
 		},
 		"demon_lair": {
 			"ambient": "#0e0505",
@@ -111,7 +119,9 @@
 			"loot_bonus": 2.0,
 			"pollution_on_visit": 3.0,
 			"wall_color": "#7e4030",
-			"wall_sprite": "k:16"
+			"wall_sprite": "k:16",
+			"moss": false,
+			"crystals": false
 		},
 		"dragon_lair": {
 			"ambient": "#0f0b06",
@@ -132,7 +142,9 @@
 			"loot_bonus": 3.0,
 			"pollution_on_visit": 3.0,
 			"wall_color": "#83704a",
-			"wall_sprite": "k:2"
+			"wall_sprite": "k:2",
+			"moss": false,
+			"crystals": false
 		},
 		"lich_tower": {
 			"ambient": "#080612",
@@ -155,7 +167,9 @@
 			"loot_bonus": 2.0,
 			"pollution_on_visit": 2.0,
 			"wall_color": "#6a6390",
-			"wall_sprite": "k:36"
+			"wall_sprite": "k:36",
+			"moss": false,
+			"crystals": true
 		},
 		"mutant_forest": {
 			"ambient": "#070d07",
@@ -181,7 +195,9 @@
 			"loot_bonus": 1.0,
 			"pollution_on_visit": 2.0,
 			"wall_color": "#5a7038",
-			"wall_sprite": "k:38"
+			"wall_sprite": "k:38",
+			"moss": true,
+			"crystals": false
 		},
 		"ruins": {
 			"ambient": "#090910",
@@ -204,7 +220,9 @@
 				"skeleton": 10.0,
 				"ghoul": 12.0,
 				"rat": 6.0
-			}
+			},
+			"moss": true,
+			"crystals": false
 		},
 		"swamp_mire": {
 			"ambient": "#0a0d08",
@@ -228,7 +246,9 @@
 			"loot_bonus": 1.0,
 			"pollution_on_visit": 1.0,
 			"wall_color": "#5a6e42",
-			"wall_sprite": "k:38"
+			"wall_sprite": "k:38",
+			"moss": true,
+			"crystals": false
 		},
 		"vampire_keep": {
 			"ambient": "#050508",
@@ -248,7 +268,9 @@
 			"loot_bonus": 3.0,
 			"pollution_on_visit": 1.0,
 			"wall_color": "#635e70",
-			"wall_sprite": "k:59"
+			"wall_sprite": "k:59",
+			"moss": false,
+			"crystals": false
 		},
 		"midnight_crypt": {
 			"ambient": "#05040c",
@@ -270,7 +292,9 @@
 			"loot_bonus": 3.0,
 			"pollution_on_visit": 2.0,
 			"wall_color": "#565179",
-			"wall_sprite": "k:36"
+			"wall_sprite": "k:36",
+			"moss": true,
+			"crystals": false
 		},
 		"yaga_hut": {
 			"ambient": "#0c0806",
@@ -289,7 +313,9 @@
 			"loot_bonus": 4.0,
 			"pollution_on_visit": 1.0,
 			"wall_color": "#7e5f3e",
-			"wall_sprite": "k:16"
+			"wall_sprite": "k:16",
+			"moss": true,
+			"crystals": false
 		}
 	},
 	"chest_count": 4.0,
@@ -347,6 +373,40 @@
 		"rune_per_chest": 1.0
 	},
 	"tile_size": 32.0,
+	"v2": {
+		"_comment": "Данжи v2 (этап 4 «Мир v2»): свет/материалы по референсам «для Z.ai». Тюнинг: braziers/corrupt_rooms/runes/puddles (min-max), цвета света/порчи/мха, rune — награда рунного круга. Биому: moss=true — мох на камне, crystals=true — кристаллы-пропсы.",
+		"braziers": {
+			"min": 3,
+			"max": 5
+		},
+		"corrupt_rooms": {
+			"min": 1,
+			"max": 2
+		},
+		"runes": {
+			"min": 1,
+			"max": 2
+		},
+		"puddles": {
+			"min": 2,
+			"max": 3
+		},
+		"torch_color": "#ffb056",
+		"torch_radius": 2.6,
+		"cold_color": "#4dd0e1",
+		"cold_radius": 2.0,
+		"corrupt_glow": "#c43a30",
+		"corrupt_radius": 2.4,
+		"corrupt_color": "#7a1e1e",
+		"moss_color": "#5c8a44",
+		"fire_height": 46.0,
+		"props_per_hundred": 6,
+		"rune": {
+			"mana_restore": 1,
+			"buff_damage": 2,
+			"buff_seconds": 20.0
+		}
+	},
 	"traps": {
 		"count": 6.0,
 		"darts": {
