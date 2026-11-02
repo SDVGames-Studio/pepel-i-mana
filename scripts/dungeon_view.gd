@@ -1,15 +1,18 @@
 extends Node2D
 const Assets := preload("res://scripts/assets.gd")
-## Отрисовка тайлов данжа (M1→M9): спрайты Kenney Tiny Dungeon 16×16 (×2),
-## подкрашенные цветами биома. Спрайты статичны — перерисовка один раз на забег.
-## v1.29.1 (правки приёмки): вне коридоров и комнат — НЕПРОГЛЯДНАЯ чернота:
-## фон залит чёрным, спрайт стены остался только на первом кольце вокруг
-## пола, глубинная порода не рисуется вовсе.
+## Отрисовка тайлов данжа. «Данжи v2» (v1.42, этап 4 «Мир v2», материалы по
+## референсам «для Z.ai/данж, биомы и мир»): пол — плиты пака заказчика
+## (d2_floor_*, нормализованный серый + тинт биома), стены — КИРПИЧНАЯ ГРАНЬ
+## (d2_wall_face, если под стеной виден пол) и верхний КАП кладки
+## (d2_wall_top), мягкая тень под гранью (d2_shadow). Спрайты статичны —
+## перерисовка один раз на забег. Вне коридоров и комнат — непроглядная
+## чернота (правка v1.29.1).
 
 var gen: Object = null
 var ts := 32
 var biome: Dictionary = {}
 var _near_floor: Array = []      # маска w*h: тайл стены рядом с полом
+var _face_mask: Array = []       # стена, под которой (юг) пол — рисуем грань
 var _void_col := Color(0.012, 0.012, 0.02)
 
 
@@ -21,14 +24,20 @@ func setup(dungeon_gen: Object, tile_size: int, biome_data: Dictionary) -> void:
 	queue_redraw()
 
 
-## Маска «стена видна»: тайл не-пол, у которого в 8 соседях есть пол.
+## Маски стен: «стена видна» (в 8 соседях есть пол) и «стена-грань» (пол
+## сразу на юге — классическая читаемость рельефа top-down).
 func _build_void_mask() -> void:
 	_near_floor.clear()
+	_face_mask.clear()
 	for y in gen.h:
 		var row := []
+		var frow := []
 		row.resize(gen.w)
+		frow.resize(gen.w)
 		row.fill(false)
+		frow.fill(false)
 		_near_floor.append(row)
+		_face_mask.append(frow)
 	for y in gen.h:
 		for x in gen.w:
 			if gen.grid[y][x] != gen.TILE_FLOOR:
@@ -39,70 +48,86 @@ func _build_void_mask() -> void:
 					var ny: int = y + dy
 					if nx >= 0 and ny >= 0 and nx < gen.w and ny < gen.h:
 						_near_floor[ny][nx] = true
+			var sx: int = x
+			var sy: int = y - 1
+			if sx >= 0 and sy >= 0 and sx < gen.w and sy < gen.h:
+				_face_mask[sy][sx] = true
 
 
 func _draw() -> void:
 	if gen == null:
 		return
-	# v1.33 (заказчик): «стены и пол не обязательно чёрные — могут быть
-	# каменными, кирпичными, земляными, кристальными, в огне». Цвета
-	# материалов теперь заданы в data/dungeon.json нормальной яркости —
-	# без множителей v1.32.1. Что видно, а что скрыто туманом войны,
-	# решает dungeon_fog.gd поверх этого слоя. Войд вне комнат — чёрный.
+	# Материалы биома (v1.33): цвета заданы в data/dungeon.json нормальной
+	# яркости; тинт ложится на нормализованные текстуры пака. Что скрыто
+	# туманом войны — решает dungeon_fog.gd поверх этого слоя.
 	var wall_col := Color(String(biome["wall_color"]))
-	draw_rect(Rect2(0, 0, gen.w * ts, gen.h * ts), _void_col)
-	var floor_ref := String(biome.get("floor_sprite", ""))
-	var wall_ref := String(biome.get("wall_sprite", ""))
-	# v1.28: альтернативная плита пола и декали (трещины/крошка) — полы и
-	# стены различаются между биомами (заказчик)
-	var floor_alt := String(biome.get("floor_sprite_alt", floor_ref))
+	var floor_col := Color(String(biome["floor_color"]))
 	var decor := Color(String(biome.get("decor_color", "#555048")))
-	var floor_color := Color(String(biome["floor_color"]))
-	var floor_color_alt := floor_color.darkened(0.07)
-	# v1.33: «в огне» — биом с ember_color усыпает пол тлеющими угольками
-	# (дым-глоу + искра), огненные биомы читаются жаром
-	var ember_hex := String(biome.get("ember_color", ""))
-	var ember := Color(ember_hex) if ember_hex != "" else Color.TRANSPARENT
+	draw_rect(Rect2(0, 0, gen.w * ts, gen.h * ts), _void_col)
+	# биом без пака (старый/модовый): откат на плоские цвета
+	var use_pack: bool = bool(biome.get("v2_pack", true))
+	var half := Vector2(ts, ts) * 0.5
 	for y in gen.h:
 		for x in gen.w:
 			var tile: int = gen.grid[y][x]
 			var pos := Vector2(x, y) * ts
 			var h := _hash(x, y)
 			if tile == gen.TILE_FLOOR:
-				var col := floor_color if (x + y) % 2 == 0 else floor_color_alt
-				var ref := floor_alt if (h % 5 == 0 and floor_alt != "") else floor_ref
-				if ref == "":
-					draw_rect(Rect2(pos, Vector2(ts, ts)), col)
+				var col := floor_col if (x + y) % 2 == 0 else floor_col.darkened(0.06)
+				if use_pack:
+					var ref := "e:d2_floor_a"
+					match h % 7:
+						0, 3: ref = "e:d2_floor_b"
+						5: ref = "e:d2_floor_c"
+					if h % 23 == 0:
+						ref = "e:d2_floor_crack"
+					Assets.draw_ref(self, ref, pos + half, float(ts), h % 7 == 0, col)
 				else:
-					Assets.draw_ref(self, ref, pos + Vector2(ts, ts) * 0.5, float(ts),
-							h % 7 == 0, col)
-				# декали пола: крошка/трещина на каждом шестом тайле
-				if h % 6 == 0:
+					draw_rect(Rect2(pos, Vector2(ts, ts)), col)
+				# декали пола: крошка/трещина на каждом шестом тайле (v1.28)
+				if h % 6 == 0 and not use_pack:
 					var dp := pos + Vector2(6.0 + float(h % (ts - 12)),
 							6.0 + float((h / 3) % (ts - 12)))
 					if h % 12 == 0:
-						# трещина: пара коротких штрихов
 						draw_line(dp, dp + Vector2(5.0, 3.0), Color(decor.r, decor.g, decor.b, 0.7), 1.2)
 						draw_line(dp + Vector2(5.0, 3.0), dp + Vector2(8.0, 2.0),
 								Color(decor.r, decor.g, decor.b, 0.55), 1.0)
 					else:
 						draw_circle(dp, 1.6 + float(h % 2), Color(decor.r, decor.g, decor.b, 0.5))
 						draw_circle(dp + Vector2(3.0, -2.0), 1.0, Color(decor.r, decor.g, decor.b, 0.4))
-				# угольки огненных биомов: редкие (каждый 7-й тайл), жарко-яркие
-				if ember_hex != "" and h % 7 == 3:
-					var ep := pos + Vector2(5.0 + float(h % (ts - 10)),
-							5.0 + float((h / 5) % (ts - 10)))
-					draw_circle(ep, 3.2, Color(ember.r, ember.g, ember.b, 0.22))
-					draw_circle(ep, 1.3, Color(ember.r, ember.g, ember.b, 0.9))
-					draw_circle(ep + Vector2(-0.8, -0.8), 0.6,
-							Color(ember.r, ember.g, ember.b).lightened(0.5))
 			elif _near_floor[y][x]:
-				# стена рядом с полом — видна (по ней читаются коридоры)
-				draw_rect(Rect2(pos, Vector2(ts, ts)), wall_col.darkened(0.18))
-				Assets.draw_ref(self, wall_ref, pos + Vector2(ts, ts) * 0.5, float(ts), false, wall_col)
+				if _face_mask[y][x]:
+					# грань: кирпич + светлая кромка верха; тень кладём на пол ниже
+					if use_pack:
+						Assets.draw_ref(self, "e:d2_wall_face", pos + half, float(ts),
+								false, wall_col)
+					else:
+						draw_rect(Rect2(pos, Vector2(ts, ts)), wall_col.darkened(0.18))
+					if y + 1 < gen.h and gen.grid[y + 1][x] == gen.TILE_FLOOR:
+						Assets.draw_ref(self, "e:d2_shadow", pos + Vector2(ts, ts * 1.5),
+								float(ts), false, Color(0.0, 0.0, 0.0, 0.55))
+				else:
+					# верх стены: кап кладки
+					if use_pack:
+						Assets.draw_ref(self, "e:d2_wall_top", pos + half, float(ts),
+								h % 5 == 0, wall_col.darkened(0.08))
+					else:
+						draw_rect(Rect2(pos, Vector2(ts, ts)), wall_col.darkened(0.18))
+						Assets.draw_ref(self, String(biome.get("wall_sprite", "")),
+								pos + half, float(ts), false, wall_col)
 			else:
 				# глубинная порода вне коридоров и комнат — чернота без спрайта
 				draw_rect(Rect2(pos, Vector2(ts, ts)), _void_col)
+			# угольки огненных биомов (v1.33): редкие, жарко-яркие
+			var ember_hex := String(biome.get("ember_color", ""))
+			if ember_hex != "" and tile == gen.TILE_FLOOR and h % 7 == 3:
+				var ember := Color(ember_hex)
+				var ep := pos + Vector2(5.0 + float(h % (ts - 10)),
+						5.0 + float((h / 5) % (ts - 10)))
+				draw_circle(ep, 3.2, Color(ember.r, ember.g, ember.b, 0.22))
+				draw_circle(ep, 1.3, Color(ember.r, ember.g, ember.b, 0.9))
+				draw_circle(ep + Vector2(-0.8, -0.8), 0.6,
+						Color(ember.r, ember.g, ember.b).lightened(0.5))
 
 
 static func _hash(x: int, y: int) -> int:
