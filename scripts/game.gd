@@ -43,6 +43,8 @@ var poi_coins := 0               # монеты за зачистку лагер
 var world_hero_tile := Vector2i(-1, -1)   # тайл героя на карте мира
 var city_return_tile := Vector2i(-1, -1)  # тайл героя при возврате в город
 var world_active := false        # игрок сейчас на карте мира («Продолжить» вернёт туда, M8)
+var npc_cities = null            # npc_cities.gd — города поселений НПС («Мир v2», этап 3)
+var visiting_city_id := -1       # poi_id поселения, где герой в гостях (-1 — свой город)
 # --- экипировка героя (M14-B, issue #3 B.1) ---------------------------------
 var items_cfg: Dictionary = {}   # data/items.json — каталог предметов
 var weapons_cfg: Dictionary = {} # data/weapons.json — паттерны атаки
@@ -123,6 +125,11 @@ func _init() -> void:
 func _process(delta: float) -> void:
 	if city_sim != null:
 		city_sim.tick(delta)
+	# города НПС («Мир v2», этап 3): живут по тем же правилам — тот же тик,
+	# та же скорость/пауза, что у города игрока; город в гостях у героя
+	# тикает тоже (сцену города ведёт он), но события не дренируем
+	if npc_cities != null and city_sim != null:
+		npc_cities.tick(delta, visiting_city_id, int(city_sim.speed))
 	_autosave_tick()
 	_update_fps(delta)
 
@@ -379,6 +386,8 @@ func new_city() -> void:
 
 
 ## Создать мир: карта мира по сиду + программная жизнь (M8).
+## v1.41 («Мир v2», этап 3): у живых поселений НПС появляются настоящие
+## города — своя карта и симуляция, автономия без старосты (№120).
 func new_world() -> void:
 	var cfg: Variant = _read_json(WORLD_CFG_PATH)
 	if not (cfg is Dictionary):
@@ -391,6 +400,11 @@ func new_world() -> void:
 	world_sim = sim_script.new()
 	world_sim.setup(world_map, cfg)
 	coins = int(cfg.get("trade", {}).get("start_coins", 15))
+	var city_cfg_v: Variant = _read_json(CITY_CFG_PATH)
+	npc_cities = load("res://scripts/npc_cities.gd").new()
+	npc_cities.setup(world_map, cfg, city_cfg_v if city_cfg_v is Dictionary else {})
+	npc_cities.ensure(0)
+	visiting_city_id = -1
 
 
 ## Тест-режим: стартовые ресурсы и руны из city.json -> "test_mode".

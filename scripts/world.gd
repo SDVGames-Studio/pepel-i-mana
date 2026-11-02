@@ -35,10 +35,23 @@ func _ready() -> void:
 		Game.new_world()
 	map = Game.world_map
 	sim = Game.world_sim
+	# города НПС («Мир v2», этап 3): осады мира бьются о реальные города —
+	# жители/стены/вышки поселения дают оборону; старые сейвы (без городов)
+	# додыхают поселенцами здесь же
+	if Game.npc_cities == null:
+		var city_cfg: Dictionary = _read_json("res://data/city.json")
+		Game.npc_cities = load("res://scripts/npc_cities.gd").new()
+		Game.npc_cities.setup(map, cfg, city_cfg)
+		Game.npc_cities.ensure(sim.day)
+	sim.settlement_defense_cb = func(settlement_id: int) -> float:
+		return Game.npc_cities.defense_of(settlement_id) if Game.npc_cities != null else 0.0
 	Game.world_active = true   # «Продолжить» из меню вернёт на карту мира
 	Game.in_dungeon = false    # вышли из данжа на карту — автосейв снова работает
+	Game.visiting_city_id = -1 # гостевой визит завершён выходом на карту
 	if Game.city_sim != null:
 		Game.city_sim.paused = false   # город живёт, пока герой на большой карте
+	if Game.npc_cities != null:
+		Game.npc_cities.set_paused(false)   # и города НПС — тоже (меню ставило паузу)
 	# мирная фауна (M14-C/T01): олени, кабаны, птицы, волки, рыба
 	fauna = load(FAUNA_SCRIPT).new()
 	fauna.setup(map, _read_json(FAUNA_CFG_PATH), randi())
@@ -280,10 +293,26 @@ func _advance_world_day() -> void:
 	var evs: Array = sim.advance_day()
 	for ev: Dictionary in evs:
 		hud.toast(_event_text(ev))
+		_world_event_cities(ev)
 	_flush_chronicle()
 	if Game.city_sim != null:
 		Game.city_sim.advance_days(1)
+	# города НПС проживают день пути так же, как город игрока (№120)
+	if Game.npc_cities != null:
+		Game.npc_cities.advance_days(1)
 	_maybe_encounter()
+
+
+## События мира против городов НПС: павшее поселение теряет город,
+## переселённое — получает новый (свежие поселенцы той же фракции).
+func _world_event_cities(ev: Dictionary) -> void:
+	if Game.npc_cities == null or not ev.has("id"):
+		return
+	match String(ev["type"]):
+		"siege_fell":
+			Game.npc_cities.destroy(int(ev["id"]))
+		"resettle":
+			Game.npc_cities.ensure(0)   # живое поселение без города — новосёлы
 
 
 ## Охота/рыбалка (M14-C/T01): E у зверя — добыча через стандартный лут.
@@ -506,9 +535,12 @@ func _finish_travel() -> void:
 		return
 	hud.toast(Loc.t("world.arrived") % Loc.t("world.poi." + String(poi["kind"])))
 	match String(poi["kind"]):
-		"caravan", "settlement":
+		"caravan":
 			if sim.is_trade_poi(poi):
 				hud.open_trade(poi)
+		"settlement":
+			if sim.is_trade_poi(poi):
+				_settlement_dialog(poi)
 		"obelisk":
 			_touch_obelisk(poi)
 
@@ -563,6 +595,8 @@ func _cancel() -> void:
 	# остаётся на своём тайле («Продолжить» вернёт сюда же, не в город)
 	if Game.city_sim != null:
 		Game.city_sim.paused = true
+	if Game.npc_cities != null:
+		Game.npc_cities.set_paused(true)
 	Game.menu_hero_tile = hero_tile
 	Game.menu_hero_hp = -1
 	Game.menu_hero_mana = -1
@@ -622,7 +656,9 @@ func _use_poi(poi: Dictionary) -> void:
 		"obelisk":
 			_touch_obelisk(poi)
 		"caravan", "settlement":
-			if sim.is_trade_poi(poi):
+			if String(poi["kind"]) == "settlement" and sim.is_trade_poi(poi):
+				_settlement_dialog(poi)   # живое поселение: войти или торговать (№120)
+			elif sim.is_trade_poi(poi):
 				hud.open_trade(poi)
 			else:
 				_enter_location(poi)   # павшее поселение — там лагерь бандитов
@@ -633,6 +669,49 @@ func _use_poi(poi: Dictionary) -> void:
 				_enter_location(poi)
 			else:
 				hud.toast(Loc.t("world.cleared") % _reset_left(poi))
+
+
+## Живое поселение НПС (№120): герой может войти внутрь как в свой город
+## или поторговать с фракцией прямо на карте (панель как раньше).
+func _settlement_dialog(poi: Dictionary) -> void:
+	var pop := int(poi.get("npc_pop", 0))
+	var can_enter: bool = Game.npc_cities != null and Game.npc_cities.city_of(int(poi["id"])) != null
+	var lines := [Loc.t("world.settlement_pop") % pop] if pop > 0 else []
+	hud.open_choice(Loc.t("world.poi.settlement"), lines, [
+		{"text": Loc.t("world.settlement_enter"), "disabled": not can_enter,
+				"action": func() -> void: _enter_settlement(poi)},
+		{"text": Loc.t("world.settlement_trade"),
+				"action": func() -> void: hud.open_trade(poi)},
+		{"text": Loc.t("world.close_btn"), "action": func() -> void: pass},
+	])
+
+
+## Войти в поселение НПС: своя карта и живой город; герой — гость
+## (стройки нет, торговля — на их рынке). Точка входа — у края, откуда пришёл.
+func _enter_settlement(poi: Dictionary) -> void:
+	var npc_sim = Game.npc_cities.city_of(int(poi["id"]))
+	if npc_sim == null:
+		hud.toast(Loc.t("world.settlement_empty"))
+		return
+	Game.visiting_city_id = int(poi["id"])
+	Game.world_hero_tile = poi["tile"]
+	var cmap = npc_sim.map
+	var d: Vector2i = hero_tile - poi["tile"]
+	var dir := Vector2i(-1, 0)
+	if d != Vector2i.ZERO:
+		if absi(d.x) >= absi(d.y):
+			dir = Vector2i(1 if d.x > 0 else -1, 0)
+		else:
+			dir = Vector2i(0, 1 if d.y > 0 else -1)
+	var target := Vector2i(2, cmap.h / 2)
+	if dir.x > 0:
+		target = Vector2i(cmap.w - 3, cmap.h / 2)
+	elif dir.y < 0:
+		target = Vector2i(cmap.w / 2, 2)
+	elif dir.y > 0:
+		target = Vector2i(cmap.w / 2, cmap.h - 3)
+	Game.city_return_tile = cmap.nearest_walkable(target)
+	get_tree().change_scene_to_file(CITY_SCENE)
 
 
 ## Войти в лагерь торговцев «гуляй-город» (M10): телеги по кругу, костёр,
@@ -748,10 +827,12 @@ func _poi_hint(poi: Dictionary) -> String:
 			return Loc.t("world.hint_enter_city")
 		"obelisk":
 			return Loc.t("world.hint_obelisk") if not bool(poi["used"]) else Loc.t("world.obelisk_used")
-		"caravan", "settlement":
+		"caravan":
+			return Loc.t("world.hint_trade")
+		"settlement":
 			if String(poi["state"]) == "fallen":
 				return Loc.t("world.hint_enter_loc")
-			return Loc.t("world.hint_trade")
+			return Loc.t("world.hint_settlement")
 		"trade_camp":
 			return Loc.t("world.hint_trade_camp")
 		"dungeon", "ruins", "camp", "dragon_castle", "vampire_keep", "lich_tower":

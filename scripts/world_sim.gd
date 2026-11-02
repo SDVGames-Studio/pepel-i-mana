@@ -19,6 +19,9 @@ var tracks := {}                # Vector2i -> {dir: Vector2i, camp: int, age: in
 var giants = null               # world_giants.gd — грандиозные создания (M14-E)
 var rep: Dictionary = {}        # репутация фракций (M14-H): id -> −100..100
 var legends: Array = []         # легендарные странники (v1.22): {id, def, tile, path, state, target_poi, days_left, rumor_used}
+var settlement_defense_cb := Callable()  # v1.41 («Мир v2» этап 3): оборона
+                                         # поселения от реального города НПС
+                                         # (npc_cities.defense_of); пусто — база из cfg
 var _legend_id := 1
 var _rng := RandomNumberGenerator.new()
 
@@ -266,22 +269,33 @@ func _update_sieges() -> Array:
 			still.append(siege)
 			continue
 		# осада решила исход: сила лагеря против обороны поселения;
-		# большой рейд гнезда (M12) сильнее на полторы
+		# большой рейд гнезда (M12) сильнее на полторы;
+		# v1.41: оборону даёт реальный город НПС (жители/стены/вышки),
+		# нет города — база из world.json
 		var power := float(camp["strength"]) * (1.5 if bool(siege.get("big", false)) else 1.0)
-		var defense := float(scfg.get("settlement_defense", 12.0)) * _rng.randf_range(0.7, 1.3)
+		var defense := _settlement_defense(int(siege["settlement_id"])) * _rng.randf_range(0.7, 1.3)
 		if power > defense:
 			target["state"] = "fallen"
 			target["faction"] = "bandits"
 			target["fell_day"] = day
 			camp["strength"] = float(camp["strength"]) * 0.5
-			out.append({"type": "siege_fell", "a": _poi_name(target)})
+			out.append({"type": "siege_fell", "a": _poi_name(target), "id": int(target["id"])})
 			_chron("chron.world_fell", _poi_name(target))
 		else:
 			camp["strength"] = maxf(1.0, float(camp["strength"]) * 0.5)
-			out.append({"type": "siege_repelled", "a": _poi_name(target)})
+			out.append({"type": "siege_repelled", "a": _poi_name(target), "id": int(target["id"])})
 			_chron("chron.world_repelled", _poi_name(target))
 	sieges = still
 	return out
+
+
+## Оборона поселения: реальный город НПС (колбэк) или база из конфига.
+func _settlement_defense(settlement_id: int) -> float:
+	if settlement_defense_cb.is_valid():
+		var v: float = float(settlement_defense_cb.call(settlement_id))
+		if v > 0.0:
+			return v
+	return float(cfg.get("sim", {}).get("settlement_defense", 12.0))
 
 
 # --- переселение павших поселений (ответ №4) ------------------------------
@@ -301,7 +315,8 @@ func _roll_resettlement() -> Array:
 		poi["faction"] = "traders" if _rng.randf() < 0.6 else "cult"
 		poi["strength"] = float(cfg.get("sim", {}).get("start_strength", {}).get("settlement", 8.0))
 		poi["cleared_day"] = -1
-		out.append({"type": "resettle", "a": _poi_name(poi), "b": String(poi["faction"])})
+		poi.erase("npc_pop")
+		out.append({"type": "resettle", "a": _poi_name(poi), "b": String(poi["faction"]), "id": int(poi["id"])})
 		_chron("chron.world_resettle", _poi_name(poi), String(poi["faction"]))
 	return out
 

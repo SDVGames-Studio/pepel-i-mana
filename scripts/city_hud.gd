@@ -5,6 +5,8 @@ extends CanvasLayer
 var sim = null
 var city = null                # сцена города: set_build_mode / toggle_pause / set_speed
 var cfg: Dictionary = {}
+var guest := false             # v1.41: герой в поселении НПС — стройкой город
+                               # управляет сам, панель стройки спрятана
 
 var _res_label: Label
 var _pop_label: Label
@@ -46,11 +48,12 @@ var _research_panel: PanelContainer
 var _research_box: VBoxContainer
 
 
-## Вызвать до add_child.
-func init(sim_ref, city_ref, city_cfg: Dictionary) -> void:
+## Вызвать до add_child. guest — режим гостя в поселении НПС («Мир v2», 3).
+func init(sim_ref, city_ref, city_cfg: Dictionary, guest_mode := false) -> void:
 	sim = sim_ref
 	city = city_ref
 	cfg = city_cfg
+	guest = guest_mode
 
 
 func _ready() -> void:
@@ -608,6 +611,17 @@ func _refresh_forest_necro() -> void:
 		_necro_label.add_theme_color_override("font_color", Color(ncol))
 
 
+func _add_autonomy_btn(tr_box: HBoxContainer) -> void:
+	_autonomy_btn = Button.new()
+	_autonomy_btn.text = Loc.t("city.autonomy_btn")
+	_autonomy_btn.tooltip_text = Loc.t("city.autonomy_tip")
+	_autonomy_btn.custom_minimum_size = Vector2(96, 40)
+	_autonomy_btn.add_theme_font_size_override("font_size", 15)
+	_autonomy_btn.focus_mode = Control.FOCUS_NONE
+	_autonomy_btn.pressed.connect(func() -> void: city.go_autonomous())
+	tr_box.add_child(_autonomy_btn)
+
+
 func _build() -> void:
 	var root := Control.new()
 	root.name = "Root"
@@ -661,15 +675,10 @@ func _build() -> void:
 		var btn := _toggle_btn("x%d" % speed_value, func() -> void: city.set_speed(speed_value))
 		tr_box.add_child(btn)
 		_speed_btns.append(btn)
-	# автономная деревня (правки v1.12.0): кнопка справа от скоростей
-	_autonomy_btn = Button.new()
-	_autonomy_btn.text = Loc.t("city.autonomy_btn")
-	_autonomy_btn.tooltip_text = Loc.t("city.autonomy_tip")
-	_autonomy_btn.custom_minimum_size = Vector2(96, 40)
-	_autonomy_btn.add_theme_font_size_override("font_size", 15)
-	_autonomy_btn.focus_mode = Control.FOCUS_NONE
-	_autonomy_btn.pressed.connect(func() -> void: city.go_autonomous())
-	tr_box.add_child(_autonomy_btn)
+	# автономная деревня (правки v1.12.0): кнопка справа от скоростей;
+	# в поселении НПС кнопки нет — он уже автономен (№120)
+	if not guest:
+		_add_autonomy_btn(tr_box)
 
 	# --- тост по центру сверху
 	_toast_label = _label(24)
@@ -764,6 +773,7 @@ func _build() -> void:
 	bottom.add_child(keybar)
 	var panel := PanelContainer.new()
 	panel.add_theme_stylebox_override("panel", _panel_style())
+	panel.visible = not guest   # гость не строит: панели инструментов нет (№120)
 	bottom.add_child(panel)
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 8)
