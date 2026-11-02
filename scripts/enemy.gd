@@ -22,6 +22,7 @@ var _hit_flash := 0.0
 var _slow_left := 0.0      # маяк света (M7): враг ползёт медленнее
 var _slow_mult := 1.0
 var _sprite: Sprite2D = null
+var _glow: PointLight2D = null     # свет светящегося монстра (гасится вдали, FPS)
 var _base_tint := Color.WHITE
 var _base_sheet_scale := Vector2.ONE   # масштаб кадра полного листа (M12: подмена листа)
 var _bob_time := 0.0
@@ -214,7 +215,10 @@ func _ready() -> void:
 		glow.blend_mode = Light2D.BLEND_MODE_ADD
 		glow.shadow_enabled = true
 		glow.shadow_filter_smooth = 2.0
+		# далёкий монстр под туманом невидим — и его тень не нужна (FPS)
+		glow.visible = false
 		add_child(glow)
+		_glow = glow
 	# спрайт врага (M9): ссылка из data/enemies.json, лёгкая подкраска цветом врага
 	_sprite = Sprite2D.new()
 	var sheet: String = String(p.get("sheet", ""))
@@ -243,6 +247,9 @@ func _ready() -> void:
 
 
 func _physics_process(delta: float) -> void:
+	# свет монстра виден только вблизи героя (вдали — глухой туман, FPS)
+	if _glow != null and hero != null:
+		_glow.visible = hero.global_position.distance_to(global_position) < 320.0
 	_hit_flash = maxf(0.0, _hit_flash - delta)
 	_heal_flash = maxf(0.0, _heal_flash - delta)
 	# вспышка урона (M9): спрайт светлеет и гаснет без перерисовки _draw

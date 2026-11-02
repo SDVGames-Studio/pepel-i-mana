@@ -278,10 +278,13 @@ func _make_view() -> Node2D:
 
 ## «Данжи v2»: факелы/лужи/порча — живой свет поверх мира (dungeon_lights.gd).
 ## v1.42.1: факелы — только в биомах с живыми гуманоидами (biomes.humanoids).
+var _lights: Node2D = null
+
+
 func _build_lights(v2: Dictionary) -> void:
-	var lights = load("res://scripts/dungeon_lights.gd").new()
-	lights.setup(gen, ts, v2, biome)
-	add_child(lights)
+	_lights = load("res://scripts/dungeon_lights.gd").new()
+	_lights.setup(gen, ts, v2, biome)
+	add_child(_lights)
 
 
 ## «Данжи v2»: рунные круги — интерактивные точки (dungeon_rune.gd).
@@ -399,6 +402,9 @@ func _build_hero() -> void:
 	hero.position = _tile_to_pos(gen.start_tile)
 	hero.died.connect(_on_hero_died)
 	add_child(hero)
+	# герой слою света — гасить дальние источники (FPS, v1.42.3)
+	if _lights != null:
+		_lights.hero = hero
 	# экипировка (M14-B): бонусы брони/аксессуара и мана-кап до фонаря
 	_apply_equipment()
 	hero.projectile_solid_check = _solid_at
