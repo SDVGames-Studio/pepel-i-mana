@@ -22,8 +22,13 @@ var gen: Object = null
 var ts := 32
 var v2: Dictionary = {}
 var biome: Dictionary = {}
+var hero: Node2D = null            # для отключения дальних источников (FPS)
 
 var _time := 0.0
+var _all_lights: Array = []        # [{light, pos}] — всё, что можно гасить
+# дальше этого радиуса источники выключены: под глухим туманом они всё
+# равно невидимы, а каждый теневой PointLight2D стоит кадров (v1.42.3)
+var cull_px := 12.0 * 32.0
 var _braziers: Array = []       # [{pos, phase, light}] (pos — основание пламени на стене)
 var _puddles: Array = []        # [{tiles, light, phase}]
 var _corrupt_lights: Array = [] # [{light, phase}]
@@ -58,6 +63,7 @@ func _build() -> void:
 			light.position = pos - Vector2(0, float(ts) * 0.4)
 			add_child(light)
 			_braziers.append({"pos": pos, "phase": phase, "light": light})
+			_all_lights.append({"light": light, "pos": pos})
 	# лужи: органическое пятно + холодный свет над центром кластера
 	for zi in gen.puddle_zones.size():
 		var zone: Array = gen.puddle_zones[zi]
@@ -69,6 +75,7 @@ func _build() -> void:
 		light.position = center
 		add_child(light)
 		_puddles.append({"tiles": zone, "light": light, "phase": float(zi) * 2.3})
+		_all_lights.append({"light": light, "pos": center})
 	# красное тлеющее свечение в сердцах порчи (комната без огня дышит злом)
 	var corrupt_col := Color(String(v2.get("corrupt_glow", "#c43a30")))
 	for ri in gen.corrupt_rooms:
@@ -79,6 +86,7 @@ func _build() -> void:
 		light.position = c
 		add_child(light)
 		_corrupt_lights.append({"light": light, "phase": float(ri) * 3.1})
+		_all_lights.append({"light": light, "pos": c})
 
 
 func _make_light(col: Color, radius_px: float, energy: float) -> PointLight2D:
@@ -110,6 +118,12 @@ func _make_light(col: Color, radius_px: float, energy: float) -> PointLight2D:
 
 func _process(delta: float) -> void:
 	_time += delta
+	# FPS (v1.42.3): дальние источники гасим — тени стоят кадров, а под
+	# глухим туманом они всё равно не видны
+	if hero != null:
+		var hp: Vector2 = hero.global_position
+		for rec in _all_lights:
+			(rec["light"] as PointLight2D).enabled = 					(Vector2(rec["pos"]) as Vector2).distance_to(hp) <= cull_px
 	# кадры огня 8 к/с; энергия света дышит синусами — дёшево
 	var fire_frame := int(_time * 8.0) % 3 + 1
 	for b in _braziers:

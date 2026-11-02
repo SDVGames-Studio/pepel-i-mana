@@ -25,11 +25,11 @@ var _frames := 0
 
 func _on_frame() -> void:
 	_frames += 1
-	if _frames < 150:
-		if _frames % 30 == 0:
+	if _frames < 450:
+		if _frames % 90 == 0:
 			print("FPS @", _frames, ": ", Engine.get_frames_per_second())
 		return
-	if _frames == 150:
+	if _frames == 450:
 		_dump()
 		await process_frame
 		var img: Image = root.get_texture().get_image()

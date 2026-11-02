@@ -211,16 +211,10 @@ func _test_dungeon2_fog_and_glow() -> void:
 		wall_t = Vector2i(wall_t.x + 1, wall_t.y)
 	fog.visited = {floor_t: true}
 	fog.visible_now = {}
-	_check(absf(fog._tile_base(floor_t) - 0.72) < 0.01,
-			"изученный пол — тусклая память (0.72)")
+	_check(absf(fog._tile_base(floor_t) - 1.0) < 0.01,
+			"изученный пол вне света — глухая тьма (память убрана, v1.42.3)")
 	_check(absf(fog._tile_base(wall_t) - 1.0) < 0.01,
 			"стена вне поля зрения — глухая тьма (сквозь тень не видно)")
-	var unseen_floor: Vector2i = Vector2i(floor_t.x - 3, floor_t.y)
-	if not gen.is_floor(unseen_floor):
-		unseen_floor = floor_t
-		fog.visited = {}
-	_check(absf(fog._tile_base(unseen_floor) - 1.0) < 0.01,
-			"неизученный пол — чёрный")
 	# светящиеся монстры: у цендера и виспа есть свет в конфиге
 	var enemies: Array = _read_json("res://data/enemies.json")
 	var lit := {}
@@ -229,6 +223,10 @@ func _test_dungeon2_fog_and_glow() -> void:
 			lit[String(e["id"])] = true
 	_check(lit.has("cinder") and lit.has("wisp"),
 			"огненные/магические монстры (cinder, wisp) светятся в конфиге")
+	# дальние источники гасятся (FPS): у слоя света есть радиус отключения
+	var lights2 = load("res://scripts/dungeon_lights.gd").new()
+	_check(lights2.cull_px >= 10.0 * 32.0,
+			"слой света гасит дальние источники (cull_px >= 10 тайлов)")
 	# узел врага получает PointLight2D со включёнными тенями
 	var enemy = load("res://scripts/enemy.gd").new()
 	for e in enemies:
