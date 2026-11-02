@@ -28,7 +28,8 @@
 			"wall_color": "#75675b",
 			"wall_sprite": "k:36",
 			"moss": false,
-			"crystals": false
+			"crystals": false,
+			"humanoids": false
 		},
 		"bandit_camp": {
 			"ambient": "#0e0a06",
@@ -49,7 +50,8 @@
 			"wall_color": "#7c6042",
 			"wall_sprite": "k:16",
 			"moss": false,
-			"crystals": false
+			"crystals": false,
+			"humanoids": true
 		},
 		"crystal_caves": {
 			"ambient": "#081014",
@@ -71,7 +73,8 @@
 			"wall_color": "#5c82a3",
 			"wall_sprite": "k:2",
 			"moss": false,
-			"crystals": true
+			"crystals": true,
+			"humanoids": false
 		},
 		"cursed_hall": {
 			"ambient": "#0a0812",
@@ -97,7 +100,8 @@
 			"wall_color": "#706882",
 			"wall_sprite": "k:59",
 			"moss": false,
-			"crystals": false
+			"crystals": false,
+			"humanoids": false
 		},
 		"demon_lair": {
 			"ambient": "#0e0505",
@@ -121,7 +125,8 @@
 			"wall_color": "#7e4030",
 			"wall_sprite": "k:16",
 			"moss": false,
-			"crystals": false
+			"crystals": false,
+			"humanoids": false
 		},
 		"dragon_lair": {
 			"ambient": "#0f0b06",
@@ -144,7 +149,8 @@
 			"wall_color": "#83704a",
 			"wall_sprite": "k:2",
 			"moss": false,
-			"crystals": false
+			"crystals": false,
+			"humanoids": false
 		},
 		"lich_tower": {
 			"ambient": "#080612",
@@ -169,7 +175,8 @@
 			"wall_color": "#6a6390",
 			"wall_sprite": "k:36",
 			"moss": false,
-			"crystals": true
+			"crystals": true,
+			"humanoids": false
 		},
 		"mutant_forest": {
 			"ambient": "#070d07",
@@ -197,7 +204,8 @@
 			"wall_color": "#5a7038",
 			"wall_sprite": "k:38",
 			"moss": true,
-			"crystals": false
+			"crystals": false,
+			"humanoids": false
 		},
 		"ruins": {
 			"ambient": "#090910",
@@ -222,7 +230,8 @@
 				"rat": 6.0
 			},
 			"moss": true,
-			"crystals": false
+			"crystals": false,
+			"humanoids": false
 		},
 		"swamp_mire": {
 			"ambient": "#0a0d08",
@@ -248,7 +257,8 @@
 			"wall_color": "#5a6e42",
 			"wall_sprite": "k:38",
 			"moss": true,
-			"crystals": false
+			"crystals": false,
+			"humanoids": false
 		},
 		"vampire_keep": {
 			"ambient": "#050508",
@@ -270,7 +280,8 @@
 			"wall_color": "#635e70",
 			"wall_sprite": "k:59",
 			"moss": false,
-			"crystals": false
+			"crystals": false,
+			"humanoids": false
 		},
 		"midnight_crypt": {
 			"ambient": "#05040c",
@@ -294,7 +305,8 @@
 			"wall_color": "#565179",
 			"wall_sprite": "k:36",
 			"moss": true,
-			"crystals": false
+			"crystals": false,
+			"humanoids": false
 		},
 		"yaga_hut": {
 			"ambient": "#0c0806",
@@ -315,7 +327,8 @@
 			"wall_color": "#7e5f3e",
 			"wall_sprite": "k:16",
 			"moss": true,
-			"crystals": false
+			"crystals": false,
+			"humanoids": true
 		}
 	},
 	"chest_count": 4.0,
@@ -374,7 +387,7 @@
 	},
 	"tile_size": 32.0,
 	"v2": {
-		"_comment": "Данжи v2 (этап 4 «Мир v2»): свет/материалы по референсам «для Z.ai». Тюнинг: braziers/corrupt_rooms/runes/puddles (min-max), цвета света/порчи/мха, rune — награда рунного круга. Биому: moss=true — мох на камне, crystals=true — кристаллы-пропсы.",
+		"_comment": "Данжи v2 (этап 4 «Мир v2»): свет/материалы по референсам «для Z.ai». Тюнинг: braziers/corrupt_rooms/runes/puddles (min-max), цвета света/порчи/мха и воды (water_deep/water_edge), rune — награда рунного круга. Биому: humanoids=true — факелы горят (живые монстры), moss=true — мох на камне, crystals=true — кристаллы-пропсы. v1.42.1: факелы — пламя на стене; свет упирается в стены (тени).",
 		"braziers": {
 			"min": 3,
 			"max": 5
@@ -399,13 +412,15 @@
 		"corrupt_radius": 2.4,
 		"corrupt_color": "#7a1e1e",
 		"moss_color": "#5c8a44",
-		"fire_height": 46.0,
+		"fire_height": 40.0,
 		"props_per_hundred": 6,
 		"rune": {
 			"mana_restore": 1,
 			"buff_damage": 2,
 			"buff_seconds": 20.0
-		}
+		},
+		"water_deep": "#14303e",
+		"water_edge": "#3f7d94"
 	},
 	"traps": {
 		"count": 6.0,

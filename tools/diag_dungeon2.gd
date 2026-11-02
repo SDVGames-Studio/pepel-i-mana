@@ -25,8 +25,19 @@ var _frames := 0
 
 func _on_frame() -> void:
 	_frames += 1
-	if _frames < 30:
+	if _frames < 150:
+		if _frames % 30 == 0:
+			print("FPS @", _frames, ": ", Engine.get_frames_per_second())
 		return
+	if _frames == 150:
+		_dump()
+		await process_frame
+		var img: Image = root.get_texture().get_image()
+		img.save_png("res://tools/shot_diag.png")
+		print("shot: tools/shot_diag.png")
+		quit(0)
+
+func _dump() -> void:
 	var d2: Node = null
 	for c in root.get_children():
 		var sc = c.get_script()
