@@ -387,7 +387,7 @@
 	},
 	"tile_size": 32.0,
 	"v2": {
-		"_comment": "Данжи v2 (этап 4 «Мир v2»): свет/материалы по референсам «для Z.ai». Тюнинг: braziers/corrupt_rooms/runes/puddles (min-max), цвета света/порчи/мха и воды (water_deep/water_edge), rune — награда рунного круга. Биому: humanoids=true — факелы горят (живые монстры), moss=true — мох на камне, crystals=true — кристаллы-пропсы. v1.42.1: факелы — пламя на стене; свет упирается в стены (тени).",
+		"_comment": "Данжи v2 (этап 4 «Мир v2»): свет/материалы по референсам «для Z.ai». Тюнинг: braziers/corrupt_rooms/runes/puddles (min-max), цвета света/порчи/мха и воды (water_deep/water_edge), rune — награда рунного круга. Биому: humanoids=true — факелы горят (живые монстры), moss=true — мох на камне. v1.42.4: пол — чистая кладка; пропсы только в порченых комнатах; вода — органическое пятно.",
 		"braziers": {
 			"min": 3,
 			"max": 5
@@ -413,14 +413,13 @@
 		"corrupt_color": "#7a1e1e",
 		"moss_color": "#5c8a44",
 		"fire_height": 40.0,
-		"props_per_hundred": 6,
 		"rune": {
 			"mana_restore": 1,
 			"buff_damage": 2,
 			"buff_seconds": 20.0
 		},
-		"water_deep": "#14303e",
-		"water_edge": "#3f7d94"
+		"water_deep": "#1d4e63",
+		"water_edge": "#6cc4d8"
 	},
 	"traps": {
 		"count": 6.0,

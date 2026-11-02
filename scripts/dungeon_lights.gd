@@ -148,33 +148,50 @@ func _draw() -> void:
 				pos - Vector2(0, fire_h * 0.5), fire_h, false, Color(1, 1, 1))
 		draw_circle(pos, 2.6, Color(1.0, 0.62, 0.25, 0.9))
 		draw_circle(pos + Vector2(-1.2, -1.0), 1.2, Color(1.0, 0.85, 0.5))
-	# лужи: органическое пятно — кромка светлее, середина темнее, смежные
-	# тайлы сливаются перемычками; блик-рябь редкими искорками
-	var deep := Color(String(v2.get("water_deep", "#14303e")))
-	var edge := Color(String(v2.get("water_edge", "#3f7d94")))
+	# лужи: ОРГАНИЧЕСКОЕ пятно — союз из 3 блобов на тайл со сдвигами по
+	# хэшу (кромка светлым под телом), гладкие края, живые блики-блёстки
+	# (v1.42.4: «воду покрасивее» — вместо цепочки кругов)
+	var deep := Color(String(v2.get("water_deep", "#1d4e63")))
+	var edge := Color(String(v2.get("water_edge", "#6cc4d8")))
 	var half := Vector2(float(ts), float(ts)) * 0.5
 	for p in _puddles:
 		var tiles: Array = p["tiles"]
+		# кромка: те же блобы чуть крупнее, светлым полупрозрачным
 		for t in tiles:
 			var c := Vector2(t) * float(ts) + half
-			draw_circle(c, float(ts) * 0.54, Color(edge.r, edge.g, edge.b, 0.5))
+			for k in 3:
+				draw_circle(c + _blob_off(t, k), float(ts) * 0.56,
+						Color(edge.r, edge.g, edge.b, 0.45))
+		# тело воды: тёмно-синее, чуть просвечивает пол (не «смола»)
 		for t in tiles:
 			var c := Vector2(t) * float(ts) + half
-			draw_circle(c, float(ts) * 0.44, Color(deep.r, deep.g, deep.b, 0.92))
-		for i in range(tiles.size() - 1):
-			var a: Vector2i = tiles[i]
-			var b2: Vector2i = tiles[i + 1]
-			if absi(b2.x - a.x) + absi(b2.y - a.y) != 1:
-				continue
-			var mid := (Vector2(a) + Vector2(b2)) * 0.5 * float(ts) + half
-			draw_circle(mid, float(ts) * 0.38, Color(deep.r, deep.g, deep.b, 0.92))
+			for k in 3:
+				draw_circle(c + _blob_off(t, k), float(ts) * 0.46,
+						Color(deep.r, deep.g, deep.b, 0.9))
+		# глубина: второй проход блобов поменьше и темнее — органично,
+		# без искусственного «ядра-круга»
 		for t in tiles:
-			if (tile_hash(int(t.x), int(t.y)) + int(_time * 3.0)) % 5 != 0:
+			var c := Vector2(t) * float(ts) + half
+			for k in 3:
+				draw_circle(c + _blob_off(t, k) * 0.6, float(ts) * 0.3,
+						Color(deep.r * 0.6, deep.g * 0.65, deep.b * 0.75, 0.5))
+		# блики: редкие светлые точки, медленно дрейфуют и пульсируют
+		for t in tiles:
+			if tile_hash(int(t.x), int(t.y)) % 3 != 0:
 				continue
-			var fp := Vector2(t) * float(ts) + half + Vector2(
-					float(tile_hash(int(t.y), int(t.x)) % 12) - 6.0, -3.0)
-			Assets.draw_ref(self, "e:d2_foam", fp, float(ts) * 0.4, false,
-					Color(0.75, 0.92, 1.0, 0.75))
+			var base := Vector2(t) * float(ts) + half + _blob_off(t, 1)
+			var drift := Vector2(sin(_time * 1.1 + float(t.x) * 2.1),
+					cos(_time * 0.9 + float(t.y) * 1.7)) * 3.0
+			var tw := 0.5 + 0.5 * sin(_time * 2.4 + float(t.x + t.y))
+			draw_circle(base + drift, 1.8 + tw, Color(0.82, 0.96, 1.0, 0.25 + 0.4 * tw))
+			draw_circle(base + drift * 0.5, 1.0, Color(1.0, 1.0, 1.0, 0.3 * tw))
+
+
+## Сдвиг суб-блоба внутри тайла — детерминированный по хэшу тайла.
+func _blob_off(t: Vector2i, k: int) -> Vector2:
+	var h1 := tile_hash(int(t.x) * 3 + k, int(t.y))
+	var h2 := tile_hash(int(t.x), int(t.y) * 3 + k + 7)
+	return Vector2(float(h1 % 15) - 7.0, float(h2 % 15) - 7.0)
 
 
 static func tile_hash(x: int, y: int) -> int:

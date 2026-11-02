@@ -12,7 +12,7 @@
 рунные круги на полу — интерактивные точки.
 
 Выход (assets/sprites/env, 32×32 — апскейл пака ×2 NEAREST):
-  d2_floor_a/b/c.png, d2_floor_crack.png — плиты пола пака, нормализованы
+  d2_floor_a/b/c.png — плиты пола пака (чистая кладка), нормализованы
       в светлый серый (тонируются цветом биома на рантайме);
   d2_wall_top.png — верх стены (блоки с кладкой);
   d2_wall_face.png — грань стены (кирпич) с подсвеченной верхней кромкой
@@ -151,10 +151,21 @@ def cut_pack():
     # финальный тон даст тинт биома). v1.42.2: тайлы БЕЗ запечённых
     # пропсов — в (6,1) пака лежит «бочка/скелет», её принимали за
     # предмет под сундуком. Только чистая кладка.
-    put("d2_floor_a", normalize_gray(tile(wf, 12, 1), 0.80))
-    put("d2_floor_b", normalize_gray(tile(wf, 5, 1), 0.80))
-    put("d2_floor_c", normalize_gray(tile(wf, 9, 2), 0.80))
-    put("d2_floor_crack", normalize_gray(tile(wf, 6, 3), 0.74))
+    # v1.42.4: НАСТОЯЩИЕ полы пака — лист decorative_cracks_floor
+    # (walls_floor rows 1-4 — это верха стен; их «чёрточки» читались как
+    # лишний декор). Ряд 1 — чистая плита; ряды 0/2 — кромки с тенью
+    # у стен (автотайл, как в демо-карте пака).
+    fl = Image.open(os.path.join(SRC, "decorative_cracks_floor.png")).convert("RGBA")
+
+    def ftile(tx, ty):
+        return fl.crop((tx * 16, ty * 16, tx * 16 + 16, ty * 16 + 16))
+    put("d2_floor_a", normalize_gray(ftile(1, 1), 0.80))
+    put("d2_floor_b", normalize_gray(ftile(3, 1), 0.80))
+    put("d2_floor_c", normalize_gray(ftile(5, 1), 0.80))
+    put("d2_edge_n", normalize_gray(ftile(1, 0), 0.80))
+    put("d2_edge_s", normalize_gray(ftile(5, 0), 0.80))
+    put("d2_edge_w", normalize_gray(ftile(1, 2), 0.80))
+    put("d2_edge_e", normalize_gray(ftile(5, 2), 0.80))
 
     # стены: верх — блоки с кладкой; грань — кирпич пака + кромка/низ свои
     put("d2_wall_top", normalize_gray(tile(wf, 9, 6), 0.80))

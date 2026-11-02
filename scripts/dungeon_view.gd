@@ -75,13 +75,23 @@ func _draw() -> void:
 			if tile == gen.TILE_FLOOR:
 				var col := floor_col if (x + y) % 2 == 0 else floor_col.darkened(0.06)
 				if use_pack:
-					var ref := "e:d2_floor_a"
-					match h % 7:
-						0, 3: ref = "e:d2_floor_b"
-						5: ref = "e:d2_floor_c"
-					if h % 23 == 0:
-						ref = "e:d2_floor_crack"
-					Assets.draw_ref(self, ref, pos + half, float(ts), h % 7 == 0, col)
+					# v1.42.4: пол пака с АВТОКРОМКАМИ у стен (тень пола,
+					# как в демо-карте пака); в центре — чистая кладка
+					var ref := ""
+					if gen.tile_at(Vector2i(x, y - 1)) != gen.TILE_FLOOR:
+						ref = "e:d2_edge_n"
+					elif gen.tile_at(Vector2i(x, y + 1)) != gen.TILE_FLOOR:
+						ref = "e:d2_edge_s"
+					elif gen.tile_at(Vector2i(x - 1, y)) != gen.TILE_FLOOR:
+						ref = "e:d2_edge_w"
+					elif gen.tile_at(Vector2i(x + 1, y)) != gen.TILE_FLOOR:
+						ref = "e:d2_edge_e"
+					else:
+						match h % 7:
+							0, 3: ref = "e:d2_floor_b"
+							5: ref = "e:d2_floor_c"
+							_: ref = "e:d2_floor_a"
+					Assets.draw_ref(self, ref, pos + half, float(ts), false, col)
 				else:
 					draw_rect(Rect2(pos, Vector2(ts, ts)), col)
 				# декали пола: крошка/трещина на каждом шестом тайле (v1.28)
