@@ -161,6 +161,7 @@ const BLOCKS := [
 	"_test_dungeon2_spots",
 	"_test_dungeon2_rune",
 	"_test_dungeon2_config",
+	"_test_dungeon2_lights_filter",
 ]],
 ]
 

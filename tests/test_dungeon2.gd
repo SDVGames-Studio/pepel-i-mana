@@ -153,17 +153,49 @@ func _test_dungeon2_config() -> void:
 				"диапазон %s корректен" % key)
 	_check(float(v2.get("torch_radius", 0)) >= 1.5 and float(v2.get("cold_radius", 0)) >= 1.5,
 			"радиусы света >= 1.5 тайла")
-	# флаги биомов: мох/кристаллы булевы
+	# флаги биомов: мох/кристаллы/гуманоиды булевы
 	var biomes: Dictionary = _params()["biomes"]
 	var moss_count := 0
+	var humanoid_count := 0
 	for bid in biomes:
 		if bool(biomes[bid].get("moss", false)):
 			moss_count += 1
+		if bool(biomes[bid].get("humanoids", false)):
+			humanoid_count += 1
 	_check(moss_count >= 3, "мшистых биомов >= 3 (мох на камне): %d" % moss_count)
+	_check(bool(biomes.get("bandit_camp", {}).get("humanoids", false)),
+			"бандитский лагерь — гуманоиды (факелы горят)")
+	_check(humanoid_count >= 1 and humanoid_count <= 3,
+			"гуманоидных биомов немного (факелы только живым): %d" % humanoid_count)
 	# строки локализации
 	for key in ["dungeon.hint_rune", "dungeon.rune_mana", "dungeon.rune_buff"]:
 		var loc: Dictionary = _read_json("res://loc/ru.json")
 		_check(loc.has(key) and String(loc[key]) != "", "строка %s есть" % key)
+
+
+func _test_dungeon2_lights_filter() -> void:
+	print("[Данжи v2: факелы по гуманоидам]")
+	var gen = _make_gen()
+	var v2: Dictionary = _params()["v2"]
+	var biomes: Dictionary = _params()["biomes"]
+	var lights_script: Script = load("res://scripts/dungeon_lights.gd")
+	# нежить/зверь: факелов нет, лужи и порча — есть
+	var dark = lights_script.new()
+	dark.setup(gen, 32, v2, biomes["ruins"])
+	_check(dark._braziers.is_empty(),
+			"в биоме без гуманоидов факелы не горят (ruins: нежить)")
+	_check(not dark._puddles.is_empty() or not dark._corrupt_lights.is_empty(),
+			"лужи/порча в тёмном биоме остались")
+	# бандиты: факелы горят
+	var lit = lights_script.new()
+	lit.setup(gen, 32, v2, biomes["bandit_camp"])
+	_check(not lit._braziers.is_empty(),
+			"в биоме с гуманоидами факелы горят (bandit_camp): %d шт" % lit._braziers.size())
+	# тень: все источники бросают тень от стен
+	for l in lit._braziers:
+		_check((l["light"] as PointLight2D).shadow_enabled,
+				"факел бросает тень (свет упирается в стены)")
+		break
 
 
 class FakeHero:

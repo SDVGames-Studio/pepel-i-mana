@@ -274,10 +274,11 @@ func _make_view() -> Node2D:
 	return view
 
 
-## «Данжи v2»: жаровни/лужи/порча — живой свет поверх мира (dungeon_lights.gd).
+## «Данжи v2»: факелы/лужи/порча — живой свет поверх мира (dungeon_lights.gd).
+## v1.42.1: факелы — только в биомах с живыми гуманоидами (biomes.humanoids).
 func _build_lights(v2: Dictionary) -> void:
 	var lights = load("res://scripts/dungeon_lights.gd").new()
-	lights.setup(gen, ts, v2)
+	lights.setup(gen, ts, v2, biome)
 	add_child(lights)
 
 
