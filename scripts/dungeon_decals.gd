@@ -2,9 +2,10 @@ extends Node2D
 const Assets := preload("res://scripts/assets.gd")
 ## Статичные декали данжа («Данжи v2», этап 4 «Мир v2»): мох, наползающий
 ## на камень скруглёнными пятнами (референс 0d1fe2dc), «пепельная порча» —
-## красно-чёрные потёки на гранях стен и трещины пола порченых комнат
-## (5f017950), обычные трещины и пропсы пака (черепа/кости/щебень/паутина).
-## Рисуется один раз на забег (запечка в _draw), туман войны — сверху.
+## красно-чёрные потёки на гранях стен и трещины/кости порченых комнат
+## (5f017950). v1.42.4 (приёмка «убери лишние элементы с пола»): обычный
+## пол — ЧИСТАЯ кладка без трещин и пропсов; пропсы (черепа/кости/щебень)
+## остались только в порченых комнатах. Рисуется один раз на забег.
 
 var gen: Object = null
 var ts := 32
@@ -44,14 +45,11 @@ func _draw() -> void:
 			var here := Vector2i(x, y)
 			var is_corrupt := corrupt.has(here)
 			if tile == gen.TILE_FLOOR:
-				# трещины: обычные — редко и вне порчи, красные — в порче
+				# красные трещины — только в порче; обычный пол чистый (v1.42.4)
 				if is_corrupt and h % 4 == 0:
 					var ref := "e:d2_crack_a" if h % 8 == 0 else "e:d2_crack_b"
 					Assets.draw_ref(self, ref, pos + half, float(ts), h % 3 == 0,
 							Color(corrupt_glow.r, corrupt_glow.g, corrupt_glow.b, 0.5))
-				elif h % 17 == 0:
-					Assets.draw_ref(self, "e:d2_crack_c", pos + half, float(ts),
-							h % 2 == 0, Color(0.2, 0.18, 0.16, 0.5))
 				# мох на полу: скруглённые пятна, чаще у стен
 				if mossy and not is_corrupt and h % 9 < 2 and _near_wall(x, y):
 					Assets.draw_ref(self, "e:d2_moss_a" if h % 2 == 0 else "e:d2_moss_b",
@@ -74,34 +72,25 @@ func _draw() -> void:
 	_draw_props(half)
 
 
+## Пропсы пака — только в порченых комнатах (кости/черепа/щебень):
+## на обычном полу «лишних предметов» больше нет (v1.42.4).
 func _draw_props(half: Vector2) -> void:
-	var props_rare := int(v2.get("props_per_hundred", 6))
 	for y in gen.h:
 		for x in gen.w:
 			if gen.grid[y][x] != gen.TILE_FLOOR:
 				continue
+			if not corrupt.has(Vector2i(x, y)):
+				continue
 			var h := tile_hash(x, y)
-			if h % 100 >= props_rare:
+			if h % 7 != 0:
 				continue
 			var pos := Vector2(x, y) * ts + half
-			var kind := (h / 7) % 6
-			var is_corrupt := corrupt.has(Vector2i(x, y))
 			var ref := ""
-			if is_corrupt:
-				match kind % 3:
-					0: ref = "p:d2_prop_skull"
-					1: ref = "p:d2_prop_bones"
-					2: ref = "p:d2_prop_rubble2"
-			elif bool(biome.get("crystals", false)) and kind == 4:
-				ref = "p:d2_prop_crystal%d" % (h % 3 + 1)
-			else:
-				match kind:
-					0: ref = "p:d2_prop_rubble1"
-					1: ref = "p:d2_prop_rubble2"
-					2: ref = "p:d2_prop_web"
-					3: ref = "p:d2_prop_rubble1"
-			if ref != "":
-				Assets.draw_ref(self, ref, pos, float(ts), h % 2 == 0, Color(1, 1, 1, 0.95))
+			match (h / 7) % 3:
+				0: ref = "p:d2_prop_skull"
+				1: ref = "p:d2_prop_bones"
+				2: ref = "p:d2_prop_rubble2"
+			Assets.draw_ref(self, ref, pos, float(ts), h % 2 == 0, Color(1, 1, 1, 0.95))
 
 
 func _near_wall(x: int, y: int) -> bool:
