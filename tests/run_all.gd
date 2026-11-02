@@ -148,6 +148,8 @@ const BLOCKS := [
 	["res://tests/test_npc_cities.gd", [
 	"_test_npc_cities_create",
 	"_test_npc_cities_grow",
+	"_test_npc_cities_throttle",
+	"_test_npc_cities_cap",
 	"_test_npc_cities_defense",
 	"_test_npc_cities_siege",
 	"_test_npc_cities_save",
