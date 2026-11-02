@@ -187,6 +187,34 @@ func _ready() -> void:
 	shape.shape = circle
 	add_child(shape)
 	_sneak_left = String(p.get("perk", "")) == "sneak"
+	# v1.42.2 (приёмка): светящиеся существа (огонь/магия) подсвечивают
+	# пространство вокруг — «горящий спрайт без света» выглядел фальшиво.
+	# Конфиг — enemies.json -> "light": {color, radius, energy}.
+	if p.has("light"):
+		var lc: Dictionary = p["light"]
+		var grad := Gradient.new()
+		var lcol := Color(String(lc.get("color", "#ff8a3c")))
+		grad.offsets = PackedFloat32Array([0.0, 0.5, 1.0])
+		grad.colors = PackedColorArray([
+			Color(lcol.r, lcol.g, lcol.b, 0.7),
+			Color(lcol.r, lcol.g, lcol.b, 0.3),
+			Color(lcol.r, lcol.g, lcol.b, 0.0),
+		])
+		var gt := GradientTexture2D.new()
+		gt.gradient = grad
+		gt.fill = GradientTexture2D.FILL_RADIAL
+		gt.fill_from = Vector2(0.5, 0.5)
+		gt.fill_to = Vector2(0.5, 0.0)
+		gt.width = 64
+		gt.height = 64
+		var glow := PointLight2D.new()
+		glow.texture = gt
+		glow.texture_scale = float(lc.get("radius", 2.0)) * 32.0 / 32.0
+		glow.energy = float(lc.get("energy", 0.8))
+		glow.blend_mode = Light2D.BLEND_MODE_ADD
+		glow.shadow_enabled = true
+		glow.shadow_filter_smooth = 2.0
+		add_child(glow)
 	# спрайт врага (M9): ссылка из data/enemies.json, лёгкая подкраска цветом врага
 	_sprite = Sprite2D.new()
 	var sheet: String = String(p.get("sheet", ""))
