@@ -128,6 +128,9 @@ func _refresh_poi() -> void:
 			lines.append(Loc.t("world.strength") % int(poi["strength"]))
 			if kind == "settlement":
 				lines.append(Loc.t("world.status_" + String(poi["state"])))
+				# v1.41: живое поселение — настоящий город, видно, как растёт
+				if String(poi["state"]) == "ok" and poi.has("npc_pop"):
+					lines.append(Loc.t("world.settlement_pop") % int(poi["npc_pop"]))
 			if _in_siege(poi):
 				lines.append("[color=#ff8a80]" + Loc.t("world.under_siege") + "[/color]")
 		"dungeon", "ruins", "dragon_castle":

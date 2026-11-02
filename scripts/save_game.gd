@@ -61,10 +61,18 @@ static func save_snapshot(game, hero_tile: Vector2i, hero_hp: int, hero_mana: in
 		"skills": _enc(_skills_block(game)),
 		"hero": {"tile": [hero_tile.x, hero_tile.y], "hp": int(hero_hp), "mana": int(hero_mana)},
 		"city": _enc(_city_block(game.city_sim)),
+		# города НПС (v1.41, «Мир v2» этап 3): каждое поселение — целиком
+		"npc_cities": _enc(_npc_block(game)),
 		"world": _enc(_world_block(game.world_map, game.world_sim)),
 		"codex": game.codex,
 		"stats": game.stats,
 	}
+
+
+## Города НПС одним блоком ({} — модуля нет, старая сессия/FakeGame).
+static func _npc_block(game) -> Dictionary:
+	var npc = game.get("npc_cities")
+	return npc.save_block() if npc != null else {}
 
 
 ## Запись снапшота: строковизация + диск. v1.28.1 — вызывается В ФОНОВОМ
@@ -111,6 +119,23 @@ static func load_game(game) -> String:
 		return "save.load_failed"
 	if _apply_city(game, data["city"]) != "":
 		return "save.load_failed"
+	# города НПС (v1.41): восстанавливаются после мира и города игрока;
+	# старые сейвы без блока — поселения получают города с возрастом мира
+	var npc = game.get("npc_cities")
+	if npc == null:
+		var wcfg_v: Variant = _read_json(WORLD_CFG_PATH)
+		var ccfg_v: Variant = _read_json(CITY_CFG_PATH)
+		npc = load("res://scripts/npc_cities.gd").new()
+		npc.setup(game.world_map, wcfg_v if wcfg_v is Dictionary else {},
+				ccfg_v if ccfg_v is Dictionary else {})
+		game.set("npc_cities", npc)
+	var npc_data: Dictionary = _dec(data.get("npc_cities", {}))
+	if npc_data.is_empty():
+		npc.ensure(int(game.world_sim.day) if game.world_sim != null else 0)
+	else:
+		npc.load_block(npc_data)
+	if game.get("visiting_city_id") != null:
+		game.set("visiting_city_id", -1)
 	_apply_game(game, data["game"], data.get("skills", {}), data.get("hero", {}))
 	# кодекс и статистика (M14-K)
 	if data.get("codex", {}) is Dictionary:
@@ -416,16 +441,26 @@ static func _apply_game(game, gd: Variant, skd: Variant, hero_d: Variant) -> voi
 
 
 static func _apply_city(game, cd: Variant) -> String:
-	if not (cd is Dictionary):
+	var sim = _build_city(cd)
+	if sim == null:
 		return "save.load_failed"
+	game.city_sim = sim
+	return ""
+
+
+## Пересборка города из блока сейва (карта + симуляция + жители) — общий
+## код города игрока и городов НПС (v1.41, «Мир v2» этап 3). null — блок битый.
+static func _build_city(cd: Variant):
+	if not (cd is Dictionary):
+		return null
 	var cfg_v: Variant = _read_json(CITY_CFG_PATH)
 	if not (cfg_v is Dictionary):
-		return "save.load_failed"
+		return null
 	var cfg: Dictionary = cfg_v
 	var map = load(CITY_MAP_SCRIPT).new()
 	map.generate(0, cfg)   # каркас (astar, размеры) — состояние перекрывается ниже
 	if _apply_city_map(map, cd.get("map", {}), cfg) != "":
-		return "save.load_failed"
+		return null
 	map.classify_water()   # v1.29.1: типы воды (река/озеро/болото) — по
 	                       # ВОССТАНОВЛЕННОЙ сетке, не по каркасу сида 0
 	var sim = load(CITY_SIM_SCRIPT).new()
@@ -443,7 +478,7 @@ static func _apply_city(game, cd: Variant) -> String:
 	sim._raid_rng.randomize()
 	var sd: Dictionary = _dec(cd.get("sim", {}))
 	if sd.is_empty():
-		return "save.load_failed"
+		return null
 	sim.res = _num_dict(sd.get("res", {}))
 	# v1.21: новые ресурсы (gems) и всё, что могло не попасть в старый сейв, —
 	# ключи должны существовать: _add_resource_capped читает их напрямую
@@ -612,8 +647,7 @@ static func _apply_city(game, cd: Variant) -> String:
 	sim._ensure_plaza()
 	sim._spawn_golem()
 	sim.morning_plan()
-	game.city_sim = sim
-	return ""
+	return sim
 
 
 static func _apply_city_map(map, md: Variant, cfg: Dictionary) -> String:

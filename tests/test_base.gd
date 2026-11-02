@@ -629,6 +629,9 @@ class FakeGame extends RefCounted:
 	var world_map = null
 	var world_sim = null
 	var skills = null
+	# v1.41 («Мир v2», этап 3): города НПС и гостевой визит — как в Game
+	var npc_cities = null
+	var visiting_city_id := -1
 
 
 func _make_game() -> FakeGame:

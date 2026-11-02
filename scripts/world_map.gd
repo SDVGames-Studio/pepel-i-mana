@@ -39,6 +39,7 @@ var sea_mode := "both"          # рандом мира (№118): "ocean" — о
                                 # края, "inner" — только внутренние моря,
                                 # "both" — и то и другое
 var city_tile := Vector2i.ZERO      # город игрока — стартовая локация
+var gen_seed := 0                   # сид генерации: города НПС сидируются от него
 var pois: Array = []                # точки интереса, см. шапку
 var fog: Dictionary = {}            # Vector2i -> true: исследованные тайлы
 var fog_ver := 0                    # счётчик раскрытий (совместимость)
@@ -58,6 +59,7 @@ func generate(seed_value: int, params: Dictionary) -> void:
 	w = int(params["map_w"])
 	h = int(params["map_h"])
 	ts = int(params["tile_size"])
+	gen_seed = seed_value
 	_terrain_bake = null   # карта новая — кэш рельефа устарел
 	_rng.seed = seed_value
 	for attempt in 20:
@@ -495,15 +497,22 @@ func _pick_city_tile(hcfg: Dictionary) -> Vector2i:
 ## река на самом тайле; озеро в соседней клетке (город на берегу);
 ## болото в радиусе 3. Локация повторяет эти водоёмы (директива «Мир v2»).
 func city_hydro() -> Dictionary:
-	var out := {"river": river.has(city_tile), "lake": false, "swamp": false}
+	return tile_hydro(city_tile)
+
+
+## Гидро-контекст произвольной клетки мира (v1.41, «Мир v2» этап 3):
+## поселения НПС несут свои водоёмы в локацию по тем же правилам, что
+## город игрока (река на клетке = река в поселении).
+func tile_hydro(tile: Vector2i) -> Dictionary:
+	var out := {"river": river.has(tile), "lake": false, "swamp": false}
 	for d: Vector2i in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
-		var n := city_tile + d
+		var n := tile + d
 		if in_bounds(n) and grid[n.y][n.x] == TILE_WATER \
 				and String(water_kind.get(n, "lake")) == "lake":
 			out["lake"] = true
 	for dy in range(-3, 4):
 		for dx in range(-3, 4):
-			var n := city_tile + Vector2i(dx, dy)
+			var n := tile + Vector2i(dx, dy)
 			if in_bounds(n) and grid[n.y][n.x] == TILE_SWAMP:
 				out["swamp"] = true
 	return out

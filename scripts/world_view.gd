@@ -440,7 +440,12 @@ func _draw_poi(poi: Dictionary, ts: float) -> void:
 	var ref: String = KIND_SPRITES.get(String(poi["kind"]), "")
 	if ref != "":
 		var fallen := String(poi["kind"]) == "settlement" and String(poi["state"]) == "fallen"
-		Assets.draw_ref(self, ref, pos + Vector2(0, -2), ts * 1.3, false,
+		# v1.41 («Мир v2», этап 3): живое поселение растёт — маркер крупнее
+		# с числом жителей (город из 8 хижин меньше города в 30 дворов)
+		var size := ts * 1.3
+		if String(poi["kind"]) == "settlement" and not fallen:
+			size *= clampf(1.0 + float(int(poi.get("npc_pop", 8))) / 40.0, 1.0, 1.5)
+		Assets.draw_ref(self, ref, pos + Vector2(0, -2), size, false,
 				Color(0.55, 0.5, 0.5) if fallen else Color.WHITE)
 		if fallen:
 			draw_line(pos + Vector2(-9, -11), pos + Vector2(9, 7), Color("#1a1a1a"), 3.0)

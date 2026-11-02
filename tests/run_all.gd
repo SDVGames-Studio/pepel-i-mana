@@ -144,6 +144,15 @@ const BLOCKS := [
 	"_test_nature2_rocks",
 	"_test_nature2_tuning",
 ]],
+
+	["res://tests/test_npc_cities.gd", [
+	"_test_npc_cities_create",
+	"_test_npc_cities_grow",
+	"_test_npc_cities_defense",
+	"_test_npc_cities_siege",
+	"_test_npc_cities_save",
+	"_test_npc_cities_hydro",
+]],
 ]
 
 

@@ -18,6 +18,8 @@ var cfg: Dictionary = {}
 var hero = null
 var view: Node2D = null
 var hud: CanvasLayer = null
+var guest := false   # герой в поселении НПС («Мир v2», этап 3): смотрит и
+                     # торгует, но не строит и не управляет чужим городом
 
 var build_mode := ""            # выбранный тип здания для стройки
 var enchant_mode := ""          # выбранное зачарование (M3): клик по зданию применит
@@ -59,16 +61,29 @@ var _hero_work_cd := 0.0        # кулдаун удара героя по пр
 
 
 func _ready() -> void:
-	if Game.city_sim == null:
-		Game.new_city()
-	sim = Game.city_sim
+	# v1.41 («Мир v2», этап 3, №120): поселение НПС — та же сцена города,
+	# но герой в гостях: живёт их симуляция, монеты — их кошелёк
+	guest = Game.visiting_city_id >= 0 and Game.npc_cities != null \
+			and Game.npc_cities.city_of(Game.visiting_city_id) != null
+	if guest:
+		sim = Game.npc_cities.city_of(Game.visiting_city_id)
+	else:
+		if Game.city_sim == null:
+			Game.new_city()
+		sim = Game.city_sim
 	sim.paused = false
 	get_tree().paused = false   # v1.30.1: после смерти в данже пауза не должна протекать в город
 	Game.in_dungeon = false   # герой в городе — автосейв и «Сохранить» доступны
-	# монеты общие с героем (M10): симуляция кладёт/берёт через колбэки
-	sim.coins_sink = func(n: int) -> void: Game.coins += n
-	sim.coins_source = func() -> int: return Game.coins
-	Game.world_active = false   # вернулись в город — «Продолжить» откроет город
+	if guest:
+		# кошелёк города НПС уже подшит (npc_cities.attach_wallet) — не лезем
+		# в монеты героя; world_active остаётся true: герой «на карте мира»
+		# у поселения, «Продолжить» из меню вернёт к поселению
+		pass
+	else:
+		# монеты общие с героем (M10): симуляция кладёт/берёт через колбэки
+		sim.coins_sink = func(n: int) -> void: Game.coins += n
+		sim.coins_source = func() -> int: return Game.coins
+		Game.world_active = false   # вернулись в город — «Продолжить» откроет город
 	map = sim.map
 	cfg = _read_json(CITY_CFG_PATH)
 	view = load(VIEW_SCRIPT).new()
@@ -110,16 +125,19 @@ func _ready() -> void:
 	_sky.setup(map, sim, cfg)
 	add_child(_sky)
 	hud = load(HUD_SCRIPT).new()
-	hud.init(sim, self, cfg)
+	hud.init(sim, self, cfg, guest)
 	add_child(hud)
 	hud.set_enchant_colors(_enchant_colors())
 	hud.set_hint(_default_hint())
 	# соло-старт (правки v1.12.2): герой видит рядом NPC — это и есть единственный
 	# житель, основатель-староста. Объясняем сразу, чтобы не гадать.
-	if sim.residents.size() == 1:
+	if not guest and sim.residents.size() == 1:
 		hud.toast(Loc.t("city.founder_hint"))
+	if guest:
+		hud.toast(Loc.t("city.guest_banner"))
 	hero.died.connect(_on_hero_down)
-	_deposit_loot()
+	if not guest:
+		_deposit_loot()   # лут из данжа выгружается только в своём городе
 	# панель экипировки (M14-B, клавиша I): в городе ещё и крафт у мастеровых
 	_equip_panel = load("res://scripts/equipment_panel.gd").new()
 	_equip_panel.hero_cb = func(): return hero
@@ -346,19 +364,21 @@ func _process(delta: float) -> void:
 	if border != Vector2i.ZERO:
 		_exit_to_world(border)
 		return
-	_near_anomaly = hero.position.distance_to(map.tile_center_px(map.anomaly_tile)) < map.ts * 1.7
-	_near_armory = _armory_near_hero()
-	_near_temple = _near_building_kind("temple")
+	_near_anomaly = not guest \
+			and hero.position.distance_to(map.tile_center_px(map.anomaly_tile)) < map.ts * 1.7
+	_near_armory = {} if guest else _armory_near_hero()
+	_near_temple = not guest and _near_building_kind("temple")
 	# ручной труд героя (правки v1.12.2): что можно потрогать по E
+	# (в чужом поселении герой не работает — «Мир v2», этап 3)
 	_hero_work_cd = maxf(0.0, _hero_work_cd - delta)
-	_hero_site = sim.hero_site_near(hero.position)
-	_hero_tree = sim.hero_tree_near(hero.position)
-	_hero_rock = sim.hero_rock_near(hero.position)
-	_hero_crop = sim.hero_harvest_near(hero.position)
-	_hero_sow = sim.hero_sow_near(hero.position)
-	_hero_till = sim.hero_till_near(hero.position)
-	_hero_haul = sim.hero_haul_near(hero.position)
-	_hero_repair_bld = sim.hero_repair_near(hero.position)
+	_hero_site = {} if guest else sim.hero_site_near(hero.position)
+	_hero_tree = {} if guest else sim.hero_tree_near(hero.position)
+	_hero_rock = {} if guest else sim.hero_rock_near(hero.position)
+	_hero_crop = {} if guest else sim.hero_harvest_near(hero.position)
+	_hero_sow = {} if guest else sim.hero_sow_near(hero.position)
+	_hero_till = {} if guest else sim.hero_till_near(hero.position)
+	_hero_haul = {} if guest else sim.hero_haul_near(hero.position)
+	_hero_repair_bld = {} if guest else sim.hero_repair_near(hero.position)
 	if _near_map_border():
 		hud.set_hint(Loc.t("city.exit_world"))
 	elif _near_anomaly:
@@ -869,21 +889,24 @@ func _on_hero_down() -> void:
 
 func _unhandled_input(event: InputEvent) -> void:
 	if event.is_action_pressed("interact"):
-		if _near_anomaly:
-			if Game.dungeon_available(sim.day_number()):
-				_enter_dungeon()
-			else:
-				hud.toast(Loc.t("city.dungeon_locked_toast") % (Game.dungeon_lock_day - sim.day_number()))
-			return
-		if not _near_armory.is_empty():
-			_buy_hero_kit()
-			return
-		if _near_temple:
-			_pray_at_temple()
-			return
-		# ручной труд героя (правки v1.12.2): стройка/дерево/скала
-		if _hero_act():
-			return
+		# в чужом городе герой — гость: аномалия, оружейка, храм и ручной
+		# труд — только дома («Мир v2», этап 3)
+		if not guest:
+			if _near_anomaly:
+				if Game.dungeon_available(sim.day_number()):
+					_enter_dungeon()
+				else:
+					hud.toast(Loc.t("city.dungeon_locked_toast") % (Game.dungeon_lock_day - sim.day_number()))
+				return
+			if not _near_armory.is_empty():
+				_buy_hero_kit()
+				return
+			if _near_temple:
+				_pray_at_temple()
+				return
+			# ручной труд героя (правки v1.12.2): стройка/дерево/скала
+			if _hero_act():
+				return
 	if event.is_action_pressed("inventory"):
 		hud.toggle_residents()
 		return
@@ -892,9 +915,15 @@ func _unhandled_input(event: InputEvent) -> void:
 			KEY_I:
 				_equip_panel.toggle()
 			KEY_L:
-				_gov_panel.toggle()
+				if guest:
+					hud.toast(Loc.t("city.guest_own_city"))
+				else:
+					_gov_panel.toggle()
 			KEY_Q:
-				_quests_panel.toggle()
+				if guest:
+					hud.toast(Loc.t("city.guest_own_city"))
+				else:
+					_quests_panel.toggle()
 			KEY_K:
 				_codex_panel.toggle()
 			KEY_P:
@@ -902,7 +931,10 @@ func _unhandled_input(event: InputEvent) -> void:
 			KEY_R:
 				hud.toggle_magic()
 			KEY_U:
-				hud.toggle_research()
+				if guest:
+					hud.toast(Loc.t("city.guest_own_city"))
+				else:
+					hud.toggle_research()
 			KEY_C:
 				hud.toggle_chronicle()
 			KEY_M:
@@ -1061,12 +1093,26 @@ func _unhandled_input(event: InputEvent) -> void:
 ## Esc (фидбек заказчика 2026-10-20): как раньше — сразу в меню; перед выходом
 ## запоминаем героя, чтобы «Продолжить» и «Сохранить» в меню вернули его
 ## на то же место (замечание 2026-10-20: герой не должен сбегаться в центр).
+## В поселении НПС герой «стоит на карте мира у поселения» — мир продолжает
+## жить, «Продолжить» вернёт к поселению.
 func _exit_to_menu() -> void:
 	sim.paused = true
-	Game.menu_hero_tile = map.tile_of_px(hero.global_position)
-	Game.menu_hero_hp = hero.hp
-	Game.menu_hero_mana = hero.mana
-	Game.city_return_tile = Game.menu_hero_tile
+	if guest:
+		if Game.city_sim != null:
+			Game.city_sim.paused = true
+		if Game.npc_cities != null:
+			Game.npc_cities.set_paused(true, Game.visiting_city_id)
+		var poi: Dictionary = Game.world_map.poi_by_id(Game.visiting_city_id)
+		Game.menu_hero_tile = poi["tile"] if (Game.world_map != null and not poi.is_empty()) \
+				else Vector2i(-1, -1)
+		Game.menu_hero_hp = -1
+		Game.menu_hero_mana = -1
+		Game.city_return_tile = Vector2i(-1, -1)
+	else:
+		Game.menu_hero_tile = map.tile_of_px(hero.global_position)
+		Game.menu_hero_hp = hero.hp
+		Game.menu_hero_mana = hero.mana
+		Game.city_return_tile = Game.menu_hero_tile
 	get_tree().change_scene_to_file(MENU_SCENE)
 
 
@@ -1140,9 +1186,20 @@ func _paint_road(tile: Vector2i) -> void:
 				hud.toast(Loc.t("city.road_no_stone"))
 
 
+## Инструменты стройки/зон/дорог — только в своём городе: в поселении НПС
+## городом управляют его жители («Мир v2», этап 3, №120).
+func _guest_block() -> bool:
+	if guest:
+		hud.toast(Loc.t("city.guest_no_build"))
+		return true
+	return false
+
+
 ## Инструмент переноса зданий (этап 2, аспект 5): клик по готовому зданию —
 ## снять, клик по новому месту — поставить (бесплатно). ПКМ/Esc — отмена.
 func set_move_mode(on: bool) -> void:
+	if on and _guest_block():
+		return
 	move_mode = on
 	if move_mode:
 		zone_mode = ""
@@ -1197,6 +1254,8 @@ func _cost_str(cost: Dictionary) -> String:
 
 ## Инструмент зоны: повторное нажатие / ПКМ / Esc отменяет.
 func set_zone_mode(type_id: String) -> void:
+	if _guest_block():
+		return
 	zone_mode = "" if zone_mode == type_id else type_id
 	_cancel_crop_pick()   # смена инструмента закрывает выбор культуры
 	if zone_mode != "":
@@ -1218,6 +1277,8 @@ func set_zone_mode(type_id: String) -> void:
 ## Перенос главной площади (правки v1.20): клик по новому месту — площадь 2×2
 ## переезжает, вокруг неё по-прежнему нельзя строить.
 func set_plaza_mode(on: bool) -> void:
+	if on and _guest_block():
+		return
 	plaza_mode = on
 	if plaza_mode:
 		zone_mode = ""
@@ -1236,6 +1297,8 @@ func set_plaza_mode(on: bool) -> void:
 
 ## Инструмент дороги.
 func set_road_mode(on: bool) -> void:
+	if on and _guest_block():
+		return
 	road_mode = on
 	if road_mode:
 		zone_mode = ""
@@ -1251,6 +1314,8 @@ func set_road_mode(on: bool) -> void:
 
 ## Инструмент посадки леса (M11): клик — саженец (семя из пула).
 func set_plant_mode(on: bool) -> void:
+	if on and _guest_block():
+		return
 	plant_mode = on
 	view.plant_mode = on
 	if plant_mode:
@@ -1295,6 +1360,8 @@ func _try_place() -> void:
 
 
 func set_build_mode(type_id: String) -> void:
+	if type_id != "" and _guest_block():
+		return
 	build_mode = type_id
 	view.build_mode = type_id
 	if type_id != "" and (zone_mode != "" or road_mode or plant_mode):
@@ -1389,6 +1456,8 @@ func cast_city_spell(spell_id: String) -> void:
 
 ## Выбор зачарования в панели; повторное нажатие / ПКМ / Esc отменяет.
 func set_enchant_mode(ench_id: String) -> void:
+	if ench_id != "" and _guest_block():
+		return
 	enchant_mode = "" if enchant_mode == ench_id else ench_id
 	view.enchant_mode = enchant_mode
 	if enchant_mode == "":
@@ -1423,6 +1492,8 @@ func set_speed(value: int) -> void:
 ## Кнопка «Автономия» (правки v1.12.0): с 10 поселенцев деревня живёт сама.
 ## Отказ честно объясняется тостом (мало поселенцев или уже автономна).
 func go_autonomous() -> void:
+	if guest:
+		return   # чужой город уже живёт сам — решение не героя
 	var err_key: String = sim.go_autonomous()
 	if err_key == "city.autonomy_need":
 		hud.toast(Loc.t(err_key) % sim.autonomy_pop())
@@ -1519,12 +1590,19 @@ func _enter_dungeon() -> void:
 
 ## Шаг за край города — на карту мира (фидбек приёмки M8): вся рамка карты —
 ## зона перехода. На карте мира герой появляется с той же стороны города.
+## В поселении НПС («Мир v2», этап 3) — к клетке поселения, визит окончен.
 func _exit_to_world(dir: Vector2i) -> void:
 	sim.speed = 1
 	sim.paused = false
 	if Game.world_map == null:
 		Game.new_world()
-	Game.world_hero_tile = Game.world_map.nearest_walkable(Game.world_map.city_tile + dir)
+	if guest:
+		var poi: Dictionary = Game.world_map.poi_by_id(Game.visiting_city_id)
+		var base: Vector2i = poi["tile"] if not poi.is_empty() else Game.world_map.city_tile
+		Game.world_hero_tile = Game.world_map.nearest_walkable(base + dir)
+		Game.visiting_city_id = -1
+	else:
+		Game.world_hero_tile = Game.world_map.nearest_walkable(Game.world_map.city_tile + dir)
 	Game.city_return_tile = Vector2i(-1, -1)
 	get_tree().change_scene_to_file(WORLD_SCENE)
 
@@ -1539,6 +1617,8 @@ func _near_map_border() -> bool:
 
 
 func _default_hint() -> String:
+	if guest:
+		return "%s   ·   %s" % [Loc.t("city.guest_hint"), Loc.t("city.world_exit_hint")]
 	return "%s   ·   %s   ·   %s" % [Loc.t("city.enter_anomaly"),
 			Loc.t("city.world_exit_hint"), Loc.t("city.back_hint")]
 

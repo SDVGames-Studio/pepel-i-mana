@@ -703,8 +703,8 @@ func _test_m9() -> void:
 		_check(s != null and (s as Script).can_instantiate(), path.get_file() + " компилируется")
 	# версия этапа (стабильнее номера: номер растёт с каждой частью)
 	var vdata: Variant = _read_json("res://data/version.json")
-	_check(vdata is Dictionary and String(vdata.get("stage", "")) == "Этап 2",
-			"проект на этапе «Полировка города» (версия %s)" % (String(vdata.get("version", "?")) if vdata is Dictionary else "?"))
+	_check(vdata is Dictionary and String(vdata.get("stage", "")).begins_with("Мир v2"),
+			"проект в программе «Мир v2» (версия %s)" % (String(vdata.get("version", "?")) if vdata is Dictionary else "?"))
 
 
 # --- M10: релиз v1.0 — craftpix-ассеты, бандиты, скот, поля, рынок, гуляй-город
