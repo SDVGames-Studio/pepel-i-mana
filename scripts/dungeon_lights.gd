@@ -35,7 +35,9 @@ func setup(dungeon_gen: Object, tile_size: int, v2_cfg: Dictionary,
 	ts = tile_size
 	v2 = v2_cfg
 	biome = biome_data
-	z_index = 10
+	# z по умолчанию (0): узел добавляется ДО героя — вода и пламя
+	# рисуются ПОД героем (v1.42.2: «текстуры воды должны быть под
+	# персонажем»); PointLight2D от порядка не зависит
 	_build()
 
 

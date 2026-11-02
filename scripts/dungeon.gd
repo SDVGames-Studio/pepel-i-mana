@@ -103,6 +103,10 @@ func _ready() -> void:
 	var decals = load("res://scripts/dungeon_decals.gd").new()
 	decals.setup(gen, ts, biome, v2)
 	add_child(decals)
+	# свет/вода/руны ДО героя (порядок канвы: всё на полу — под героем,
+	# v1.42.2: «текстуры воды должны быть под персонажем»)
+	_build_lights(v2)
+	_build_runes(v2)
 	_build_walls()
 	_build_exit()
 	_build_chests()
@@ -112,8 +116,6 @@ func _ready() -> void:
 	_build_traps()
 	_build_boss()
 	_build_fauna()
-	_build_lights(v2)
-	_build_runes(v2)
 	# туман войны (v1.33): поверх мира, до HUD — неисследованное чёрное,
 	# изученное приглушено, видимое в свет герой — чистое
 	_fog = load("res://scripts/dungeon_fog.gd").new()

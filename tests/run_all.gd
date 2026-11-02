@@ -162,6 +162,7 @@ const BLOCKS := [
 	"_test_dungeon2_rune",
 	"_test_dungeon2_config",
 	"_test_dungeon2_lights_filter",
+	"_test_dungeon2_fog_and_glow",
 ]],
 ]
 

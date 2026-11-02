@@ -198,6 +198,53 @@ func _test_dungeon2_lights_filter() -> void:
 		break
 
 
+func _test_dungeon2_fog_and_glow() -> void:
+	print("[Данжи v2: туман и светящиеся монстры]")
+	# туман: «память» только для изученного ПОЛА; стены — глухие (v1.42.2)
+	var gen = _make_gen()
+	var fog = load("res://scripts/dungeon_fog.gd").new()
+	fog.gen = gen
+	fog.ts = 32
+	var floor_t: Vector2i = gen.start_tile
+	var wall_t: Vector2i = Vector2i(floor_t.x + 1, floor_t.y)
+	while gen.is_floor(wall_t):
+		wall_t = Vector2i(wall_t.x + 1, wall_t.y)
+	fog.visited = {floor_t: true}
+	fog.visible_now = {}
+	_check(absf(fog._tile_base(floor_t) - 0.72) < 0.01,
+			"изученный пол — тусклая память (0.72)")
+	_check(absf(fog._tile_base(wall_t) - 1.0) < 0.01,
+			"стена вне поля зрения — глухая тьма (сквозь тень не видно)")
+	var unseen_floor: Vector2i = Vector2i(floor_t.x - 3, floor_t.y)
+	if not gen.is_floor(unseen_floor):
+		unseen_floor = floor_t
+		fog.visited = {}
+	_check(absf(fog._tile_base(unseen_floor) - 1.0) < 0.01,
+			"неизученный пол — чёрный")
+	# светящиеся монстры: у цендера и виспа есть свет в конфиге
+	var enemies: Array = _read_json("res://data/enemies.json")
+	var lit := {}
+	for e in enemies:
+		if e.has("light"):
+			lit[String(e["id"])] = true
+	_check(lit.has("cinder") and lit.has("wisp"),
+			"огненные/магические монстры (cinder, wisp) светятся в конфиге")
+	# узел врага получает PointLight2D со включёнными тенями
+	var enemy = load("res://scripts/enemy.gd").new()
+	for e in enemies:
+		if String(e["id"]) == "cinder":
+			enemy.setup(e)
+			break
+	enemy._ready()
+	var found_light := false
+	for c in enemy.get_children():
+		if c is PointLight2D:
+			found_light = (c as PointLight2D).shadow_enabled
+			break
+	_check(found_light, "спрайт огненного монстра подсвечен (тени вкл)")
+	enemy.free()
+
+
 class FakeHero:
 	var mana := 10
 	var bonus := 0
