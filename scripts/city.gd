@@ -655,6 +655,16 @@ func _process_events() -> void:
 			"dungeon_calm":
 				# данж у города зачищен — волны мутантов сдвинулись (2026-10-21)
 				hud.toast(Loc.t("city.dungeon_calm_toast") % int(ev["days"]))
+			# --- улей мутантов («Новый мир v2», v1.44) ---
+			"hive_built":
+				hud.toast(Loc.t("event.hive_built"))
+			"hive_grew":
+				hud.toast(Loc.t("event.hive_grew") % int(ev["level"]))
+			"hive_wave":
+				hud.toast(Loc.t("event.hive_wave") % int(ev["count"]))
+			"hive_destroyed":
+				hud.toast(Loc.t("event.hive_destroyed") % int(ev["level"]))
+				_rebuild_collision()
 			"hero_haul":
 				# герой унёс кучу здания на склад (2026-10-21)
 				hud.toast(Loc.t("city.hero_haul_done") % [int(ev.get("n", 0)),

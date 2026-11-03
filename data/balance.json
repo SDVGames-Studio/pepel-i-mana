@@ -32,10 +32,23 @@
 		"siege_chance": 0.35
 	},
 	"loot": {
-		"rarities": {"common": 60, "uncommon": 25, "rare": 12, "legendary": 3},
-		"chest_items": [1, 3],
+		"rarities": {
+			"common": 60,
+			"uncommon": 25,
+			"rare": 12,
+			"legendary": 3
+		},
+		"chest_items": [
+			1,
+			3
+		],
 		"enemy_drop_chance": 0.35,
-		"biome_loot_bonus": {"ruins": 0, "mutant_forest": 1, "crystal_caves": 1, "ash_wastes": 2},
+		"biome_loot_bonus": {
+			"ruins": 0,
+			"mutant_forest": 1,
+			"crystal_caves": 1,
+			"ash_wastes": 2
+		},
 		"boss_drops_guaranteed": 2
 	},
 	"hero": {
@@ -59,12 +72,24 @@
 		"_note": "статы героя v1.24: сила — урон (str_dmg за очко), выносливость — здоровье (end_hp), ловкость — броня и бег (agi_armor, agi_speed), интеллект — сила заклинаний (int_spell), мудрость — запас и реген маны (wis_mana, wis_regen). Рост от дел (train_* за действие), кап hero_cap. Существа: статы выводятся из их hp/урона, боссы — с множителем boss_mult сверх капы обычных жителей",
 		"start_each": 2.0,
 		"hero_cap": 20.0,
-		"str_dmg": 0.5, "end_hp": 2.0, "agi_armor": 0.25, "agi_speed": 1.5,
-		"int_spell": 0.04, "wis_mana": 1.0, "wis_regen": 0.02,
-		"train_kill_str": 0.25, "train_kill_agi": 0.15, "train_swing": 0.06,
-		"train_cast_int": 0.15, "train_cast_wis": 0.05, "train_mana_wis": 0.04,
-		"train_hurt_end": 0.1, "train_work_str": 0.1, "train_work_end": 0.05,
-		"enemy_dmg_per_str": 0.04, "enemy_dmg_per_int": 0.05,
+		"str_dmg": 0.5,
+		"end_hp": 2.0,
+		"agi_armor": 0.25,
+		"agi_speed": 1.5,
+		"int_spell": 0.04,
+		"wis_mana": 1.0,
+		"wis_regen": 0.02,
+		"train_kill_str": 0.25,
+		"train_kill_agi": 0.15,
+		"train_swing": 0.06,
+		"train_cast_int": 0.15,
+		"train_cast_wis": 0.05,
+		"train_mana_wis": 0.04,
+		"train_hurt_end": 0.1,
+		"train_work_str": 0.1,
+		"train_work_end": 0.05,
+		"enemy_dmg_per_str": 0.04,
+		"enemy_dmg_per_int": 0.05,
 		"boss_mult": 2.2
 	},
 	"rewards": {
@@ -72,12 +97,18 @@
 	},
 	"plateau": {
 		"_note": "оборонный бонус высоты (этап «Многоуровневый рельеф», №113): def_bonus — на столько слабее бьёт атакующий снизу по защитнику наверху; atk_bonus — на столько сильнее бьёт атакующий сверху",
-		"def_bonus": 0.30,
+		"def_bonus": 0.3,
 		"atk_bonus": 0.15
 	},
 	"equipment": {
 		"chest_chance": 0.3,
 		"bonus_per_tier": 0.06,
 		"boss_guaranteed": 1
+	},
+	"hive": {
+		"_note": "v1.44 («Новый мир v2» этап 2): улей мутантов у аномалии — растёт от сбора ресурсов, волны сильнее с успехом, роняется героем (награда) и отрастает через 10 дней. Часть констант — scripts/hive_sim.gd (уровни/радиусы/волны).",
+		"enabled": true,
+		"start_day": 4,
+		"wave_stock_min": 10
 	}
 }

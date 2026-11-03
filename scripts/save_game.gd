@@ -221,7 +221,12 @@ static func _city_block(sim, include_map := true) -> Dictionary:
 		}
 	out["residents"] = _residents_save(sim)
 	out["sim"] = _city_sim_block(sim)
+	out["hive"] = _hive_block(sim)
 	return out
+
+
+static func _hive_block(sim) -> Dictionary:
+	return sim.hive if sim.get("hive") != null else {}
 
 
 static func _city_sim_block(sim) -> Dictionary:
@@ -545,6 +550,8 @@ static func _build_city(cd: Variant, seed_value := 0, hydro := {}):
 	if sd.is_empty():
 		return null
 	sim.res = _num_dict(sd.get("res", {}))
+	# v1.44: улей (состояние у аномалии)
+	sim.hive = _dec(cd.get("hive", {}))
 	# v1.21: новые ресурсы (gems) и всё, что могло не попасть в старый сейв, —
 	# ключи должны существовать: _add_resource_capped читает их напрямую
 	for key in sim.RESOURCES:

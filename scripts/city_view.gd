@@ -117,6 +117,7 @@ func _draw() -> void:
 	_draw_field_live()
 	_draw_water_glints()
 	_draw_swaying_grass()
+	_draw_hive()
 	_draw_anomaly()
 	_draw_world_exit()
 	_draw_world_sorted()
@@ -124,6 +125,7 @@ func _draw() -> void:
 
 
 ## Прямоугольник карты, видимый камерой (запас 3 тайла на высокие деревья).
+const HIVE_HP_MAX := 150.0   # = hive_sim.HP
 var _vis := Rect2(-1e9, -1e9, 2e9, 2e9)
 
 
@@ -881,6 +883,38 @@ func _draw_wanderer(w: Dictionary) -> void:
 # Зоны, растения грядок, заборы пастбищ и дороги (M6): заливки/борозды/заборы
 # запечены в духовку ландшафта city_terrain.gd (v1.22), растения и полосы
 # обустройства остались живыми (_draw_field_live) вместе с пульсом площади.
+
+
+## Улей мутантов (v1.44): тёмный органический блоб из «капсул», полоса HP
+## и уровень; светится багровым, когда готовит волну.
+func _draw_hive() -> void:
+	var h: Dictionary = sim.hive
+	if h.is_empty() or not bool(h.get("active", false)):
+		return
+	var pos: Vector2 = h["pos"]
+	var level: int = int(h.get("level", 1))
+	var pulse: float = 0.5 + 0.5 * sin(_anim_time * 2.4)
+	var r := float(map.ts) * (0.9 + 0.12 * level)
+	# тело улья: три тёмных «мешка»
+	var body := Color("#2a1518")
+	var rim := Color("#4d1f22")
+	for k in 3:
+		var ang := float(k) * TAU / 3.0 + _anim_time * 0.2
+		var c := pos + Vector2(cos(ang), sin(ang)) * r * 0.35
+		draw_circle(c, r * 0.55, body)
+		draw_circle(c, r * 0.55, Color(rim.r, rim.g, rim.b, 0.35), false, 1.5)
+	draw_circle(pos, r * 0.5, Color("#1a0d10"))
+	# зев — багровое свечение при подготовке волны
+	var hot := float(h.get("alert", 0.0))
+	if float(h.get("stock", 0)) >= 10 or hot > 0.0:
+		draw_circle(pos, r * (0.3 + 0.12 * pulse),
+				Color(0.72, 0.18, 0.14, 0.35 + 0.35 * pulse))
+	# полоса HP
+	var w := float(map.ts) * 1.6
+	draw_rect(Rect2(pos - Vector2(w / 2, r + 8), Vector2(w, 4)), Color(0, 0, 0, 0.5))
+	var frac: float = clampf(float(h.get("hp", 0)) / float(HIVE_HP_MAX), 0.0, 1.0)
+	draw_rect(Rect2(pos - Vector2(w / 2, r + 8), Vector2(w * frac, 4)),
+			Color(0.75, 0.2, 0.16))
 
 
 func _draw_anomaly() -> void:

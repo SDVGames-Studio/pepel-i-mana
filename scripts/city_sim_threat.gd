@@ -90,10 +90,18 @@ func delay_raids_after_dungeon_clear() -> void:
 
 
 ## Планировщик волн: предупреждение за warn_fraction интервала, затем атака.
+const HiveSim := preload("res://scripts/hive_sim.gd")
+
 func _update_threat(dt: float, day_len: float) -> void:
 	var tcfg: Dictionary = cfg.get("threat", {})
 	if tcfg.is_empty():
 		return
+	_update_hive(dt, day_len)
+	_update_hive_units(dt, tcfg)
+	if hero_alive and not hive.is_empty():
+		# следы героя: скауты улья читают цепочку (прототип TrackManager)
+		hero_tracks = HiveSim.push_track(hero_tracks, hero_pos, float(time),
+				float(map.ts) * 4.0)
 	if raid_active:
 		_update_raid(dt, day_len)
 		return
@@ -186,11 +194,15 @@ func _update_raid(dt: float, _day_len: float) -> void:
 	var i := 0
 	while i < raiders.size():
 		var r: Dictionary = raiders[i]
+		# v1.44: юниты улья живут вне жизненного цикла волны
+		if not String(r.get("role", "")).is_empty():
+			raiders.remove_at(i)
+			continue
 		if not _raider_update(r, dt, tcfg):
 			raiders.remove_at(i)
 			continue
 		i += 1
-	if raiders.is_empty():
+	if raid_active and _wave_raiders_left() == 0:
 		_raid_end(true)
 		return
 	if razed_this_raid >= int(tcfg.get("defeat_razes", 3)):
@@ -248,6 +260,14 @@ func _raider_update(r: Dictionary, dt: float, tcfg: Dictionary) -> bool:
 		return false
 	r["atk_cd"] = maxf(0.0, float(r["atk_cd"]) - dt)
 	var p: Dictionary = r["p"]
+	# v1.44: юниты улья — свои роли поверх общего боевого каркаса
+	match String(r.get("role", "")):
+		"gatherer":
+			return _hive_gatherer_update(r, dt)
+		"scout":
+			return _hive_scout_update(r, dt)
+		"guard":
+			return _hive_guard_update(r, dt, tcfg)
 	if String(r.get("mode", "")) == "hunt":
 		return _spirit_update(r, dt)
 	# герой в городе и рядом — мутант отвлекается на чемпиона (путь как у жителей:
@@ -437,10 +457,296 @@ func _drop_corpse(r: Dictionary) -> void:
 	corpses.append({"tile": map.tile_of_px(r["pos"]), "kind": kind, "rot": 0.0})
 
 
+## ==================== УЛЕЙ МУТАНТОВ (v1.44, «Новый мир v2») ==============
+
+## Тик улья: постройка у аномалии, роли, рост от запаса, волны.
+static var _hive_cfg_cache: Dictionary = {}
+
+
+func _hive_cfg() -> Dictionary:
+	# v1.44: конфиг улья живёт в balance.json (city.json — про город)
+	if _hive_cfg_cache.is_empty():
+		var parsed: Variant = _read_json_file("res://data/balance.json")
+		if parsed is Dictionary and (parsed as Dictionary).has("hive"):
+			_hive_cfg_cache = parsed["hive"]
+	return _hive_cfg_cache
+
+
+func _update_hive(dt: float, day_len: float) -> void:
+	var hcfg: Dictionary = _hive_cfg()
+	if hcfg.is_empty() or hcfg.get("enabled", true) == false:
+		return
+	# v1.44: в автотестах улей молчит (ломает сценарные тесты волн/заселения),
+	# кроме собственных тестов улья (PEPEL_HIVE_ON)
+	if OS.has_environment("PEPEL_TEST_MAPS") 			and not OS.has_environment("PEPEL_HIVE_ON"):
+		return
+	if not hive.is_empty() and not bool(hive.get("active", false)):
+		# улей разорён — аномалия отстраивает новый через RESPAWN_DAYS
+		if time >= float(hive.get("respawn_day", 0.0)) * day_len:
+			hive = {}
+		return
+	if hive.is_empty():
+		if float(day) < float(hcfg.get("start_day", HiveSim.START_DAY)):
+			return
+		# улей строится у аномалии: пятно в 3-6 тайлах, на проходимой земле
+		for attempt in 40:
+			var off := Vector2i(_raid_rng.randi_range(-6, 6), _raid_rng.randi_range(-6, 6))
+			var t: Vector2i = map.anomaly_tile + off
+			if map.is_walkable(t) and t.distance_to(map.anomaly_tile) >= 3:
+				hive = {"active": true,
+						"pos": map.tile_center_px(t), "tile": t,
+						"hp": float(HiveSim.HP), "level": 1,
+						"stock": 0, "gathered": 0, "waves": 0,
+						"next_wave_day": float(day) + HiveSim.wave_days(1),
+						"respawn_day": 0.0, "alert": 0.0}
+				events.append({"type": "hive_built"})
+				_chron("chron.hive_built")
+				break
+		return
+	var level: int = int(hive["level"])
+	var want: Array = HiveSim.roles_for(level)
+	var have: Array = _hive_role_counts()
+	# добор ролей (юниты живут в общем списке рейдеров — весь бой/урон/отрисовка)
+	var roles := ["guard", "gatherer", "scout"]
+	for ri in roles.size():
+		while have[ri] < int(want[ri]):
+			if _spawn_hive_unit(roles[ri]) == null:
+				break
+			have[ri] += 1
+	# рост уровня от запаса
+	var new_level: int = HiveSim.level_for(int(hive["stock"]))
+	if new_level > level:
+		hive["level"] = new_level
+		events.append({"type": "hive_grew", "level": new_level})
+	# волны: ресурс улья оплачивает набеги — чем удачнее сбор, тем сильнее
+	if float(day) >= float(hive["next_wave_day"]) \
+			and int(hive["stock"]) >= int(hcfg.get("wave_stock_min", 10)):
+		var size := HiveSim.wave_size(int(hive["level"]), int(hive["stock"]), int(hive["waves"]))
+		hive["waves"] = int(hive["waves"]) + 1
+		hive["stock"] = int(hive["stock"]) - int(hive["stock"]) / 3
+		hive["next_wave_day"] = float(day) + HiveSim.wave_days(int(hive["level"]))
+		_spawn_hive_wave(size)
+
+
+## Юниты улья тикаются ВСЕГДА (вне raid_active их гоняет отдельный цикл).
+func _update_hive_units(dt: float, tcfg: Dictionary) -> void:
+	if raid_active:
+		return
+	var i := 0
+	while i < raiders.size():
+		var r: Dictionary = raiders[i]
+		if String(r.get("role", "")).is_empty():
+			i += 1
+			continue
+		if _raider_update(r, dt, tcfg) == false or int(r["hp"]) <= 0:
+			raiders.remove_at(i)
+			continue
+		i += 1
+
+
+## Сколько осталось участников ВОЛНЫ (юниты улья не считаются).
+func _wave_raiders_left() -> int:
+	var n := 0
+	for r in raiders:
+		if String(r.get("role", "")).is_empty():
+			n += 1
+	return n
+
+
+func _hive_role_counts() -> Array:
+	var out := [0, 0, 0]
+	for r in raiders:
+		match String(r.get("role", "")):
+			"guard":
+				out[0] += 1
+			"gatherer":
+				out[1] += 1
+			"scout":
+				out[2] += 1
+	return out
+
+
+## Юнит улья: как рейдер, но с ролью и вне расписания волн угрозы.
+func _spawn_hive_unit(role: String):
+	if _enemies_cfg.is_empty():
+		var ed: Variant = _read_json_file("res://data/enemies.json")
+		_enemies_cfg = ed if ed is Array else []
+	var def := _pick_raider_def(cfg.get("threat", {}))
+	if def.is_empty():
+		return null
+	var pos: Vector2 = hive["pos"]
+	for attempt in 20:
+		var off := Vector2i(_raid_rng.randi_range(-2, 2), _raid_rng.randi_range(-2, 2))
+		var t: Vector2i = (hive["tile"] as Vector2i) + off
+		if map.is_walkable(t):
+			pos = map.tile_center_px(t)
+			break
+	var unit := {
+		"id": _next_id, "type": String(def["id"]), "p": def,
+		"hp": int(def["hp"]), "max_hp": int(def["hp"]),
+		"pos": pos, "target": Vector2i(-1, -1), "path": PackedVector2Array(),
+		"atk_cd": 0.0, "mode": "hive", "role": role,
+		"carry": 0, "res_tile": Vector2i(-1, -1), "hive": true,
+	}
+	_next_id += 1
+	raiders.append(unit)
+	return unit
+
+
+## Волна ИЗ улья (не из расписания угроз): сильнее с уровнем и успехом.
+func _spawn_hive_wave(size: int) -> void:
+	var tcfg: Dictionary = cfg.get("threat", {})
+	raid_active = true
+	raid_siege = false
+	_raid_kind = "mutant"
+	raid_count += 1
+	razed_this_raid = 0
+	var hp_mult := 1.0 + float(int(hive["level"]) - 1) * 0.25
+	for i in size:
+		var def := _pick_raider_def(tcfg)
+		if def.is_empty():
+			break
+		var hp := int(round(float(def["hp"]) * hp_mult))
+		raiders.append({
+			"id": _next_id, "type": String(def["id"]), "p": def,
+			"hp": hp, "max_hp": hp,
+			"pos": (hive["pos"] as Vector2)
+					+ Vector2(_raid_rng.randf_range(-24, 24), _raid_rng.randf_range(-24, 24)),
+			"target": Vector2i(-1, -1), "path": PackedVector2Array(),
+			"atk_cd": 0.0, "mode": "advance",
+		})
+		_next_id += 1
+	events.append({"type": "hive_wave", "count": size, "level": int(hive["level"])})
+	_chron("chron.hive_wave", str(size))
+	_update_gates()
+
+
+## Добытчик: к ресурсу (дерево/скала в радиусе улья) — собирает — в улей.
+func _hive_gatherer_update(r: Dictionary, dt: float) -> bool:
+	var level: int = int(hive.get("level", 1))
+	var radius := HiveSim.radius_for(level) * float(map.ts)
+	var home: Vector2 = hive["pos"]
+	var speed: float = float(r["p"]["speed"]) * dt
+	if not _hive_resource_ok(Vector2i(r.get("res_tile", Vector2i(-1, -1)))):
+		r["res_tile"] = _hive_find_resource(home, radius)
+		return true
+	var rt: Vector2i = Vector2i(r["res_tile"])
+	var full: bool = int(r.get("carry", 0)) >= HiveSim.GATHER_PER_TRIP
+	var goal: Vector2 = home if full else map.tile_center_px(rt)
+	var to: Vector2 = goal - (r["pos"] as Vector2)
+	if to.length() <= float(map.ts) * 0.8:
+		if full:
+			hive["stock"] = int(hive["stock"]) + int(r["carry"])
+			hive["gathered"] = int(hive["gathered"]) + int(r["carry"])
+			r["carry"] = 0
+		else:
+			r["carry"] = HiveSim.GATHER_PER_TRIP
+			_hive_consume_resource(rt)
+		return true
+	return _raider_move_to(r, map.tile_of_px(goal), speed)
+
+
+## Скаут: свежие СЛЕДЫ героя в радиусе — идёт по ним (тревога улья);
+## иначе круговой дозор, расширяющий известную территорию.
+func _hive_scout_update(r: Dictionary, dt: float) -> bool:
+	var level: int = int(hive.get("level", 1))
+	var radius := HiveSim.radius_for(level) * float(map.ts)
+	var home: Vector2 = hive["pos"]
+	var trail: Vector2 = HiveSim.track_near(hero_tracks, home, radius * 1.3, float(time))
+	if trail != Vector2.INF:
+		hive["alert"] = 3.0
+		return _raider_move_to(r, map.tile_of_px(trail), float(r["p"]["speed"]) * dt)
+	var ang: float = float(int(r["id"]) % 7) * 0.9 + float(time) * 0.15
+	var goal := home + Vector2(cos(ang), sin(ang)) * radius * 0.8
+	var gt: Vector2i = map.tile_of_px(goal)
+	if not map.is_walkable(gt):
+		return true
+	return _raider_move_to(r, gt, float(r["p"]["speed"]) * dt)
+
+
+## Страж: держится у улья (герой рядом — дефолтная ветка боя ниже).
+func _hive_guard_update(r: Dictionary, dt: float, tcfg: Dictionary) -> bool:
+	var home: Vector2 = hive["pos"]
+	var guard_r := float(map.ts) * 5.0
+	if (r["pos"] as Vector2).distance_to(home) > guard_r:
+		return _raider_move_to(r, map.tile_of_px(home), float(r["p"]["speed"]) * dt)
+	return true
+
+
+## Ресурс улья: дерево/скала/руда в радиусе (линейный скан окна).
+func _hive_find_resource(home: Vector2, radius_px: float) -> Vector2i:
+	var best := Vector2i(-1, -1)
+	var best_d := radius_px
+	var home_t: Vector2i = map.tile_of_px(home)
+	var r_t := int(radius_px / float(map.ts))
+	for y in range(maxi(1, home_t.y - r_t), mini(map.h - 1, home_t.y + r_t)):
+		for x in range(maxi(1, home_t.x - r_t), mini(map.w - 1, home_t.x + r_t)):
+			var t := Vector2i(x, y)
+			var dd := float(t.distance_squared_to(home_t))
+			if dd > r_t * r_t:
+				continue
+			var g: int = map.grid[t.y][t.x]
+			if g != map.TILE_TREE and g != map.TILE_ROCK and g != map.TILE_ORE:
+				continue
+			if dd < best_d:
+				best_d = dd
+				best = t
+	return best
+
+
+func _hive_resource_ok(t: Vector2i) -> bool:
+	if not map.in_bounds(t):
+		return false
+	var g: int = map.grid[t.y][t.x]
+	return g == map.TILE_TREE or g == map.TILE_ROCK or g == map.TILE_ORE
+
+
+## Добыча улья истощает тайл: дерево срубается, скала крошится.
+func _hive_consume_resource(t: Vector2i) -> void:
+	if map.grid[t.y][t.x] == map.TILE_TREE:
+		map.grid[t.y][t.x] = map.TILE_GRASS
+		map.tree_size.erase(t)
+		map.stumps[t] = true
+	else:
+		map.rock_hp[t] = float(map.rock_hp.get(t, 60.0)) - 30.0
+		if float(map.rock_hp[t]) <= 0.0:
+			map.grid[t.y][t.x] = map.TILE_GRASS
+			map.rock_hp.erase(t)
+	map.note_edit(t)
+	terrain_dirty = true
+
+
+## Улей бьют (удар героя по позиции улья в дуге).
+func _hive_take_damage(dmg: int) -> void:
+	hive["hp"] = float(hive["hp"]) - float(dmg)
+	if float(hive["hp"]) > 0.0:
+		return
+	var level: int = int(hive["level"])
+	var loot: Dictionary = HiveSim.loot_for(level)
+	for key in loot:
+		res[key] = float(res.get(key, 0.0)) + float(loot[key])
+	events.append({"type": "hive_destroyed", "level": level})
+	_chron("chron.hive_destroyed", str(level))
+	# юниты без дома бросают роли и разбегаются (остаются как волна)
+	for r in raiders:
+		if not String(r.get("role", "")).is_empty():
+			r.erase("role")
+			r["mode"] = "advance"
+	hive = {"active": false, "respawn_day": float(day) + float(HiveSim.RESPAWN_DAYS),
+			"pos": hive.get("pos", Vector2.ZERO), "tile": hive.get("tile", map.anomaly_tile)}
+
+
 ## Удар героя в городе (участие в обороне): дуга в сторону курсора. Возвращает, скольких задел.
 func hero_slash(origin_px: Vector2, facing: Vector2, range_px: float, arc_deg: float, dmg: int) -> int:
 	var hits := 0
 	var hero_tile: Vector2i = map.tile_of_px(origin_px)
+	# v1.44: улей — тоже цель удара (разорение с наградой)
+	if not hive.is_empty() and bool(hive.get("active", false)):
+		var to_hive: Vector2 = (hive["pos"] as Vector2) - origin_px
+		if to_hive.length() <= range_px + float(map.ts) * 0.6 \
+				and absf(facing.angle_to(to_hive)) <= deg_to_rad(arc_deg) / 2.0:
+			_hive_take_damage(dmg)
+			hits += 1
 	for r in raiders.duplicate():
 		var to: Vector2 = (r["pos"] as Vector2) - origin_px
 		if to.length() > range_px + float(r["p"]["radius"]):
@@ -449,7 +755,7 @@ func hero_slash(origin_px: Vector2, facing: Vector2, range_px: float, arc_deg: f
 			continue
 		_hit_raider(r, dmg, hero_tile)
 		hits += 1
-	if raid_active and raiders.is_empty():
+	if raid_active and _wave_raiders_left() == 0:
 		_raid_end(true)
 	return hits
 
@@ -463,7 +769,7 @@ func hero_shoot(origin_px: Vector2, facing: Vector2, range_px: float, dmg: int) 
 	if absf(facing.angle_to(to)) > 0.3:
 		return 0
 	_hit_raider(target, dmg, map.tile_of_px(origin_px))
-	if raid_active and raiders.is_empty():
+	if raid_active and _wave_raiders_left() == 0:
 		_raid_end(true)
 	return 1
 
@@ -474,7 +780,8 @@ func hero_shoot(origin_px: Vector2, facing: Vector2, range_px: float, dmg: int) 
 func _raid_end(defended: bool) -> void:
 	var kind := _raid_kind
 	raid_active = false
-	raiders.clear()
+	# v1.44: юнитов улья не вычищаем — они живут вне волны
+	raiders = raiders.filter(func(r): return not String(r.get("role", "")).is_empty())
 	var tcfg: Dictionary = cfg.get("threat", {})
 	if kind == "mutant":
 		if defended:

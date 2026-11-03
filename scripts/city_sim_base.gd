@@ -56,6 +56,10 @@ var _chop_progress := {}        # недоруб героем: тайл -> уд�
 
 # --- M5: угрозы -----------------------------------------------------------
 var raiders: Array = []         # мутанты текущей волны
+# v1.44 («Новый мир v2» этап 2): УЛЕЙ мутантов у аномалии — растёт от сбора
+# ресурсов, шлёт волны (сильнее с успехом), роняется героем и отрастает
+var hive: Dictionary = {}       # {active, pos, hp, level, stock, gathered, waves, next_wave_day, respawn_day, roles}
+var hero_tracks: Array = []     # следы героя [{pos, t}] — скауты улья читают
 var raid_active := false        # идёт атака/осада
 var raid_siege := false         # текущая волна — осада (ломает здания)
 var raid_count := 0             # всего волн с начала игры

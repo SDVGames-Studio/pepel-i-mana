@@ -156,6 +156,14 @@ const BLOCKS := [
 	"_test_npc_cities_hydro",
 ]],
 
+	["res://tests/test_hive.gd", [
+	"_test_hive_levels",
+	"_test_hive_tracks",
+	"_test_hive_loot",
+	"_test_hive_sim_integration",
+	"_test_hive_save",
+]],
+
 	["res://tests/test_dungeon2.gd", [
 	"_test_dungeon2_assets",
 	"_test_dungeon2_spots",
