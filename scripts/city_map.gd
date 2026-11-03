@@ -17,7 +17,16 @@ const TREE_LARGE := 3
 var w := 0
 var h := 0
 var ts := 32
-var grid_ver := 0             # v1.28.1: версия масок воды/скал — инкремент при выработке породы
+var grid_ver := 0
+var edited: Array = []        # v1.43: тайлы правок сетки — чанкам запечки
+
+
+## Отметить правку сетки (для точечной перевыпечки чанка запечки).
+func note_edit(t: Vector2i) -> void:
+	if not edited.has(t):
+		edited.append(t)
+	if edited.size() > 128:
+		edited.pop_front()             # v1.28.1: версия масок воды/скал — инкремент при выработке породы
 var grid: Array = []            # grid[y][x] -> TILE_*
 var road := {}                  # Vector2i -> true: дороги (M6) — ускорение и приоритет путей
 var wear := {}                  # Vector2i -> float: износ троп (M6) — город сам строит дороги там, где ходят
@@ -55,6 +64,10 @@ func generate(seed_value: int, params: Dictionary, hydro := {}) -> void:
 	w = int(params["map_w"])
 	h = int(params["map_h"])
 	ts = int(params["tile_size"])
+	# v1.43: автотесты гоняют малые карты (CI — десятки генераций)
+	if OS.has_environment("PEPEL_TEST_MAPS"):
+		w = mini(w, 96)
+		h = mini(h, 72)
 	road = {}
 	wear = {}
 	rock_hp = {}
@@ -77,12 +90,26 @@ func generate(seed_value: int, params: Dictionary, hydro := {}) -> void:
 	if bool(hydro.get("swamp", false)):
 		swamps_n = maxi(swamps_n, 1)
 	for attempt in 20:
+		var _t0 := Time.get_ticks_msec()
 		_generate_once(seed_value + attempt * 1013, params, river_on, lakes_n, swamps_n)
-		if _connected():
+		var _t1 := Time.get_ticks_msec()
+		classify_water()
+		var _t15 := Time.get_ticks_msec()
+		mark_fords()
+		var _t2 := Time.get_ticks_msec()
+		if OS.get_environment("GEN_DEBUG") != "":
+			var wc := 0
+			for yy in h:
+				for xx in w:
+					if grid[yy][xx] == TILE_WATER:
+						wc += 1
+			print("[gen-water] water tiles=%d" % wc)
+		var _ok := _connected()
+		if OS.get_environment("GEN_DEBUG") != "":
+			print("[gen] attempt %d: gen %d ms, classify %d ms, fords %d ms, connected=%s" % [
+					attempt, _t1 - _t0, _t15 - _t1, _t2 - _t15, _ok])
+		if _ok:
 			break
-	classify_water()
-	mark_fords()
-	_setup_astar()
 	mark_terrain_solid()
 
 
@@ -91,15 +118,24 @@ func generate(seed_value: int, params: Dictionary, hydro := {}) -> void:
 ## только через мост» — брод v1.29.1 отменён). Переправа — только мосты
 ## (M14-I). Деревья проходимы по дизайну — на них стоят лесорубы и герой
 ## при рубке.
+var astar_ready := false   # v1.43: рёбра A* построены (лениво, первым запросом)
+
+
 func mark_terrain_solid() -> void:
-	if astar == null:
+	# v1.43: сплошные собираются словарём и отдаются в rebuild — точки и
+	# рёбра строятся одним проходом (вместо ~1 млн вызовов set/disconnect)
+	if astar != null and astar_ready:
 		return
+	_setup_astar()
+	var solids := {}
 	for y in h:
 		for x in w:
 			var t := Vector2i(x, y)
-			var solid: bool = not is_nature_walkable(t)
-			astar.set_point_solid(t, solid)
-			astar_raider.set_point_solid(t, solid)
+			if not is_nature_walkable(t):
+				solids[t] = true
+	astar.rebuild(solids)
+	astar_raider.rebuild(solids)
+	astar_ready = true
 	for p: Vector2i in bridges:
 		_apply_tile_weight(p)
 	for p: Vector2i in fords:
@@ -133,12 +169,14 @@ func classify_water() -> void:
 			if grid[y][x] != TILE_WATER or seen.has(start):
 				continue
 			var queue: Array = [start]
+			var qi := 0
 			seen[start] = true
 			var comp: Array = []
 			var mn: Vector2i = start
 			var mx: Vector2i = start
-			while not queue.is_empty():
-				var t: Vector2i = queue.pop_back()
+			while qi < queue.size():
+				var t: Vector2i = queue[qi]
+				qi += 1
 				comp.append(t)
 				mn = Vector2i(mini(mn.x, t.x), mini(mn.y, t.y))
 				mx = Vector2i(maxi(mx.x, t.x), maxi(mx.y, t.y))
@@ -183,6 +221,7 @@ func is_solid(p: Vector2i, for_raider := false) -> bool:
 ## Пересчитать сплошность одной клетки после изменения рельефа
 ## (мост построен, скала выработана, вскрыта руда).
 func refresh_tile_solid(p: Vector2i) -> void:
+	ensure_astar()
 	if astar != null and in_bounds(p):
 		var solid: bool = not is_nature_walkable(p)
 		astar.set_point_solid(p, solid)
@@ -305,6 +344,7 @@ func mark_fords() -> void:
 			if grid[y][x] != TILE_WATER or String(water_kind.get(start, "")) != "river" or seen.has(start):
 				continue
 			var comp: Array = [start]
+			var comp_set := {start: true}
 			seen[start] = true
 			var qi := 0
 			while qi < comp.size():
@@ -312,15 +352,30 @@ func mark_fords() -> void:
 				qi += 1
 				for d in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
 					var n: Vector2i = t + d
-					if in_bounds(n) and grid[n.y][n.x] == TILE_WATER 							and not seen.has(n) and String(water_kind.get(n, "")) == "river":
-						seen[n] = true
+					if in_bounds(n) and not comp_set.has(n) 							and grid[n.y][n.x] == TILE_WATER 							and String(water_kind.get(n, "")) == "river":
+						comp_set[n] = true
+						seen[n] = true   # v1.43-фикс: без этого каждый тайл реки
+						                 # перезапускал полный обход компоненты
 						comp.append(n)
-			comp.sort_custom(func(a, b) -> bool:
-				return a.y < b.y or (a.y == b.y and a.x < b.x))
 			var want := maxi(1, int(comp.size() / 10))
 			for i in want:
 				var idx := clampi(int(float(i) * float(comp.size()) / float(want)), 0, comp.size() - 1)
-				fords[comp[idx]] = true
+				# v1.43: брод — ПЯТНО через всю реку (радиус 5 от семени), а не
+				# один тайл: в реку шириной 4-5 тайлов иначе не войти с берега
+				var seed_tile: Vector2i = comp[idx]
+				var blob: Array = [seed_tile]
+				var blob_set := {seed_tile: true}
+				var qi2 := 0
+				while qi2 < blob.size():
+					var t2: Vector2i = blob[qi2]
+					qi2 += 1
+					for d2 in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
+						var n2: Vector2i = t2 + d2
+						if in_bounds(n2) and not blob_set.has(n2) 								and comp_set.has(n2) 								and Vector2(n2).distance_to(Vector2(seed_tile)) <= 5.5:
+							blob_set[n2] = true
+							blob.append(n2)
+				for t3: Vector2i in blob:
+					fords[t3] = true
 
 
 func _trim_river_stubs(keep: Dictionary) -> void:
@@ -781,6 +836,12 @@ func _clear_around(center: Vector2i, radius: int) -> void:
 ## КАЖДЫЙ тайл высоты>0 обязан быть достижим от старта.
 func _connected() -> bool:
 	var reachable := _reachable_from(spawn_tile)
+	if OS.get_environment("GEN_DEBUG") != "":
+		var ok_a: bool = reachable.has(anomaly_tile)
+		var ok_e: bool = reachable.has(world_exit_tile)
+		print("[gen-debug] reachable=%d/%d anomaly=%s exit=%s plateau_ok=%s" % [
+				reachable.size(), w * h, ok_a, ok_e,
+				reachable.size() >= w * h / 2])
 	if not (reachable.has(anomaly_tile) and reachable.has(world_exit_tile) \
 			and reachable.size() >= w * h / 2):
 		return false
@@ -793,15 +854,22 @@ func _connected() -> bool:
 func _reachable_from(from: Vector2i) -> Dictionary:
 	var seen := {from: true}
 	var queue: Array = [from]
-	while not queue.is_empty():
-		var p: Vector2i = queue.pop_front()
+	var qi := 0
+	while qi < queue.size():
+		var p: Vector2i = queue[qi]
+		qi += 1
 		for d in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
 			var n: Vector2i = p + d
-			if in_bounds(n) and not seen.has(n) and is_nature_walkable(n) \
-					and step_ok(p, n):
+			if not in_bounds(n) or seen.has(n):
+				continue
+			# v1.43: брод — легальная переправа пешком (в связности учитываем)
+			var walk := is_nature_walkable(n) or fords.has(n)
+			if walk and step_ok(p, n):
 				seen[n] = true
 				queue.append(n)
 	return seen
+
+
 
 
 ## Оборонный бонус высоты (№113, число — data/balance.json → plateau):
@@ -963,7 +1031,14 @@ func add_wear(p: Vector2i, amount: float) -> void:
 
 ## Путь между тайлами в пиксельных центрах; пустой, если цели нет.
 ## for_raider — путь мутанта: закрытые ворота для него сплошные (v1.26).
+## Ленивая сборка A*: первый запрос пути строит рёбра одним проходом.
+func ensure_astar() -> void:
+	if not astar_ready:
+		mark_terrain_solid()
+
+
 func path_px(from_px: Vector2, to_tile: Vector2i, for_raider := false) -> PackedVector2Array:
+	ensure_astar()
 	var from_tile := Vector2i(from_px / ts)
 	if not in_bounds(from_tile) or not in_bounds(to_tile) or not is_walkable(to_tile):
 		return PackedVector2Array()

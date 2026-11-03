@@ -26,8 +26,17 @@ var _water_lake := Color("#3f87b5")   # v1.29.1: озеро — яркая си�
 var _water_river := Color("#57b2d4")  # v1.29.1: река — светло-бирюзовая
 var _rock_hp_default := 80.0
 var _vp: SubViewport = null
-var _drawer: Node2D = null
-var _tex: Texture2D = null
+var _drawer: Node2D = null      # ЦЕЛЕВОЙ холст рисования: полный слой или кисть чанка
+var _bs := 32                   # v1.43: px/тайл в запечке (большие карты — 8)
+# v1.43: запечка ЧАНКАМИ 32×32 тайла (карта ×4 = 27к тайлов, полная
+# перевыпечка стоила бы ~1.2 с; чанк — ~10 мс). Чанки копируются из
+# кисти-вьюпорта в отдельные текстуры и кэшируются между визитами.
+const CHUNK_TILES := 32
+var _chunks: Dictionary = {}        # Vector2i(чанк) -> Texture2D
+var _chunk_queue: Array = []        # очередь выпечки (прогрессивно, по N за кадр)
+var _brushes: Array = []            # [{vp, drawer, wait}] — 2 кисти в конвейере
+var _cache_key := ""                # ключ кэша запечки (Game.city_bake_cache)
+var _tex: Texture2D = null          # устарело (оставлено для совместимости веток)
 # v1.28.1: второй слой — «надстройки» (зоны/дороги/плиты). Они меняются
 # часто (обустройство полей), а полная перевыпечка земли (тысячи команд
 # травы) стоила ~0.3 с и давала регулярные фризы.
@@ -36,7 +45,7 @@ var _drawer2: Node2D = null
 var _tex2: Texture2D = null
 
 
-func setup(city_map, city_cfg: Dictionary, city_sim = null) -> void:
+func setup(city_map, city_cfg: Dictionary, city_sim = null, cache_key := "") -> void:
 	map = city_map
 	sim = city_sim
 	var c: Dictionary = city_cfg["colors"]
@@ -58,30 +67,81 @@ func setup(city_map, city_cfg: Dictionary, city_sim = null) -> void:
 	_water_lake = colors.get("water_lake", _water_lake)
 	_water_river = colors.get("water_river", _water_river)
 	_rock_hp_default = float(city_cfg.get("mountain", {}).get("hp", 80.0))
-	# духовка: SubViewport размером с карту, содержимое — те же тайлы.
-	# Сама выпечка — в _ready(): до входа в дерево SubViewport не рендерится
-	# (UPDATE_ONCE сгорает впустую — на этом ловились пустые текстуры).
+	# v1.43: масштаб запечки — большие карты пекутся 8px/тайл (LINEAR при
+	# уменьшении, глобальный NEAREST при растяжении — чётко и в 16 раз
+	# дешевле по памяти); мелкие карты — 1:1 как раньше
+	_bs = 8 if maxi(map.w, map.h) > 150 else 32
+	var k := float(_bs) / float(map.ts)
+	# духовка земли: ЧАНКИ (см. rebake) через 2 кисти-вьюпорта; полная
+	# выпечка — прогрессивно, по несколько чанков за кадр, без фриза
 	_vp = SubViewport.new()
-	_vp.size = Vector2i(map.w * map.ts, map.h * map.ts)
+	_vp.size = Vector2i(map.w * _bs, map.h * _bs)
 	_vp.transparent_bg = true
 	_vp.render_target_update_mode = SubViewport.UPDATE_DISABLED
-	_vp.canvas_item_default_texture_filter = Viewport.DEFAULT_CANVAS_ITEM_TEXTURE_FILTER_NEAREST
+	_vp.canvas_item_default_texture_filter = Viewport.DEFAULT_CANVAS_ITEM_TEXTURE_FILTER_LINEAR
+	_vp.canvas_transform = Transform2D().scaled(Vector2(k, k))
 	add_child(_vp)
 	_drawer = Node2D.new()
-	_drawer.draw.connect(_draw_tiles)
+	_full_drawer = _drawer
+	_drawer.draw.connect(_draw_full)
 	_vp.add_child(_drawer)
-	_tex = _vp.get_texture()
 	_vp2 = SubViewport.new()
-	_vp2.size = _vp.size
+	_vp2.size = Vector2i(map.w * _bs, map.h * _bs)
 	_vp2.transparent_bg = true
 	_vp2.render_target_update_mode = SubViewport.UPDATE_DISABLED
-	_vp2.canvas_item_default_texture_filter = Viewport.DEFAULT_CANVAS_ITEM_TEXTURE_FILTER_NEAREST
+	_vp2.canvas_item_default_texture_filter = Viewport.DEFAULT_CANVAS_ITEM_TEXTURE_FILTER_LINEAR
+	_vp2.canvas_transform = Transform2D().scaled(Vector2(k, k))
 	add_child(_vp2)
 	_drawer2 = Node2D.new()
 	_drawer2.draw.connect(_draw_static_content)
 	_vp2.add_child(_drawer2)
 	_tex2 = _vp2.get_texture()
+	# кисти чанков (2 в конвейере: пока один копируется, второй рисуется)
+	for i in 2:
+		var vp := SubViewport.new()
+		vp.size = Vector2i(CHUNK_TILES * _bs, CHUNK_TILES * _bs)
+		vp.transparent_bg = true
+		vp.render_target_update_mode = SubViewport.UPDATE_DISABLED
+		vp.canvas_item_default_texture_filter = Viewport.DEFAULT_CANVAS_ITEM_TEXTURE_FILTER_LINEAR
+		add_child(vp)
+		var dr := Node2D.new()
+		dr.draw.connect(_draw_chunkBrush.bind(i))
+		vp.add_child(dr)
+		_brushes.append({"vp": vp, "drawer": dr, "wait": Vector2i(-9, -9)})
+	# кэш запечки между визитами (Game — автозагрузка): та же версия сетки
+	# и тот же масштаб — чанки переиспользуются, вход в город без выпечки
+	_cache_key = String(cache_key)
+	var Game: Node = _game()
+	if Game != null and _cache_key != "":
+		var cached: Dictionary = Game.city_bake_cache.get(_cache_key, {})
+		if int(cached.get("grid_ver", -9)) == int(map.grid_ver) and int(cached.get("bs", 0)) == _bs 				and (cached.get("chunks", {}) as Dictionary).size() >= _chunk_count():
+			_chunks = cached["chunks"]
+			_chunk_queue.clear()
 	queue_redraw()
+
+
+var _cache_key_in := ""
+var _full_drawer: Node2D = null   # холст полного слоя (для возврата из кисти)
+
+
+func _game():
+	var tree := get_tree()
+	if tree == null or tree.root == null:
+		return null
+	var g := tree.root.get_node_or_null("Game")
+	return g
+
+
+func _chunk_count() -> int:
+	return ceili(float(map.w) / CHUNK_TILES) * ceili(float(map.h) / CHUNK_TILES)
+
+
+func _chunk_keys_all() -> Array:
+	var out: Array = []
+	for cy in ceili(float(map.h) / CHUNK_TILES):
+		for cx in ceili(float(map.w) / CHUNK_TILES):
+			out.append(Vector2i(cx, cy))
+	return out
 
 
 func _ready() -> void:
@@ -111,16 +171,32 @@ var _blob_cache_dirty := true  # с их рендером; версия сетк
                                # перевыпечки при изменениях рельефа
 
 
-func rebake(heavy := false, grid_ver := -1) -> void:
+## Перевыпечка. heavy: изменилась маска скал/воды (grid_ver) — пекутся
+## ЧАНКИ с правками (edited: Vector2i-список от city_map.note_edit);
+## без списка — все чанки (прогрессивно). Лёгкий вызов — только
+## надстройки (дёшево при любом размере карты).
+func rebake(heavy := false, grid_ver := -1, edited: Array = []) -> void:
 	if _vp == null:
 		return
 	_rebake_count += 1
 	if heavy and map != null and _blob_cache_ver != grid_ver:
 		_blob_cache_ver = grid_ver
 		_blob_cache_dirty = true
-		_drawer.queue_redraw()
-		_vp.render_target_update_mode = SubViewport.UPDATE_DISABLED
-		_vp.render_target_update_mode = SubViewport.UPDATE_ONCE
+		var wanted: Array = []
+		if edited.is_empty():
+			wanted = _chunk_keys_all()
+		else:
+			for e in edited:
+				var t := Vector2i(e)
+				var cc := Vector2i(int(t.x) / CHUNK_TILES, int(t.y) / CHUNK_TILES)
+				for dy in range(-1, 2):
+					for dx in range(-1, 2):
+						var nb := cc + Vector2i(dx, dy)
+						if nb.x >= 0 and nb.y >= 0 								and nb.x < ceili(float(map.w) / CHUNK_TILES) 								and nb.y < ceili(float(map.h) / CHUNK_TILES) 								and not wanted.has(nb):
+							wanted.append(nb)
+		for c in wanted:
+			if not _chunk_queue.has(c):
+				_chunk_queue.append(c)
 	# надстройки всегда перерисовываются — их мало (сотни команд)
 	_drawer2.queue_redraw()
 	_vp2.render_target_update_mode = SubViewport.UPDATE_DISABLED
@@ -128,17 +204,73 @@ func rebake(heavy := false, grid_ver := -1) -> void:
 	queue_redraw()
 
 
+## Конвейер чанков: кисть рисует (UPDATE_ONCE — кадр), следующий кадр
+## содержимое копируется в отдельную текстуру чанка и пишется в кэш.
+func _process(_delta: float) -> void:
+	if not is_inside_tree():
+		return
+	var done_all := _chunk_queue.is_empty() and _chunks.size() >= _chunk_count()
+	for b in _brushes:
+		var wait: Vector2i = b["wait"]
+		if wait.x > -8:
+			var img: Image = (b["vp"] as SubViewport).get_texture().get_image()
+			if img != null:
+				_chunks[wait] = ImageTexture.create_from_image(img)
+			b["wait"] = Vector2i(-9, -9)
+			queue_redraw()
+		elif not _chunk_queue.is_empty():
+			var c: Vector2i = _chunk_queue.pop_front()
+			if _chunks.has(c) and _chunk_queue.is_empty():
+				continue
+			b["chunk"] = c
+			var k := float(_bs) / float(map.ts)
+			var xf := Transform2D().scaled(Vector2(k, k))
+			xf.origin = -Vector2(float(c.x), float(c.y)) * float(CHUNK_TILES * map.ts) * k
+			(b["vp"] as SubViewport).canvas_transform = xf
+			(b["drawer"] as Node2D).queue_redraw()
+			(b["vp"] as SubViewport).render_target_update_mode = SubViewport.UPDATE_DISABLED
+			(b["vp"] as SubViewport).render_target_update_mode = SubViewport.UPDATE_ONCE
+			b["wait"] = c
+	# кэш: только когда ВСЁ пропечено
+	if done_all and _cache_key != "":
+		var g = _game()
+		if g != null:
+			var cache: Dictionary = g.city_bake_cache
+			cache[_cache_key] = {"grid_ver": int(map.grid_ver), "bs": _bs,
+					"chunks": _chunks, "stamp": Time.get_ticks_msec()}
+			while cache.size() > 2:
+				var oldest := ""
+				var oldest_t := 0x7fffffff
+				for key in cache:
+					if key != _cache_key and int(cache[key].get("stamp", 0)) < oldest_t:
+						oldest_t = int(cache[key].get("stamp", 0))
+						oldest = key
+				if oldest == "":
+					break
+				cache.erase(oldest)
+
+
 func _draw() -> void:
 	if OS.get_environment("TERRAIN_DIRECT") != "":
 		# временная ветка сравнения (v1.21.5): рисуем тайлы напрямую, без духовки
 		var keep := _drawer
 		_drawer = self
-		_draw_tiles()
+		_draw_tiles(Rect2i(0, 0, map.w, map.h))
 		_drawer = keep
 		return
-	if _tex == null or map == null:
+	if map == null:
 		return
-	draw_texture_rect(_tex, Rect2(Vector2.ZERO, Vector2(map.w * map.ts, map.h * map.ts)), false)
+	var cts := float(CHUNK_TILES * map.ts)
+	for cy in ceili(float(map.h) / CHUNK_TILES):
+		for cx in ceili(float(map.w) / CHUNK_TILES):
+			var key := Vector2i(cx, cy)
+			var rect := Rect2(float(cx) * cts, float(cy) * cts, cts, cts)
+			var tex: Texture2D = _chunks.get(key)
+			if tex != null:
+				draw_texture_rect(tex, rect, false)
+			else:
+				# чанк ещё печётся — плоская земля без деталей
+				draw_rect(rect, _grass_shades[0].darkened(0.05) if not _grass_shades.is_empty() 						else Color("#5d7a3a"))
 	if _tex2 != null:
 		draw_texture_rect(_tex2, Rect2(Vector2.ZERO, Vector2(map.w * map.ts, map.h * map.ts)), false)
 
@@ -175,14 +307,37 @@ func _rebuild_rock_cache() -> void:
 		_blob_cache_dirty = false
 
 
-func _draw_tiles() -> void:
+## Полный слой (весь холст духовки) — ныне используется как «стряхивание»
+## старого пути; содержимое собирают ЧАНКИ (см. _process/_draw_chunkBrush).
+func _draw_full() -> void:
+	_draw_tiles(Rect2i(0, 0, map.w if map != null else 0, map.h if map != null else 0))
+
+
+## Кисть чанка i: рисует ТОЛЬКО тайлы своего региона в холст кисти;
+## блобы скал/плато рисуются целиком — вьюпорт сам отсекает лишнее.
+func _draw_chunkBrush(i: int) -> void:
+	var b: Dictionary = _brushes[i]
+	var cc := Vector2i(b.get("chunk", Vector2i(-1, -1)))
+	if cc.x < 0:
+		return
+	_drawer = b["drawer"]
+	var region := Rect2i(cc.x * CHUNK_TILES, cc.y * CHUNK_TILES, CHUNK_TILES, CHUNK_TILES)
+	_draw_tiles(region)
+	_drawer = _full_drawer
+
+
+func _draw_tiles(region: Rect2i) -> void:
 	if map == null:
 		return
 	_ensure_views()
 	var ts := float(map.ts)
+	var x0 := maxi(0, region.position.x)
+	var y0 := maxi(0, region.position.y)
+	var x1 := mini(map.w, region.end.x)
+	var y1 := mini(map.h, region.end.y)
 	# проход 1: земля (трава/осыпи) — вода и скалы рисуются поверх
-	for y in map.h:
-		for x in map.w:
+	for y in range(y0, y1):
+		for x in range(x0, x1):
 			var tile: int = map.grid[y][x]
 			var rect := Rect2(x * map.ts, y * map.ts, map.ts, map.ts)
 			match tile:

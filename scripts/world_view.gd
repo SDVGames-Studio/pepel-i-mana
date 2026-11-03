@@ -55,13 +55,21 @@ var _fog_tex: Texture2D = null
 var _fog_hts := 16.0           # полтайла на пиксель тумана
 
 
+var _bake_k := 1.0             # кап запечки (v1.43: карта ×5 — текстуры ≤4096)
+
+
 func setup(world_map) -> void:
 	map = world_map
+	# v1.43 (карта ×5): текстуры не растут с картой — кап 4096 по длинной
+	# стороне, канвас вьюпорта масштабируется, _draw растягивает обратно
+	_bake_k = minf(1.0, 4096.0 / float(maxi(map.w, map.h) * map.ts))
 	_vp = SubViewport.new()
-	_vp.size = Vector2i(map.w * map.ts, map.h * map.ts)
+	_vp.size = Vector2i(maxi(1, int(float(map.w * map.ts) * _bake_k)),
+			maxi(1, int(float(map.h * map.ts) * _bake_k)))
 	_vp.transparent_bg = true
 	_vp.render_target_update_mode = SubViewport.UPDATE_DISABLED
-	_vp.canvas_item_default_texture_filter = Viewport.DEFAULT_CANVAS_ITEM_TEXTURE_FILTER_NEAREST
+	_vp.canvas_item_default_texture_filter = Viewport.DEFAULT_CANVAS_ITEM_TEXTURE_FILTER_LINEAR
+	_vp.canvas_transform = Transform2D().scaled(Vector2(_bake_k, _bake_k))
 	add_child(_vp)
 	_sd = Node2D.new()
 	_sd.draw.connect(_draw_static)
@@ -201,6 +209,14 @@ func _rivers_into(canvas: CanvasItem, ts: float) -> void:
 ## ОБЛАКА (светло-серые кучные массы). Разрешение запечки 3→6 суб-пикс.
 
 const BAKE_SUB := 6   # суб-пикселей на тайл при выпечке (v1.40.1: резче, «мыла» меньше)
+const BAKE_PIXEL_BUDGET := 1_400_000   # v1.43: бюджет CPU-прохода рельефа
+const BAKE_CAP := 4096.0               # v1.43: кап длинной стороны текстур карты
+
+
+## Суб-пикселей на тайл: бюджет ~1.4 Мп на CPU-проход (карта ×5 —
+## суб-пиксели автоматически ниже, финал всё равно упирается в кап 4096).
+func _bake_sub() -> int:
+	return clampi(int(sqrt(float(BAKE_PIXEL_BUDGET) / float(map.w * map.h))), 2, BAKE_SUB)
 const BAKE_ROCK := Color("#8a8276")   # скальный тон вершин
 
 
@@ -251,12 +267,13 @@ func _bake_terrain() -> void:
 			rowc[x] = c.lightened(0.02 * float(_hash2(x, y, 5) - 2))
 		cols.append(rowc)
 		wmask.append(roww)
-	var iw := int(map.w) * BAKE_SUB
-	var ih := int(map.h) * BAKE_SUB
+	var sub := _bake_sub()
+	var iw := int(map.w) * sub
+	var ih := int(map.h) * sub
 	# проход 1: сглаженное поле высот (сосед для светотени — чтение из сетки)
 	var hgrid: Array = []
 	for py in ih:
-		var fy := (float(py) + 0.5) / float(BAKE_SUB) - 0.5
+		var fy := (float(py) + 0.5) / float(sub) - 0.5
 		var row: Array = []
 		row.resize(iw)
 		for px in iw:
@@ -266,14 +283,14 @@ func _bake_terrain() -> void:
 	# проход 2: цвет пикселя — сглаженный биом + светотень + высота + мель
 	var img := Image.create_empty(iw, ih, false, Image.FORMAT_RGB8)
 	for py in ih:
-		var fy := (float(py) + 0.5) / float(BAKE_SUB) - 0.5
+		var fy := (float(py) + 0.5) / float(sub) - 0.5
 		for px in iw:
 			var fx := (float(px) + 0.5) / float(BAKE_SUB) - 0.5
 			var col: Color = _bilinear_col(cols, fx, fy)
 			var wmk := clampf(_bilinear_f(wmask, fx, fy), 0.0, 1.0)
 			var land := 1.0 - wmk
 			var hgt := float(hgrid[py][px])
-			var nw := float(hgrid[maxi(0, py - BAKE_SUB)][maxi(0, px - BAKE_SUB)])
+			var nw := float(hgrid[maxi(0, py - sub)][maxi(0, px - sub)])
 			# свет с северо-запада — ТОЛЬКО на суше; вода держит свой цвет
 			# (v1.35.2: раньше множитель «не рельефить воду» чернил воду
 			# до чёрной массы — внутренние моря читались дырой в карте)
@@ -284,7 +301,9 @@ func _bake_terrain() -> void:
 			# светлая мель у кромки воды
 			col = col.lightened(0.12 * (1.0 - absf(wmk * 2.0 - 1.0)))
 			img.set_pixel(px, py, col)
-	img.resize(map.w * map.ts, map.h * map.ts, Image.INTERPOLATE_BILINEAR)
+	var tw := maxi(1, int(float(map.w * map.ts) * _bake_k))
+	var th := maxi(1, int(float(map.h * map.ts) * _bake_k))
+	img.resize(tw, th, Image.INTERPOLATE_BILINEAR)
 	map._terrain_bake = ImageTexture.create_from_image(img)
 
 
@@ -361,7 +380,9 @@ func _roads_into(canvas: CanvasItem, ts: float) -> void:
 func _build_fog_layer() -> void:
 	if map == null:
 		return
-	_fog_hts = map.ts / 2.0
+	# v1.43: на большой карте туман реже (кап 3072 по длинной стороне) —
+	# вся математика кружков/стирания ниже идёт от _fog_hts, потому ровно
+	_fog_hts = minf(map.ts / 2.0, BAKE_CAP * 0.75 / float(maxi(map.w, map.h)))
 	var fw := int(map.w * _fog_hts)
 	var fh := int(map.h * _fog_hts)
 	_fog_img = Image.create_empty(fw, fh, false, Image.FORMAT_RGBA8)

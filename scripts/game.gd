@@ -21,6 +21,7 @@ const BALANCE_CFG_PATH := "res://data/balance.json"
 var inventory: Array = []        # [{id: String, count: int}]
 var last_run_death := false      # true, если последний забег закончился гибелью
 var city_sim = null              # city_sim.gd, нетипизированно (грабли GDScript 4)
+var city_bake_cache := {}   # v1.43: LRU-кэш чанков запечки городов (большие карты)
 var magic = null                 # magic.gd — школы/рецепты/заклинания (M3)
 var skills = null                # skills.gd — XP, уровни, дерево навыков героя (M7)
 var world_map = null             # world_map.gd — карта мира (M8)

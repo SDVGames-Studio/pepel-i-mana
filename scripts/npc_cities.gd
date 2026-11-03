@@ -60,10 +60,16 @@ func _create(poi: Dictionary, mature_days: int) -> void:
 	var poi_id := int(poi["id"])
 	var seed_value := _city_seed(poi_id)
 	var cmap = load(CITY_MAP_SCRIPT).new()
-	# гидро-контекст клетки поселения (№117): река на глобали = река в городе
-	cmap.generate(seed_value, city_cfg, world_map.tile_hydro(poi["tile"]))
+	# гидро-контекст клетки поселения (№117): река на глобали = река в городе.
+	# v1.43: у поселений СВОЙ размер карты (по умолчанию 96×72) — генерация
+	# и A* ×10-20 городов неподъёмны на городской ×4; растут они как игрок
+	var npc_cfg: Dictionary = city_cfg.duplicate(true)
+	if ncfg().has("map_w"):
+		npc_cfg["map_w"] = int(ncfg()["map_w"])
+		npc_cfg["map_h"] = int(ncfg().get("map_h", npc_cfg["map_w"]))
+	cmap.generate(seed_value, npc_cfg, world_map.tile_hydro(poi["tile"]))
 	var sim = load(CITY_SIM_SCRIPT).new()
-	sim.setup(cmap, city_cfg, int(ncfg().get("start_residents", 8)),
+	sim.setup(cmap, npc_cfg, int(ncfg().get("start_residents", 8)),
 			String(ncfg().get("start_level", "normal")))
 	sim.autonomous = true   # живут сами, без старосты (№120)
 	# стартовый посёлок (правки приёмки v1.41.1): избы и фермы уже стоят —
@@ -232,6 +238,10 @@ func defense_of(poi_id: int) -> float:
 ## Блок сейва: на каждый город — кошелёк/фракция/сид + город целиком
 ## (та же форма, что блок "city" игрока).
 func save_block() -> Dictionary:
+	# v1.43 (большие карты): поселение хранит СИД, а не по-тайловую карту —
+	# карта регенерируется детерминированно при загрузке (иначе сейв
+	# раздувался на ×4 площадь × число городов). Правки карты поселения
+	# (выработка/пни) не сохраняются — это фон, деревья отрастают.
 	var sg: Script = load(SAVE_SCRIPT)
 	var out := {}
 	for poi_id in cities:
@@ -240,13 +250,14 @@ func save_block() -> Dictionary:
 			"faction": String(e["faction"]),
 			"seed": int(e["seed"]),
 			"coins": int(e["coins"]),
-			"city": sg._city_block(e["sim"]),
+			"city": sg._city_block(e["sim"], false),
 		}
 	return out
 
 
 ## Восстановление из блока сейва (после setup): города пересобирает
-## save_game._build_city. Пустой блок — просто пусто.
+## save_game._build_city. Пустой блок — просто пусто. v1.43: худому блоку
+## нужен сид + гидро клетки (тайл ищется в pois по id).
 func load_block(block: Dictionary) -> void:
 	cities = {}
 	if world_map == null:
@@ -254,7 +265,15 @@ func load_block(block: Dictionary) -> void:
 	var sg: Script = load(SAVE_SCRIPT)
 	for poi_id in block:
 		var d: Dictionary = block[poi_id]
-		var sim = sg._build_city(d.get("city", {}))
+		var poi_tile := Vector2i(-1, -1)
+		for poi in world_map.pois:
+			if int(poi.get("id", -1)) == int(poi_id):
+				poi_tile = Vector2i(poi["tile"])
+				break
+		var hydro: Dictionary = {}
+		if poi_tile.x >= 0:
+			hydro = world_map.tile_hydro(poi_tile)
+		var sim = sg._build_city(d.get("city", {}), int(d.get("seed", 0)), hydro)
 		if sim == null:
 			continue   # битый город — поселение пересоздастся ensure()
 		var entry := {

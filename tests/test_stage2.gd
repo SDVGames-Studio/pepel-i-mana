@@ -172,9 +172,11 @@ func _test_stage2_aspect2() -> void:
 					if nt.x >= 0 and nt.y >= 0 and nt.x < rm.w and nt.y < rm.h 							and not seen_r.has(nt) and rm.grid[nt.y][nt.x] == rm.TILE_WATER 							and rm.water_kind_at(nt) == "river":
 						seen_r[nt] = true
 						rc.append(nt)
-			if fords_n < 1 or fords_n > maxi(1, int(rc.size() / 10) + 1):
+			# v1.43: брод — ПЯТНО через всю реку (радиус 5): проверяем, что
+			# переправа есть и пятна занимают разумную долю реки (не вся река)
+			if fords_n < 6 or fords_n > rc.size():
 				per_river = false
-	_check(per_river, "на каждой реке 1 брод на ~10 тайлов (минимум один)")
+	_check(per_river, "на каждой реке есть брод-переправа (пятно через русло)")
 	var apart := true
 	for y3 in rm.h:
 		for x3 in rm.w:

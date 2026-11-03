@@ -153,8 +153,15 @@ func _test_world2_hydro() -> void:
 	var block: Dictionary = sv._world_block(map2, _fake_world_sim(map2))
 	_check(block["map"].has("river") and (block["map"]["river"] as Array).size() == map2.river.size(),
 			"русла уходят в сейв (%d)" % (block["map"]["river"] as Array).size())
-	_check(block["map"].has("water_kind") and (block["map"]["water_kind"] as Array).size() == map2.water_kind.size(),
-			"типы воды уходят в сейв (%d)" % (block["map"]["water_kind"] as Array).size())
+	# v1.43: типы воды хранятся строками-рядами — проверяем восстановление
+	var wk_rows: Array = block["map"]["water_kind"]
+	_check((wk_rows as Array).size() == map2.h,
+			"типы воды уходят в сейв (%d рядов)" % (wk_rows as Array).size())
+	var wk_before: int = map2.water_kind.size()
+	map2.water_kind = {}
+	sv._apply_kind_rows(map2, wk_rows)
+	_check(map2.water_kind.size() == wk_before,
+			"типы воды восстанавливаются из рядов (%d)" % map2.water_kind.size())
 	var hrows: Array = block["map"].get("height", [])
 	var h_ok: bool = hrows.size() == map2.h
 	if h_ok:

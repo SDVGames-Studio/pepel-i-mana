@@ -58,12 +58,16 @@ func setup(terrain_ref, cfg_colors: Dictionary) -> void:
 	colors = cfg_colors
 	for kind in ["lake", "river", "swamp"]:
 		_texs[kind] = Assets.tex("res://assets/sprites/env/n2_water_%s.png" % kind)
-	# духовка статики: размером с карту, NEAREST, UPDATE_ONCE
+	# духовка статики: v1.43 — большие карты пекутся 8px/тайл (LINEAR при
+	# уменьшении, глобальный NEAREST растягивает обратно в _draw)
+	var bs: int = 8 if maxi(map.w, map.h) > 150 else int(map.ts)
+	var k := float(bs) / float(map.ts)
 	_vp = SubViewport.new()
-	_vp.size = Vector2i(map.w * map.ts, map.h * map.ts)
+	_vp.size = Vector2i(map.w * bs, map.h * bs)
 	_vp.transparent_bg = true
 	_vp.render_target_update_mode = SubViewport.UPDATE_DISABLED
-	_vp.canvas_item_default_texture_filter = Viewport.DEFAULT_CANVAS_ITEM_TEXTURE_FILTER_NEAREST
+	_vp.canvas_item_default_texture_filter = Viewport.DEFAULT_CANVAS_ITEM_TEXTURE_FILTER_LINEAR
+	_vp.canvas_transform = Transform2D().scaled(Vector2(k, k))
 	add_child(_vp)
 	_sd = Node2D.new()
 	_sd.draw.connect(_draw_static)
