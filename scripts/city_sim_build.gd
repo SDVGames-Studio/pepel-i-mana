@@ -434,6 +434,7 @@ func _place_bridge(tile: Vector2i) -> bool:
 	for key in _def({"type": "bridge"})["cost"]:
 		res[key] = float(res[key]) - float(_def({"type": "bridge"})["cost"][key])
 	map.bridges[tile] = true
+	map.note_edit(tile)
 	map.refresh_tile_solid(tile)   # мост открывает воду для путей (этап 2)
 	_chron("chron.bridge")
 	events.append({"type": "bridge"})

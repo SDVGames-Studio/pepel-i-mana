@@ -210,6 +210,7 @@ func _test_plateau_combat() -> void:
 			restored = false
 	_check(restored and map2.stairs.size() == map.stairs.size(),
 			"карта из сейва восстанавливает высоты и лестницы (пути живы)")
+	map2.mark_terrain_solid()   # v1.43: A* строится лениво
 	var path_after: Array = map2.astar.get_id_path(map2.spawn_tile, stair)
 	_check(not path_after.is_empty(), "после загрузки путь на плато работает")
 

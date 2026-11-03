@@ -168,6 +168,7 @@ const BLOCKS := [
 
 
 func _initialize() -> void:
+	OS.set_environment("PEPEL_TEST_MAPS", "1")   # v1.43: малые карты в CI
 	var total := 0
 	var oks := 0
 	var mods := {}

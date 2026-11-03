@@ -192,10 +192,15 @@ static func _skills_block(game) -> Dictionary:
 	}
 
 
-static func _city_block(sim) -> Dictionary:
+static func _city_block(sim, include_map := true) -> Dictionary:
+	# v1.43 (большие карты): NPC города хранят только сид — карта
+	# детерминированно регенерируется при загрузке (иначе сейв ×20 городов
+	# × 110к тайлов раздувался до десятков МБ). Город игрока хранит всё:
+	# его правки (дороги, выработка, пни) — часть игры.
 	var m = sim.map
-	return {
-		"map": {
+	var out := {}
+	if include_map:
+		out["map"] = {
 			"w": int(m.w), "h": int(m.h), "ts": int(m.ts),
 			"grid": _grid_rows(m),
 			"anomaly": [m.anomaly_tile.x, m.anomaly_tile.y],
@@ -212,11 +217,11 @@ static func _city_block(sim) -> Dictionary:
 			"bridges": _tile_keys(m.bridges),
 			"fords": _tile_keys(m.fords),
 			"height": _tile_vals(m.height),
-			"stairs": _tile_keys(m.stairs),
-		},
-		"residents": _residents_save(sim),
-		"sim": _city_sim_block(sim),
-	}
+			"stairs": _tile_keys(m.stairs)
+		}
+	out["residents"] = _residents_save(sim)
+	out["sim"] = _city_sim_block(sim)
+	return out
 
 
 static func _city_sim_block(sim) -> Dictionary:
@@ -299,8 +304,8 @@ static func _world_block(wmap, wsim) -> Dictionary:
 			"fog": _tile_keys(wmap.fog),
 			"pois": wmap.pois,
 			"river": _tile_keys(wmap.river),
-			"water_kind": _tile_vals(wmap.water_kind),
-			"region": _tile_vals(wmap.region),
+			"water_kind": _kind_rows(wmap),
+			"region": _region_rows(wmap),
 			"sea_mode": String(wmap.sea_mode),
 			"height": _height_rows(wmap),
 		},
@@ -355,6 +360,59 @@ static func _grid_rows(m) -> Array:
 			row += str(int(m.grid[y][x]))
 		rows.append(row)
 	return rows
+
+
+## v1.43: регион/тип воды — строками по ряду (плотные слои ×5 карты:
+## списки [x,y,v] раздували сейв до мегабайт). Читатель терпит и старый
+## формат [x,y,v] (совместимость сейвов до v1.43).
+const WATER_KIND_NAMES := {".": "", "l": "lake", "r": "river", "s": "swamp", "e": "sea"}
+
+
+static func _kind_rows(wmap) -> Array:
+	var rows: Array = []
+	for y in wmap.h:
+		var row := ""
+		for x in wmap.w:
+			var kind := String(wmap.water_kind.get(Vector2i(x, y), ""))
+			row += String({".": ".", "lake": "l", "river": "r", "swamp": "s",
+					"sea": "e"}.get(kind, "."))
+		rows.append(row)
+	return rows
+
+
+const REGION_CHARS := {"snow": "a", "volcanic": "b", "desert": "c", "dead": "d"}
+const REGION_IDS := {"a": "snow", "b": "volcanic", "c": "desert", "d": "dead"}
+
+
+static func _region_rows(wmap) -> Array:
+	var rows: Array = []
+	for y in wmap.h:
+		var row := ""
+		for x in wmap.w:
+			var rid := String(wmap.region.get(Vector2i(x, y), ""))
+			row += String(REGION_CHARS.get(rid, "."))
+		rows.append(row)
+	return rows
+
+
+static func _apply_kind_rows(wmap, rows) -> void:
+	wmap.water_kind = {}
+	for y in mini(rows.size(), wmap.h):
+		var row: String = rows[y]
+		for x in mini(row.length(), wmap.w):
+			if WATER_KIND_NAMES.has(row[x]):
+				var name := String(WATER_KIND_NAMES[row[x]])
+				if name != "":
+					wmap.water_kind[Vector2i(x, y)] = name
+
+
+static func _apply_region_rows(wmap, rows) -> void:
+	wmap.region = {}
+	for y in mini(rows.size(), wmap.h):
+		var row: String = rows[y]
+		for x in mini(row.length(), wmap.w):
+			if REGION_IDS.has(row[x]):
+				wmap.region[Vector2i(x, y)] = String(REGION_IDS[row[x]])
 
 
 ## Высоты (v1.35.1): карта рельефа для светотени — строки округлённых
@@ -450,7 +508,7 @@ static func _apply_city(game, cd: Variant) -> String:
 
 ## Пересборка города из блока сейва (карта + симуляция + жители) — общий
 ## код города игрока и городов НПС (v1.41, «Мир v2» этап 3). null — блок битый.
-static func _build_city(cd: Variant):
+static func _build_city(cd: Variant, seed_value := 0, hydro := {}):
 	if not (cd is Dictionary):
 		return null
 	var cfg_v: Variant = _read_json(CITY_CFG_PATH)
@@ -458,9 +516,16 @@ static func _build_city(cd: Variant):
 		return null
 	var cfg: Dictionary = cfg_v
 	var map = load(CITY_MAP_SCRIPT).new()
-	map.generate(0, cfg)   # каркас (astar, размеры) — состояние перекрывается ниже
-	if _apply_city_map(map, cd.get("map", {}), cfg) != "":
-		return null
+	var md: Dictionary = cd.get("map", {}) if cd.get("map", {}) is Dictionary else {}
+	var lean: bool = (md.get("grid", []) as Array).is_empty()
+	if lean:
+		# v1.43: NPC город без карты в сейве — регенерация по сиду + гидро
+		# клетки (детерминировано, как при создании поселения)
+		map.generate(seed_value, cfg, hydro)
+	else:
+		map.generate(0, cfg)   # каркас (astar, размеры) — состояние перекрывается ниже
+		if _apply_city_map(map, md, cfg) != "":
+			return null
 	map.classify_water()   # v1.29.1: типы воды (река/озеро/болото) — по
 	                       # ВОССТАНОВЛЕННОЙ сетке, не по каркасу сида 0
 	var sim = load(CITY_SIM_SCRIPT).new()
@@ -653,6 +718,7 @@ static func _build_city(cd: Variant):
 static func _apply_city_map(map, md: Variant, cfg: Dictionary) -> String:
 	if not (md is Dictionary):
 		return "save.load_failed"
+	map.astar_ready = false   # v1.43: сетка поменялась — A* пересобрать лениво
 	map.w = int(md.get("w", 0))
 	map.h = int(md.get("h", 0))
 	map.ts = int(md.get("ts", 32))
@@ -780,14 +846,24 @@ static func _apply_world(game, wd: Variant) -> String:
 	map.river = {}
 	for e in md.get("river", []):
 		map.river[Vector2i(int(e[0]), int(e[1]))] = true
-	map.water_kind = {}
-	for e in md.get("water_kind", []):
-		map.water_kind[Vector2i(int(e[0]), int(e[1]))] = String(e[2])
+	# v1.43: слои воды/регионов — строками по ряду; старые сейвы — списки
+	# [x, y, значение] (читатель терпит оба формата)
+	var wk: Variant = md.get("water_kind", [])
+	if wk is Array and not wk.is_empty() and wk[0] is String:
+		_apply_kind_rows(map, wk)
+	else:
+		map.water_kind = {}
+		for e in wk:
+			map.water_kind[Vector2i(int(e[0]), int(e[1]))] = String(e[2])
 	# биом-регионы и режим моря (v1.40 «Мир v2» этап 2); в старых сейвах
 	# ключа нет — регион остаётся пустым ({}), режим — каркасный "both"
-	map.region = {}
-	for e in md.get("region", []):
-		map.region[Vector2i(int(e[0]), int(e[1]))] = String(e[2])
+	var rg: Variant = md.get("region", [])
+	if rg is Array and not rg.is_empty() and rg[0] is String:
+		_apply_region_rows(map, rg)
+	else:
+		map.region = {}
+		for e in rg:
+			map.region[Vector2i(int(e[0]), int(e[1]))] = String(e[2])
 	if md.has("sea_mode"):
 		map.sea_mode = String(md["sea_mode"])
 	# высоты рельефа (v1.35.1): светотень после загрузки совпадает с картой

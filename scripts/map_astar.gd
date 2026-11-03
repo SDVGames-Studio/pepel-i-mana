@@ -26,19 +26,54 @@ const DIRS: Array[Vector2i] = [
 
 
 func setup(map_w: int, map_h: int, ts: float, map_height: Dictionary,
-		map_stairs: Dictionary) -> void:
+		map_stairs: Dictionary, solid_dict := {}) -> void:
 	w = map_w
 	h = map_h
 	height = map_height
 	stairs = map_stairs
 	solid = {}
-	astar = AStar2D.new()
+	astar = null
+	# v1.43 (большие карты): рёбра строятся ЛЕНИВО — первым запросом пути
+	# (раньше: соединить всё, потом disconnect по сплошным — ~1 млн API-
+	# вызовов AStar2D на карту ×4 = десятки секунд генерации)
+
+
+## Пересобрать сетку: не-сплошные точки + рёбра (вправо/вниз, без дублей).
+## v1.43: высоты копируются в PackedInt32Array один раз — рёберный цикл
+## без словарных lookup'ов (на карте ×4 это сотни тысяч обращений).
+func rebuild(solid_dict: Dictionary) -> void:
+	if astar == null:
+		astar = AStar2D.new()
+	solid = {}
+	astar.clear()
+	var harr := PackedInt32Array()
+	harr.resize(w * h)
+	for t: Vector2i in height:
+		if t.y >= 0 and t.y < h and t.x >= 0 and t.x < w:
+			harr[t.y * w + t.x] = int(height[t])
 	for y in h:
+		var base := y * w
 		for x in w:
-			astar.add_point(y * w + x, Vector2(x, y))
+			if not solid_dict.has(Vector2i(x, y)):
+				astar.add_point(base + x, Vector2(x, y))
 	for y in h:
+		var base := y * w
 		for x in w:
-			_reconnect(Vector2i(x, y))
+			var i := base + x
+			var p := Vector2i(x, y)
+			if solid_dict.has(p):
+				continue
+			# вправо
+			if x + 1 < w:
+				var n := Vector2i(x + 1, y)
+				if not solid_dict.has(n) 						and (stairs.has(p) or stairs.has(n) 						or harr[i] == harr[i + 1]):
+					astar.connect_points(i, i + 1)
+			# вниз
+			if y + 1 < h:
+				var n := Vector2i(x, y + 1)
+				if not solid_dict.has(n) 						and (stairs.has(p) or stairs.has(n) 						or harr[i] == harr[i + w]):
+					astar.connect_points(i, i + w)
+	solid = solid_dict.duplicate()
 
 
 func in_bounds(p: Vector2i) -> bool:
@@ -62,6 +97,7 @@ func level_at(p: Vector2i) -> int:
 
 
 ## Соединить тайл с соседями по правилу уровней (сплошные не соединяются).
+## Инкрементальные операции (мост построен, скала выработана).
 func _reconnect(p: Vector2i) -> void:
 	if solid.has(p):
 		return

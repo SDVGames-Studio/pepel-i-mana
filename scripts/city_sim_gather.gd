@@ -478,11 +478,13 @@ func _exhaust_rock_tile(tile: Vector2i, r: Dictionary) -> void:
 	var roll := _event_rng.randf()
 	if kind == map.TILE_ROCK and roll < float(mcfg.get("ore_reveal", 0.25)):
 		map.grid[tile.y][tile.x] = map.TILE_ORE
+		map.note_edit(tile)
 		map.rock_hp[tile] = _rock_max_hp(tile)
 		events.append({"type": "ore_revealed"})
 		_chron("chron.ore_revealed")
 	else:
 		map.grid[tile.y][tile.x] = map.TILE_DEADROCK
+		map.note_edit(tile)
 		map.grid_ver += 1   # v1.28.1: маска скал изменилась
 		map.rock_hp[tile] = float(mcfg.get("deadrock_hp", 60.0))
 		events.append({"type": "rock_gone"})
@@ -600,6 +602,7 @@ func _mine_work(r: Dictionary, bld: Dictionary, dt: float) -> void:
 	map.rock_hp[tile] = float(cfg.get("mountain", {}).get("deadrock_hp", 60.0))
 	if kind == map.TILE_ORE:
 		map.grid[tile.y][tile.x] = map.TILE_DEADROCK
+		map.note_edit(tile)
 		map.grid_ver += 1   # v1.28.1: маска скал изменилась
 		events.append({"type": "rock_gone"})
 		_chron("chron.rock_gone")

@@ -89,7 +89,7 @@ func _ready() -> void:
 	view = load(VIEW_SCRIPT).new()
 	# статический ландшафт — отдельным слоем под динамикой (M9, 60 FPS)
 	_terrain = load("res://scripts/city_terrain.gd").new()
-	_terrain.setup(map, cfg, sim)
+	_terrain.setup(map, cfg, sim, "player" if Game.poi_id == 0 else "npc:%d" % Game.poi_id)
 	add_child(_terrain)
 	# живая вода «Природы 2.0» (v1.39.0): анимация/пена/рябь/камыши —
 	# над запечённой землёй, под тенями и жителями
@@ -330,7 +330,8 @@ func _process(delta: float) -> void:
 			# v1.28.1: земля перевыпекается ТОЛЬКО при смене маски скал
 			# (grid_ver); деревья/саженцы в землю не запечены с M12.
 			# Спил/рост деревьев — только кэши видов (view/тени).
-			_terrain.rebake(grid_ver != _baked_grid_ver, grid_ver)
+			_terrain.rebake(grid_ver != _baked_grid_ver, grid_ver, sim.map.edited)
+			sim.map.edited.clear()
 			_baked_grid_ver = grid_ver
 			sim.terrain_dirty = false
 			sim.static_dirty = false

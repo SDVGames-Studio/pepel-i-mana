@@ -58,16 +58,32 @@ func generate(seed_value: int, params: Dictionary) -> void:
 	cfg = params
 	w = int(params["map_w"])
 	h = int(params["map_h"])
+	# v1.43: автотесты гоняют малые карты (CI — десятки генераций)
+	if OS.has_environment("PEPEL_TEST_MAPS"):
+		w = mini(w, 72)
+		h = mini(h, 52)
 	ts = int(params["tile_size"])
 	gen_seed = seed_value
 	_terrain_bake = null   # карта новая — кэш рельефа устарел
 	_rng.seed = seed_value
 	for attempt in 20:
+		var _t0 := Time.get_ticks_msec()
 		_generate_once(seed_value + attempt * 977, params)
+		var _t1 := Time.get_ticks_msec()
+		if OS.get_environment("GEN_DEBUG") != "":
+			print("[world] attempt %d: %d ms, pois_ok=%s" % [attempt, _t1 - _t0, _pois_ok()])
 		if _pois_ok():
 			break
-	_setup_astar()
-	_setup_fog()
+	if OS.get_environment("GEN_DEBUG") != "":
+		var _t2 := Time.get_ticks_msec()
+		_setup_astar()
+		print("[world] astar %d ms" % [Time.get_ticks_msec() - _t2])
+		var _t3 := Time.get_ticks_msec()
+		_setup_fog()
+		print("[world] fog %d ms" % [Time.get_ticks_msec() - _t3])
+	else:
+		_setup_astar()
+		_setup_fog()
 
 
 func _generate_once(seed_value: int, params: Dictionary) -> void:
@@ -867,13 +883,17 @@ func _setup_astar() -> void:
 	astar.cell_size = Vector2(ts, ts)
 	astar.diagonal_mode = AStarGrid2D.DIAGONAL_MODE_NEVER
 	astar.update()
+	# v1.43 (карта ×5): вызовы AStarGrid2D только для ОТКЛОНЕНИЙ от дефолта
+	# (сплошные/дорогие тайлы) — на 93к тайлах это вдвое-втрое быстрее
 	for y in h:
 		for x in w:
 			var p := Vector2i(x, y)
 			if not is_walkable(p):
 				astar.set_point_solid(p, true)
 				continue
-			astar.set_point_weight_scale(p, tile_cost(p))
+			var cost := tile_cost(p)
+			if cost > 1.001:
+				astar.set_point_weight_scale(p, cost)
 
 
 ## Лодки (M14-I): вода становится проходимой (медленной) — пересборка путей.

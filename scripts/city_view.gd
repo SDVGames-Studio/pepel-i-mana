@@ -129,70 +129,67 @@ var _vis := Rect2(-1e9, -1e9, 2e9, 2e9)
 
 ## Живой блеск воды (v1.27): медленные светлые штрихи на водных тайлах —
 ## пруды «дышат» на солнце. Список тайлов воды постоянен — считается один раз.
-var _water_tiles: Array = []
-var _water_ready := false
 
 
 ## Колышущаяся трава (v1.28): кончики травинок качаются по синусу — луга
 ## «дышат» ветром. Каждая вторая трава по хэшу, только видимая область.
-var _grass_tiles: Array = []
-var _grass_ready := false
 
 
 func _draw_swaying_grass() -> void:
 	if map == null:
 		return
-	if not _grass_ready:
-		_grass_ready = true
-		for y in map.h:
-			for x in map.w:
-				if map.grid[y][x] == map.TILE_GRASS and _hash(x, y, 3) % 2 == 0:
-					_grass_tiles.append(Vector2i(x, y))
 	var ts := float(map.ts)
-	for t: Vector2i in _grass_tiles:
-		var rect := Rect2(Vector2(t) * ts, Vector2(ts, ts))
-		if not _vis.intersects(rect):
-			continue
-		var ph := float(t.x * 5 + t.y * 11)
-		var sway := sin(_anim_time * 1.9 + ph) * 2.0
-		var base := rect.position + Vector2(ts * (0.3 + 0.4 * sin(ph * 0.7)), ts * 0.78)
-		var tip := base + Vector2(sway, -7.0)
-		var tip2 := base + Vector2(-sway * 0.7 + 2.0, -5.0)
-		# v1.32: в тон текстурной траве (grass L/M/D)
-		draw_line(base, tip, Color("#3f7a34"), 1.1)
-		draw_line(base + Vector2(2.0, 0), tip2, Color("#66aa50"), 1.0)
+	# v1.43 (карта ×4): цикл по ВИДИМОЙ области — перебор 50к тайлов карты
+	# на каждый кадр ронял город до ~20 FPS; видимых тайлов ~2к
+	var x0 := clampi(int(_vis.position.x / ts) - 1, 0, map.w - 1)
+	var y0 := clampi(int(_vis.position.y / ts) - 1, 0, map.h - 1)
+	var x1 := clampi(int(_vis.end.x / ts) + 1, 0, map.w - 1)
+	var y1 := clampi(int(_vis.end.y / ts) + 1, 0, map.h - 1)
+	for y in range(y0, y1 + 1):
+		for x in range(x0, x1 + 1):
+			if map.grid[y][x] != map.TILE_GRASS or _hash(x, y, 3) % 2 != 0:
+				continue
+			var t := Vector2i(x, y)
+			var ph := float(t.x * 5 + t.y * 11)
+			var sway := sin(_anim_time * 1.9 + ph) * 2.0
+			var base := Vector2(t) * ts + Vector2(ts * (0.3 + 0.4 * sin(ph * 0.7)), ts * 0.78)
+			var tip := base + Vector2(sway, -7.0)
+			var tip2 := base + Vector2(-sway * 0.7 + 2.0, -5.0)
+			# v1.32: в тон текстурной траве (grass L/M/D)
+			draw_line(base, tip, Color("#3f7a34"), 1.1)
+			draw_line(base + Vector2(2.0, 0), tip2, Color("#66aa50"), 1.0)
 
 
 func _draw_water_glints() -> void:
 	if map == null:
 		return
-	if not _water_ready:
-		_water_ready = true
-		for y in map.h:
-			for x in map.w:
-				if map.grid[y][x] == map.TILE_WATER:
-					_water_tiles.append(Vector2i(x, y))
 	var ts := float(map.ts)
-	for t: Vector2i in _water_tiles:
-		# плотность бликов прорежена хэшем (FPS-замер 2026-10-27): мерцает
-		# половина тайлов — картинка та же, команд вдвое меньше
-		if _hash(t.x, t.y, 3) % 2 == 0:
-			continue
-		var rect := Rect2(Vector2(t) * ts, Vector2(ts, ts))
-		if not _vis.intersects(rect):
-			continue
-		var ph := float(t.x * 7 + t.y * 13)
-		var s := sin(_anim_time * 1.6 + ph)
-		if s < 0.25:
-			continue
-		var c := Vector2(t) * ts + Vector2(ts * (0.35 + 0.3 * sin(ph * 0.7)), ts * 0.55)
-		var w := ts * (0.14 + 0.07 * s)
-		# v1.31: солнечные блики гаснут ночью (слабее в ~6 раз и холоднее) —
-		# вода ночью ТЁМНАЯ (замечание заказчика «река становится белой»)
-		var day := 1.0 - 0.85 * night
-		var gcol := Color(1.0, 1.0, 0.95).lerp(Color(0.55, 0.65, 0.9), night)
-		draw_line(c - Vector2(w, 0), c + Vector2(w, 0),
-				Color(gcol.r, gcol.g, gcol.b, (s - 0.25) * 0.30 * day), 1.2)
+	# v1.43 (карта ×4): цикл по ВИДИМОЙ области (см. _draw_swaying_grass)
+	var x0 := clampi(int(_vis.position.x / ts) - 1, 0, map.w - 1)
+	var y0 := clampi(int(_vis.position.y / ts) - 1, 0, map.h - 1)
+	var x1 := clampi(int(_vis.end.x / ts) + 1, 0, map.w - 1)
+	var y1 := clampi(int(_vis.end.y / ts) + 1, 0, map.h - 1)
+	for y in range(y0, y1 + 1):
+		for x in range(x0, x1 + 1):
+			if map.grid[y][x] != map.TILE_WATER:
+				continue
+			var t := Vector2i(x, y)
+			# плотность бликов прорежена хэшем (FPS-замер 2026-10-27): мерцает
+			# половина тайлов — картинка та же, команд вдвое меньше
+			if _hash(t.x, t.y, 3) % 2 == 0:
+				continue
+			var ph := float(t.x * 7 + t.y * 13)
+			var s := sin(_anim_time * 1.6 + ph)
+			if s < 0.25:
+				continue
+			var c := Vector2(t) * ts + Vector2(ts * (0.35 + 0.3 * sin(ph * 0.7)), ts * 0.55)
+			var w := ts * (0.14 + 0.07 * s)
+			# v1.31: солнечные блики гаснут ночью (слабее в ~6 раз и холоднее) —
+			# вода ночью ТЁМНАЯ (замечание заказчика «река становится белой»)
+			var day := 1.0 - 0.85 * night
+			var gcol := Color(1.0, 1.0, 0.95).lerp(Color(0.55, 0.65, 0.9), night)
+			draw_line(c - Vector2(w, 0), c + Vector2(w, 0),
+					Color(gcol.r, gcol.g, gcol.b, (s - 0.25) * 0.30 * day), 1.2)
 
 
 ## Пульс «места сбора» на площади (правки v1.20): плиты рисует статичный
