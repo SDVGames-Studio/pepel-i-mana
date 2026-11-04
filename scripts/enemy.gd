@@ -23,6 +23,12 @@ var _slow_left := 0.0      # маяк света (M7): враг ползёт м�
 var _slow_mult := 1.0
 var _sprite: Sprite2D = null
 var _glow: PointLight2D = null     # свет светящегося монстра (гасится вдали, FPS)
+# v1.46 (ИИ монстров, «Новый мир v2» этап 4): светочувствительность, страх
+var _flee_left := 0.0              # страх: бежит от героя (трус при низком HP)
+var _flank_side := 0               # тактика стаи: 1/-1 — обходит с фланга
+var _path_cd := 0.0                # A*-перепрокладка по коридорам данжа
+var _path := PackedVector2Array()  # текущий путь по коридорам
+var _path_i := 0
 var _base_tint := Color.WHITE
 var _base_sheet_scale := Vector2.ONE   # масштаб кадра полного листа (M12: подмена листа)
 var _bob_time := 0.0
@@ -191,8 +197,8 @@ func _ready() -> void:
 	# v1.42.2 (приёмка): светящиеся существа (огонь/магия) подсвечивают
 	# пространство вокруг — «горящий спрайт без света» выглядел фальшиво.
 	# Конфиг — enemies.json -> "light": {color, radius, energy}.
-	if p.has("light"):
-		var lc: Dictionary = p["light"]
+	if p.has("glow"):
+		var lc: Dictionary = p["glow"]
 		var grad := Gradient.new()
 		var lcol := Color(String(lc.get("color", "#ff8a3c")))
 		grad.offsets = PackedFloat32Array([0.0, 0.5, 1.0])
@@ -309,6 +315,40 @@ func _physics_process(delta: float) -> void:
 	# нечисть v1.30: ночной множитель (ночь города + тьма данжа)
 	var perk := String(p.get("perk", ""))
 	_boost = 1.0
+	# v1.46: СТРАХ — трус при низком HP пятится и зовёт подмогу
+	if bool(p.get("coward", false)) and _flee_left <= 0.0 \
+			and int(hp) < int(round(float(p["hp"]) * 0.2)) and dist < float(p["aggro"]):
+		_flee_left = 2.5
+		_alert_allies()
+	if _flee_left > 0.0:
+		_flee_left -= delta
+		velocity = -to_hero.normalized() * float(p["speed"]) * 1.25 * _boost
+		move_and_slide()
+		return
+	# v1.46: ТАКТИКА СТАИ — в группе атакующих только ближайший давит в лоб,
+	# остальные заходят с фланга; стрелки держат дистанцию
+	var aggro_mult := 1.0
+	var lit := _lit_value()
+	if lit > 0.0:
+		var sense: Dictionary = p.get("light_sense", {})
+		if sense.has("fear") and lit > float(sense["fear"]):
+			# боязнь света: прочь от героя, медленно (на краю лужи — медлят)
+			velocity = -to_hero.normalized() * float(p["speed"]) * 0.8 * _boost
+			move_and_slide()
+			return
+		if sense.has("lure") and lit > float(sense["lure"]) \
+				and dist > float(p["attack_range"]):
+			velocity = to_hero.normalized() * float(p["speed"]) * 0.6 * _boost
+			move_and_slide()
+			return
+		if sense.has("alert_mult"):
+			aggro_mult = float(sense["alert_mult"]) * lit \
+					+ (1.0 - lit)
+	# скрытность героя (фонарь выключен + навык) — замечают хуже
+	aggro_mult *= _stealth_mult()
+	if _flank_offset(to_hero, dist):
+		move_and_slide()
+		return
 	if bool(p.get("nocturnal", false)) and get_parent() != null \
 			and get_parent().has_method("night_boost"):
 		_boost = get_parent().night_boost()
@@ -334,13 +374,18 @@ func _physics_process(delta: float) -> void:
 		if _attack_timer <= 0.0:
 			_attack_timer = float(p["attack_cooldown"])
 			_attack_hero()
-	elif dist <= float(p["aggro"]):
+	elif dist <= float(p["aggro"]) * aggro_mult:
 		if float(p.get("projectile_speed", 0.0)) > 0.0:
-			# стрелок (лич/скелет-маг, M14-D): стоит и стреляет
-			velocity = Vector2.ZERO
+			# стрелок (M14-D): держит дистанцию (v1.46 — кайтит), стреляет
+			if dist < float(p["attack_range"]) * 0.55:
+				velocity = -to_hero.normalized() * float(p["speed"]) * 0.8 * _boost
+			else:
+				velocity = Vector2.ZERO
 			if _attack_timer <= 0.0:
 				_attack_timer = float(p["attack_cooldown"])
 				_shoot_hero()
+		elif _follow_corridor_path(to_hero, dist, delta):
+			pass   # герой за стеной — идём по коридорам данжа (v1.46)
 		else:
 			velocity = to_hero.normalized() * float(p["speed"]) * _boost
 	elif not patrol.is_empty():
@@ -466,6 +511,7 @@ func note_player_hit() -> void:
 		_telegraph_left = float(ak.get("telegraph_time", 0.45))
 		_unanswered = 0
 		queue_redraw()
+
 
 
 func take_damage(dmg: int, school := "") -> void:
@@ -622,3 +668,121 @@ func _draw() -> void:
 			and get_tree().get_first_node_in_group("death_needle") != null:
 		draw_arc(Vector2.ZERO, float(p["radius"]) + 6.0, 0.0, TAU, 24,
 				Color(0.8, 0.65, 0.25, 0.5), 2.0)
+
+
+## --- ИИ монстров v1.46 («Новый мир v2» этап 4) ---------------------------
+
+## Освещённость героя 0..1 (фонарь включён + дистанция + прямая видимость).
+func _lit_value() -> float:
+	if hero == null or not hero.has_method("lantern_lit"):
+		return 0.0
+	var lit: float = hero.call("lantern_lit")
+	if lit <= 0.0:
+		return 0.0
+	var parent := get_parent()
+	if parent == null or not parent.has_method("line_of_sight_px"):
+		return lit
+	if not parent.call("line_of_sight_px", global_position, hero.global_position):
+		return 0.0
+	return lit
+
+
+## Скрытность героя: фонарь погашен + навык — враги замечают хуже.
+func _stealth_mult() -> float:
+	if hero == null or not hero.has_method("stealth_aggro_mult"):
+		return 1.0
+	return float(hero.call("stealth_aggro_mult"))
+
+
+## Тактика стаи: если я не ближайший из преследователей — захожу с фланга.
+## Возвращает true, если этот кадр обработан (движение к фланговой точке).
+func _flank_offset(to_hero: Vector2, dist: float) -> bool:
+	if dist > float(p["aggro"]) * 1.2 or float(p.get("projectile_speed", 0.0)) > 0.0:
+		return false
+	if _flank_side == 0:
+		_flank_side = 1 if (int(get_instance_id()) % 2 == 0) else -1
+	if _flank_nearest():
+		return false   # я ближайший — давлю в лоб
+	var perp := to_hero.normalized().orthogonal() * float(_flank_side)
+	var goal: Vector2 = hero.global_position + perp * float(p["attack_range"]) * 1.6
+	if global_position.distance_to(goal) < 14.0:
+		return false
+	velocity = (goal - global_position).normalized() * float(p["speed"]) * _boost
+	return true
+
+
+## Я ближайший преследователь? (кэш на 0.3 с — скан стаи дорог)
+var _flank_cd := 0.0
+var _flank_is_nearest := false
+
+
+func _flank_nearest() -> bool:
+	_flank_cd -= 1.0 / 60.0
+	if _flank_cd > 0.0:
+		return _flank_is_nearest
+	_flank_cd = 0.3
+	_flank_is_nearest = true
+	var my_d := 0.0
+	if hero != null and is_instance_valid(hero):
+		my_d = global_position.distance_to(hero.global_position)
+	var siblings := get_parent().get_children() if get_parent() != null else []
+	for sib in siblings:
+		if sib == self or not is_instance_valid(sib):
+			continue
+		var sc = sib.get_script()
+		if sc == null or not String((sc as Script).resource_path).ends_with("enemy.gd"):
+			continue
+		if sib.stun_left > 0.0:
+			continue
+		if sib.global_position.distance_to(hero.global_position) < my_d - 8.0:
+			_flank_is_nearest = false
+			break
+	return _flank_is_nearest
+
+
+## Трус зовёт подмогу: двое ближайших союзников получают заряженное агро
+## (целятся на героя — подбегут и включатся в бой).
+func _alert_allies() -> void:
+	var parent := get_parent()
+	if parent == null:
+		return
+	var alerted := 0
+	for sib in parent.get_children():
+		if alerted >= 2:
+			break
+		if sib == self or not is_instance_valid(sib):
+			continue
+		var sc = sib.get_script()
+		if sc == null or not String((sc as Script).resource_path).ends_with("enemy.gd"):
+			continue
+		if sib.global_position.distance_to(global_position) > 320.0:
+			continue
+		sib._telegraph_left = 0.2   # мигнуть — откликнулся
+		sib._path_i = 0
+		alerted += 1
+
+
+## Погоня по коридорам данжа: герой без прямой видимости — A* по сетке.
+## true — кадр обработан (движемся по пути).
+func _follow_corridor_path(to_hero: Vector2, dist: float, delta: float) -> bool:
+	var parent := get_parent()
+	if parent == null or not parent.has_method("enemy_path"):
+		return false
+	if parent.call("line_of_sight_px", global_position, hero.global_position):
+		_path = PackedVector2Array()
+		return false   # видно героя — обычная прямая погоня
+	_path_cd -= delta
+	if _path_cd <= 0.0 or _path_i >= _path.size():
+		_path_cd = 0.5
+		_path = parent.call("enemy_path", global_position, hero.global_position)
+		_path_i = 0
+		if _path.is_empty():
+			return false
+	if _path_i < _path.size():
+		var goal: Vector2 = _path[_path_i]
+		if global_position.distance_to(goal) < 10.0:
+			_path_i += 1
+			return true
+		velocity = (goal - global_position).normalized() * float(p["speed"]) * _boost
+		return true
+	return false

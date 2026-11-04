@@ -97,6 +97,7 @@ func _ready() -> void:
 	# тогда виден только чёрный войд и герой без пола. Перерисовываем
 	# слой отложенно ещё два кадра подряд (дёшево, ~2k команд).
 	_view_redraw_guard()
+	_ensure_dungeon_astar()   # v1.46: сетка путей врагов
 	# «Данжи v2» (v1.42): декали (мох/порча/трещины/пропсы) и живой свет
 	# (жаровни + холодные лужи + свечение порчи) по референсам этапа 4
 	var v2: Dictionary = params.get("v2", {})
@@ -173,6 +174,15 @@ func _process(delta: float) -> void:
 	_update_mana_hunger(delta)
 	_update_hint()
 	hud.refresh()
+	# v1.46: скрытность качается в темноте рядом с врагами
+	var moving: bool = hero != null and hero.velocity.length() > 5.0
+	var near_enemy := false
+	for e in get_tree().get_nodes_in_group("enemies"):
+		if is_instance_valid(e) and int(e["hp"]) > 0 \
+				and e.global_position.distance_to(hero.position) < 300.0:
+			near_enemy = true
+			break
+	hero.train_stealth_if_dark(near_enemy, moving, delta)
 	if Input.is_action_just_pressed("interact"):
 		_try_interact()
 	if Input.is_action_just_pressed("inventory"):
@@ -184,6 +194,14 @@ func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventKey and event.pressed and not event.echo \
 			and event.physical_keycode == KEY_I:
 		_equip_panel.toggle()
+		get_viewport().set_input_as_handled()
+		return
+	# v1.46: фонарь (скрытность) — клавиша T
+	if event is InputEventKey and event.pressed and not event.echo \
+			and event.physical_keycode == KEY_T:
+		hero.toggle_lantern()
+		hud.toast(Loc.t("dungeon.lantern_off" if not hero.lantern_on
+				else "dungeon.lantern_on"))
 		get_viewport().set_input_as_handled()
 		return
 	# слоты заклинаний 1–9 (спеллбук, порядок изучения; с M5 — 9 боевых школ-заклинаний)
@@ -904,6 +922,44 @@ func _same_keys(a: Dictionary, b: Dictionary) -> bool:
 		if not b.has(k):
 			return false
 	return true
+
+
+## v1.46: прямая видимость между точками (для ИИ врагов: свет и погоня).
+func line_of_sight_px(from_px: Vector2, to_px: Vector2) -> bool:
+	return _line_of_sight(_pos_to_tile(from_px), _pos_to_tile(to_px))
+
+
+## A*-путь для врага по коридорам данжа (герой за стеной — обход).
+func enemy_path(from_px: Vector2, to_px: Vector2) -> PackedVector2Array:
+	if _dungeon_astar == null:
+		return PackedVector2Array()
+	var from_t := _pos_to_tile(from_px)
+	var to_t := _pos_to_tile(to_px)
+	if not _dungeon_astar.is_point_solid(from_t) \
+			and not _dungeon_astar.is_point_solid(to_t):
+		var pts: Array = _dungeon_astar.get_id_path(from_t, to_t)
+		var out := PackedVector2Array()
+		for t in pts:
+			out.append(_tile_to_pos(t))
+		return out
+	return PackedVector2Array()
+
+
+var _dungeon_astar = null   # ленивый A* данжа (v1.46)
+
+
+func _ensure_dungeon_astar() -> void:
+	if _dungeon_astar != null:
+		return
+	var g = load("res://scripts/map_astar.gd").new()
+	var solids := {}
+	for y in gen.h:
+		for x in gen.w:
+			if gen.grid[y][x] == DungeonGenScript.TILE_WALL:
+				solids[Vector2i(x, y)] = true
+	g.setup(gen.w, gen.h, float(ts), {}, {})
+	g.rebuild(solids)
+	_dungeon_astar = g
 
 
 ## Зрение героя: тайл виден, только если линия от героя не упирается в стену —
