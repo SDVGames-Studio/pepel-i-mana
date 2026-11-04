@@ -60,6 +60,7 @@ var raiders: Array = []         # мутанты текущей волны
 # ресурсов, шлёт волны (сильнее с успехом), роняется героем и отрастает
 var hive: Dictionary = {}       # {active, pos, hp, level, stock, gathered, waves, next_wave_day, respawn_day, roles}
 var hero_tracks: Array = []     # следы героя [{pos, t}] — скауты улья читают
+var eruption_power := 0         # v1.45: сила выбросов эпицентра (мутанты крепнут)
 var raid_active := false        # идёт атака/осада
 var raid_siege := false         # текущая волна — осада (ломает здания)
 var raid_count := 0             # всего волн с начала игры

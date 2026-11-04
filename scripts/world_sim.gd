@@ -93,10 +93,79 @@ func advance_day() -> Array:
 	today.append_array(_roll_dungeon_resets())
 	today.append_array(_roll_caravan())
 	today.append_array(_tick_legends())
+	today.append_array(_tick_epicenter())
 	if giants != null:
 		giants.tick_days(1)   # гнев и дружба гигантов остывают (M14-E)
 	events.append_array(today)
 	return today
+
+
+## ==================== Эпицентр магической катастрофы (v1.45) ==============
+
+## Ежедневный тик: рост лагеря искажённых, атаки на ближайшие поселения,
+## ВЫБРОС раз в ~25 дней (магзагрязнение вокруг, усиление данжей/мутантов).
+func _tick_epicenter() -> Array:
+	var out: Array = []
+	var ecfg: Dictionary = cfg.get("catastrophe", {})
+	if ecfg.get("enabled", true) == false or map == null 			or ("epicenter" not in map) 			or (map.epicenter as Dictionary).is_empty():
+		return out
+	var e: Dictionary = map.epicenter
+	var tile: Vector2i = e["tile"]
+	var radius: float = float(e["radius"])
+	# 1) лагерь искажённых растёт (сила = будущая мощь атак)
+	for poi in map.pois:
+		if String(poi["kind"]) == "twisted":
+			poi["strength"] = float(poi.get("strength", 5.0)) + float(ecfg.get("twisted_growth", 0.15))
+	# 2) атака искажённых: ближайшее поселение раз в attack_days; проигравший
+	#    осадный механизм общий — искажённые бьют силой лагеря
+	if day >= int(e.get("next_attack_day", 5)):
+		e["next_attack_day"] = day + int(ecfg.get("attack_days", 5))
+		var target: Dictionary = {}
+		var best_d := 1e9
+		for poi in map.pois:
+			if String(poi["kind"]) == "settlement" and String(poi.get("state", "ok")) == "ok":
+				var d: float = Vector2(poi["tile"]).distance_to(Vector2(tile))
+				if d < best_d:
+					best_d = d
+					target = poi
+		if not target.is_empty():
+			var twisted_pow := _twisted_power()
+			var defense := _settlement_defense(int(target["id"])) * _rng.randf_range(0.7, 1.3)
+			if twisted_pow > defense:
+				target["state"] = "fallen"
+				target["faction"] = "twisted"
+				target["fell_day"] = day
+				out.append({"type": "twisted_fell", "a": _poi_name(target),
+						"id": int(target["id"])})
+				_chron("chron.twisted_fell", _poi_name(target))
+			else:
+				target["strength"] = maxf(1.0, float(target.get("strength", 6.0)) - 1.5)
+				out.append({"type": "twisted_attack", "a": _poi_name(target),
+						"id": int(target["id"])})
+				_chron("chron.twisted_attack", _poi_name(target))
+	# 3) ВЫБРОС раз в ~25 дней: магзагрязнение вокруг + усиление аномалий
+	if day >= int(e["next_event_day"]):
+		e["next_event_day"] = day + int(e["eruption_days"])
+		e["power"] = int(e["power"]) + 1
+		# магзагрязнение: город на клетке в двойном радиусе фонит постоянно
+		if city_pollution_hook != null:
+			city_pollution_hook.call(tile, radius, float(ecfg.get("eruption_pollution", 6.0)))
+		out.append({"type": "eruption", "power": int(e["power"])})
+		_chron("chron.eruption", str(int(e["power"])))
+	return out
+
+
+func _twisted_power() -> float:
+	var pow := 0.0
+	for poi in map.pois:
+		if String(poi["kind"]) == "twisted":
+			pow = float(poi.get("strength", 5.0))
+	return pow * (1.0 + 0.2 * int(map.epicenter.get("power", 0)) if "epicenter" in map else 0)
+
+
+## Хук загрязнения города (подшивается Game: city_sim.add_pollution при
+## близости клетки города к эпицентру).
+var city_pollution_hook: Callable = Callable()
 
 
 # --- гнёзда бандитов: живые колонии (M12) ---------------------------------

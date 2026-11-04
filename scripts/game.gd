@@ -400,6 +400,10 @@ func new_world() -> void:
 	var sim_script: Script = load(WORLD_SIM_SCRIPT)
 	world_sim = sim_script.new()
 	world_sim.setup(world_map, cfg)
+	# v1.45: выбросы эпицентра фонят магзагрязнением в город поблизости
+	world_sim.city_pollution_hook = func(t: Vector2i, radius: float, amount: float) -> void:
+		if city_sim != null and city_sim.map != null 				and Vector2(city_sim.map.city_tile).distance_to(Vector2(t)) <= radius * 2.0:
+			city_sim.add_pollution(amount)
 	coins = int(cfg.get("trade", {}).get("start_coins", 15))
 	var city_cfg_v: Variant = _read_json(CITY_CFG_PATH)
 	npc_cities = load("res://scripts/npc_cities.gd").new()

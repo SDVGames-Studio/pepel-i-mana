@@ -665,6 +665,13 @@ func _process_events() -> void:
 			"hive_destroyed":
 				hud.toast(Loc.t("event.hive_destroyed") % int(ev["level"]))
 				_rebuild_collision()
+			# --- эпицентр катастрофы («Новый мир v2», v1.45) ---
+			"twisted_fell":
+				hud.toast(Loc.t("event.twisted_fell") % String(ev["a"]))
+			"twisted_attack":
+				hud.toast(Loc.t("event.twisted_attack") % String(ev["a"]))
+			"eruption":
+				hud.toast(Loc.t("event.eruption") % int(ev["power"]))
 			"hero_haul":
 				# герой унёс кучу здания на склад (2026-10-21)
 				hud.toast(Loc.t("city.hero_haul_done") % [int(ev.get("n", 0)),

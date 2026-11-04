@@ -47,6 +47,10 @@ var fog_new: Array = []             # v1.40.2: тайлы, раскрытые П
                                     # reveal_around — view стирает их из
                                     # текстуры тумана (дёшево, без перепечки)
 var astar: AStarGrid2D = null
+# v1.45 («Новый мир v2» этап 3): эпицентр магической катастрофы — выбросы
+# раз в ~25 дней (магзагрязнение вокруг, усиление данжей/мутантов/магтварей),
+# рядом — лагерь ИСКАЖЁННЫХ магией: растёт, нападает на поселения
+var epicenter: Dictionary = {}   # {tile, radius, next_event_day, power, eruption_days}
 var boats_enabled := false   # лодки (M14-I): вода проходима, но медленна
 var _terrain_bake = null     # v1.35.1: кэш запечённого рельефа (world_view.gd)
 var _rng := RandomNumberGenerator.new()
@@ -74,16 +78,9 @@ func generate(seed_value: int, params: Dictionary) -> void:
 			print("[world] attempt %d: %d ms, pois_ok=%s" % [attempt, _t1 - _t0, _pois_ok()])
 		if _pois_ok():
 			break
-	if OS.get_environment("GEN_DEBUG") != "":
-		var _t2 := Time.get_ticks_msec()
-		_setup_astar()
-		print("[world] astar %d ms" % [Time.get_ticks_msec() - _t2])
-		var _t3 := Time.get_ticks_msec()
-		_setup_fog()
-		print("[world] fog %d ms" % [Time.get_ticks_msec() - _t3])
-	else:
-		_setup_astar()
-		_setup_fog()
+	_place_epicenter()
+	_setup_astar()
+	_setup_fog()
 
 
 func _generate_once(seed_value: int, params: Dictionary) -> void:
@@ -876,6 +873,42 @@ func reveal_far(count: int) -> Array:
 
 
 # --- пути и время пути (дни) ----------------------------------------------
+
+## Эпицентр катастрофы: суша подальше от города игрока и всех поселений
+## (директива: «не может быть слишком рядом к поселениям»).
+func _place_epicenter() -> void:
+	var ecfg: Dictionary = cfg.get("catastrophe", {})
+	var radius := float(ecfg.get("radius", 14))
+	var min_sett := int(ecfg.get("min_settlement_dist", 40))
+	var cands: Array = []
+	for y in range(int(h * 0.1), h - int(h * 0.1), 3):
+		for x in range(int(w * 0.1), w - int(w * 0.1), 3):
+			var t := Vector2i(x, y)
+			if not is_walkable(t):
+				continue
+			if t.distance_to(city_tile) < min_sett:
+				continue
+			var ok := true
+			for poi in pois:
+				if String(poi["kind"]) == "settlement" 						and Vector2(t).distance_to(Vector2(poi["tile"])) < min_sett:
+					ok = false
+					break
+			if ok:
+				cands.append(t)
+	if cands.is_empty():
+		return
+	var tile: Vector2i = cands[_rng.randi_range(0, cands.size() - 1)]
+	epicenter = {"tile": tile, "radius": radius, "power": 0,
+			"next_event_day": int(ecfg.get("eruption_days", 25)),
+			"eruption_days": int(ecfg.get("eruption_days", 25))}
+	# лагерь искажённых рядом (3-6 тайлов): фракция культа, биом проклятый
+	for attempt in 30:
+		var off := Vector2i(_rng.randi_range(-7, 7), _rng.randi_range(-7, 7))
+		var t: Vector2i = tile + off
+		if is_walkable(t) and t.distance_to(tile) >= 3:
+			_place_kind("twisted", "cursed_hall", 3, 6, 1, "twisted")
+			break
+
 
 func _setup_astar() -> void:
 	astar = AStarGrid2D.new()

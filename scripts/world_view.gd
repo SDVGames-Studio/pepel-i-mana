@@ -114,6 +114,10 @@ func _draw_static() -> void:
 	_roads_into(_sd, ts)
 
 
+func pulse2() -> float:
+	return 0.5 + 0.5 * sin(_time * 3.1)
+
+
 func _draw() -> void:
 	if map == null:
 		return
@@ -129,6 +133,25 @@ func _draw() -> void:
 				Rect2(Vector2.ZERO, Vector2(map.w * ts, map.h * ts)), false)
 	# точки интереса (только найденные и на исследованной земле —
 	# на пергаменте маркеров нет, v1.40)
+	# v1.45: эпицентр катастрофы — кольцо скверны + пульсирующее жерло
+	# (видно издалека: игрок должен знать, КУДА не ходить)
+	if "epicenter" in map and not (map.epicenter as Dictionary).is_empty():
+		var e: Dictionary = map.epicenter
+		var ec: Vector2 = (Vector2(e["tile"]) + Vector2(0.5, 0.5)) * ts
+		var er: float = float(e["radius"]) * ts
+		var pulse: float = 0.5 + 0.5 * sin(_time * 2.0)
+		draw_circle(ec, er, Color(0.35, 0.1, 0.3, 0.10))
+		draw_circle(ec, er * (0.55 + 0.1 * pulse), Color(0.5, 0.12, 0.28, 0.18))
+		draw_circle(ec, er * 0.22, Color(0.62, 0.14, 0.3, 0.8))
+		draw_circle(ec, er * (0.14 + 0.05 * pulse), Color(0.95, 0.4, 0.3, 0.9))
+		draw_arc(ec, er, 0.0, TAU, 64, Color(0.6, 0.15, 0.3, 0.4 + 0.2 * pulse), 3.0)
+	for poi in map.pois:
+		if String(poi["kind"]) == "twisted":
+			# лагерь искажённых виден, если исследована его клетка
+			if map.is_explored(poi["tile"]):
+				var tc := (Vector2(poi["tile"]) + Vector2(0.5, 0.5)) * ts
+				draw_circle(tc, ts * 0.9, Color(0.45, 0.1, 0.25, 0.7))
+				draw_circle(tc, ts * (0.4 + 0.08 * pulse2()), Color(0.7, 0.2, 0.35, 0.8))
 	for poi in map.pois:
 		if not bool(poi["discovered"]):
 			continue
