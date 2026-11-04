@@ -1287,9 +1287,11 @@ func _draw_resident(r: Dictionary) -> void:
 	if sleeping:
 		col = col.darkened(0.4)
 	var center := pos + Vector2(0, -3.0 - bob - lift)
-	# v1.49: взрослые с профессией из пака Minifolks рисуются спрайтом
-	# (idle/ходьба/работа); дети, стражи, староста и профессии без листа —
-	# прежний кружок цвета профессии
+	# v1.49.1: взрослые с профессией из пака Minifolks рисуются спрайтом
+	# (idle/ходьба/работа); якорь — НОГИ на позиции жителя (y-сортировка),
+	# видимый рост ~23px против 32 у рыцаря. Дети, стражи, староста и
+	# профессии без листа — прежний кружок; оттенок цвета профессии не
+	# применяем (портит арт), кроме болезней/ран
 	var working_states := ["work", "build", "harvest", "fill", "hunt", "chop", "mine", "farm"]
 	var drawn_villager := false
 	if not child and not sleeping and not _is_elder_golem(r):
@@ -1297,9 +1299,11 @@ func _draw_resident(r: Dictionary) -> void:
 		if not pth.is_empty():
 			vx = (pth[0] - pos).x
 		var working: bool = working_states.has(String(r.get("state", "")))
+		var vtint := col if ail in ["sick", "wounded"] else Color.WHITE
 		drawn_villager = Assets.draw_villager(self, prof,
 				"left" if vx < -1.0 else "right", moving, working,
-				center, 26.0, _anim_time + float(int(r["id"]) % 7) * 0.13, col)
+				pos + Vector2(0, -lift - bob * 0.6),
+				_anim_time + float(int(r["id"]) % 7) * 0.13, vtint)
 	if not drawn_villager:
 		# тело — готовая текстурка (v1.21.5): одна команда вместо пяти
 		var body := _res_sprite(col, radius)

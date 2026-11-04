@@ -626,8 +626,10 @@ func draw_body(canvas: CanvasItem, pos: Vector2) -> void:
 	var ks := knight_scale()
 	var fw := KNIGHT_FRAME * ks
 	var fh := KNIGHT_FRAME_H * ks
-	# ноги персонажа — чуть ниже центра коллизии; лёгкий бобинг при ходьбе
-	var feet_y := float(p["radius"]) * 0.55 - absf(sin(_bob_time)) * amp
+	# ноги персонажа — у самой точки сортировки (v1.49.1: раньше были на
+	# +0.55 радиуса ниже и «тонули» под спрайтами зданий, у которых якорь —
+	# низ footprint); лёгкий бобинг при ходьбе
+	var feet_y := float(p["radius"]) * 0.2 - absf(sin(_bob_time)) * amp
 	var rot := 0.0
 	if moving and absf(facing.y) >= absf(facing.x):
 		rot = sin(_bob_time) * 0.09

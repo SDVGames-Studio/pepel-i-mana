@@ -255,25 +255,65 @@ const VILLAGER_PROF := {
 	"acolyte": "MiniNun",
 }
 
+const VILLAGER_FRAME := 32.0     # кадр листа
+const VILLAGER_CHAR_H := 13.5    # видимый рост персонажа в кадре (альфа-бокс)
+const VILLAGER_FEET_Y := 30.0    # ноги от верха кадра
+const VILLAGER_VISIBLE_H := 23.0 # целевой видимый рост жителя (рыцарь — 32)
+
+## Раскладка рядов ИЗМЕРЕНА по каждому листу (у Minifolks она разная):
+## idle всегда ряд 0 (4 кадра); walk — ряд с максимумом кадров; work —
+## соседний с walk ряд с 3–8 кадрами (walk-1, иначе walk+1).
+const VILLAGER_ROWS := {
+	"MiniBlacksmithB": [1, 10, 2, 4],
+	"MiniGatherer": [2, 10, 1, 5],
+	"MiniGraveDigger": [1, 10, 2, 5],
+	"MiniHunter": [3, 10, 2, 3],
+	"MiniLumberjack": [1, 7, 2, 6],
+	"MiniMerchantB": [1, 9, 2, 7],
+	"MiniMiner": [1, 6, 2, 5],
+	"MiniNun": [2, 6, 1, 3],
+	"MiniSuspiciousMerchantB": [1, 7, 2, 6],
+	"MiniThief": [1, 10, 2, 6],
+}
+
+## Размер кадра при отрисовке: из целевого видимого роста.
+static func villager_size() -> float:
+	return VILLAGER_VISIBLE_H * VILLAGER_FRAME / VILLAGER_CHAR_H
+
 static var _villager_texs: Dictionary = {}   # base -> Texture2D (кэш)
 
 ## Житель-профессия листом Minifolks. dir — «left»/«right» (виды спереди);
-## working — анимация работы (ряд 2). False — листа нет (рисовать кружок).
+## working — анимация работы (ряд 2). pos — ТОЧКА НОГ (якорь y-сортировки):
+## видимый рост ~23px против 32 у рыцаря. False — листа нет (рисовать кружок).
 static func draw_villager(canvas: CanvasItem, prof: String, dir: String, moving: bool,
-		working: bool, pos: Vector2, size_px: float, t: float, tint := Color.WHITE) -> bool:
-	if not VILLAGER_PROF.has(prof):
+		working: bool, pos: Vector2, t: float, tint := Color.WHITE) -> bool:
+	if not VILLAGER_PROF.has(prof) or not VILLAGER_ROWS.has(VILLAGER_PROF[prof]):
 		return false
 	var base: String = VILLAGER_PROF[prof]
+	var rows: Array = VILLAGER_ROWS[base]   # [walk_row, walk_n, work_row, work_n]
 	if not _villager_texs.has(base):
 		_villager_texs[base] = tex("res://assets/sprites/villagers/%s.png" % base)
 	var sheet: Texture2D = _villager_texs[base]
 	if sheet == null:
 		return false
-	var row := 1 if moving else (2 if working else 0)
-	var frames := 10 if moving else 4
-	var f := int(t * (10.0 if moving else 5.0)) % frames
-	var cs := 32.0
+	var row := 0
+	var frames := 4
+	var fps := 4.0
+	if moving:
+		row = int(rows[0])
+		frames = int(rows[1])
+		fps = maxf(4.0, float(frames) * 0.8)
+	elif working:
+		row = int(rows[2])
+		frames = int(rows[3])
+		fps = 5.0
+	var f := int(t * fps) % maxi(1, frames)
+	var cs := VILLAGER_FRAME
 	var src := Rect2(float(f % 10) * cs, float(row) * cs, cs, cs)
-	var dst := Rect2(pos - Vector2(size_px * 0.5, size_px * 0.62), Vector2(size_px, size_px))
+	var s := villager_size()
+	# ноги персонажа (y=30 кадра) стоят в pos; кадр чуть больше видимого тела
+	var dst := Rect2(Vector2(pos.x - s * 0.5, pos.y - VILLAGER_FEET_Y / cs * s), Vector2(s, s))
+	if dir == "left":
+		dst.size.x = -dst.size.x
 	canvas.draw_texture_rect_region(sheet, dst, src, tint)
 	return true
