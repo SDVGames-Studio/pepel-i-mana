@@ -7,9 +7,9 @@ extends "res://tests/test_base.gd"
 func _test_hive_levels() -> void:
 	print("[Улей: уровни и роли]")
 	_check(HiveSim.level_for(0) == 1, "пустой улей — уровень 1")
-	_check(HiveSim.level_for(59) == 1, "59 запаса — уровень 1")
-	_check(HiveSim.level_for(60) == 2, "60 запаса — уровень 2")
-	_check(HiveSim.level_for(160) == 3, "160 запаса — уровень 3")
+	_check(HiveSim.level_for(89) == 1, "89 запаса — уровень 1 (v1.49: пороги выше)")
+	_check(HiveSim.level_for(90) == 2, "90 запаса — уровень 2")
+	_check(HiveSim.level_for(220) == 3, "220 запаса — уровень 3")
 	_check(HiveSim.level_for(100500) == 4, "сверх запаса — уровень 4 (макс)")
 	_check(HiveSim.radius_for(1) > 10.0 and HiveSim.radius_for(4) > HiveSim.radius_for(1),
 			"радиус поиска растёт с уровнем")
@@ -21,6 +21,7 @@ func _test_hive_levels() -> void:
 	var w4: int = HiveSim.wave_size(4, 300, 6)
 	_check(w4 > w1 and w4 <= 14, "волна сильнее с уровнем и успехом (%d → %d)" % [w1, w4])
 	_check(HiveSim.wave_days(4) < HiveSim.wave_days(1), "волны ходят чаще с уровнем")
+	_check(HiveSim.wave_days(1) >= 3.5, "v1.49: волны не чаще ~раз в 4 дня на старте")
 
 
 func _test_hive_tracks() -> void:
@@ -70,7 +71,7 @@ func _test_hive_sim_integration() -> void:
 	_check(int(counts[0]) >= 2 and int(counts[1]) >= 3,
 			"стражи и добытчики спавнятся (%s)" % str(counts))
 	# сбор: скармливаем улею запас → уровень
-	sim.hive["stock"] = 60
+	sim.hive["stock"] = 90   # v1.49: порог уровня 2 поднят
 	var lvl: int = int(sim.hive["level"])
 	sim._update_threat(0.1, 120.0)
 	_check(int(sim.hive["level"]) == 2 and lvl == 1, "запас растит уровень улья")

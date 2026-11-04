@@ -41,6 +41,7 @@ var _rune_slot_b: OptionButton
 var _craft_result: Label
 var _craft_btn: Button
 var _city_spell_btns: Array = []   # [{btn, spell_id}]
+var _hero_spell_btns: Array = []   # [{btn, spell_id}] — боевые заклинания героя (v1.49)
 var _enchant_btns: Array = []      # [{btn, ench_id}]
 var _enchant_hint_label: Label
 var _enchant_colors: Dictionary = {}
@@ -401,6 +402,24 @@ func _build_magic_panel(root: Control) -> void:
 		_magic_box.add_child(btn)
 		_city_spell_btns.append({"btn": btn, "spell_id": spell_id})
 
+	# боевые заклинания героя (v1.49: паритет с данжем) — маной героя,
+	# каст по курсору/на себя; видны только изученные (spellbook)
+	var hero_title := _label(20)
+	hero_title.text = Loc.t("magic.hero_spells")
+	_magic_box.add_child(hero_title)
+	for def in Game.magic.spells():
+		if String(def["where"]) != "dungeon" or String(def["id"]) == "light_beacon":
+			continue
+		var sid := String(def["id"])
+		var hbtn := Button.new()
+		hbtn.custom_minimum_size = Vector2(0, 40)
+		hbtn.add_theme_font_size_override("font_size", 17)
+		hbtn.focus_mode = Control.FOCUS_NONE
+		hbtn.tooltip_text = "%s\n%s: %d" % [Loc.t(String(def["desc"])), Loc.t("magic.mana"), int(def.get("mana_cost", 0))]
+		hbtn.pressed.connect(func() -> void: city.cast_combat_spell(sid))
+		_magic_box.add_child(hbtn)
+		_hero_spell_btns.append({"btn": hbtn, "spell_id": sid})
+
 	# крафт: две руны -> заклинание (таблица рецептов, ответ №58)
 	var craft_title := _label(20)
 	craft_title.text = Loc.t("magic.craft")
@@ -517,6 +536,19 @@ func _refresh_magic() -> void:
 		entry["btn"].text = "%s (%d %s)" % [
 			Loc.t(String(def["loc"])), int(def.get("crystals_cost", 0)), Loc.t("res.crystal")]
 		entry["btn"].disabled = not altar_ok
+	# боевые заклинания героя: видны только изученные; недоступны без маны/на кулдауне
+	var hero_mana: int = city.hero.mana
+	for entry in _hero_spell_btns:
+		var def: Dictionary = Game.magic.spell(String(entry["spell_id"]))
+		var learned: bool = Game.has_spell(String(entry["spell_id"]))
+		entry["btn"].visible = learned
+		if not learned:
+			continue
+		var cd_left: float = city.hero.spell_cd_left(String(entry["spell_id"]))
+		entry["btn"].text = "%s (%d %s%s)" % [
+			Loc.t(String(def["loc"])), int(def.get("mana_cost", 0)), Loc.t("magic.mana"),
+			("" if cd_left <= 0.0 else " | %dс" % ceili(cd_left))]
+		entry["btn"].disabled = hero_mana < int(def.get("mana_cost", 0)) or cd_left > 0.0
 	for entry in _enchant_btns:
 		var def: Dictionary = Game.magic.enchantment(String(entry["ench_id"]))
 		entry["btn"].text = "%s (%d %s + %s)" % [

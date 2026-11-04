@@ -364,8 +364,8 @@
 	},
 	"gather_range": 6,
 	"hunting": {
-		"animals": 22,
-		"respawn_chance": 0.35,
+		"animals": 40,
+		"respawn_chance": 0.5,
 		"hunt_food": 6.0,
 		"hunt_time": 2.0,
 		"roam_range": 15,
@@ -808,7 +808,7 @@
 		{
 			"id": "house",
 			"w": 2,
-			"sprite": "dom_house",
+			"sprite": "b:дом_жителей_ур2",
 			"short": "bld.short.house",
 			"loc": "bld.house",
 			"desc": "bld.desc.house",
@@ -824,7 +824,7 @@
 		{
 			"id": "farm",
 			"w": 2,
-			"sprite": "b:dom6",
+			"sprite": "b:амбар",
 			"short": "bld.short.farm",
 			"loc": "bld.farm",
 			"desc": "bld.desc.farm",
@@ -890,7 +890,7 @@
 		{
 			"id": "warehouse",
 			"w": 2,
-			"sprite": "b:dom8",
+			"sprite": "b:склад",
 			"short": "bld.short.warehouse",
 			"loc": "bld.warehouse",
 			"desc": "bld.desc.warehouse",
@@ -965,7 +965,7 @@
 		{
 			"id": "tower",
 			"w": 2,
-			"sprite": "b:tower",
+			"sprite": "b:башня_каменная",
 			"short": "bld.short.tower",
 			"loc": "bld.tower",
 			"desc": "bld.desc.tower",
@@ -1018,7 +1018,7 @@
 		{
 			"id": "tavern",
 			"w": 2,
-			"sprite": "b:dom1",
+			"sprite": "b:таверна",
 			"short": "bld.short.tavern",
 			"loc": "bld.tavern",
 			"desc": "bld.desc.tavern",
@@ -1077,7 +1077,7 @@
 		{
 			"id": "forge",
 			"w": 2,
-			"sprite": "b:dom14",
+			"sprite": "b:кузница",
 			"short": "bld.short.forge",
 			"loc": "bld.forge",
 			"desc": "bld.desc.forge",
@@ -1332,5 +1332,15 @@
 		"min": 3,
 		"max": 5,
 		"loot_chance": 0.35
+	},
+	"combat_speed_cap": 3.0,
+	"extra_nature": {
+		"_note": "v1.49 «Город живёт»: добор природы ПОСЛЕ генерации, своим RNG — ванильные сиды целы",
+		"enabled": true,
+		"trees": 660,
+		"ponds": 4,
+		"rocks": 6,
+		"min_radius": 26,
+		"anomaly_radius": 8
 	}
 }

@@ -1003,12 +1003,25 @@ func _draw_building(b: Dictionary) -> void:
 		draw_string(font, tag_pos, tag, HORIZONTAL_ALIGNMENT_LEFT, -1, 9,
 				Color(1.0, 0.45, 0.4, 0.95))
 	else:
-		# схематичное здание: заливка категории, тёмная кайма по контуру
-		draw_rect(rect, col)
-		draw_rect(rect.grow(-2), col.darkened(0.3), false, 2.0)
+		# v1.49: здание рисуется ТЕКСТУРОЙ (раскладка ассетов заказчика готова:
+		# Celianna-дома + craftpix «дом жителей/склад»); стены/ворота остаются
+		# схематичными сегментами (тайлятся), у прочих спрайт заменяет коробку
+		var ref := _bld_sprite_ref(type_id, b)
+		var tex: Texture2D = Assets.sprite(ref) if ref != "" else null
+		var drew_tex := false
+		if tex != null and not type_id in ["wall", "gate"]:
+			var dw: float = rect.size.x * 1.5
+			var dh: float = dw * float(tex.get_height()) / float(tex.get_width())
+			# якорь — низ-footprint (по нему идёт Y-сортировка), спрайт над ним
+			Assets.draw_ref(self, ref, anchor - Vector2(0, dh * 0.5), dh)
+			drew_tex = true
+		if not drew_tex:
+			# схематичное здание: заливка категории, тёмная кайма по контуру
+			draw_rect(rect, col)
+			draw_rect(rect.grow(-2), col.darkened(0.3), false, 2.0)
+			_draw_bld_door(b, rect)
 		if type_id == "tent":
 			_draw_tent_awning(rect)   # полосатый навес — торговая читаемость (этап 2)
-		_draw_bld_door(b, rect)
 		# точка-работник: занятое здание подсвечено
 		if int(b["worker"]) > 0:
 			draw_circle(rect.position + Vector2(rect.size.x - 6.0, 6.0), 2.5, Color(1, 1, 1, 0.95))
@@ -1081,6 +1094,24 @@ func _draw_tent_awning(rect: Rect2) -> void:
 		var col := Color("#ffd54f") if i % 2 == 0 else Color("#fff3c4")
 		draw_rect(Rect2(rect.position.x + 2.0, rect.position.y + stripe * float(i),
 				rect.size.x - 4.0, h), col)
+
+
+## Ссылка на спрайт здания из конфига (кэш по типу). Дома жителей — три
+## варианта craftpix (ур1..3) по номеру дома, чтобы застройка не была клоном.
+var _bld_ref_cache: Dictionary = {}
+
+func _bld_sprite_ref(type_id: String, b: Dictionary) -> String:
+	if type_id == "house":
+		return "b:дом_жителей_ур%d" % (1 + int(b["id"]) % 3)
+	if _bld_ref_cache.has(type_id):
+		return _bld_ref_cache[type_id]
+	var ref := ""
+	for d in sim.cfg.get("buildings", []):
+		if String(d.get("id", "")) == type_id:
+			ref = String(d.get("sprite", ""))
+			break
+	_bld_ref_cache[type_id] = ref
+	return ref
 
 
 func _draw_bld_label(b: Dictionary, rect: Rect2) -> void:
@@ -1256,11 +1287,25 @@ func _draw_resident(r: Dictionary) -> void:
 	if sleeping:
 		col = col.darkened(0.4)
 	var center := pos + Vector2(0, -3.0 - bob - lift)
-	# тело — готовая текстурка (v1.21.5): одна команда вместо пяти
-	var body := _res_sprite(col, radius)
-	var half := float(body.get_width()) * 0.5
-	draw_texture_rect(body, Rect2(center - Vector2(half, half),
-			Vector2(float(body.get_width()), float(body.get_width()))), false)
+	# v1.49: взрослые с профессией из пака Minifolks рисуются спрайтом
+	# (idle/ходьба/работа); дети, стражи, староста и профессии без листа —
+	# прежний кружок цвета профессии
+	var working_states := ["work", "build", "harvest", "fill", "hunt", "chop", "mine", "farm"]
+	var drawn_villager := false
+	if not child and not sleeping and not _is_elder_golem(r):
+		var vx: float = 0.0
+		if not pth.is_empty():
+			vx = (pth[0] - pos).x
+		var working: bool = working_states.has(String(r.get("state", "")))
+		drawn_villager = Assets.draw_villager(self, prof,
+				"left" if vx < -1.0 else "right", moving, working,
+				center, 26.0, _anim_time + float(int(r["id"]) % 7) * 0.13, col)
+	if not drawn_villager:
+		# тело — готовая текстурка (v1.21.5): одна команда вместо пяти
+		var body := _res_sprite(col, radius)
+		var half := float(body.get_width()) * 0.5
+		draw_texture_rect(body, Rect2(center - Vector2(half, half),
+				Vector2(float(body.get_width()), float(body.get_width()))), false)
 	# голем-староста: белое «лицо» камня поверх кружка (он один на город)
 	if _is_elder_golem(r):
 		draw_circle(center, radius - 3.0, Color(1.0, 1.0, 1.0, 0.95))

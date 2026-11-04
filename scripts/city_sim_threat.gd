@@ -261,17 +261,22 @@ func _raider_update(r: Dictionary, dt: float, tcfg: Dictionary) -> bool:
 	if int(r["hp"]) <= 0:
 		return false
 	r["atk_cd"] = maxf(0.0, float(r["atk_cd"]) - dt)
+	# v1.49: корни/чума героя — движение вдвое медленнее, пока действует
+	var mv := dt
+	if float(r.get("slow_left", 0.0)) > 0.0:
+		r["slow_left"] = maxf(0.0, float(r["slow_left"]) - dt)
+		mv = dt * 0.5
 	var p: Dictionary = r["p"]
 	# v1.44: юниты улья — свои роли поверх общего боевого каркаса
 	match String(r.get("role", "")):
 		"gatherer":
-			return _hive_gatherer_update(r, dt)
+			return _hive_gatherer_update(r, mv)
 		"scout":
-			return _hive_scout_update(r, dt)
+			return _hive_scout_update(r, mv)
 		"guard":
-			return _hive_guard_update(r, dt, tcfg)
+			return _hive_guard_update(r, mv, tcfg)
 	if String(r.get("mode", "")) == "hunt":
-		return _spirit_update(r, dt)
+		return _spirit_update(r, mv)
 	# герой в городе и рядом — мутант отвлекается на чемпиона (путь как у жителей:
 	# напрямую он резал бы углы сквозь скалы — заказчик видел проходы насквозь);
 	# путь к герою закрыт стеной — мутант не толчётся у стены, а ломает её
@@ -287,7 +292,7 @@ func _raider_update(r: Dictionary, dt: float, tcfg: Dictionary) -> bool:
 							* map.plateau_def_mult(map.tile_of_px(r["pos"]), map.tile_of_px(hero_pos))))
 					events.append({"type": "hero_hit", "dmg": hero_dmg})
 				return true
-			if _raider_move_to(r, map.tile_of_px(hero_pos), float(p["speed"]) * dt):
+			if _raider_move_to(r, map.tile_of_px(hero_pos), float(p["speed"]) * mv):
 				return true
 	# v1.46 («Новый мир v2» этап 4): герой далеко или его нет — мутанты
 	# переключаются на ближайшего жителя (город перестаёт быть невидимым)
@@ -311,7 +316,7 @@ func _raider_update(r: Dictionary, dt: float, tcfg: Dictionary) -> bool:
 				else:
 					vic["mood"] = clampf(float(vic["mood"]) - 12.0, 0.0, 100.0)
 			return true
-		if _raider_move_to(r, map.tile_of_px(vic["pos"]), float(p["speed"]) * dt):
+		if _raider_move_to(r, map.tile_of_px(vic["pos"]), float(p["speed"]) * mv):
 			return true
 	var reach := float(p["attack_range"]) + float(map.ts) * 0.5
 	# здание в пределах досягаемости — крушим (иначе осцилляция «центр ↔ стена»:
@@ -335,10 +340,10 @@ func _raider_update(r: Dictionary, dt: float, tcfg: Dictionary) -> bool:
 		r["_center_cd"] = 0.4
 		r["_center_open"] = map.path_px(r["pos"], map.spawn_tile, true).size() > 1
 	if bool(r.get("_center_open", false)) \
-			and _raider_move_to(r, map.spawn_tile, float(p["speed"]) * dt):
+			and _raider_move_to(r, map.spawn_tile, float(p["speed"]) * mv):
 		return true
 	# заперты в кольце: идём ломать ближайшую стену или ворота
-	return _raider_break_obstacle(r, dt, p, near)
+	return _raider_break_obstacle(r, mv, p, near)
 
 
 ## Ближайшее к мутанту действующее здание (кэш на _near_gap секунд: скан всех
@@ -470,15 +475,54 @@ func _walkable_next_to(tile: Vector2i) -> Vector2i:
 ## духи, призраки и элементали бесплотны, от них не остаётся даже костей.
 ## v1.36: src_tile — откуда нанесён удар (оборонный бонус плато, №113):
 ## атакующий сверху бьёт больнее, по защитнику сверху — слабее.
-func _hit_raider(r: Dictionary, dmg: int, src_tile := Vector2i(-9999, -9999)) -> void:
+## v1.49: killer — «hero» для рук героя: убийство качает навыки (как в данже).
+func _hit_raider(r: Dictionary, dmg: int, src_tile := Vector2i(-9999, -9999), killer := "") -> void:
 	var mult := 1.0
 	if src_tile != Vector2i(-9999, -9999):
 		mult = map.plateau_def_mult(src_tile, map.tile_of_px(r["pos"]))
 	dmg = int(round(float(dmg) * mult))
 	r["hp"] = int(r["hp"]) - dmg
 	if int(r["hp"]) <= 0:
+		if killer == "hero" and r["p"].has("xp"):
+			events.append({"type": "hero_kill", "xp": int(r["p"]["xp"]),
+					"kind": String(r["type"])})
 		_drop_corpse(r)
 		raiders.erase(r)
+
+
+## Боевое заклинание героя в городе: урон рейдерам в круге (max_targets 0 = все,
+## иначе — БЛИЖАЙШИЕ N, как цепная молния). Возвращает {hits, dmg} —
+## суммарный урон (для «высасывания жизни»).
+func hero_spell_burst(pos_px: Vector2, radius_px: float, dmg: int, max_targets := 0) -> Dictionary:
+	var hits := 0
+	var total := 0
+	var hero_tile: Vector2i = map.tile_of_px(pos_px)
+	var cand: Array = []
+	for r in raiders:
+		if (r["pos"] as Vector2).distance_to(pos_px) <= radius_px:
+			cand.append(r)
+	if max_targets > 0 and cand.size() > max_targets:
+		cand.sort_custom(func(a, b): return (a["pos"] as Vector2).distance_to(pos_px) \
+				< (b["pos"] as Vector2).distance_to(pos_px))
+		cand = cand.slice(0, max_targets)
+	for r in cand:
+		var before: int = int(r["hp"])
+		_hit_raider(r, dmg, hero_tile, "hero")
+		total += before - maxi(0, int(r["hp"]))
+		hits += 1
+	if raid_active and _wave_raiders_left() == 0:
+		_raid_end(true)
+	return {"hits": hits, "dmg": total}
+
+
+## Корни/чума: замедлить рейдеров в круге (движение ×0.5 на duration сек).
+func slow_raiders_at(pos_px: Vector2, radius_px: float, duration: float) -> int:
+	var n := 0
+	for r in raiders:
+		if (r["pos"] as Vector2).distance_to(pos_px) <= radius_px:
+			r["slow_left"] = maxf(float(r.get("slow_left", 0.0)), duration)
+			n += 1
+	return n
 
 
 ## Останки павшего врага (v1.23): бесплотные (cemetery.bodiless — духи,
@@ -687,7 +731,12 @@ func _hive_gatherer_update(r: Dictionary, dt: float) -> bool:
 			r["carry"] = HiveSim.GATHER_PER_TRIP
 			_hive_consume_resource(rt)
 		return true
-	return _raider_move_to(r, map.tile_of_px(goal), speed)
+	# v1.49: путь к цели перекрыт (пруд/гряда добора природы) — добытчик
+	# бросает эту цель и ищет другую, а не удаляется из рейдеров каждый тик
+	if not _raider_move_to(r, map.tile_of_px(goal), speed):
+		r["res_tile"] = Vector2i(-1, -1)
+		r["path"] = PackedVector2Array()
+	return true
 
 
 ## Скаут: свежие СЛЕДЫ героя в радиусе — идёт по ним (тревога улья);
@@ -699,13 +748,17 @@ func _hive_scout_update(r: Dictionary, dt: float) -> bool:
 	var trail: Vector2 = HiveSim.track_near(hero_tracks, home, radius * 1.3, float(time))
 	if trail != Vector2.INF:
 		hive["alert"] = 3.0
-		return _raider_move_to(r, map.tile_of_px(trail), float(r["p"]["speed"]) * dt)
+		if not _raider_move_to(r, map.tile_of_px(trail), float(r["p"]["speed"]) * dt):
+			r["path"] = PackedVector2Array()   # путь перекрыт — стоит, не гибнет
+		return true
 	var ang: float = float(int(r["id"]) % 7) * 0.9 + float(time) * 0.15
 	var goal := home + Vector2(cos(ang), sin(ang)) * radius * 0.8
 	var gt: Vector2i = map.tile_of_px(goal)
 	if not map.is_walkable(gt):
 		return true
-	return _raider_move_to(r, gt, float(r["p"]["speed"]) * dt)
+	if not _raider_move_to(r, gt, float(r["p"]["speed"]) * dt):
+		r["path"] = PackedVector2Array()
+	return true
 
 
 ## Страж: держится у улья (герой рядом — дефолтная ветка боя ниже).
@@ -713,7 +766,8 @@ func _hive_guard_update(r: Dictionary, dt: float, tcfg: Dictionary) -> bool:
 	var home: Vector2 = hive["pos"]
 	var guard_r := float(map.ts) * 5.0
 	if (r["pos"] as Vector2).distance_to(home) > guard_r:
-		return _raider_move_to(r, map.tile_of_px(home), float(r["p"]["speed"]) * dt)
+		if not _raider_move_to(r, map.tile_of_px(home), float(r["p"]["speed"]) * dt):
+			r["path"] = PackedVector2Array()   # отрезан — ждёт, не исчезает
 	return true
 
 
@@ -797,7 +851,7 @@ func hero_slash(origin_px: Vector2, facing: Vector2, range_px: float, arc_deg: f
 			continue
 		if absf(facing.angle_to(to)) > deg_to_rad(arc_deg) / 2.0:
 			continue
-		_hit_raider(r, dmg, hero_tile)
+		_hit_raider(r, dmg, hero_tile, "hero")
 		hits += 1
 	if raid_active and _wave_raiders_left() == 0:
 		_raid_end(true)
@@ -812,7 +866,7 @@ func hero_shoot(origin_px: Vector2, facing: Vector2, range_px: float, dmg: int) 
 	var to: Vector2 = (target["pos"] as Vector2) - origin_px
 	if absf(facing.angle_to(to)) > 0.3:
 		return 0
-	_hit_raider(target, dmg, map.tile_of_px(origin_px))
+	_hit_raider(target, dmg, map.tile_of_px(origin_px), "hero")
 	if raid_active and _wave_raiders_left() == 0:
 		_raid_end(true)
 	return 1

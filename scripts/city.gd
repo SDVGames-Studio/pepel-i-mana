@@ -145,6 +145,7 @@ func _ready() -> void:
 	_equip_panel.on_change = func() -> void:
 		hero.set_equipment_bonuses(Game.equipment_bonuses())
 	_equip_panel.craft_cb = _craft_item
+	_equip_panel.cast_scroll_cb = _cast_scroll   # v1.49: свитки работают и в городе
 	add_child(_equip_panel)
 	# панель управления (M14-H, клавиша L): законы, вера, дипломатия
 	_gov_panel = load("res://scripts/governance_panel.gd").new()
@@ -667,6 +668,11 @@ func _process_events() -> void:
 			"hive_destroyed":
 				hud.toast(Loc.t("event.hive_destroyed") % int(ev["level"]))
 				_rebuild_collision()
+			"hero_kill":
+				# v1.49: убийства мутантов в городе качают навыки, как в данже
+				var ups: int = Game.skills.add_xp(int(ev["xp"]))
+				if ups > 0:
+					hud.toast(Loc.t("hud.level_up") % Game.skills.level)
 			# --- эпицентр катастрофы («Новый мир v2», v1.45) ---
 			"twisted_fell":
 				hud.toast(Loc.t("event.twisted_fell") % String(ev["a"]))
@@ -1545,6 +1551,132 @@ func _try_enchant() -> void:
 func set_speed(value: int) -> void:
 	sim.speed = value
 	sim.paused = false
+
+
+# --- боевые заклинания героя в городе (v1.49: паритет с данжем) -------------
+
+## Свиток из панели экипировки: тратит предмет, кастует бесплатно.
+func _cast_scroll(item_id: String) -> String:
+	var item: Dictionary = Game.item_def(item_id)
+	var spell_id := String(item.get("spell_id", ""))
+	if spell_id == "" or Game.magic.spell(spell_id).is_empty():
+		return "eq.not_usable"
+	if Game.count_item(item_id) < 1:
+		return "eq.not_owned"
+	if hero.dead:
+		return "eq.not_usable"
+	if hero.spell_cd_left(spell_id) > 0.0:
+		return "magic.cooldown"
+	Game.remove_item(item_id, 1)
+	_cast_combat_spell(spell_id, true)
+	return ""
+
+
+## Каст из панели магии (R): боевое заклинание героя по курсору/на себя.
+func cast_combat_spell(spell_id: String) -> void:
+	var err: String = _cast_combat_spell(spell_id)
+	if err == "":
+		hud.toast(Loc.t("magic.cast_done") % Loc.t("spell." + spell_id))
+	else:
+		hud.toast(Loc.t(err))
+
+
+## Боевое заклинание в городе: та же математика, что в данже (dungeon.gd),
+## но урон считают данные симуляции — рейдеры не ноды. "" — успех.
+func _cast_combat_spell(spell_id: String, free_cast := false) -> String:
+	if hero.dead:
+		return "eq.not_usable"
+	var def: Dictionary = Game.magic.spell(spell_id)
+	if def.is_empty() or String(def["where"]) != "dungeon":
+		return "magic.city_only" if String(def.get("where", "")) == "city" else "eq.not_usable"
+	if spell_id == "light_beacon":
+		return "magic.city_only"   # маяк света — только тьма данжа
+	if hero.spell_cd_left(spell_id) > 0.0:
+		return "magic.cooldown"
+	var cost := 0 if free_cast else int(def.get("mana_cost", 0))
+	if hero.mana < cost:
+		return "magic.no_mana"
+	hero.mana -= cost
+	# магия качает статы (v1.24): каст — интеллект, трата маны — мудрость
+	var ha: Dictionary = hero.attrs_cfg()
+	Game.hero_train("int", float(ha.get("train_cast_int", 0.15)))
+	if cost > 0:
+		Game.hero_train("wis", float(ha.get("train_cast_wis", 0.05)) \
+				+ float(ha.get("train_mana_wis", 0.04)) * float(cost))
+	hero.set_spell_cd(spell_id, float(def.get("cooldown", 3.0)) * hero.skill_mult("spell_cd_mult", 1.0))
+	var p2: Dictionary = def.get("params", {}).duplicate(true)
+	p2["damage"] = int(round(float(p2.get("damage", 0)) * hero.spell_mult()))
+	p2["heal"] = int(round(float(p2.get("heal", 0)) * hero.spell_mult()))
+	var col: Color = Game.magic.school_color(String(def["school"]))
+	match spell_id:
+		"fire_flash", "corrupt_blast", "void_rift":
+			var pos: Vector2 = _cast_point(float(p2.get("range", 200.0)))
+			sim.hero_spell_burst(pos, float(p2.get("radius", 46.0)) * hero.skill_mult("radius_mult", 1.0),
+					int(p2.get("damage", 4)))
+			_add_fx("burst", col, float(p2.get("radius", 46.0)), 0.4, pos)
+		"chain_bolt":
+			sim.hero_spell_burst(hero.global_position,
+					float(p2.get("radius", 170.0)), int(p2.get("damage", 2)),
+					int(p2.get("targets", 3)))
+			_add_fx("ring", col, float(p2.get("radius", 170.0)) * 0.5, 0.35, hero.global_position)
+		"heal":
+			hero.heal(int(p2.get("heal", 5)))
+			_add_fx("ring", col, 22.0, 0.5, hero.global_position)
+		"shield":
+			hero.cast_shield(float(p2.get("duration", 5.0)))
+			_add_fx("ring", col, 26.0, 0.6, hero.global_position)
+		"stone_skin":
+			hero.temp_armor_bonus(float(p2.get("duration", 10.0)), int(p2.get("armor", 1)))
+			_add_fx("ring", col, 24.0, 0.5, hero.global_position)
+		"overcharge":
+			hero.temp_damage_bonus(float(p2.get("duration", 8.0)), int(p2.get("damage_bonus", 2)))
+			_add_fx("ring", col, 24.0, 0.5, hero.global_position)
+		"roots":
+			var rpos: Vector2 = _cast_point(float(p2.get("range", 200.0)))
+			sim.slow_raiders_at(rpos, float(p2.get("radius", 58.0)), float(p2.get("stun", 3.0)))
+			_add_fx("zone", col, float(p2.get("radius", 58.0)), 0.6, rpos)
+		"thorns", "plague":
+			# v1.49: зона работает разово — суммарный урон dps×длительность + замедление
+			var zpos: Vector2 = _cast_point(float(p2.get("range", 200.0)))
+			var zr: float = float(p2.get("radius", 58.0))
+			var total: int = int(round(float(p2.get("dps", 1)) * float(p2.get("duration", 4.0)) * hero.spell_mult()))
+			sim.hero_spell_burst(zpos, zr, total)
+			sim.slow_raiders_at(zpos, zr, float(p2.get("duration", 4.0)))
+			_add_fx("zone", col, zr, 0.7, zpos)
+		"drain_life":
+			var dres: Dictionary = sim.hero_spell_burst(hero.global_position,
+					float(p2.get("radius", 180.0)), int(p2.get("damage", 3)),
+					int(p2.get("targets", 2)))
+			if int(dres["hits"]) > 0:
+				hero.heal(int(dres["hits"]) * int(p2.get("heal_per_target", 2)))
+			_add_fx("ring", col, 24.0, 0.45, hero.global_position)
+		"soul_burn":
+			var spos: Vector2 = _cast_point(float(p2.get("range", 200.0)))
+			var sres: Dictionary = sim.hero_spell_burst(spos, float(p2.get("radius", 60.0)),
+					int(p2.get("damage", 5)), 1)
+			if int(sres["hits"]) > 0:
+				hero.add_mana(int(p2.get("mana_per_target", 1)))
+			_add_fx("burst", col, float(p2.get("radius", 60.0)), 0.45, spos)
+	# дикая магия загрязняет регион (как из данжа)
+	if float(def.get("pollution", 0.0)) > 0.0:
+		sim.add_pollution(float(def["pollution"]))
+	return ""
+
+
+## Точка каста: курсор, не дальше range_px от героя (как в данже).
+func _cast_point(range_px: float) -> Vector2:
+	var to: Vector2 = get_global_mouse_position() - hero.global_position
+	if to.length() <= range_px:
+		return hero.global_position + to
+	return hero.global_position + to.normalized() * range_px
+
+
+## Визуал заклинания (тот же SpellFx, что в данже).
+func _add_fx(kind: String, col: Color, radius: float, dur: float, pos: Vector2) -> void:
+	var fx = load("res://scripts/spell_fx.gd").new()
+	fx.setup(kind, col, radius, dur)
+	fx.position = pos
+	add_child(fx)
 
 
 ## Кнопка «Автономия» (правки v1.12.0): с 10 поселенцев деревня живёт сама.

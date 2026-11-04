@@ -164,6 +164,12 @@ const BLOCKS := [
 	"_test_hive_save",
 ]],
 
+	["res://tests/test_v149.gd", [
+	"_test_v149_combat",
+	"_test_v149_assets",
+	"_test_v149_configs",
+]],
+
 	["res://tests/test_dungeon2.gd", [
 	"_test_dungeon2_assets",
 	"_test_dungeon2_spots",

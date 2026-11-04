@@ -113,7 +113,97 @@ func generate(seed_value: int, params: Dictionary, hydro := {}) -> void:
 					attempt, _t1 - _t0, _t15 - _t1, _t2 - _t15, _ok])
 		if _ok:
 			break
+	# v1.49 («Город живёт»): добор природы ПОСЛЕ генерации — отдельным RNG со
+	# своим сидом. Ванильные параметры и последовательность бросков не тронуты
+	# (детерминизм сидов и привязанные к ним тесты целы), лес/скалы/пруды
+	# добираются вне ядра застройки и вдали от аномалии. ДО mark_terrain_solid —
+	# новые скалы сразу сплошные для A*.
+	_extra_nature_pass(seed_value, params)
 	mark_terrain_solid()
+
+
+## Добор природы (v1.49): деревья, скалы и малые пруды вне ядра города.
+## min_radius — от старта (кольцо стен, поля и застройка свободны),
+## anomaly_radius — вокруг аномалии (улью и герою нужен подход).
+func _extra_nature_pass(seed_value: int, params: Dictionary) -> void:
+	var ncfg: Dictionary = params.get("extra_nature", {})
+	if ncfg.is_empty() or ncfg.get("enabled", true) == false:
+		return
+	var erng := RandomNumberGenerator.new()
+	erng.seed = hash("extra-nature:%d" % seed_value)
+	var min_r := int(ncfg.get("min_radius", 26))
+	var anom_r := int(ncfg.get("anomaly_radius", 8))
+	# деревья — лес кольцом вокруг города (луг между ядром и стеной чистый)
+	var n_trees := int(ncfg.get("trees", 0))
+	var placed := 0
+	var guard := 0
+	while placed < n_trees and guard < n_trees * 30:
+		guard += 1
+		var p := Vector2i(erng.randi_range(1, w - 2), erng.randi_range(1, h - 2))
+		if grid[p.y][p.x] != TILE_GRASS or not _extra_spot_ok(p, min_r, anom_r):
+			continue
+		grid[p.y][p.x] = TILE_TREE
+		tree_size[p] = _roll_tree_size(erng.randf())
+		placed += 1
+	# малые пруды: вода сплошная — на карте появляются новые водоёмы
+	for i in int(ncfg.get("ponds", 0)):
+		var pc := Vector2i(erng.randi_range(1, w - 2), erng.randi_range(1, h - 2))
+		var pr := erng.randi_range(2, 3)
+		if grid[pc.y][pc.x] != TILE_GRASS or not _extra_blob_ok(pc, pr, min_r, anom_r):
+			continue
+		_blob(pc, pr, TILE_WATER)
+	# скалы: компактные гряды с сателлитами (как ванильные, но мельче)
+	var n_rocks := int(ncfg.get("rocks", 0))
+	var hp := float(params.get("mountain", {}).get("hp", 80.0))
+	var made := 0
+	guard = 0
+	while made < n_rocks and guard < n_rocks * 30:
+		guard += 1
+		var c := Vector2i(erng.randi_range(1, w - 2), erng.randi_range(1, h - 2))
+		var cr := erng.randi_range(2, 4)
+		if grid[c.y][c.x] != TILE_GRASS or not _extra_blob_ok(c, cr, min_r, anom_r):
+			continue
+		_blob(c, cr, TILE_ROCK)
+		for s in 2:
+			var c2 := c + Vector2i(erng.randi_range(-5, 5), erng.randi_range(-4, 4))
+			if c2.x < 1 or c2.y < 1 or c2.x > w - 2 or c2.y > h - 2:
+				continue
+			var cr2 := erng.randi_range(1, 2)
+			if grid[c2.y][c2.x] == TILE_GRASS and _extra_blob_ok(c2, cr2, min_r, anom_r):
+				_blob(c2, cr2, TILE_ROCK)
+		made += 1
+	# прочность всем скалам (новым тоже): гряда добываема, руда богаче
+	for y in h:
+		for x in w:
+			var t := Vector2i(x, y)
+			if grid[y][x] == TILE_ROCK and not rock_hp.has(t):
+				rock_hp[t] = hp
+			elif grid[y][x] == TILE_ORE and not rock_hp.has(t):
+				rock_hp[t] = hp * 1.3
+
+
+## Годен ли тайл под добор природы: вне ядра застройки, не у аномалии/выхода,
+## и НЕ на плато (площадки и лестницы остаются чистыми, №113–115).
+func _extra_spot_ok(t: Vector2i, min_radius: int, anomaly_radius: int) -> bool:
+	return t.distance_to(spawn_tile) >= min_radius \
+			and t.distance_to(anomaly_tile) >= anomaly_radius \
+			and t.distance_to(world_exit_tile) >= 6 \
+			and int(height.get(t, 0)) == 0
+
+
+## Годен ли ЦЕЛИКОМ блоб радиуса r с центром c (кромка не должна налезать
+## на плато/ядро — иначе плато «на скале» и недостижимые лестницы).
+func _extra_blob_ok(c: Vector2i, r: int, min_radius: int, anomaly_radius: int) -> bool:
+	for y in range(c.y - r, c.y + r + 1):
+		for x in range(c.x - r, c.x + r + 1):
+			if x < 1 or y < 1 or x > w - 2 or y > h - 2:
+				continue
+			var t := Vector2i(x, y)
+			if Vector2(t).distance_to(Vector2(c)) > float(r):
+				continue
+			if grid[y][x] != TILE_GRASS or not _extra_spot_ok(t, min_radius, anomaly_radius):
+				return false
+	return true
 
 
 ## Природные препятствия: ВОДА и скалы/руда/выработанная порода — сплошные

@@ -886,15 +886,15 @@ const FLOWER_COLS := [
 
 
 func _draw_grass_detail(x: int, y: int, rect: Rect2, ts: float) -> void:
-	# камешек: редкий серый бугорок
-	if _hash(x * 13, y * 3, 200) == 0:
+	# камешек: редкий серый бугорок (v1.49: гуще — карта «ожила»)
+	if _hash(x * 13, y * 3, 120) == 0:
 		_drawer.draw_circle(rect.position + Vector2(8.0 + float(_hash(x, y, 40) % 14), 9.0), 1.8,
 				Color("#9a958a"))
 		_drawer.draw_circle(rect.position + Vector2(7.4, 8.4), 0.9, Color("#b5b0a4"))
 	# цветочная поляна: шум крупными пятнами (нормирован 0..1), цветёт
 	# только сердцевина пятна — поляна читается островом среди луга
 	var field := _noise2(x / 6.0, y / 6.0, 100, 71) / 99.0
-	if field > 0.80:
+	if field > 0.72:
 		var blooms := 1 + _hash(x, y, 13) % 2
 		for i in blooms:
 			var h2 := _hash(x * 17 + i, y * 19 + i, 100)
@@ -930,8 +930,8 @@ func _draw_grass_prop(x: int, y: int, rect: Rect2, ts: float) -> void:
 		if map.in_bounds(p) and map.grid[p.y][p.x] == map.TILE_WATER:
 			near_water = true
 			break
-	# шанс: у воды 8%, на лугу 2.2%
-	var threshold := 80 if near_water else 22
+	# шанс: у воды 12%, на лугу 6% (v1.49: кустов/валунов вдвое больше)
+	var threshold := 120 if near_water else 60
 	if h >= threshold:
 		return
 	var idx: int = _hash(x * 3, y * 5, _prop_texs.size())

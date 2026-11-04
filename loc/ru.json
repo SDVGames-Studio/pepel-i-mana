@@ -310,7 +310,7 @@
 	"world.hint_hunt": "E — охота (%s)",
 	"world.hint_fish": "E — рыбалка",
 	"world.hunt_got": "%s: %s",
-	"chron.hunt": "Добыча: %s",
+	"chron.hunt": "%s добыл на охоте %s еды",
 	"chron.legend_visit": "%s гостит у города",
 	"chron.legend_cleared": "%s зачистил %s — лут у него",
 	"chron.legend_joined": "%s присоединился к городу",
@@ -375,7 +375,7 @@
 	"city.growth_food": "Прирост стоит: нет запаса еды хотя бы на день",
 	"city.growth_mood": "Прирост стоит: настроение слишком низкое",
 	"city.learned_toast": "%s освоил новую профессию: %s",
-	"chron.learned": "%s освоил профессию (%s)",
+	"chron.learned": "%s осваивает новое ремесло: %s",
 	"city.autobuild_toast": "%s распорядился строить: %s",
 	"chron.autobuild": "%s распорядился построить: %s",
 	"city.promoted_toast": "%s — новый староста города",
@@ -507,7 +507,7 @@
 	"chron.hive_built": "Мутанты отстроили улей у аномалии",
 	"chron.hive_wave": "Улей послал волну мутантов (%s)",
 	"chron.hive_destroyed": "Улей (ур. %s) разорён героем",
-"event.twisted_fell": "Искажённые магией захватили: %s",
+	"event.twisted_fell": "Искажённые магией захватили: %s",
 	"event.twisted_attack": "Искажённые напали на %s — поселение держится",
 	"event.eruption": "ВЫБРОС из эпицентра катастрофы! Волна скверны (сила %d)",
 	"chron.twisted_fell": "Искажённые захватили %s",
@@ -689,7 +689,6 @@
 	"chron.golem_awakens": "У площади пробуждается голем-староста: %s",
 	"chron.morning_plan": "Утренний план старосты: день %s, назначений %s",
 	"chron.wedding_home": "%s выписался из дома — пара живёт вместе",
-	"chron.learned": "%s осваивает новое ремесло: %s",
 	"city.storm_warn_toast": "Магическая буря приближается! Зачаруйте здания «Оберегом»",
 	"city.storm_start_toast": "МАГИЧЕСКАЯ БУРЯ! Порча портит здания и воздух",
 	"city.storm_end_toast": "Буря улеглась. Город выстоял",
@@ -732,7 +731,6 @@
 	"chron.hunter_trained": "%s стал охотником",
 	"city.state.hunt": "охотится",
 	"city.hunt_toast": "Охотник %s добыл еды: %d",
-	"chron.hunt": "%s добыл на охоте %s еды",
 	"city.guard_trained_toast": "%s обучен на стража — город усиливает оборону",
 	"chron.guard_trained": "%s стал стражем",
 	"city.dungeon_locked_hint": "Данж зачищен и восстанавливается: ~%d дн. (E — подробно)",
@@ -776,7 +774,6 @@
 	"bld.desc.garden": "Декор и уют: +%d к настроению жителей",
 	"bld.statue": "Статуя",
 	"bld.desc.statue": "Декор и гордость: +%d к настроению жителей",
-
 	"biome.crystal_caves": "Кристальные пещеры",
 	"biome.ash_wastes": "Пепельные пустоши",
 	"enemy.crawler": "Кристальный ползун",
@@ -797,7 +794,6 @@
 	"hud.level": "Уровень",
 	"hud.level_up": "НОВЫЙ УРОВЕНЬ: %d! Выберите навык",
 	"hud.skill_choice": "Герой достиг уровня %d — выберите путь:",
-
 	"tree.warrior": "Воин",
 	"tree.mage": "Магистр",
 	"tree.survivor": "Выживший",
@@ -821,7 +817,6 @@
 	"tree.desc.s3": "+20 к скорости, рывок на 20% чаще",
 	"tree.s4": "Чутьё следопыта",
 	"tree.desc.s4": "Замечает следы в радиусе +2 и затирает их шире (+1)",
-
 	"research.title": "Дисциплины города (U — закрыть)",
 	"research.agriculture": "Земледелие",
 	"research.defense": "Оборона",
@@ -848,13 +843,11 @@
 	"research.research_done": "Уже изучено",
 	"research.research_locked": "Сначала предыдущая ступень ветки",
 	"research.research_no_res": "Не хватает ресурсов на исследование",
-
 	"trait.kind": "добрый",
 	"trait.strong": "сильный",
 	"trait.sickly": "болезненный",
 	"trait.dreamer": "мечтатель",
 	"trait.stoic": "стоик",
-
 	"chron.festival": "В таверне гуляли весь день — город наелся и повеселел",
 	"chron.prodigy": "%s обучил %s — ученик поумнел не по годам",
 	"chron.brave_deed": "%s совершил храбрый поступок — город гордится",
@@ -875,7 +868,6 @@
 	"story.artifact_toast": "%s нашел артефакт: +1 кристалл",
 	"story.good_harvest_toast": "УРОЖАЙНЫЙ ГОД: еда в амбаре",
 	"story.stranger_toast": "Странник поделился припасами",
-
 	"spell.overcharge": "Перегрузка",
 	"spell.desc.overcharge": "герой бьет сильнее 8 секунд",
 	"spell.meteor_shard": "Оскол метеора",
@@ -892,7 +884,6 @@
 	"spell.desc.soul_burn": "взрыв по кругу, за каждую цель — мана, +7 загрязнения",
 	"spell.void_rift": "Разлом пустоты",
 	"spell.desc.void_rift": "мощный взрыв, +12 загрязнения",
-
 	"item.rune_ash": "Руна пепла",
 	"item.rune_blood": "Руна крови",
 	"item.rune_echo": "Руна эха",
@@ -901,13 +892,10 @@
 	"item.rune_void": "Руна пустоты",
 	"item.rune_core": "Руна ядра",
 	"item.boss_trophy": "Трофей владыки",
-
 	"res.coins": "Монеты",
 	"res.coins_short": "м.",
-
 	"city.exit_world": "Край города — шаг на зелёную рамку, и вы на карте мира",
 	"city.world_exit_hint": "зелёная рамка карты — выход на карту мира",
-
 	"world.day": "День %d",
 	"world.hint": "ЛКМ — идти или выбрать точку интереса, E — действие, ПКМ/Esc — отмена",
 	"world.hint_enter_city": "E — войти в город",
@@ -925,7 +913,6 @@
 	"world.travel_cancel": "Путь прерван",
 	"world.arrived": "Вы прибыли: %s",
 	"world.cleared": "Здесь уже зачищено — восстановится через %d дн.",
-
 	"world.poi.city": "Ваш город",
 	"world.poi.dungeon": "Аномалия-данж",
 	"world.poi.ruins": "Древние руины",
@@ -933,11 +920,9 @@
 	"world.poi.settlement": "Поселение",
 	"world.poi.caravan": "Караван торговцев",
 	"world.poi.obelisk": "Древний обелиск",
-
 	"world.faction.traders": "Торговцы",
 	"world.faction.bandits": "Бандиты",
 	"world.faction.cult": "Культ Пепла",
-
 	"world.strength": "Сила: %d",
 	"world.status_ok": "Порядок",
 	"world.status_fallen": "Захвачено бандитами",
@@ -953,11 +938,9 @@
 	"world.settlement_pop": "Жителей: %d",
 	"world.settlement_empty": "Поселение пусто — заходить некуда",
 	"world.close_btn": "Закрыть",
-
 	"world.coins_got": "Найдены монеты: +%d",
 	"world.map_found": "Найдена старая карта — открыты далёкие места",
 	"world.obelisk_seen": "Обелиск открыл далёкие земли",
-
 	"legend.grey_cloak": "Сивый Плащ",
 	"legend.grey_cloak.flavor": "Охотник на чудовищ. Говорит мало, следы читает лучше собак.",
 	"legend.margo": "Марго Дальний Путь",
@@ -975,7 +958,6 @@
 	"world.legend_cleared": "%s зачистил: %s — лут достался ему",
 	"world.legend_left": "%s двинулся дальше",
 	"world.legend_hi": "Путник кивает вам.",
-
 	"enc.ambush.title": "Засада!",
 	"enc.ambush.text": "Кусты у тропы вздрагивают — бандиты! Они ждали караван, а дождались вас.",
 	"enc.fight": "В бой!",
@@ -1003,19 +985,16 @@
 	"enc.pilgrim.no_coins": "Монет не хватает",
 	"enc.pilgrim.done": "Паломник доволен — культ запомнит",
 	"enc.move_on": "Идти дальше",
-
 	"world.siege_start": "%s идут штурмом на %s!",
 	"world.siege_fell": "%s пало под натиском бандитов",
 	"world.siege_repelled": "%s отбило осаду бандитов",
 	"world.resettle": "Заново отстроено: %s (%s)",
 	"world.poi_reborn": "Аномалия сгустилась: %s снова опасен",
 	"world.caravan_moved": "Караван перебрался в новые места",
-
 	"chron.world_siege": "Бандиты осадили %s",
 	"chron.world_fell": "%s захвачено бандитами",
 	"chron.world_repelled": "%s отбилось от бандитов",
 	"chron.world_resettle": "%s отстроено заново — там теперь %s",
-
 	"world.trade_title": "Торговля",
 	"world.buy_title": "Купить (в город, караван доставит):",
 	"world.sell_title": "Продать (из склада города):",
@@ -1034,26 +1013,22 @@
 	"world.no_res": "Не хватает ресурса",
 	"world.no_runes": "У культа кончились руны",
 	"world.storage_full": "Склад города полон",
-
 	"res.seeds": "Семена",
 	"res.saplings": "Саженцы",
 	"res.gems": "Самоцветы",
-	"chron.sapling_planted": "%s сажает лес у лесопилки",
+	"chron.sapling_planted": "Посажен саженец",
 	"city.hauled_toast": "%s снёс продукцию: +%d %s",
-
 	"animal.sheep": "овца",
 	"animal.cow": "корова",
 	"animal.pig": "свинья",
 	"animal.chicken": "курица",
 	"animal.chick": "цыплёнок",
 	"animal.turkey": "индюк",
-
 	"prof.trader": "торговец",
 	"bld.orchard": "Яблоневый сад",
 	"bld.desc.orchard": "Яблони зреют сами — урожай в общий котёл",
 	"bld.market": "Торговый двор",
 	"bld.desc.market": "Караваны приходят сами, мэр организует свои (M)",
-
 	"bld.tent": "Торговая палатка",
 	"bld.desc.tent": "Дешёвая лавка 1×1: торговец продаёт излишки пула за монеты (до 3 штук). Не заменяет торговый двор",
 	"bld.short.tent": "Палатка",
@@ -1070,7 +1045,6 @@
 	"wshop.2": "Товар за честную цену",
 	"wshop.3": "Куплю всё, что лежит без дела",
 	"wshop.4": "Монеты звонкие, товар лучший!",
-
 	"city.livestock_tame_toast": "Жители приручили %s — теперь оно на пастбище",
 	"city.livestock_born_toast": "На пастбище родился детёныш: %s",
 	"city.livestock_food_toast": "Скот дал городу еды: %d",
@@ -1080,7 +1054,6 @@
 	"city.caravan_sent_toast": "Караван отправлен: %d %s",
 	"city.caravan_returned_toast": "Караван вернулся с прибылью: +%d монет",
 	"city.caravan_lost_toast": "Караван разграблен бандитами! Потерян груз: %s",
-
 	"chron.livestock_tame": "Приручено животное: %s",
 	"chron.pig_meat": "Лишняя свинья пущена на мясо",
 	"city.tame_sent_toast": "%s отправился за диким зверем",
@@ -1089,7 +1062,6 @@
 	"chron.caravan_sent": "Мэр отправил караван: %s × %s",
 	"chron.caravan_returned": "Караван вернулся: +%s монет",
 	"chron.caravan_lost": "Караван разграблен в пути (%s)",
-
 	"market.title": "Торговый двор",
 	"market.need_building": "Постройте торговый двор — тогда сюда станут приходить караваны, а мэр сможет отправлять свои",
 	"market.caravan_here": "Караван в городе — можно купить и продать:",
@@ -1097,7 +1069,6 @@
 	"market.buy_btn": "купить %d",
 	"market.sell_btn": "продать %d",
 	"market.deals_title": "Организовать свой караван:",
-
 	"cat.living": "Жильё",
 	"cat.living_tip": "Дома, колодец, сады и статуи — уют и место для жителей",
 	"cat.resource": "Ресурсы",
@@ -1220,7 +1191,6 @@
 	"chron.tree_felled": "Срублено дерево — лес всё помнит",
 	"chron.tree_sawed": "Распилено дерево: %s досок",
 	"chron.tree_grown": "Саженец вырос: лес немного успокоился",
-	"chron.sapling_planted": "Посажен саженец",
 	"chron.forest_warn": "Лес зашептался: духи гневаются на вырубки",
 	"chron.spirit_attack": "Духи леса напали на рабочих (%s)",
 	"chron.forest_boss": "Из чащи вышел Древень с духами (%s)",
@@ -1247,20 +1217,17 @@
 	"market.err_no_coins": "Не хватает монет",
 	"market.err_no_caravan": "Каравана нет в городе",
 	"market.err_storage_full": "Склад города полон",
-
 	"world.poi.trade_camp": "Лагерь торговцев",
 	"world.hint_trade_camp": "E — войти в лагерь торговцев",
 	"biome.bandit_camp": "Лагерь бандитов",
 	"enemy.bandit": "Бандит",
 	"enemy.bandit_archer": "Бандит-лучник",
 	"enemy.bandit_chief": "АТАМАН РЫЖИЙ ХВОСТ",
-
 	"camp.hint_walk": "WASD — ходить, подойдите к торговцу или костру",
 	"camp.hint_trade": "E — торговать (цены лагеря лучше караванных)",
 	"camp.hint_exit": "Выйдите за нижний край — вернётесь на карту мира",
 	"camp.trade_title": "Лагерь торговцев",
 	"camp.trade_note": "Телеги со всех земель: цены здесь варварски выгодные",
-
 	"enemy.ghoul": "Упырь",
 	"enemy.wraith": "Скорбный призрак",
 	"enemy.imp": "Бесёнок",
@@ -1275,14 +1242,12 @@
 	"biome.dragon_lair": "Логово дракона",
 	"world.poi.dragon_castle": "Замок дракона",
 	"world.hint_dragon_castle": "E — войти в замок дракона",
-
 	"chron.widow": "%s в трауре: не стало любимого человека %s",
 	"chron.found_day": "День основания: город гуляет до утра",
 	"chron.found_skip": "День основания прошёл скромно — не хватает еды",
 	"story.widow_toast": "%s овдовел(а): не стало %s",
 	"city.found_day_toast": "ДЕНЬ ОСНОВАНИЯ: весь город гуляет!",
 	"city.found_skip_toast": "День основания не отмечают — не хватает еды",
-
 	"love.0": "С тобой я не боюсь темноты.",
 	"love.1": "Вечер без тебя — не вечер.",
 	"love.2": "Побудь со мной ещё немного.",
@@ -1290,5 +1255,8 @@
 	"fest.0": "С Днём основания!",
 	"fest.1": "Танцуй, пока музыка играет!",
 	"fest.2": "За наш город!",
-	"fest.3": "Столы ломятся — угощайся!"
+	"fest.3": "Столы ломятся — угощайся!",
+	"magic.mana": "мана",
+	"magic.hero_spells": "Боевые заклинания героя (мана героя, каст по курсору)",
+	"magic.city_only": "Это заклинание действует только в данже"
 }

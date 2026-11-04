@@ -27,7 +27,7 @@ var _lantern: PointLight2D = null
 var lantern_on := true          # v1.46: фонарь можно погасить (скрытность)
 var _track_acc := 0.0           # накопитель скрытности (тёмное подкрадывание)
 var _flicker_time := 0.0
-var _sprite: Sprite2D = null      # спрайт воина 32×32 (M9)
+var _sprite: AnimatedSprite2D = null   # рыцарь FreeKnight: idle/run/attack/roll/death
 var _bob_time := 0.0              # фаза бобинга ходьбы / дыхания в покое
 var projectile_solid_check := Callable()   # сцена передаёт проверку стены (M14-B)
 var city_speed_mult := 1.0        # вязкая земля у воды в городе (M14-I)
@@ -42,6 +42,49 @@ var _temp_armor := 0
 static var _ha: Dictionary = {}   # кэш balance.json -> hero_attributes (тесты подменяют)
 
 const LANTERN_ENERGY := 1.5   # v1.33.3: тёплый фонарь заметнее на тёмной базе данжа
+
+# --- рыцарь FreeKnight_v1 (листы 120×80, персонаж ~37px высотой, ноги у низа) ---
+const KNIGHT_FRAME := 120       # ширина кадра листа
+const KNIGHT_FRAME_H := 80.0    # высота кадра
+const KNIGHT_CHAR_H := 37.0     # высота персонажа в кадре (альфа-бокс)
+const KNIGHT_FEET_Y := 79.5     # ноги персонажа от верха кадра
+
+
+## SpriteFrames из горизонтальных полос assets/sprites/hero/knight_*.png
+## (кадры режутся AtlasTexture-регионами — без предварительной нарезки).
+static func build_knight_frames() -> SpriteFrames:
+	var sf := SpriteFrames.new()
+	if not sf.has_animation("default"):
+		sf.add_animation("default")
+	var defs := {
+		"idle": ["knight_Idle", 8.0, true],
+		"run": ["knight_Run", 12.0, true],
+		"attack": ["knight_Attack", 12.0, false],
+		"roll": ["knight_Roll", 14.0, false],
+		"death": ["knight_Death", 8.0, false],
+	}
+	for anim: String in defs:
+		var d: Array = defs[anim]
+		var tex: Texture2D = Assets.tex("res://assets/sprites/hero/%s.png" % d[0])
+		if tex == null:
+			continue
+		if sf.has_animation(anim):
+			sf.remove_animation(anim)
+		sf.add_animation(anim)
+		sf.set_animation_speed(anim, float(d[1]))
+		sf.set_animation_loop(anim, bool(d[2]))
+		var n := int(tex.get_width()) / KNIGHT_FRAME
+		for i in n:
+			var at := AtlasTexture.new()
+			at.atlas = tex
+			at.region = Rect2(i * KNIGHT_FRAME, 0, KNIGHT_FRAME, KNIGHT_FRAME_H)
+			sf.add_frame(anim, at)
+	return sf
+
+
+## Масштаб спрайта: высота персонажа в кадре → целевая (3.2 радиуса).
+func knight_scale() -> float:
+	return float(p["radius"]) * 3.2 / KNIGHT_CHAR_H
 
 
 ## Конфиг статов героя (balance.json -> hero_attributes); читается один раз.
@@ -180,13 +223,14 @@ func _ready() -> void:
 	circle.radius = float(p["radius"])
 	shape.shape = circle
 	add_child(shape)
-	# спрайт воина (M9): высота ~3.2 радиуса, ноги чуть ниже центра коллизии
-	_sprite = Sprite2D.new()
-	var hero_tex: Texture2D = Assets.sprite("img:knight")
-	_sprite.texture = hero_tex
-	var h := float(p["radius"]) * 3.2
-	_sprite.scale = Vector2.ONE * (h / float(hero_tex.get_height()))
-	_sprite.position = Vector2(0, -h * 0.15)
+	# спрайт рыцаря (FreeKnight): анимации idle/run/attack/roll/death;
+	# высота персонажа ~3.2 радиуса, ноги у нижнего края коллизии
+	_sprite = AnimatedSprite2D.new()
+	_sprite.sprite_frames = build_knight_frames()
+	var ks := knight_scale()
+	_sprite.scale = Vector2.ONE * ks
+	_sprite.position = Vector2(0, float(p["radius"]) - (KNIGHT_FRAME_H * 0.5 - KNIGHT_FEET_Y) * ks)
+	_sprite.play("idle")
 	add_child(_sprite)
 	var cam := Camera2D.new()
 	cam.name = "Camera"
@@ -283,13 +327,24 @@ func _physics_process(delta: float) -> void:
 		if _temp_armor_left <= 0.0:
 			_temp_armor = 0
 	_tick_spell_cooldowns(delta)
-	if not city_mode:
-		_regen_mana(delta)
+	# мана регенерирует и в городе (городской герой — все возможности данжа)
+	_regen_mana(delta)
 	var dir := Input.get_vector("move_left", "move_right", "move_up", "move_down")
 	var agi_speed := stat("agi") * float(attrs_cfg().get("agi_speed", 1.5))   # ловкость — бег (v1.24)
 	if city_mode:
-		velocity = dir * (float(p["speed"]) + agi_speed) * city_speed_mult
+		# рывок в городе тоже (паритет с данжем): отпрыг в сторону движения
+		if Input.is_action_just_pressed("dash") and _dash_cd <= 0.0 and dir != Vector2.ZERO:
+			facing = dir.normalized()
+			_dash_left = float(p["dash_time"])
+			_dash_cd = float(p["dash_cooldown"]) * skill_mult("dash_cd_mult", 1.0) * eq_mult("dash_cd_mult", 1.0)
+		if _dash_left > 0.0:
+			_dash_left -= delta
+			var dash_speed_c := float(p["dash_distance"]) / float(p["dash_time"])
+			velocity = facing * dash_speed_c * city_speed_mult
+		else:
+			velocity = dir * (float(p["speed"]) + agi_speed) * city_speed_mult
 		move_and_slide()
+		_drive_anim()
 		return
 	if dir != Vector2.ZERO:
 		facing = dir.normalized()
@@ -305,6 +360,27 @@ func _physics_process(delta: float) -> void:
 		velocity = dir * (float(p["speed"]) + float(_sk.get("speed", 0.0)) \
 				+ float(_eq.get("speed", 0.0)) + agi_speed)
 	move_and_slide()
+	_drive_anim()
+
+
+## Выбор анимации рыцаря по состоянию: смерть → рывок → замах (доигрывается)
+## → бег → покой. Вызывается из физики в обоих режимах.
+func _drive_anim() -> void:
+	if _sprite == null or _sprite.sprite_frames == null:
+		return
+	var want := "idle"
+	if dead:
+		want = "death"
+	elif _dash_left > 0.0:
+		want = "roll"
+	elif _sprite.animation == "attack" and _sprite.is_playing():
+		want = "attack"          # замах не перебивается ходьбой до конца кадра
+	elif velocity.length() > 5.0:
+		want = "run"
+	if _sprite.animation != want:
+		_sprite.play(want)
+	elif not _sprite.is_playing() and want in ["idle", "run"]:
+		_sprite.play(want)
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -399,6 +475,14 @@ func city_attack(sim) -> int:
 	else:
 		hits = sim.hero_slash(global_position, facing, reach,
 				float(wpn.get("arc", p["attack_arc"])), eff_damage())
+	# бой в городе качает статы как в данже (v1.49): сила — ближний бой,
+	# ловкость — лук (посох в городе ману не пьёт — стреляем древком-лучом)
+	if hits > 0:
+		var ha: Dictionary = attrs_cfg()
+		if String(wpn.get("pattern", "")) == "projectile":
+			Game.hero_train("agi", float(ha.get("train_swing", 0.06)))
+		else:
+			Game.hero_train("str", float(ha.get("train_swing", 0.06)) * float(hits))
 	queue_redraw()
 	get_tree().create_timer(0.15).timeout.connect(queue_redraw)
 	return hits
@@ -528,25 +612,31 @@ func _draw() -> void:
 		draw_arc(Vector2.ZERO, float(p["radius"]) + 6.0, 0.0, TAU, 32, Color(1.0, 0.85, 0.35, 0.85), 2.5)
 
 
-## Тело и меч в переданный canvas (данж: свой canvas, город: city_view, M12).
+## Тело героя в переданный canvas (данж: свой canvas, город: city_view, M12).
+## Рыцарь FreeKnight: текущий кадр анимации, ноги у земли (y-сортировка).
 func draw_body(canvas: CanvasItem, pos: Vector2) -> void:
-	var h := float(p["radius"]) * 3.2
+	if _sprite == null or _sprite.sprite_frames == null:
+		return
+	# AnimatedSprite2D в Godot 4 не Sprite2D — кадр берём из SpriteFrames
+	var tex: Texture2D = _sprite.sprite_frames.get_frame_texture(_sprite.animation, _sprite.frame)
+	if tex == null:
+		return
 	var moving := velocity.length() > 5.0
-	var amp := 1.6 if moving else 0.5
-	var body_y := -h * 0.15 - absf(sin(_bob_time)) * amp
-	var flip := facing.x < 0.0
-	# шаг виден и при движении вверх/вниз (M10): лёгкое покачивание корпусом
+	var amp := 1.2 if moving else 0.4
+	var ks := knight_scale()
+	var fw := KNIGHT_FRAME * ks
+	var fh := KNIGHT_FRAME_H * ks
+	# ноги персонажа — чуть ниже центра коллизии; лёгкий бобинг при ходьбе
+	var feet_y := float(p["radius"]) * 0.55 - absf(sin(_bob_time)) * amp
 	var rot := 0.0
 	if moving and absf(facing.y) >= absf(facing.x):
 		rot = sin(_bob_time) * 0.09
-	if _sprite != null and _sprite.texture != null:
-		canvas.draw_set_transform(pos, rot, Vector2.ONE)
-		var dst := Rect2(Vector2(-h / 2.0, body_y - h / 2.0), Vector2(h, h))
-		if flip:
-			dst.size.x = -dst.size.x
-		canvas.draw_texture_rect(_sprite.texture, dst, false)
-		canvas.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
-	_draw_sword(canvas, pos, flip)
+	canvas.draw_set_transform(pos, rot, Vector2.ONE)
+	var dst := Rect2(Vector2(-fw / 2.0, feet_y - KNIGHT_FEET_Y * ks), Vector2(fw, fh))
+	if facing.x < 0.0:
+		dst.size.x = -dst.size.x
+	canvas.draw_texture_rect(tex, dst, false)
+	canvas.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
 
 ## Меч героя (M11): виден в руке, при ударе — дуга замаха в сторону курсора.

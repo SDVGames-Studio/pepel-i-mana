@@ -12,6 +12,10 @@ func tick(dt_raw: float) -> void:
 	var day_len := float(cfg["day_length"])
 	time += dt
 	day = int(time / day_len) + 1
+	# v1.49 (приёмка): бой не разгоняется ускорением времени — герой двигается
+	# в реальном времени, и на x10 мутанты улетали «со скоростью света».
+	# Экономика/дни идут на полном множителе, монстры и звери — до потолка.
+	var dt_combat := dt_raw * minf(speed, float(cfg.get("combat_speed_cap", 3.0)))
 	# еда: все жители едят непрерывно (обжора ×2, ребёнок ×0.5); пусто — город голодает
 	var eaters := 0.0
 	for r in residents:
@@ -50,9 +54,9 @@ func tick(dt_raw: float) -> void:
 		if float(b.get("stun_left", 0.0)) > 0.0:
 			b["stun_left"] = maxf(0.0, float(b["stun_left"]) - dt)
 	_update_wild_events(pol_cfg, day_len)
-	_update_storm(dt, day_len)
-	_update_threat(dt, day_len)
-	_update_animals(dt)
+	_update_storm(dt_combat, day_len)
+	_update_threat(dt_combat, day_len)
+	_update_animals(dt_combat)
 	_update_livestock(dt)
 	_update_wanderers(dt)
 	_update_zones(dt, day_len)

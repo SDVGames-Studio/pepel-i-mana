@@ -8,15 +8,15 @@ extends RefCounted
 ## ЧИСТАЯ логика уровней/волн — тестируется headless. Конфиг —
 ## balance.json → "hive".
 
-const LEVELS := [60, 160, 320]      # запас ресурсов для уровня 2/3/4
+const LEVELS := [90, 220, 420]      # запас ресурсов для уровня 2/3/4 (v1.49: медленнее рост)
 const RADIUS_BASE := 14.0           # радиус поиска ресурсов, тайлы
 const RADIUS_PER_LEVEL := 6.0
-const WAVE_DAYS := 2.5              # раз в сколько дней улей шлёт волну
+const WAVE_DAYS := 4.0              # раз в сколько дней улей шлёт волну (v1.49: реже)
 const WAVE_BASE := 2
 const WAVE_PER_LEVEL := 1
-const WAVE_STOCK_DIV := 60          # +1 мутант за каждые N запаса
+const WAVE_STOCK_DIV := 90          # +1 мутант за каждые N запаса (v1.49: дороже)
 const HP := 150
-const RESPAWN_DAYS := 10
+const RESPAWN_DAYS := 14            # v1.49: разорённый улей отрастает дольше
 const START_DAY := 4
 const GUARDS := 2
 const GATHERERS := 3
@@ -39,9 +39,10 @@ static func radius_for(level: int) -> float:
 	return RADIUS_BASE + float(level - 1) * RADIUS_PER_LEVEL
 
 
-## Число ролей на уровне: [стражи, добытчики, скауты].
+## Число ролей на уровне: [стражи, добытчики, скауты]. v1.49: добытчики
+## растут медленнее (+1 за уровень) — улей дольше выходит на максимальный сбор.
 static func roles_for(level: int) -> Array:
-	return [GUARDS + level - 1, GATHERERS + (level - 1) * 2, SCOUTS + (level - 1) / 2]
+	return [GUARDS + level - 1, GATHERERS + (level - 1), SCOUTS + (level - 1) / 2]
 
 
 ## Размер волны: база + уровень + бонус за накопленный запас (успех сбора).
@@ -51,9 +52,9 @@ static func wave_size(level: int, stock: int, waves_sent: int) -> int:
 	return clampi(n, 1, 14)
 
 
-## Период волн сокращается с уровнем (дни): 2.5 → 1.3.
+## Период волн сокращается с уровнем (дни): 4.0 → 2.6 (v1.49: спокойнее ритм).
 static func wave_days(level: int) -> float:
-	return maxf(1.3, WAVE_DAYS - float(level - 1) * 0.4)
+	return maxf(2.6, WAVE_DAYS - float(level - 1) * 0.4)
 
 
 ## Новый след героя: возвращает обновлённый массив следов (хвост по времени).

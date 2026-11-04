@@ -233,3 +233,47 @@ static func draw_animal(canvas: CanvasItem, kind: String, dir: String, moving: b
 		"right": d = 3
 	var row := d + (4 if moving else 0)
 	draw_sheet(canvas, kind, row * 6 + int(t * 6.0) % 6, pos, size_px, false, tint)
+
+
+# --- жители-профессии Minifolks (v1.49): лист 10×8 кадров 32×32 --------------
+# Ряд 0 — покой (4 кадра), ряд 1 — ходьба (10), ряд 2 — работа инструментом (4).
+# Листы смотрят вправо — влево отражаем. Профессии без листа -> false (кружок).
+
+const VILLAGER_PROF := {
+	"lumberjack": "MiniLumberjack",
+	"miner": "MiniMiner",
+	"smith": "MiniBlacksmithB",
+	"smelter": "MiniBlacksmithB",
+	"armorer": "MiniBlacksmithB",
+	"hunter": "MiniHunter",
+	"farmer": "MiniGatherer",
+	"builder": "MiniGatherer",
+	"porter": "MiniMerchantB",
+	"bartender": "MiniMerchantB",
+	"trader": "MiniMerchantB",
+	"healer": "MiniNun",
+	"acolyte": "MiniNun",
+}
+
+static var _villager_texs: Dictionary = {}   # base -> Texture2D (кэш)
+
+## Житель-профессия листом Minifolks. dir — «left»/«right» (виды спереди);
+## working — анимация работы (ряд 2). False — листа нет (рисовать кружок).
+static func draw_villager(canvas: CanvasItem, prof: String, dir: String, moving: bool,
+		working: bool, pos: Vector2, size_px: float, t: float, tint := Color.WHITE) -> bool:
+	if not VILLAGER_PROF.has(prof):
+		return false
+	var base: String = VILLAGER_PROF[prof]
+	if not _villager_texs.has(base):
+		_villager_texs[base] = tex("res://assets/sprites/villagers/%s.png" % base)
+	var sheet: Texture2D = _villager_texs[base]
+	if sheet == null:
+		return false
+	var row := 1 if moving else (2 if working else 0)
+	var frames := 10 if moving else 4
+	var f := int(t * (10.0 if moving else 5.0)) % frames
+	var cs := 32.0
+	var src := Rect2(float(f % 10) * cs, float(row) * cs, cs, cs)
+	var dst := Rect2(pos - Vector2(size_px * 0.5, size_px * 0.62), Vector2(size_px, size_px))
+	canvas.draw_texture_rect_region(sheet, dst, src, tint)
+	return true
