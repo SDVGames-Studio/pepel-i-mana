@@ -51,8 +51,46 @@ func _porter_work(r: Dictionary, dt: float) -> void:
 		r["carry"] = take
 		r["carry_res"] = key
 		r["state"] = "porter"
+		# v1.47 («Новый мир v2» этап 5): умный носильщик — если рядом (≤ 6
+		# тайлов) есть вторая куча, забирает и её (маршрут, а не туды-сюды)
+		var second := _nearest_other_pile(target, r["pos"])
+		if not second.is_empty():
+			var pile2: Dictionary = second.get("pile", {})
+			var key2 := ""
+			var best2 := 0.0
+			for k2 in pile2:
+				if float(pile2[k2]) > best2:
+					best2 = float(pile2[k2])
+					key2 = String(k2)
+			if key2 == String(r["carry_res"]):
+				# тот же ресурс — добираем в тот же тюк (маршрут без туды-сюды)
+				var take2: float = minf(float(cfg.get("piles", {}).get("carry", 10.0))
+						- float(r["carry"]), float(pile2[key2]))
+				if take2 > 0.0:
+					pile2[key2] = float(pile2[key2]) - take2
+					if float(pile2[key2]) <= 0.0001:
+						pile2.erase(key2)
+					second["pile"] = pile2
+					r["carry"] = float(r["carry"]) + take2
 	else:
 		_move_towards(r, target["tile"], dt)
+
+
+## Вторая куча рядом (≤ 6 тайлов) для маршрута носильщика.
+func _nearest_other_pile(first: Dictionary, from_px: Vector2) -> Dictionary:
+	var best: Dictionary = {}
+	var best_d := float(map.ts) * 6.0
+	for b in buildings:
+		if not bool(b["done"]) or int(b["id"]) == int(first["id"]):
+			continue
+		if _pile_total(b) <= 0.5:
+			continue
+		var d: float = map.tile_center_px(b["tile"]).distance_to(
+				map.tile_center_px(first["tile"]))
+		if d <= best_d:
+			best_d = d
+			best = b
+	return best
 
 
 ## Готовое здание с самой большой кучей (>= chunk); при равенстве — ближайшее.

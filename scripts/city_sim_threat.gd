@@ -323,6 +323,10 @@ func _raider_update(r: Dictionary, dt: float, tcfg: Dictionary) -> bool:
 			var mult := float(tcfg.get("brute_bld_mult", 3.0)) if String(r["type"]) == "brute" else 1.0
 			if _damage_building(near, float(p["damage"]) * mult):
 				razed_this_raid += 1
+				# v1.47: ПРОРЫВ — паника: все, кто снаружи, бегут домой
+				if not raid_breached:
+					raid_breached = true
+					events.append({"type": "raid_panic"})
 		return true
 	# путь к центру открыт — идём (проверка не каждый тик: A* по обнесённой
 	# стенами карте дорог — так держим FPS и в осаду, правки приёмки v1.26)
@@ -820,6 +824,7 @@ func hero_shoot(origin_px: Vector2, facing: Vector2, range_px: float, dmg: int) 
 func _raid_end(defended: bool) -> void:
 	var kind := _raid_kind
 	raid_active = false
+	raid_breached = false
 	# v1.44: юнитов улья не вычищаем — они живут вне волны
 	raiders = raiders.filter(func(r): return not String(r.get("role", "")).is_empty())
 	var tcfg: Dictionary = cfg.get("threat", {})

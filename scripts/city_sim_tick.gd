@@ -216,6 +216,15 @@ func _update_resident(r: Dictionary, dt: float) -> void:
 		return
 	var night := is_night()
 	var tcfg: Dictionary = cfg.get("threat", {})
+	# v1.47: ВЕЧЕРНЯЯ СОЦЖИЗНЬ («Новый мир v2» этап 5) — до ночи, без осады:
+	# свободные жители гуляют к другу/любимому; встреча — свидание; свидетель
+	# ревнует (любовный треугольник рождается из прогулок)
+	if not night and not raid_active and not raid_breached:
+		var day_frac := fmod(time, float(cfg["day_length"])) / float(cfg["day_length"])
+		var evening := day_frac >= float(cfg.get("evening_start", 0.62)) \
+				and day_frac <= 1.0 - float(cfg.get("night_fraction", 0.22))
+		if evening and _social_walk(r, dt):
+			return
 	# угроза (M5+): бойцы снаряжаются в оружейке с предупреждения; трус прячется,
 	# только когда волна пришла (v1.25, заказчик: предупреждение длится дни —
 	# город не должен всё это время стоять у костра, работа идёт до самой атаки)
@@ -227,6 +236,14 @@ func _update_resident(r: Dictionary, dt: float) -> void:
 			_defender_update(r, dt, float(tcfg.get("guard_damage", 2)), float(tcfg.get("guard_cd", 1.0)))
 			return
 	if raid_active:
+		# v1.47: ПРОРЫВ — паника: непанельные (не страж/ополчение) бегут домой
+		if raid_breached and String(r["prof"]) != "guard" \
+				and not _has_trait_flag(r, "fearless") \
+				and (r["site"] != null or r["bld"] != null or int(r.get("inside", 1)) == 0):
+			if _event_rng.randf() < 0.5:
+				r["mood"] = clampf(float(r["mood"]) - 8.0, 0.0, 100.0)
+			_flee_home(r, dt)
+			return
 		# ополчение: бьются все свободные взрослые и храбрые работники (заказчик)
 		var free := r["site"] == null and r["bld"] == null
 		if (free or _has_trait_flag(r, "fearless")) \
@@ -1247,6 +1264,116 @@ func _assigned_done(r: Dictionary, worker_prof: String) -> Dictionary:
 	for b in buildings:
 		if b["done"] and int(b["worker"]) == int(r["id"]) and String(_def(b).get("worker", "")) == worker_prof:
 			return b
+	return {}
+
+
+## ==================== Вечерняя соцжизнь (v1.47, «Новый мир v2» этап 5) ====
+
+## Прогулка в свободное время: свободный взрослый идёт к лучшему другу /
+## симпатии (rel > 25) или к площади/воде. Встреча двух гуляющих в 1.5
+## тайлах — СВИДАНИЕ (настроение + отношения); свидетель, чья симпатия к
+## одному из пары высока, РЕВНУЕТ — рождается любовный треугольник.
+## Возвращает true, если житель занят прогулкой (кадр обработан).
+func _social_walk(r: Dictionary, dt: float) -> bool:
+	if String(r["prof"]) == "guard" or int(r.get("inside", 1)) != 0 \
+			or String(r.get("state", "")) in ["sleep", "sick", "wounded", "child", "hide"]:
+		return false
+	var ts := float(map.ts)
+	# фаза прогулки: цель уже выбрана
+	if String(r.get("state", "")) == "walk":
+		var goal: Vector2i = Vector2i(r.get("walk_goal", Vector2i(-1, -1)))
+		if goal == Vector2i(-1, -1) or not map.is_walkable(goal):
+			r["state"] = "idle"
+			r.erase("walk_goal")
+			return false
+		if _arrived(r, goal):
+			r["state"] = "idle"
+			r.erase("walk_goal")
+			r["mood"] = clampf(float(r["mood"]) + 2.0, 0.0, 100.0)
+			return true
+		_move_towards(r, goal, dt)
+		_check_encounter(r)
+		return true
+	# начать прогулку: только К КОМУ-ТО (друг/симпатия rel > 25) — без
+	# близких связей остаёмся в старом досуге (костёр/беседы, v1.28)
+	if _event_rng.randf() > 0.5:
+		return false
+	var best := rel_best(r)
+	if best.is_empty():
+		return false
+	var goal: Vector2i = map.nearest_walkable(map.tile_of_px(Vector2(best["pos"])))
+	if goal == Vector2i(-1, -1):
+		return false
+	if float(r.get("_walk_cd", 0.0)) > time:
+		return false
+	r["_walk_cd"] = time + float(cfg["day_length"]) * 0.3
+	r["state"] = "walk"
+	r["walk_goal"] = goal
+	return true
+
+
+## Встречи на прогулке: свидание (взаимная симпатия) или ревность.
+func _check_encounter(r: Dictionary) -> void:
+	# не чаще раза в секунду на жителя
+	if float(r.get("_enc_cd", 0.0)) > time:
+		return
+	r["_enc_cd"] = time + 1.0
+	for other in residents:
+		if int(other["id"]) == int(r["id"]) or int(other.get("inside", 1)) != 0:
+			continue
+		if String(other.get("state", "")) != "walk":
+			continue
+		var d: float = (other["pos"] as Vector2).distance_to(r["pos"])
+		if d > float(map.ts) * 1.5:
+			continue
+		var score: float = _rel_score(r, int(other["id"]))
+		# ревность: у меня высокая симпатия к нему, а он гуляет С ДРУГИМ,
+		# чья симпатия к нему ещё выше — треугольник
+		var third := _walk_third(other, int(r["id"]))
+		if score > 30.0 and third != -1:
+			_rel_change(r, other, -25.0)
+			var third_res := _resident_by_id(third)
+			if not third_res.is_empty():
+				_rel_change(r, third_res, -30.0)
+			r["mood"] = clampf(float(r["mood"]) - 10.0, 0.0, 100.0)
+			events.append({"type": "jealous", "name": String(r["name"]),
+					"other": String(other["name"])})
+			_chron("chron.jealous", String(r["name"]), String(third_res.get("name", "")) if not third_res.is_empty() else "")
+			return
+		# свидание: взаимно тёплая встреча
+		if score > 15.0:
+			_rel_change(r, other, 8.0)
+			r["mood"] = clampf(float(r["mood"]) + 3.0, 0.0, 100.0)
+			other["mood"] = clampf(float(other["mood"]) + 3.0, 0.0, 100.0)
+			if _event_rng.randf() < 0.12:
+				events.append({"type": "date", "a": String(r["name"]),
+						"b": String(other["name"])})
+				_chron("chron.date", String(r["name"]), String(other["name"]))
+		return
+
+
+## Третий в треугольнике: с кем гуляет other (не r).
+func _walk_third(other: Dictionary, except_id: int) -> int:
+	var best := -1
+	var best_s := 20.0
+	for cand in residents:
+		if int(cand["id"]) == int(other["id"]) or int(cand["id"]) == except_id:
+			continue
+		if String(cand.get("state", "")) != "walk":
+			continue
+		if (cand["pos"] as Vector2).distance_to(other["pos"]) > float(map.ts) * 2.0:
+			continue
+		var s2 := _rel_score(other, int(cand["id"]))
+		if s2 > best_s:
+			best_s = s2
+			best = int(cand["id"])
+	return best
+
+
+func _resident_by_id(rid: int) -> Dictionary:
+	for cand in residents:
+		if int(cand["id"]) == rid:
+			return cand
 	return {}
 
 
