@@ -916,10 +916,39 @@ func _on_hero_down() -> void:
 	hero.queue_redraw()
 
 
+## v1.48: сбор лута руин (кристаллы/руна) — тайл рядом с героем.
+func _try_ruin_loot() -> bool:
+	var t: Vector2i = map.tile_of_px(hero.position)
+	for d in [Vector2i(0, 0), Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
+		var lt: Vector2i = t + d
+		if not map.ruin_loot.has(lt):
+			continue
+		map.ruin_loot.erase(lt)
+		var roll := randf()
+		if roll < 0.5:
+			var n := 2 + (randi() % 3)
+			sim.res["crystal"] = float(sim.res.get("crystal", 0.0)) + float(n)
+			hud.toast(Loc.t("city.ruin_crystal") % n)
+		else:
+			var runes := {}
+			for rcp in Game.magic.cfg.get("recipes", []):
+				runes[String(rcp["a"])] = true
+				runes[String(rcp["b"])] = true
+			var keys: Array = runes.keys()
+			var rune_id := String(keys[randi() % keys.size()])
+			Game.add_item(rune_id)
+			hud.toast(Loc.t("city.ruin_rune") % Loc.t(rune_id))
+		return true
+	return false
+
+
 func _unhandled_input(event: InputEvent) -> void:
 	if event.is_action_pressed("interact"):
 		# в чужом городе герой — гость: аномалия, оружейка, храм и ручной
 		# труд — только дома («Мир v2», этап 3)
+		# v1.48: руины городской карты — лут-тайл рядом (кристаллы/руна)
+		if _try_ruin_loot():
+			return
 		if not guest:
 			if _near_anomaly:
 				if Game.dungeon_available(sim.day_number()):

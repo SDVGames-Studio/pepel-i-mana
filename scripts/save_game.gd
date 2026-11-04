@@ -217,7 +217,8 @@ static func _city_block(sim, include_map := true) -> Dictionary:
 			"bridges": _tile_keys(m.bridges),
 			"fords": _tile_keys(m.fords),
 			"height": _tile_vals(m.height),
-			"stairs": _tile_keys(m.stairs)
+			"stairs": _tile_keys(m.stairs),
+			"ruin_loot": _tile_keys(m.ruin_loot)
 		}
 	out["residents"] = _residents_save(sim)
 	out["sim"] = _city_sim_block(sim)
@@ -727,6 +728,10 @@ static func _apply_city_map(map, md: Variant, cfg: Dictionary) -> String:
 	if not (md is Dictionary):
 		return "save.load_failed"
 	map.astar_ready = false   # v1.43: сетка поменялась — A* пересобрать лениво
+	# v1.48: лут-тайлы руин
+	map.ruin_loot = {}
+	for e in md.get("ruin_loot", []):
+		map.ruin_loot[Vector2i(int(e[0]), int(e[1]))] = true
 	map.w = int(md.get("w", 0))
 	map.h = int(md.get("h", 0))
 	map.ts = int(md.get("ts", 32))
