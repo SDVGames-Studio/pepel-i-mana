@@ -8,6 +8,8 @@ const TILE_ROCK := 2
 const TILE_TREE := 3
 const TILE_ORE := 4       # скала с железной рудой — под ней можно поставить шахту (M5+)
 const TILE_DEADROCK := 5  # выработанный массив (правки v1.21): пустая порода/жилы —
+const TILE_RUIN := 6      # v1.48: руины городской карты (куча древних камней,
+                          # добывается как скала; лут-тайлы — ruin_loot)
                           # стоит на месте выработанной скалы, добывается шахтой
 
 const TREE_SMALL := 1     # размеры деревьев (правки v1.21): малое/среднее/большое
@@ -326,6 +328,20 @@ func _generate_once(seed_value: int, params: Dictionary,
 	# лестницы-проходы. Сетка grid не меняется — плато остаётся травой
 	# (деревья/стройка на нём разрешены), высота живёт в height.
 	_generate_plateaus(rng, params)
+	# v1.48 («Новый мир v2» этап 6): РУИНЫ для исследования — кучи древних
+	# камней (TILE_RUIN, сплошные, добываются), рядом лут-тайл (E: кристаллы/руна)
+	var rcfg: Dictionary = params.get("city_ruins", {})
+	if bool(rcfg.get("enabled", true)):
+		for i in rng.randi_range(int(rcfg.get("min", 3)), int(rcfg.get("max", 5))):
+			var rt := _random_inner_tile(rng)
+			if grid[rt.y][rt.x] != TILE_GRASS:
+				continue
+			_blob(rt, rng.randi_range(1, 2), TILE_RUIN)
+			for t2 in [rt + Vector2i(1, 0), rt + Vector2i(-1, 0), rt + Vector2i(0, 1),
+					rt + Vector2i(0, -1), rt]:
+				if grid[t2.y][t2.x] == TILE_GRASS 						and rng.randf() < float(rcfg.get("loot_chance", 0.35)):
+					ruin_loot[t2] = true
+					break
 
 
 ## Обрывки реки (v1.29.4): ядро города и край карты режут меандр на куски —
@@ -957,7 +973,7 @@ func is_nature_walkable(p: Vector2i) -> bool:
 	if not in_bounds(p):
 		return false
 	var t: int = grid[p.y][p.x]
-	return t != TILE_WATER and t != TILE_ROCK and t != TILE_ORE and t != TILE_DEADROCK
+	return t != TILE_WATER and t != TILE_ROCK and t != TILE_ORE 			and t != TILE_DEADROCK and t != TILE_RUIN
 
 
 func _setup_astar() -> void:

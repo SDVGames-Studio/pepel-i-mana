@@ -120,9 +120,13 @@ func _test_npc_cities_throttle() -> void:
 		npc.tick(1.0 / 60.0)
 	_check(absf(float(sim.time) - t0) < 0.001,
 			"короткие кадры не дёргают симуляцию (копим период)")
-	npc.tick(float(ncfg_of(npc).get("tick_period", 0.5)))
+	# v1.48.1: ПАКЕТ заменён ROUND-ROBIN (один город за вызов — «2 FPS на
+	# старте» лечились именно пакетом: 10 городов × накопленный dt за один
+	# кадр). Нужный город доезжает за несколько вызовов; время двигается.
+	for i in 30:
+		npc.tick(float(ncfg_of(npc).get("tick_period", 0.5)))
 	_check(float(sim.time) > t0 + 0.5,
-			"накопленный отрезок проживается пакетом (%.2f сек)" % (float(sim.time) - t0))
+			"накопленный отрезок проживается round-robin (%.2f сек)" % (float(sim.time) - t0))
 	# город в гостях — каждый кадр, без пакета
 	var t1 := float(sim.time)
 	npc.tick(1.0 / 60.0, id)

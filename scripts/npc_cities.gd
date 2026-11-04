@@ -161,6 +161,8 @@ func destroy(poi_id: int) -> void:
 ## большие шаги времени безопасны: advance_days пути гоняет по 30 сек).
 ## Скорость/пауза — как у города игрока («те же правила»).
 var _bg_accum := 0.0
+var _bg_order: Array = []      # v1.48.1: round-robin городов (один за вызов)
+var _bg_i := 0
 
 
 func tick(dt: float, skip_id := -1, ref_speed := 1) -> void:
@@ -172,17 +174,34 @@ func tick(dt: float, skip_id := -1, ref_speed := 1) -> void:
 			continue
 		if not sim.paused and int(sim.speed) != ref_speed:
 			sim.speed = ref_speed
+	# v1.48.1 (фидбек «2 FPS на старте»): пакет прогонял ВСЕ города сразу
+	# по накопленному времени (10 городов × 0.5 с сима = ~4 с фриза каждые
+	# полсекунды). Теперь ROUND-ROBIN: один город за вызов, шаг не больше
+	# period; догоняя по кругу, поселения живут равномерно и без фризов.
 	_bg_accum += dt
 	if _bg_accum < period:
 		return
-	var batch := minf(_bg_accum, 2.0)   # долгая пауза меню — без гигантских скачков
+	var step := minf(_bg_accum, period)
 	_bg_accum = 0.0
-	for poi_id in cities:
-		if int(poi_id) == skip_id:
+	if _bg_order.is_empty() or _bg_order.size() != cities.size():
+		_bg_order = cities.keys()
+		_bg_i = 0
+	if _bg_order.is_empty():
+		return
+	# один город за вызов
+	var attempts := _bg_order.size()
+	while attempts > 0:
+		var pid = _bg_order[_bg_i % _bg_order.size()]
+		_bg_i += 1
+		attempts -= 1
+		if int(pid) == skip_id or not cities.has(pid):
 			continue
-		var sim2 = cities[poi_id]["sim"]
-		sim2.tick(batch)
+		var sim2 = cities[pid]["sim"]
+		if sim2.paused:
+			continue
+		sim2.tick(step)
 		sim2.events.clear()   # тосты чужого города никто не показывает; летопись помнит всё
+		break
 	_sync_populations()
 
 
