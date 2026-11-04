@@ -52,17 +52,23 @@ func build_cache() -> Array:
 	return []
 
 
-func draw_blobs(ts: float) -> void:
+## v1.48.1: region (тайлы) — рисуем только свой чанк запечки (вся карта
+## на каждый чанк = сотни мс GDScript-циклов).
+func draw_blobs(ts: float, region := Rect2i()) -> void:
+	var x0 := maxi(0, region.position.x)
+	var y0 := maxi(0, region.position.y)
+	var x1: int = t.map.w if region.size == Vector2i.ZERO else mini(t.map.w, region.end.x + 1)
+	var y1: int = t.map.h if region.size == Vector2i.ZERO else mini(t.map.h, region.end.y + 1)
 	# проход 1: лужайка верха массива + обрывы к югу
-	for y in t.map.h:
-		for x in t.map.w:
+	for y in range(y0, y1):
+		for x in range(x0, x1):
 			var tk := Vector2i(x, y)
 			var g: int = t.map.grid[y][x]
 			if g == t.map.TILE_ROCK or g == t.map.TILE_ORE:
 				_draw_rock_tile(tk, g == t.map.TILE_ORE, ts)
 	# проход 2: зелёная «юбка» на траве у подножия
-	for y in t.map.h:
-		for x in t.map.w:
+	for y in range(y0, y1):
+		for x in range(x0, x1):
 			if t.map.grid[y][x] == t.map.TILE_GRASS:
 				_draw_skirt(Vector2i(x, y), ts)
 

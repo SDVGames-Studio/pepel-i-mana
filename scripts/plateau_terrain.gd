@@ -25,12 +25,17 @@ func col(key: String, def: String) -> Color:
 
 
 ## Главный вход: рисует все плато поверх травы/скал/воды (до бахромы).
-func draw_plateaus(ts: float) -> void:
+## v1.48.1: region (тайлы) — только свой чанк запечки.
+func draw_plateaus(ts: float, region := Rect2i()) -> void:
 	if t.map.height.is_empty():
 		return
+	var x0 := maxi(0, region.position.x)
+	var y0 := maxi(0, region.position.y)
+	var x1: int = t.map.w if region.size == Vector2i.ZERO else mini(t.map.w, region.end.x + 1)
+	var y1: int = t.map.h if region.size == Vector2i.ZERO else mini(t.map.h, region.end.y + 1)
 	# 1) верхние грани: плато светлее равнины, терраса — ещё светлее
-	for y in t.map.h:
-		for x in t.map.w:
+	for y in range(y0, y1):
+		for x in range(x0, x1):
 			var lv: int = t.map.height_at(Vector2i(x, y))
 			if lv <= 0:
 				continue
@@ -38,17 +43,17 @@ func draw_plateaus(ts: float) -> void:
 			t._drawer.draw_rect(Rect2(x * ts, y * ts, ts, ts),
 					Color(1.0, 0.97, 0.82, a))
 	# 2) мягкая тень на траве у подножия южных кромок
-	_draw_shadows(ts)
+	_draw_shadows(ts, region)
 	# 3) кромки: грани по сторонам света, срезы к югу, лестницы, столбики
-	for y in t.map.h:
-		for x in t.map.w:
+	for y in range(y0, y1):
+		for x in range(x0, x1):
 			var p := Vector2i(x, y)
 			var lv: int = t.map.height_at(p)
 			if lv <= 0:
 				continue
 			_draw_rims(p, lv, ts)
-	for y in t.map.h:
-		for x in t.map.w:
+	for y in range(y0, y1):
+		for x in range(x0, x1):
 			var p := Vector2i(x, y)
 			var lv: int = t.map.height_at(p)
 			if lv <= 0:
@@ -152,10 +157,14 @@ func _post(x: float, y: float, h: float, stone_dark: Color) -> void:
 
 
 ## Тень у подножия: 3 полосы с затуханием на траве к югу от кромки.
-func _draw_shadows(ts: float) -> void:
+func _draw_shadows(ts: float, region := Rect2i()) -> void:
 	var base := opt("shadow_alpha", 0.22)
-	for y in t.map.h:
-		for x in t.map.w:
+	var x0 := maxi(0, region.position.x)
+	var y0 := maxi(0, region.position.y)
+	var x1: int = t.map.w if region.size == Vector2i.ZERO else mini(t.map.w, region.end.x + 1)
+	var y1: int = t.map.h if region.size == Vector2i.ZERO else mini(t.map.h, region.end.y + 1)
+	for y in range(y0, y1):
+		for x in range(x0, x1):
 			var p := Vector2i(x, y)
 			var lv: int = t.map.height_at(p)
 			if lv <= 0:

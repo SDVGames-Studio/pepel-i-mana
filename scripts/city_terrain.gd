@@ -121,6 +121,7 @@ func setup(city_map, city_cfg: Dictionary, city_sim = null, cache_key := "") -> 
 
 
 var _cache_key_in := ""
+var _new_brushes_this_frame := 0   # v1.48.1: лимит кистей/кадр (рендер в конце кадра)
 var _full_drawer: Node2D = null   # холст полного слоя (для возврата из кисти)
 
 
@@ -134,6 +135,26 @@ func _game():
 
 func _chunk_count() -> int:
 	return ceili(float(map.w) / CHUNK_TILES) * ceili(float(map.h) / CHUNK_TILES)
+
+
+## v1.48.1: чанки возле героя — ПЕРВЫМИ (игрок сразу видит обжитой центр,
+## окраины доезжают фоном по бюджету времени).
+func _sort_chunks_near_hero(wanted: Array) -> void:
+	if _hero_px() == Vector2.INF:
+		return
+	var hero_c := Vector2(_hero_px()) / float(CHUNK_TILES * map.ts)
+	wanted.sort_custom(func(a, b) -> bool:
+		return Vector2(a).distance_squared_to(hero_c) < Vector2(b).distance_squared_to(hero_c))
+
+
+func _hero_px() -> Vector2:
+	var g = _game()
+	if g != null and g.get("city_sim") != null and g.city_sim.map != null 			and not g.city_sim.hero_pos.is_zero_approx():
+		return g.city_sim.hero_pos
+	var vp := get_viewport()
+	if vp != null:
+		return vp.get_camera_2d().global_position if vp.get_camera_2d() != null 				else Vector2.INF
+	return Vector2.INF
 
 
 func _chunk_keys_all() -> Array:
@@ -153,11 +174,11 @@ func _ready() -> void:
 
 
 func _bake_guard() -> void:
+	# v1.48.1: полный холст больше НЕ рисуем (контент — чанки; полный
+	# UPDATE_ONCE по 27к тайлов давал фризы начала игры)
 	if _vp == null or not is_inside_tree():
 		return
-	_drawer.queue_redraw()
-	_vp.render_target_update_mode = SubViewport.UPDATE_DISABLED
-	_vp.render_target_update_mode = SubViewport.UPDATE_ONCE
+	queue_redraw()
 
 
 ## Перевыпечь слой земли (скалу выработали, воду замостили мостом...) —
@@ -185,6 +206,7 @@ func rebake(heavy := false, grid_ver := -1, edited: Array = []) -> void:
 		var wanted: Array = []
 		if edited.is_empty():
 			wanted = _chunk_keys_all()
+			_sort_chunks_near_hero(wanted)
 		else:
 			for e in edited:
 				var t := Vector2i(e)
@@ -206,16 +228,27 @@ func rebake(heavy := false, grid_ver := -1, edited: Array = []) -> void:
 
 ## Конвейер чанков: кисть рисует (UPDATE_ONCE — кадр), следующий кадр
 ## содержимое копируется в отдельную текстуру чанка и пишется в кэш.
+## v1.48.1: бюджет времени ~10 мс/кадр (было 2 чанка за кадр без limit —
+## первые секунды города падали до 1–2 FPS).
 func _process(_delta: float) -> void:
 	if not is_inside_tree():
 		return
 	var done_all := _chunk_queue.is_empty() and _chunks.size() >= _chunk_count()
+	var budget_ms := 10.0
+	var frame_t0 := Time.get_ticks_usec()
+	_new_brushes_this_frame = 0
 	for b in _brushes:
 		var wait: Vector2i = b["wait"]
 		if wait.x > -8:
+			var t0u := Time.get_ticks_usec()
 			var img: Image = (b["vp"] as SubViewport).get_texture().get_image()
+			var t1u := Time.get_ticks_usec()
 			if img != null:
 				_chunks[wait] = ImageTexture.create_from_image(img)
+			if OS.get_environment("CHUNK_DEBUG") != "":
+				print("[chunk] copy %d us, tex %d us, budget_left %.0f ms" % [
+						t1u - t0u, Time.get_ticks_usec() - t1u,
+						budget_ms - float(Time.get_ticks_usec() - frame_t0) / 1000.0])
 			b["wait"] = Vector2i(-9, -9)
 			queue_redraw()
 		elif not _chunk_queue.is_empty():
@@ -231,6 +264,8 @@ func _process(_delta: float) -> void:
 			(b["vp"] as SubViewport).render_target_update_mode = SubViewport.UPDATE_DISABLED
 			(b["vp"] as SubViewport).render_target_update_mode = SubViewport.UPDATE_ONCE
 			b["wait"] = c
+		if Time.get_ticks_usec() - frame_t0 > budget_ms * 1000.0:
+			break
 	# кэш: только когда ВСЁ пропечено
 	if done_all and _cache_key != "":
 		var g = _game()
@@ -347,8 +382,11 @@ func _draw_tiles(region: Rect2i) -> void:
 						_drawer.draw_texture_rect(tex, rect, false)
 					else:
 						_drawer.draw_rect(rect, _grass_at(x, y))
-					_draw_grass_detail(x, y, rect, ts)
-					_draw_grass_prop(x, y, rect, ts)
+					# v1.48.1: при уменьшенной запечке (bs<32) детали травы
+					# мельче пикселя — пропускаем (чанк печётся в разы быстрее)
+					if _bs >= 32:
+						_draw_grass_detail(x, y, rect, ts)
+						_draw_grass_prop(x, y, rect, ts)
 				map.TILE_DEADROCK:
 					_rock_view.draw_deadrock(x, y, rect, ts)
 				map.TILE_RUIN:
@@ -367,10 +405,10 @@ func _draw_tiles(region: Rect2i) -> void:
 	# с травяными шапками языком высот плато (rock_terrain.gd).
 	# Вода в духовке НЕ рисуется: она живая (water_terrain.gd, город).
 	_rebuild_rock_cache()
-	_rock_view.draw_blobs(ts)
+	_rock_view.draw_blobs(ts, region)
 	# проход 3: плато и утёсы (v1.36) — верхние грани, срезы-кромки
 	# по схеме Hills, лестницы-проходы и тени у подножия
-	_plateau_view.draw_plateaus(ts)
+	_plateau_view.draw_plateaus(ts, region)
 
 
 ## Надстройки (v1.28.1 — отдельный дешёвый слой): зоны, дороги, плиты
