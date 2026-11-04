@@ -226,7 +226,7 @@ static func _city_block(sim, include_map := true) -> Dictionary:
 
 
 static func _hive_block(sim) -> Dictionary:
-	return sim.hive if sim.get("hive") != null else {}
+	return _enc(sim.hive if sim.get("hive") != null else {})
 
 
 static func _city_sim_block(sim) -> Dictionary:
@@ -312,6 +312,7 @@ static func _world_block(wmap, wsim) -> Dictionary:
 			"water_kind": _kind_rows(wmap),
 			"region": _region_rows(wmap),
 			"sea_mode": String(wmap.sea_mode),
+			"epicenter": (wmap.epicenter if "epicenter" in wmap else {}),
 			"height": _height_rows(wmap),
 		},
 		"sim": {
@@ -873,6 +874,11 @@ static func _apply_world(game, wd: Variant) -> String:
 			map.region[Vector2i(int(e[0]), int(e[1]))] = String(e[2])
 	if md.has("sea_mode"):
 		map.sea_mode = String(md["sea_mode"])
+	# v1.45: эпицентр катастрофы (в старых сейвах ключа нет — ставится при
+	# генерации... не ставится: карта из сейва, ставим пустым — старые миры
+	# без эпицентра живут как жили)
+	if md.has("epicenter") and md["epicenter"] is Dictionary:
+		map.epicenter = md["epicenter"]
 	# высоты рельефа (v1.35.1): светотень после загрузки совпадает с картой
 	# (каркас генерится сидом 0 — без восстановления тени «плыли» бы);
 	# в старых сейвах ключа нет — остаётся каркасная карта высот

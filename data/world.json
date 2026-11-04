@@ -442,5 +442,15 @@
 		"parchment": "",
 		"cloud_light": "#c9cfd6",
 		"cloud_dark": "#9aa3ad"
+	},
+	"catastrophe": {
+		"_note": "v1.45: эпицентр магической катастрофы (выбросы/искажённые) — тюнинг тут",
+		"enabled": true,
+		"radius": 14.0,
+		"min_settlement_dist": 40,
+		"eruption_days": 25,
+		"eruption_pollution": 6.0,
+		"twisted_growth": 0.15,
+		"attack_days": 5
 	}
 }

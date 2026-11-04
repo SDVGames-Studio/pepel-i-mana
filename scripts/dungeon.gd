@@ -444,8 +444,12 @@ func _scaled_enemy(data: Dictionary) -> Dictionary:
 	var growth: Dictionary = params.get("clear_growth", {})
 	var n := int(Game.dungeon_clears)
 	var out := data.duplicate()
-	out["hp"] = int(round(float(data["hp"]) * (1.0 + float(growth.get("hp_per_clear", 0.3)) * n)))
-	out["damage"] = int(data["damage"]) + n * int(growth.get("damage_per_clear", 1))
+	var eruption := 1.0
+	# v1.45: выбросы эпицентра усиливают аномалии (данжи) — враги крепнут
+	if Game.world_map != null and "epicenter" in Game.world_map:
+		eruption = 1.0 + 0.15 * float(Game.world_map.epicenter.get("power", 0))
+	out["hp"] = int(round(float(data["hp"]) * (1.0 + float(growth.get("hp_per_clear", 0.3)) * n) * eruption))
+	out["damage"] = int(data["damage"]) + n * int(growth.get("damage_per_clear", 1)) 			+ int(round(eruption)) - 1
 	return out
 
 

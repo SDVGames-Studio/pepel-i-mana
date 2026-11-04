@@ -143,8 +143,10 @@ func _spawn_raid(size: int, siege: bool) -> void:
 	var wave_no := raid_count - 1
 	size = clampi(size + wave_no * int(tcfg.get("wave_growth_size", 1)), 1,
 			int(tcfg.get("raid_size_max", 6)))
-	var hp_mult := 1.0 + threat_value() * float(tcfg.get("hp_per_threat", 0.04)) \
-			+ float(wave_no) * float(tcfg.get("wave_growth_hp", 0.15))
+	# v1.45: выбросы эпицентра усиливают мутантов (power приходит событием)
+	var eruption := 1.0 + 0.2 * float(eruption_power)
+	var hp_mult := (1.0 + threat_value() * float(tcfg.get("hp_per_threat", 0.04))
+			+ float(wave_no) * float(tcfg.get("wave_growth_hp", 0.15))) * eruption
 	for i in size:
 		var def := _pick_raider_def(tcfg)
 		if def.is_empty():
