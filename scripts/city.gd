@@ -674,6 +674,15 @@ func _process_events() -> void:
 				hud.toast(Loc.t("event.twisted_attack") % String(ev["a"]))
 			"eruption":
 				hud.toast(Loc.t("event.eruption") % int(ev["power"]))
+			# --- соцжизнь/паника (v1.47) ---
+			"raid_panic":
+				hud.toast(Loc.t("city.raid_panic_toast"))
+			"date":
+				hud.toast(Loc.t("city.date_toast") % [String(ev["a"]), String(ev["b"])])
+			"jealous":
+				hud.toast(Loc.t("city.jealous_toast") % [String(ev["name"]), String(ev["other"])])
+			"mutant_hit":
+				hud.toast(Loc.t("event.mutant_hit") % String(ev["name"]))
 			"hero_haul":
 				# герой унёс кучу здания на склад (2026-10-21)
 				hud.toast(Loc.t("city.hero_haul_done") % [int(ev.get("n", 0)),
