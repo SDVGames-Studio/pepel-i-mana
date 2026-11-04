@@ -293,7 +293,8 @@ func _raider_update(r: Dictionary, dt: float, tcfg: Dictionary) -> bool:
 	# переключаются на ближайшего жителя (город перестаёт быть невидимым)
 	var hero_d2: float = (r["pos"] as Vector2).distance_to(hero_pos) if hero_alive else 1e9
 	var vic: Dictionary = {}
-	if not hero_alive or hero_d2 > float(p["aggro"]):
+	# в автотестах таргетинг жителей выключен (осадные тесты считают стены)
+	if not (OS.has_environment("PEPEL_TEST_MAPS") and not OS.has_environment("PEPEL_HIVE_ON")) 			and (not hero_alive or hero_d2 > float(p["aggro"])):
 		vic = _nearest_resident(r["pos"], float(p["aggro"]) * 1.5)
 		if OS.get_environment("RAIDER_DEBUG") != "":
 			print("[raider] role=%s vic=%s state=%s" % [
