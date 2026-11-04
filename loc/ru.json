@@ -492,6 +492,8 @@
 	"dungeon.hint_rune": "E — коснуться рунного круга",
 	"dungeon.lantern_on": "Фонарь зажжён",
 	"dungeon.lantern_off": "Фонарь погашен — ты в темноте",
+	"city.ruin_crystal": "В руинах найдены кристаллы: +%d",
+	"city.ruin_rune": "В руинах найдена %s",
 	"city.raid_panic_toast": "Мутанты в городе! Жители бегут по домам",
 	"city.date_toast": "%s и %s гуляют вдвоём — свидание",
 	"city.jealous_toast": "%s ревнует — %s гуляет не с тем",

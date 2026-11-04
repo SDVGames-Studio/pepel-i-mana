@@ -351,6 +351,18 @@ func _draw_tiles(region: Rect2i) -> void:
 					_draw_grass_prop(x, y, rect, ts)
 				map.TILE_DEADROCK:
 					_rock_view.draw_deadrock(x, y, rect, ts)
+				map.TILE_RUIN:
+					# v1.48: куча древних камней (руины городской карты) —
+					# 3 «блока» детерминированно по хэшу тайла
+					_drawer.draw_rect(rect, _rock_deep.darkened(0.1))
+					var hh := x * 7 + y * 13
+					for k in 3:
+						var ox := float((hh + k * 11) % 10) - 5.0
+						var oy := float((hh + k * 17) % 10) - 5.0
+						var sz := 7.0 + float((hh + k * 5) % 6)
+						_drawer.draw_rect(
+								Rect2(rect.position + Vector2(6.0 + ox, 6.0 + oy), Vector2(sz, sz)),
+								_rock_deep.lightened(0.12 if k % 2 == 0 else 0.0))
 	# проход 2: скалы и жилы — «Природа 2.0» (v1.39.0): фактурные утёсы
 	# с травяными шапками языком высот плато (rock_terrain.gd).
 	# Вода в духовке НЕ рисуется: она живая (water_terrain.gd, город).

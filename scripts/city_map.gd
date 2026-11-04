@@ -17,6 +17,7 @@ const TREE_LARGE := 3
 var w := 0
 var h := 0
 var ts := 32
+var ruin_loot: Dictionary = {}   # v1.48: лут-тайлы руин (Vector2i -> true)
 var grid_ver := 0
 var edited: Array = []        # v1.43: тайлы правок сетки — чанкам запечки
 
