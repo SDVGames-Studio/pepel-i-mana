@@ -14,7 +14,11 @@
 		"weak_school": "wild",
 		"drop_chance": 0.25,
 		"mana_chance": 0.3,
-		"xp": 2
+		"xp": 2,
+		"light_sense": {
+			"coward": true
+		},
+		"coward": true
 	},
 	{
 		"id": "skeleton",
@@ -31,7 +35,10 @@
 		"weak_school": "light",
 		"drop_chance": 0.4,
 		"mana_chance": 0.35,
-		"xp": 3
+		"xp": 3,
+		"light_sense": {
+			"fear": 0.45
+		}
 	},
 	{
 		"id": "golem",
@@ -151,10 +158,13 @@
 		"drop_chance": 0.45,
 		"mana_chance": 0.6,
 		"xp": 4,
-		"light": {
+		"glow": {
 			"color": "#b39ddb",
 			"radius": 1.6,
 			"energy": 0.7
+		},
+		"light_sense": {
+			"lure": 0.5
 		}
 	},
 	{
@@ -206,7 +216,8 @@
 		"weak_school": "",
 		"drop_chance": 0.5,
 		"mana_chance": 0.15,
-		"xp": 4
+		"xp": 4,
+		"coward": true
 	},
 	{
 		"id": "dust_stalker",
@@ -223,7 +234,10 @@
 		"weak_school": "light",
 		"drop_chance": 0.45,
 		"mana_chance": 0.35,
-		"xp": 5
+		"xp": 5,
+		"light_sense": {
+			"fear": 0.6
+		}
 	},
 	{
 		"id": "cinder",
@@ -241,10 +255,13 @@
 		"drop_chance": 0.5,
 		"mana_chance": 0.4,
 		"xp": 6,
-		"light": {
+		"glow": {
 			"color": "#ff8a3c",
 			"radius": 2.2,
 			"energy": 0.9
+		},
+		"light_sense": {
+			"lure": 0.45
 		}
 	},
 	{
@@ -335,7 +352,10 @@
 		"weak_school": "light",
 		"drop_chance": 0.5,
 		"mana_chance": 0.35,
-		"xp": 5
+		"xp": 5,
+		"light_sense": {
+			"alert_mult": 1.7
+		}
 	},
 	{
 		"id": "bandit_archer",
@@ -353,7 +373,10 @@
 		"weak_school": "light",
 		"drop_chance": 0.45,
 		"mana_chance": 0.4,
-		"xp": 5
+		"xp": 5,
+		"light_sense": {
+			"alert_mult": 1.6
+		}
 	},
 	{
 		"id": "bandit_chief",
@@ -424,7 +447,11 @@
 		"weak_school": "light",
 		"drop_chance": 0.45,
 		"mana_chance": 0.3,
-		"xp": 4
+		"xp": 4,
+		"light_sense": {
+			"fear": 0.5
+		},
+		"coward": true
 	},
 	{
 		"id": "wraith",
@@ -441,7 +468,10 @@
 		"weak_school": "light",
 		"drop_chance": 0.4,
 		"mana_chance": 0.55,
-		"xp": 4
+		"xp": 4,
+		"light_sense": {
+			"fear": 0.6
+		}
 	},
 	{
 		"id": "imp",
@@ -475,7 +505,10 @@
 		"weak_school": "light",
 		"drop_chance": 0.5,
 		"mana_chance": 0.45,
-		"xp": 6
+		"xp": 6,
+		"light_sense": {
+			"alert_mult": 1.5
+		}
 	},
 	{
 		"id": "fallen",
@@ -492,7 +525,10 @@
 		"weak_school": "forbidden",
 		"drop_chance": 0.7,
 		"mana_chance": 0.6,
-		"xp": 10
+		"xp": 10,
+		"light_sense": {
+			"alert_mult": 1.5
+		}
 	},
 	{
 		"id": "dragon_whelp",
@@ -581,7 +617,10 @@
 		"lifesteal": 0.5,
 		"drop_chance": 0.45,
 		"mana_chance": 0.3,
-		"xp": 5
+		"xp": 5,
+		"light_sense": {
+			"fear": 0.5
+		}
 	},
 	{
 		"id": "archvampire",
@@ -600,7 +639,10 @@
 		"lifesteal": 0.6,
 		"drop_chance": 1.0,
 		"mana_chance": 0.5,
-		"xp": 20
+		"xp": 20,
+		"light_sense": {
+			"fear": 0.5
+		}
 	},
 	{
 		"id": "lich",
@@ -619,7 +661,10 @@
 		"projectile_range": 220,
 		"drop_chance": 0.5,
 		"mana_chance": 0.35,
-		"xp": 6
+		"xp": 6,
+		"light_sense": {
+			"fear": 0.4
+		}
 	},
 	{
 		"id": "archlich",
@@ -639,7 +684,10 @@
 		"projectile_range": 260,
 		"drop_chance": 1.0,
 		"mana_chance": 0.5,
-		"xp": 20
+		"xp": 20,
+		"light_sense": {
+			"fear": 0.4
+		}
 	},
 	{
 		"id": "skeleton_mage",
@@ -657,7 +705,10 @@
 		"projectile_range": 200,
 		"drop_chance": 0.4,
 		"mana_chance": 0.3,
-		"xp": 4
+		"xp": 4,
+		"light_sense": {
+			"alert_mult": 1.5
+		}
 	},
 	{
 		"id": "leshy",
@@ -677,7 +728,10 @@
 		"nocturnal": true,
 		"drop_chance": 0.5,
 		"mana_chance": 0.4,
-		"xp": 6
+		"xp": 6,
+		"light_sense": {
+			"fear": 0.5
+		}
 	},
 	{
 		"id": "vodyanoy",
@@ -716,7 +770,8 @@
 		"nocturnal": true,
 		"drop_chance": 0.45,
 		"mana_chance": 0.4,
-		"xp": 5
+		"xp": 5,
+		"coward": true
 	},
 	{
 		"id": "rusalka",
@@ -753,7 +808,10 @@
 		"nocturnal": true,
 		"drop_chance": 0.5,
 		"mana_chance": 0.35,
-		"xp": 6
+		"xp": 6,
+		"light_sense": {
+			"fear": 0.55
+		}
 	},
 	{
 		"id": "volkolak",
@@ -827,7 +885,10 @@
 		"nocturnal": true,
 		"drop_chance": 0.4,
 		"mana_chance": 0.35,
-		"xp": 4
+		"xp": 4,
+		"light_sense": {
+			"fear": 0.55
+		}
 	},
 	{
 		"id": "black_hen",

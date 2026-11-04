@@ -1,4 +1,4 @@
-# Пепел и Мана — v1.45.0
+# Пепел и Мана — v1.46.0
 
 [![Тесты](https://github.com/SDVGames-Studio/pepel-i-mana/actions/workflows/tests.yml/badge.svg)](https://github.com/SDVGames-Studio/pepel-i-mana/actions/workflows/tests.yml)
 

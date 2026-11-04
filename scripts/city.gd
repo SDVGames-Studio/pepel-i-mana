@@ -662,6 +662,8 @@ func _process_events() -> void:
 				hud.toast(Loc.t("event.hive_grew") % int(ev["level"]))
 			"hive_wave":
 				hud.toast(Loc.t("event.hive_wave") % int(ev["count"]))
+			"mutant_hit":
+				hud.toast(Loc.t("event.mutant_hit") % String(ev["name"]))
 			"hive_destroyed":
 				hud.toast(Loc.t("event.hive_destroyed") % int(ev["level"]))
 				_rebuild_collision()

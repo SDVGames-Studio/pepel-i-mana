@@ -222,7 +222,7 @@ func _test_dungeon2_fog_and_glow() -> void:
 	var enemies: Array = _read_json("res://data/enemies.json")
 	var lit := {}
 	for e in enemies:
-		if e.has("light"):
+		if e.has("glow"):
 			lit[String(e["id"])] = true
 	_check(lit.has("cinder") and lit.has("wisp"),
 			"огненные/магические монстры (cinder, wisp) светятся в конфиге")

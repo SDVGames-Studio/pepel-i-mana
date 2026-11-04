@@ -24,6 +24,8 @@ var _shield_left := 0.0           # щит света: поглощает уро
 var _mana_regen_acc := 0.0
 var _spell_cd := {}               # id заклинания -> остаток кулдауна, сек
 var _lantern: PointLight2D = null
+var lantern_on := true          # v1.46: фонарь можно погасить (скрытность)
+var _track_acc := 0.0           # накопитель скрытности (тёмное подкрадывание)
 var _flicker_time := 0.0
 var _sprite: Sprite2D = null      # спрайт воина 32×32 (M9)
 var _bob_time := 0.0              # фаза бобинга ходьбы / дыхания в покое
@@ -400,6 +402,37 @@ func city_attack(sim) -> int:
 	queue_redraw()
 	get_tree().create_timer(0.15).timeout.connect(queue_redraw)
 	return hits
+
+
+## v1.46: фонарь — включён/выключен (клавиша T). Выключенный фонарь —
+## основа скрытного передвижения: враги замечают хуже, темнота качает навык.
+func toggle_lantern() -> void:
+	lantern_on = not lantern_on
+	if _lantern != null:
+		_lantern.energy = LANTERN_ENERGY if lantern_on else 0.0
+	queue_redraw()
+
+
+## Освещённость героя 0..1 для ИИ врагов (1 — фонарь горит).
+func lantern_lit() -> float:
+	return 1.0 if lantern_on else 0.0
+
+
+## Множитель агро врагов: скрытность (навык, качается в темноте) +
+## погашенный фонарь — враги замечают с меньшей дистанции.
+func stealth_aggro_mult() -> float:
+	var st: float = Game.hero_stat("stealth")
+	var dark := 0.0 if lantern_on else 0.45
+	return maxf(0.3, 1.0 - dark - 0.03 * st)
+
+
+## Скрытность качается: двигался в темноте рядом с врагом (в данже).
+func train_stealth_if_dark(enemies_near: bool, moving: bool, delta: float) -> void:
+	if not lantern_on and moving and enemies_near:
+		_track_acc += delta
+		if _track_acc >= 1.0:
+			_track_acc = 0.0
+			Game.hero_train("stealth", 0.12)
 
 
 func take_damage(dmg: int) -> void:

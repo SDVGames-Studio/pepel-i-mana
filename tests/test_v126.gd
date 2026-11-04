@@ -155,16 +155,25 @@ func _test_v126_raiders_walls() -> void:
 	# пролом открыт — мутант идёт к герою, путь пересчитался сам.
 	# v1.28: порог 1.5 тайла — вплотную мутанта не подпускает контактная
 	# остановка («монстры не входят в модель персонажа», v1.26)
-	var dist0: float = (raider["pos"] as Vector2).distance_to(sim.hero_pos)
+	# v1.46: мутант в городе выбирает цель (герой/житель) — меряем продвижение
+	# вглубь города от прлома (к центру)
+	var dist0: float = (raider["pos"] as Vector2).distance_to(sim.map.tile_center_px(sim.map.spawn_tile))
 	var moved_in := false
+	var dbg: String = OS.get_environment("GATE_DEBUG")
 	for i in 600:
 		sim.tick(0.2)
+		if dbg != "" and i % 100 == 0:
+			print("[gate] i=%d pos=%s dist0=%.0f now=%.0f raiders=%d res=%d" % [
+					i, str(raider["pos"]), dist0,
+					(raider["pos"] as Vector2).distance_to(sim.map.tile_center_px(sim.map.spawn_tile)),
+					sim.raiders.size(), sim.residents.size()])
 		if sim.raiders.is_empty():
 			break   # пал под городом — значит, вошёл
-		if (raider["pos"] as Vector2).distance_to(sim.hero_pos) < dist0 - float(sim.map.ts) * 1.5:
+		var d_now: float = (raider["pos"] as Vector2).distance_to(sim.map.tile_center_px(sim.map.spawn_tile))
+		if d_now < dist0 - float(sim.map.ts) * 1.5:
 			moved_in = true
 			break
-	_check(moved_in, "через разрушенные ворота мутант проходит к герою")
+	_check(moved_in, "через разрушенные ворота мутант проходит внутрь города (к герою/жителю)")
 
 
 ## Кладбище строится рядом с могилами (могилы по дизайну в 10+ клетках

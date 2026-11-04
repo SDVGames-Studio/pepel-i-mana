@@ -289,6 +289,29 @@ func _raider_update(r: Dictionary, dt: float, tcfg: Dictionary) -> bool:
 				return true
 			if _raider_move_to(r, map.tile_of_px(hero_pos), float(p["speed"]) * dt):
 				return true
+	# v1.46 («Новый мир v2» этап 4): герой далеко или его нет — мутанты
+	# переключаются на ближайшего жителя (город перестаёт быть невидимым)
+	var hero_d2: float = (r["pos"] as Vector2).distance_to(hero_pos) if hero_alive else 1e9
+	var vic: Dictionary = {}
+	if not hero_alive or hero_d2 > float(p["aggro"]):
+		vic = _nearest_resident(r["pos"], float(p["aggro"]) * 1.5)
+		if OS.get_environment("RAIDER_DEBUG") != "":
+			print("[raider] role=%s vic=%s state=%s" % [
+					String(r.get("role", "")), String(vic.get("name", "-")),
+					String(vic.get("state", ""))])
+	if not vic.is_empty():
+		var to_v: Vector2 = (vic["pos"] as Vector2) - (r["pos"] as Vector2)
+		if to_v.length() <= float(p["attack_range"]) + 10.0:
+			if float(r["atk_cd"]) <= 0.0:
+				r["atk_cd"] = float(p["attack_cooldown"])
+				if _event_rng.randf() < 0.5:
+					_make_ail(vic, "wounded", "chron.wounded")
+					events.append({"type": "mutant_hit", "name": String(vic["name"])})
+				else:
+					vic["mood"] = clampf(float(vic["mood"]) - 12.0, 0.0, 100.0)
+			return true
+		if _raider_move_to(r, map.tile_of_px(vic["pos"]), float(p["speed"]) * dt):
+			return true
 	var reach := float(p["attack_range"]) + float(map.ts) * 0.5
 	# здание в пределах досягаемости — крушим (иначе осцилляция «центр ↔ стена»:
 	# обходной путь всегда существует, и мутант ни разу не ударит)
@@ -315,6 +338,20 @@ func _raider_update(r: Dictionary, dt: float, tcfg: Dictionary) -> bool:
 
 ## Ближайшее к мутанту действующее здание (кэш на _near_gap секунд: скан всех
 ## зданий каждый тик всей волной — заметная цена на большой карте).
+## v1.46: ближайший житель ПОД ОТКРЫТЫМ небом (inside==0) в радиусе.
+func _nearest_resident(from_px: Vector2, radius_px: float) -> Dictionary:
+	var best: Dictionary = {}
+	var best_d := radius_px
+	for v in residents:
+		if int(v.get("inside", 1)) != 0 or String(v.get("state", "")) in ["sick", "wounded", "child"]:
+			continue
+		var d: float = (v["pos"] as Vector2).distance_to(from_px)
+		if d < best_d:
+			best_d = d
+			best = v
+	return best
+
+
 func _raider_near_building(r: Dictionary) -> Dictionary:
 	var b: Dictionary = r.get("_near_bld", {})
 	if not b.is_empty() and _active(b):
