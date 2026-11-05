@@ -37,8 +37,9 @@ func _test_v150_configs() -> void:
 	for key in ["fauna.hare", "fauna.fox"]:
 		_check(not String(ru.get(key, "")).is_empty(), "ключ «%s» есть" % key)
 	# ассеты ForgottenMemories на месте
-	for n in ["fm_grass_L1", "fm_grass_L2", "fm_grass_L3", "fm_grass_D1",
-			"fm_grass_D2", "fm_grass_D3", "fm_dirt_1", "fm_dirt_2", "fm_dirt_3"]:
+	for n in ["fm_grass_L0", "fm_grass_L1", "fm_grass_L2", "fm_grass_L3",
+			"fm_grass_D0", "fm_grass_D1", "fm_grass_D2", "fm_grass_D3",
+			"fm_dirt_0", "fm_dirt_1", "fm_dirt_2", "fm_dirt_3"]:
 		var t: Texture2D = load("res://assets/sprites/env/%s.png" % n)
 		_check(t != null, "текстура природы %s.png есть" % n)
 	var w: Texture2D = load("res://assets/sprites/env/fm_water.png")
@@ -75,10 +76,8 @@ func _test_v150_forests_ridges() -> void:
 	_check(grid_a == grid_b, "лес/добор детерминированы по сиду")
 	# кластеры: на нескольких сидах появляются леса по 30+ деревьев
 	var forest_maps := 0
-	var tree_counts: Array = []
 	for seed_v in [11, 22, 33, 44, 55, 66]:
 		var counts := _gen_counts(seed_v, gen_cfg)
-		tree_counts.append(int(counts["trees"]))
 		if int(counts["trees"]) >= 30 + 10 + 20:
 			forest_maps += 1
 	_check(forest_maps >= 3,
@@ -136,10 +135,15 @@ func _test_v150_brigade() -> void:
 	print("[v1.50: бригадная починка домов]")
 	var sim := _make_sim()
 	var rcfg: Dictionary = sim.cfg.get("repair", {})
+	sim._last_daily_day = 999999   # дневные броски (автостройка/беженцы) — прочь
 	_check(int(rcfg.get("brigade_size", 0)) >= 2, "бригада: размер задан в city.json")
 	_check(float(rcfg.get("no_res_mult", 1.0)) > 2.0, "без ресурсов — в разы дольше")
 	_check(float(rcfg.get("log_speedup", 1.0)) < 1.0, "брёвна ускоряют починку")
-	# дом и руина: руина приоритетнее (rank 0)
+	# дом и руина: руина приоритетнее (rank 0); брёвна изолированы
+	# (log_speedup=1) — этот блок проверяет «целый день» чисто
+	sim.cfg["repair"]["log_speedup"] = 1.0
+	sim.res["wood"] = 200.0
+	sim.res["stone"] = 200.0
 	var house := _build_now(sim, "house")
 	var house_hp := float(sim._bld_max_hp("house"))
 	sim._damage_building(house, house_hp * 10.0)
@@ -159,41 +163,54 @@ func _test_v150_brigade() -> void:
 	var expect: float = float(sim.cfg["day_length"]) * awake * float(rcfg.get("day_frac", 1.0))
 	_check(absf(float(sim.brigade_job["need"]) - expect) < 0.5,
 			"работа — целый день (%.0f из %.0f сек)" % [float(sim.brigade_job["need"]), expect])
-	# ресурсы в пуле есть и их хватает — стоимость спишется при завершении
-	var wood0 := int(sim.res["wood"])
-	var stone0 := int(sim.res["stone"])
 	# члены бригады у здания: без черт и усталости — работа без перерывов
 	for r in sim.residents:
 		if int(r.get("repair_bld", 0)) == bid:
 			r["traits"] = []
 			r["fatigue"] = 0.0
 			_teleport(sim, r, sim.bld_spot(house))
-	var need: float = float(sim.brigade_job["need"])
-	var total: float = maxf(1.0, float(sim.brigade_job["total"]))
-	sim.tick(need * total + 1.0)
-	_check(not bool(house.get("razed", false)), "за день работы бригада подняла руину")
-	_check(int(sim.res["wood"]) <= wood0 and int(sim.res["stone"]) <= stone0,
+	var done1 := false
+	for i in 12:
+		sim.tick(60.0)
+		if not bool(house.get("razed", false)):
+			done1 = true
+			break
+	_check(done1, "за день работы бригада подняла руину")
+	_check(int(sim.res["wood"]) < 200 or int(sim.res["stone"]) < 200,
 			"ресурсы на ремонт взяты из общего пула")
 	_check(sim.brigade_job.is_empty(), "работа закрыта после починки")
 	# --- брёвна из пула: срубленные деревья ускоряют ---
+	sim.cfg["repair"]["log_speedup"] = 0.5
+	sim.res["wood"] = 200.0
+	sim.res["stone"] = 200.0
 	var house2 := _build_now(sim, "house")
 	var hp2 := float(sim._bld_max_hp("house"))
 	sim._damage_building(house2, hp2 * 10.0)
-	sim.res["wood"] = int(rcfg.get("logs_per_job", 4)) + 10
+	sim.res["wood"] = 14.0   # 4 брёвна + 10 досок
 	sim._roll_city_repair()
 	_check(not sim.brigade_job.is_empty(), "вторая бригада собралась")
 	_check(bool(sim.brigade_job.get("logs", false)), "брёвна взяты в дело")
-	_check(int(sim.res["wood"]) == int(rcfg.get("logs_per_job", 4)),
-			"logs_per_job брёвен списано при старте")
-	_check(float(sim.brigade_job["need"]) < expect,
-			"с брёвнами починка быстрее (%.0f < %.0f)" % [float(sim.brigade_job["need"]), expect])
+	_check(int(sim.res["wood"]) == 10,
+			"logs_per_job брёвен списано при старте (14 → 10)")
+	_check(absf(float(sim.brigade_job["need"]) - expect * 0.5) < 0.5,
+			"с брёвнами починка вдвое быстрее (%.0f < %.0f)" % [float(sim.brigade_job["need"]), expect])
 	sim.brigade_job = {}
+	for r in sim.residents:
+		if int(r.get("repair_bld", 0)) == int(house2["id"]):
+			r["repair_bld"] = 0   # работу закрыли вручную — поручения снять
 	# --- ресурсов нет: «голыми руками» дольше ---
+	# house2 тихо «починен» — единственной руиной остаётся house3
+	# (иначе дневной бросок может выбрать прежнюю руину)
+	house2["razed"] = false
+	house2["hp"] = float(sim._bld_max_hp("house"))
+	sim.res["wood"] = 200.0
+	sim.res["stone"] = 200.0
 	var house3 := _build_now(sim, "house")
 	var hp3 := float(sim._bld_max_hp("house"))
 	sim._damage_building(house3, hp3 * 10.0)
-	for key in ["wood", "stone", "food", "metal", "tools"]:
-		sim.res[key] = 0
+	sim.res["wood"] = 0.0
+	sim.res["stone"] = 0.0
+	sim.res["food"] = 200.0   # бригада должна голодать, а не бросать работу
 	sim._roll_city_repair()
 	_check(not sim.brigade_job.is_empty(), "бригада собирается и без ресурсов")
 	var mult: float = float(rcfg.get("no_res_mult", 3.5))
@@ -205,23 +222,28 @@ func _test_v150_brigade() -> void:
 			r["traits"] = []
 			r["fatigue"] = 0.0
 			_teleport(sim, r, sim.bld_spot(house3))
-	var need3: float = float(sim.brigade_job["need"])
-	var total3: float = maxf(1.0, float(sim.brigade_job["total"]))
-	sim.tick(need3 * total3 + 1.0)
-	_check(not bool(house3.get("razed", false)), "и без ресурсов руину подняли")
+	var done3 := false
+	for i in 24:
+		sim.tick(60.0)
+		if not bool(house3.get("razed", false)):
+			done3 = true
+			break
+	_check(done3, "и без ресурсов (×3.5 дольше) руину подняли")
 	_check(int(sim.res["wood"]) == 0, "без ресурсов пула не тронуты")
 	# --- неполная бригада идёт медленнее (dt/total за пришедшего) ---
+	sim.res["wood"] = 200.0
+	sim.res["stone"] = 200.0
 	var house4 := _build_now(sim, "house")
 	var hp4 := float(sim._bld_max_hp("house"))
 	sim._damage_building(house4, hp4 * 10.0)
-	sim.res["wood"] = 200
-	sim.res["stone"] = 200
 	sim._roll_city_repair()
 	_check(not sim.brigade_job.is_empty(), "четвёртая бригада собралась")
 	var bid4 := int(house4["id"])
 	var arrived := 0
 	for r in sim.residents:
 		if int(r.get("repair_bld", 0)) == bid4:
+			r["traits"] = []
+			r["fatigue"] = 0.0
 			_teleport(sim, r, sim.bld_spot(house4))
 			arrived += 1
 			if arrived == 1:

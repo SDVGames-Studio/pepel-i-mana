@@ -281,10 +281,13 @@ func _test_v121_district() -> void:
 	_check(sim.placement_block("tavern", far) == "", "любое здание вне ветки — где угодно")
 
 
-## Город чинит сам (v1.21.3): строитель — за 50% стоимости, непрофильный
-## житель — за 70%; герой остаётся быстрым (40%), мастерская — бесплатной.
+## Город чинит сам (v1.21.3 → v1.50 «Живая земля»): БРИГАДА горожан
+## (строители — за 50% стоимости, без них непрофильные — за 70%) работает
+## ЦЕЛЫЙ день; брёвна из пула ускоряют (в этих проверках log_speedup=1,
+## чтобы изолировать долю стоимости); герой остаётся быстрым (40%),
+## мастерская — бесплатной.
 func _test_v121_city_repair() -> void:
-	print("[v1.21.3: город чинит сам — строитель 50%, непрофильный 70%]")
+	print("[v1.21.3→v1.50: город чинит бригадой — строитель 50%, непрофильный 70%]")
 	var city: Variant = _read_json("res://data/city.json")
 	var loc: Variant = _read_json("res://loc/ru.json")
 	var rcfg: Dictionary = city.get("repair", {}) if city is Dictionary else {}
@@ -305,16 +308,21 @@ func _test_v121_city_repair() -> void:
 	var builder_r: Dictionary = _resident_by_prof(sim, "builder")
 	builder_r["traits"] = []
 	builder_r["mood"] = 100.0
+	sim.cfg["repair"]["log_speedup"] = 1.0   # изолируем долю стоимости от брёвен
 	sim.res["wood"] = 50.0
 	sim._roll_city_repair()
 	_check(int(builder_r.get("repair_bld", 0)) == int(house_r["id"]),
 			"город послал строителя чинить руины")
 	_check(absf(float(builder_r.get("repair_frac", 0.0)) - 0.5) < 0.001, "доля строителя — 50%")
 	_teleport(sim, builder_r, house_r["tile"])
-	sim.time = 10.0
-	sim.tick(2.0)
-	_check(not bool(house_r.get("razed", true)) and float(house_r["hp"]) > 0.0,
-			"строитель поднял руины по приходе")
+	var done_r := false
+	for i in 12:
+		sim.tick(60.0)
+		if not bool(house_r.get("razed", true)):
+			done_r = true
+			break
+	_check(done_r and float(house_r["hp"]) > 0.0,
+			"строитель поднял руины за день работы бригады")
 	_check(int(sim.res["wood"]) == 44, "ремонт строителя списал 50% стоимости (6 досок)")
 
 	# без строителя — непрофильный за 70%
@@ -325,6 +333,7 @@ func _test_v121_city_repair() -> void:
 	house_r2["hp"] = 1.0   # повреждено, не руины
 	var builder2: Dictionary = _resident_by_prof(sim2, "builder")
 	builder2["prof"] = "farmer"   # строителя нет
+	sim2.cfg["repair"]["log_speedup"] = 1.0   # изолируем долю стоимости
 	sim2.res["wood"] = 50.0
 	sim2._roll_city_repair()
 	var errand2 := {}
@@ -335,22 +344,32 @@ func _test_v121_city_repair() -> void:
 			"без строителя чинить идёт непрофильный житель")
 	_check(absf(float(errand2.get("repair_frac", 0.0)) - 0.7) < 0.001, "доля непрофильного — 70%")
 	_teleport(sim2, errand2, house_r2["tile"])
-	sim2.time = 10.0
-	sim2.tick(2.0)
+	var done2 := false
+	for i in 12:
+		sim2.tick(60.0)
+		if float(house_r2["hp"]) >= float(sim2._bld_max_hp("house")):
+			done2 = true
+			break
+	_check(done2, "непрофильный доделал день работы бригады")
 	_check(int(sim2.res["wood"]) == 41, "ремонт непрофильного списал 70% стоимости (9 досок)")
 
-	# без денег поручения нет
+	# без ресурсов бригада всё равно собирается — «голыми руками» дольше
+	# (v1.50 «Живая земля»: было «не по карману — завтра»)
 	var sim3 := _make_sim()
 	sim3._last_daily_day = 999
 	var house_r3: Dictionary = _build_now(sim3, "house")
 	house_r3["hp"] = 1.0
 	sim3.res["wood"] = 0.0
+	var awake3: float = maxf(0.3, 1.0 - float(sim3.cfg.get("night_fraction", 0.22)))
+	var expect3: float = float(sim3.cfg["day_length"]) * awake3 			* float(sim3.cfg["repair"].get("day_frac", 1.0)) 			* float(sim3.cfg["repair"].get("no_res_mult", 3.5))
 	sim3._roll_city_repair()
 	var sent3 := false
 	for r in sim3.residents:
 		if int(r.get("repair_bld", 0)) > 0:
 			sent3 = true
-	_check(not sent3, "не по карману — город не чинит (мастерская лечит бесплатно)")
+	_check(sent3, "бригада собирается и без ресурсов («голыми руками»)")
+	_check(absf(float(sim3.brigade_job.get("need", 0.0)) - expect3) < 1.0,
+			"без ресурсов работа в no_res_mult раз дольше")
 
 
 ## Цена ремонта из конфига (хелпер теста).

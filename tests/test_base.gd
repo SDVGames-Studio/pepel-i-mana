@@ -339,6 +339,7 @@ func _build_now(sim: Object, type_id: String, near_from: Vector2i = Vector2i(-99
 	builder["mood"] = 100.0
 	builder["traits"] = []
 	builder["skill"] = 0.0
+	builder["fatigue"] = 0.0   # v1.50: без усталости — длинные цепочки строек
 	var near: Vector2i = near_from if near_from.x > -900 else sim.map.spawn_tile
 	var tile := _find_free_tile(sim, near, type_id)
 	_check(not tile == Vector2i(-1, -1), "%s: найдено место под стройку" % type_id)

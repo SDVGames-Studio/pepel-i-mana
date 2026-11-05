@@ -99,11 +99,11 @@ func level_at(p: Vector2i) -> int:
 ## Соединить тайл с соседями по правилу уровней (сплошные не соединяются).
 ## Инкрементальные операции (мост построен, скала выработана).
 func _reconnect(p: Vector2i) -> void:
-	if solid.has(p):
-		return
+	if solid.has(p) or not astar.has_point(_id(p)):
+		return   # v1.50: без точки (сплошной при rebuild) соединять нечего
 	for d in DIRS:
 		var n: Vector2i = p + d
-		if in_bounds(n) and not solid.has(n) and edge_ok(p, n):
+		if in_bounds(n) and not solid.has(n) and astar.has_point(_id(n)) and edge_ok(p, n):
 			astar.connect_points(_id(p), _id(n))
 
 
@@ -111,13 +111,13 @@ func set_point_solid(p: Vector2i, is_solid: bool) -> void:
 	if not in_bounds(p):
 		return
 	if is_solid:
-		if solid.has(p) or not astar.has_point(_id(p)):
-			return   # v1.50: повтор или точка ещё не построена — без спама движка
-		solid[p] = true
+		solid[p] = true   # словарь — источник истины, обновляется всегда
+		# v1.50: точек может не быть (rebuild не добавляет сплошные, сосед-скала
+		# тоже) — без движкового спама «Can't disconnect points»
+		if not astar.has_point(_id(p)):
+			return
 		for d in DIRS:
 			var n: Vector2i = p + d
-			# v1.50: сосед-скала тоже может не иметь точки (rebuild не добавляет
-			# сплошные) — иначе движок спамит «Can't disconnect points»
 			if in_bounds(n) and astar.has_point(_id(n)):
 				astar.disconnect_points(_id(p), _id(n))
 	else:

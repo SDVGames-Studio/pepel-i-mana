@@ -1060,7 +1060,7 @@ func _test_m14_c() -> void:
 		kinds[String(a.get("kind", "?"))] = true
 	var kinds_ok := true
 	for k in kinds:
-		if k not in ["deer", "boar", "bird", "wolf"]:
+		if k not in ["deer", "boar", "bird", "wolf", "hare", "fox"]:
 			kinds_ok = false
 	_check(sim.animals.size() > 0 and kinds_ok,
 			"в городе живут виды из fauna.json (%s)" % ", ".join(kinds.keys()))
