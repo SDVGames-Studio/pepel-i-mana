@@ -36,17 +36,17 @@ func _test_v150_configs() -> void:
 	var ru: Dictionary = _read_json("res://loc/ru.json")
 	for key in ["fauna.hare", "fauna.fox"]:
 		_check(not String(ru.get(key, "")).is_empty(), "ключ «%s» есть" % key)
-	# ассеты ForgottenMemories на месте (v1.50.1: FM-травы убраны —
-	# трава снова принятая v1.32; остались земля/вода/декор)
-	for n in ["fm_dirt_0", "fm_dirt_1", "fm_dirt_2", "fm_dirt_3"]:
-		var t: Texture2D = load("res://assets/sprites/env/%s.png" % n)
-		_check(t != null, "текстура природы %s.png есть" % n)
+	# ассеты природы на месте (v1.50.2: FM-травы и земля убраны —
+	# трава принятая v1.32; ForgottenMemories — вода и декор)
 	for n in ["grass_L1", "grass_L2", "grass_M1", "grass_M2", "grass_D1", "grass_D2"]:
-		var t2: Texture2D = load("res://assets/sprites/env/%s.png" % n)
-		_check(t2 != null, "принятая трава %s.png есть" % n)
+		var t: Texture2D = load("res://assets/sprites/env/%s.png" % n)
+		_check(t != null, "принятая трава %s.png есть" % n)
 	var w: Texture2D = load("res://assets/sprites/env/fm_water.png")
 	_check(w != null and w.get_width() == 192 and w.get_height() == 96,
 			"анимированная вода fm_water — полоса 6 кадров × 3 ряда")
+	_check(not String(ru.get("city.keys_bar", "")).is_empty()
+			and "масштаб карты" in String(ru.get("city.keys_bar", "")),
+			"подсказка о масштабе карты города есть в панели клавиш")
 
 
 func _test_v150_forests_ridges() -> void:

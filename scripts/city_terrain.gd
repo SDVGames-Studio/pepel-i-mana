@@ -68,12 +68,6 @@ func setup(city_map, city_cfg: Dictionary, city_sim = null, cache_key := "") -> 
 		for v in 2:
 			_grass_texs.append(Assets.tex(
 					"res://assets/sprites/env/grass_%s%d.png" % [fam, v + 1]))
-	_dirt_texs = [
-		Assets.tex("res://assets/sprites/env/fm_dirt_0.png"),
-		Assets.tex("res://assets/sprites/env/fm_dirt_1.png"),
-		Assets.tex("res://assets/sprites/env/fm_dirt_2.png"),
-		Assets.tex("res://assets/sprites/env/fm_dirt_3.png"),
-	]
 	_rock_deep = colors.get("rock_deep", Color("#565248"))
 	_water_lake = colors.get("water_lake", _water_lake)
 	_water_river = colors.get("water_river", _water_river)
@@ -399,16 +393,6 @@ func _draw_tiles(region: Rect2i) -> void:
 						_drawer.draw_texture_rect(tex, rect, false)
 					else:
 						_drawer.draw_rect(rect, _grass_at(x, y))
-					# v1.50: земляная проплешина — fm_dirt поверх травы
-					# (плоская база + редкая фактура)
-					if tile == map.TILE_GRASS and _is_dirt_patch(x, y) \
-							and not _dirt_texs.is_empty():
-						var dv := 0
-						if _hash(x, y, 6) % 100 < 30:
-							dv = 1 + _hash(x, y, 7) % maxi(1, _dirt_texs.size() - 1)
-						var dtex: Texture2D = _dirt_texs[mini(dv, _dirt_texs.size() - 1)]
-						if dtex != null:
-							_drawer.draw_texture_rect(dtex, rect, false)
 					# v1.50: декор луга — цветы полянами, камешки, кусты/валуны.
 					# Запекается В ЧАНК (раньше — живой слой: тысячи команд
 					# каждый кадр; теперь ноль, и декор есть и на карте ×4,
@@ -429,11 +413,7 @@ func _draw_tiles(region: Rect2i) -> void:
 						_drawer.draw_rect(
 								Rect2(rect.position + Vector2(6.0 + ox, 6.0 + oy), Vector2(sz, sz)),
 								_rock_deep.lightened(0.12 if k % 2 == 0 else 0.0))
-	# проход 2: земляные проплешины — кромки пятен (v1.50): painterly
-	# обводка по сглаженным контурам маски (тёмная травяная губа снаружи,
-	# светлый срез земли внутри) — прячет квадраты тайлов
-	_draw_dirt_edges(region)
-	# проход 3: скалы и жилы — «Природа 2.0» (v1.39.0): фактурные утёсы
+	# проход 2: скалы и жилы — «Природа 2.0» (v1.39.0): фактурные утёсы
 	# с травяными шапками языком высот плато (rock_terrain.gd).
 	# Вода в духовке НЕ рисуется: она живая (water_terrain.gd, город).
 	_rebuild_rock_cache()
@@ -913,14 +893,6 @@ func _grass_texture_at(x: int, y: int) -> Texture2D:
 	return _grass_texs[fam * 2 + v]
 
 
-## Земляная проплешина (v1.50.1 после правки приёмки): МЕЛКИЕ пятна голой
-## земли — шум мелкого масштаба и высокий порог (2–5 тайлов, редко),
-## тайлы заливаются fm_dirt, кромка — painterly-обводка. Прежние крупные
-## пятна (/9, порог 0.76) накрывали пол-карты и рвались на границах чанков.
-func _is_dirt_patch(x: int, y: int) -> bool:
-	return _noise2(x / 4.0, y / 4.0, 100, 83) / 99.0 > 0.84
-
-
 ## ---------- декор луга и земляные проплешины (v1.50 «Живая земля») ----------
 
 const FLOWER_COLS := [
@@ -985,65 +957,6 @@ func _draw_meadow_decor(x: int, y: int, rect: Rect2) -> void:
 ## поверх — painterly-кольцо: тёмная «губа травы» снаружи, светлый
 ## срез земли внутри (приём «кромка в 2–3 тона», РЕФЕРЕНСЫ-СТИЛЬ).
 
-var _dirt_texs: Array = []   # fm_dirt_1..3 — фактурная голая земля
-
-
-## Кромки земляных пятен региона (вызывается из _draw_tiles по чанку).
-func _draw_dirt_edges(region: Rect2i) -> void:
-	if map == null or map.ts <= 0:
-		return
-	var grown := Rect2i(region.position - Vector2i(2, 2), region.size + Vector2i(4, 4))
-	var is_dirt := func(t: Vector2i) -> bool:
-		if t.x < 0 or t.y < 0 or t.x >= map.w or t.y >= map.h:
-			return false
-		return map.grid[t.y][t.x] == map.TILE_GRASS and _is_dirt_patch(t.x, t.y)
-	for raw in _mask_loops(is_dirt, grown.position, grown.end - Vector2i(1, 1)):
-		var smooth := _smooth_loop(raw)
-		if smooth.size() < 3:
-			continue
-		var clean := _clean_loop(smooth)
-		if clean.size() < 3 or not _loop_is_simple(clean):
-			continue
-		# малым проплешинам (до ~18 тайлов) обводка не нужна — без неё
-		# пятно читается вытоптанной землёй, с ней — «ковриком с рамкой»
-		if _loop_area(clean) < 18.0 * float(map.ts) * float(map.ts):
-			continue
-		# рисуем только кольца, пересекающие регион запечки
-		var bbox := Rect2(clean[0], Vector2.ZERO)
-		for p in clean:
-			bbox = bbox.expand(p)
-		var region_px := Rect2(Vector2(region.position) * float(map.ts),
-				Vector2(region.size) * float(map.ts))
-		if not bbox.grow(float(map.ts)).intersects(region_px):
-			continue
-		_dirt_edge_ring(clean)
-
-
-## Painterly-кромка пятна земли: наружная тёмная линия (трава нависает)
-## и внутренняя светлая (срез земли) — ступени тайлов не читаются.
-func _dirt_edge_ring(loop: PackedVector2Array) -> void:
-	var c := _poly_centroid(loop)
-	var n := loop.size()
-	var out_pts := PackedVector2Array()
-	var in_pts := PackedVector2Array()
-	for i in n:
-		var p := loop[i]
-		var q := loop[(i + 1) % n]
-		var dir := q - p
-		if dir.length() < 0.001:
-			continue
-		var nrm := Vector2(dir.y, -dir.x).normalized()
-		if nrm.dot(p - c) < 0.0:
-			nrm = -nrm   # наружу от центроида
-		out_pts.append(p + nrm * 2.0)
-		in_pts.append(p - nrm * 1.5)
-	if out_pts.size() < 2:
-		return
-	out_pts.append(out_pts[0])
-	in_pts.append(in_pts[0])
-	# при запечке 8px/тайл линии худеют в 4 раза — рисуем жирно
-	_drawer.draw_polyline(out_pts, Color(0.27, 0.33, 0.19, 0.55), 6.5)
-	_drawer.draw_polyline(in_pts, Color(0.82, 0.72, 0.52, 0.55), 3.5)
 
 
 ## ---------- Природа 2.0 (v1.39.0) -------------------------------------------

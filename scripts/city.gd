@@ -1010,6 +1010,12 @@ func _unhandled_input(event: InputEvent) -> void:
 				hud.toggle_chronicle()
 			KEY_M:
 				hud.toggle_market()
+			# v1.50.2: масштаб карты города и с клавиатуры — «+»/«−»
+			# (дубль колеса мыши: у кого-то его нет под рукой)
+			KEY_EQUAL, KEY_KP_ADD:
+				_wheel_zoom(1.12)
+			KEY_MINUS, KEY_KP_SUBTRACT:
+				_wheel_zoom(1.0 / 1.12)
 			KEY_1:
 				set_speed(1)
 			KEY_2:
