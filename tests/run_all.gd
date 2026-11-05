@@ -176,7 +176,7 @@ const BLOCKS := [
 ]],
 	["res://tests/test_v151.gd", [
 	"_test_v151_overview",
-	"_test_v151_start_pick",
+	"_test_v151_city_found",
 ]],
 
 	["res://tests/test_dungeon2.gd", [

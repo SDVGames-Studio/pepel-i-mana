@@ -1130,6 +1130,51 @@ static func _plateau_cfg(key: String, def: float) -> float:
 	return float(_plateau_bal.get("plateau", {}).get(key, def))
 
 
+## ---------- основание города в выбранной клетке (v1.52) ---------------------
+
+## Годна ли клетка под основание города (выбор места на старте, на КАРТЕ
+## ГОРОДА): трава на равнине, от края ≥8 (кольцо стен и поля), от аномалии
+## ≥8 (улью нужен подход, герою — бой у входа), от выхода ≥4.
+## "" — годится, иначе ключ строки-причины.
+func can_found_at(t: Vector2i) -> String:
+	if not in_bounds(t):
+		return "pick.bad_edge"
+	if grid[t.y][t.x] != TILE_GRASS or int(height.get(t, 0)) != 0 			or not is_nature_walkable(t):
+		return "pick.bad_water"
+	# аномалия/выход важнее края: аномалия стоит у кромки, и «слишком
+	# близко к аномалии» честнее сообщения про край
+	if t.distance_to(anomaly_tile) < 8:
+		return "pick.bad_anomaly"
+	if t.distance_to(world_exit_tile) < 4:
+		return "pick.bad_exit"
+	if t.x < 8 or t.y < 8 or t.x > w - 9 or t.y > h - 9:
+		return "pick.bad_edge"
+	return ""
+
+
+## Основать город в клетке: чистим площадку радиуса 3 (трава/пни под нож —
+## вода и скалы НЕ трогаются: игрок сам выбрал «ближе к лесу или горам»),
+## переносим точку появления. Проверка достижимости — на вызывающем
+## (start_found): _reachable_from(spawn_tile) до переноса.
+func found_at(t: Vector2i) -> void:
+	spawn_tile = Vector2i(t)
+	_clear_around_soft(spawn_tile, 3)
+	grid_ver += 1
+
+
+## Как _clear_around, но только мягкие тайлы: траву/деревья в траву.
+## Вода, скалы, руда, руины — на месте (город строится вокруг них).
+func _clear_around_soft(center: Vector2i, radius: int) -> void:
+	for y in range(center.y - radius, center.y + radius + 1):
+		for x in range(center.x - radius, center.x + radius + 1):
+			if x < 0 or y < 0 or x >= w or y >= h:
+				continue
+			var t: int = grid[y][x]
+			if t == TILE_GRASS or t == TILE_TREE:
+				grid[y][x] = TILE_GRASS
+			tree_size.erase(Vector2i(x, y))
+
+
 func in_bounds(p: Vector2i) -> bool:
 	return p.x >= 0 and p.y >= 0 and p.x < w and p.y < h
 

@@ -21,6 +21,7 @@ const BALANCE_CFG_PATH := "res://data/balance.json"
 var inventory: Array = []        # [{id: String, count: int}]
 var last_run_death := false      # true, если последний забег закончился гибелью
 var city_sim = null              # city_sim.gd, нетипизированно (грабли GDScript 4)
+var pending_city_map = null      # v1.52: карта города, сгенерённая для выбора места
 var city_bake_cache := {}   # v1.43: LRU-кэш чанков запечки городов (большие карты)
 var magic = null                 # magic.gd — школы/рецепты/заклинания (M3)
 var skills = null                # skills.gd — XP, уровни, дерево навыков героя (M7)
@@ -341,10 +342,7 @@ func _input(event: InputEvent) -> void:
 
 ## Создать город с настройками старта (новая игра). Рюкзак и спеллбук очищаются.
 ## Новая игра — новый мир (M8): карта мира генерируется заново.
-## chosen_tile (v1.51): клетка мира, выбранная игроком на старте
-## (сцена start_pick уже создала мир — new_world() повторно не зовётся);
-## Vector2i(-1,-1) — прежний путь: мир создаётся заново, город по сиду.
-func new_city(chosen_tile := Vector2i(-1, -1)) -> void:
+func new_city() -> void:
 	inventory = []
 	spellbook = []
 	last_run_death = false
@@ -371,11 +369,7 @@ func new_city(chosen_tile := Vector2i(-1, -1)) -> void:
 	stats = {"days": 0, "bosses": 0, "buildings": 0, "quests": 0, "hunts": 0}
 	if skills != null:
 		skills.reset()
-	if chosen_tile.x >= 0 and world_map != null:
-		# мир уже создан сценой выбора места — город на выбранную клетку
-		world_map.set_city_tile(chosen_tile)
-	else:
-		new_world()
+	new_world()
 	var cfg: Variant = _read_json(CITY_CFG_PATH)
 	if not (cfg is Dictionary):
 		push_error("Не читается data/city.json")
@@ -391,6 +385,48 @@ func new_city(chosen_tile := Vector2i(-1, -1)) -> void:
 	city_sim.conflicts = conflicts_enabled
 	if test_mode:
 		_apply_test_mode(cfg)
+
+
+## v1.52 «Место города на карте города»: сгенерировать КАРТУ ГОРОДА для
+## экрана выбора места (без симуляции — sim.setup ставит жителей/площадь
+## у spawn_tile, поэтому основание должно случиться ДО него). Мир создаётся
+## один раз — гидро-контекст клетки (река на глобале = река в городе,
+## ответ №117) читается из него.
+func prepare_city_map() -> void:
+	if world_map == null:
+		new_world()
+	var cfg: Variant = _read_json(CITY_CFG_PATH)
+	if not (cfg is Dictionary):
+		push_error("Не читается data/city.json")
+		return
+	var map_script: Script = load(CITY_MAP_SCRIPT)
+	pending_city_map = map_script.new()
+	pending_city_map.generate(randi(), cfg, world_map.city_hydro())
+
+
+## Основать город в выбранной на карте города клетке: чистим площадку,
+## переносим точку появления и создаём симуляцию (жители/площадь/голем
+## встают у НОВОГО spawn_tile). "" — успех, иначе ключ ошибки.
+func found_city(tile: Vector2i) -> String:
+	var m = pending_city_map
+	if m == null:
+		return "pick.bad_edge"
+	var err: String = m.can_found_at(tile)
+	if err != "":
+		return err
+	m.found_at(tile)
+	var cfg: Variant = _read_json(CITY_CFG_PATH)
+	if not (cfg is Dictionary):
+		push_error("Не читается data/city.json")
+		return "pick.bad_edge"
+	var sim_script: Script = load(CITY_SIM_SCRIPT)
+	city_sim = sim_script.new()
+	city_sim.setup(m, cfg, start_residents, start_level)
+	city_sim.conflicts = conflicts_enabled
+	if test_mode:
+		_apply_test_mode(cfg)
+	pending_city_map = null
+	return ""
 
 
 ## Создать мир: карта мира по сиду + программная жизнь (M8).

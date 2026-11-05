@@ -1,0 +1,92 @@
+name: publish
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: publish-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  GODOT_VERSION: 4.7.2-stable
+
+jobs:
+  export:
+    name: Export Windows build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Install Godot and export templates
+        run: |
+          set -e
+          curl -L --retry 3 -o /tmp/godot.zip \
+            "https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}/Godot_v${GODOT_VERSION}_linux.x86_64.zip"
+          unzip -o /tmp/godot.zip -d /tmp/godot
+          sudo install /tmp/godot/Godot_v${GODOT_VERSION}_linux.x86_64 /usr/local/bin/godot
+
+          curl -L --retry 3 -o /tmp/templates.tpz \
+            "https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}/Godot_v${GODOT_VERSION}_export_templates.tpz"
+          mkdir -p ~/.local/share/godot/export_templates/${GODOT_VERSION%-stable}.stable
+          unzip -o /tmp/templates.tpz -d /tmp/tpz
+          mv /tmp/tpz/templates/* ~/.local/share/godot/export_templates/${GODOT_VERSION%-stable}.stable/
+
+      - name: Import project assets
+        run: godot --headless --editor --import --path .
+
+      - name: Export Windows
+        run: |
+          mkdir -p build
+          godot --headless --export-release "Windows Desktop" "build/ПепелИМана.exe"
+          test -s "build/ПепелИМана.exe"
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: pepel-i-mana-build
+          path: build/ПепелИМана.exe
+          if-no-files-found: error
+
+  release:
+    name: Create latest release
+    needs: export
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout (for version in notes)
+        uses: actions/checkout@v5
+
+      - name: Read game version
+        id: version
+        run: |
+          V=$(python3 -c "import json;print(json.load(open('data/version.json'))['version'])")
+          echo "version=$V" >> "$GITHUB_OUTPUT"
+
+      - name: Download build
+        uses: actions/download-artifact@v4
+        with:
+          name: pepel-i-mana-build
+          path: dist
+
+      - name: Create latest release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete latest \
+            --repo "$GITHUB_REPOSITORY" \
+            --cleanup-tag \
+            --yes 2>/dev/null || true
+
+          gh release create latest \
+            "dist/ПепелИМана.exe" \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "Пепел и Мана — v${{ steps.version.outputs.version }}" \
+            --target "$GITHUB_SHA" \
+            --notes "Автосборка из main (v${{ steps.version.outputs.version }}, коммит $GITHUB_SHA). Запуск: скачать ПепелИМана.exe и запустить — установка не нужна."

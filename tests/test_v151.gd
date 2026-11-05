@@ -38,64 +38,51 @@ func _test_v151_overview() -> void:
 	ov.free()
 
 
-func _test_v151_start_pick() -> void:
-	print("[v1.51: выбор места города на старте]")
-	var wcfg: Dictionary = _read_json("res://data/world.json")
-	var wm = load("res://scripts/world_map.gd").new()
-	wm.generate(42, wcfg)
-	# валидатор клетки: вода/болото/русло — отказ, край — отказ
-	var water := Vector2i(-1, -1)
+func _test_v151_city_found() -> void:
+	print("[v1.52: выбор места города на КАРТЕ ГОРОДА]")
+	var cfg: Dictionary = _read_json("res://data/city.json")
+	var gen_cfg: Dictionary = cfg.duplicate(true)
+	gen_cfg["river"] = false
+	gen_cfg["map_w"] = 96
+	gen_cfg["map_h"] = 72
+	# карта города для выбора места (как prepare_city_map, но с фикс. сидом)
+	var m = load("res://scripts/city_map.gd").new()
+	m.generate(42, gen_cfg)
+	# валидатор: годная клетка есть, вода/край/аномалия — отказ
 	var land := Vector2i(-1, -1)
-	var center := Vector2i(wm.w / 2, wm.h / 2)
-	var bd := 1 << 30
-	for y in range(4, wm.h - 4):
-		for x in range(4, wm.w - 4):
+	var bad_water := Vector2i(-1, -1)
+	for y in range(8, m.h - 9):
+		for x in range(8, m.w - 9):
 			var t := Vector2i(x, y)
-			if water == Vector2i(-1, -1) \
-					and wm.grid[t.y][t.x] == wm.TILE_WATER:
-				water = t
-			# годная клетка — БЛИЖЕ К ЦЕНТРУ (кольцо «двери» 3–5 влезает)
-			if wm.can_found_city_at(t, []) == "":
-				var d := int(Vector2(t).distance_to(Vector2(center)))
-				if d < bd:
-					bd = d
-					land = t
-	_check(land != Vector2i(-1, -1), "валидатор: годная клетка найдена")
-	_check(water != Vector2i(-1, -1), "на карте есть вода для отказа")
-	_check(wm.can_found_city_at(water, []) == "pick.bad_water",
-			"валидатор: на воде город не ставится")
-	_check(wm.can_found_city_at(Vector2i(0, 0), []) == "pick.bad_edge",
+			if land == Vector2i(-1, -1) and m.can_found_at(t) == "":
+				land = t
+			if bad_water == Vector2i(-1, -1) and m.grid[t.y][t.x] == m.TILE_WATER:
+				bad_water = t
+	_check(land != Vector2i(-1, -1), "валидатор: годное место на карте города есть")
+	_check(m.can_found_at(Vector2i(0, 0)) == "pick.bad_edge",
 			"валидатор: у края карты город не ставится")
-	# рядом с поселением — отказ
-	if not _occupancies(wm).is_empty() and land != Vector2i(-1, -1):
-		var near: Vector2i = Vector2i(_occupancies(wm)[0]) + Vector2i(2, 0)
-		if wm.in_bounds(near):
-			_check(wm.can_found_city_at(near, _occupancies(wm)) == "pick.bad_near",
-					"валидатор: рядом с поселением нельзя")
-	# перенос города: POI города двигается, площадка чистится
-	var old_tile: Vector2i = wm.city_tile
-	wm.set_city_tile(land)
-	_check(wm.city_tile == land, "set_city_tile: город перенесён")
-	var city_pois := 0
-	for poi in wm.pois:
-		if String(poi["kind"]) == "city":
-			city_pois += 1
-			_check(Vector2i(poi["tile"]) == land, "POI города на новой клетке")
-	_check(city_pois == 1, "POI города на карте один")
-	# «дверь» в данж переехала вместе с городом (3–5 клеток)
-	var gate_far := false
-	for poi in wm.pois:
-		if String(poi["kind"]) == "dungeon" and String(poi["biome"]) == "":
-			var d: float = Vector2(poi["tile"]).distance_to(Vector2(land))
-			if d > 7.0:
-				gate_far = true
-	_check(not gate_far, "городская аномалия рядом с новым местом")
-	_check(wm.tile_hydro(land) is Dictionary, "гидро-контекст новой клетки читается")
-
-
-func _occupancies(wm) -> Array:
-	var out: Array = []
-	for poi in wm.pois:
-		if String(poi["kind"]) == "settlement":
-			out.append(Vector2i(poi["tile"]))
-	return out
+	_check(m.can_found_at(m.anomaly_tile) == "pick.bad_anomaly",
+			"валидатор: у аномалии город не ставится")
+	if bad_water != Vector2i(-1, -1):
+		_check(m.can_found_at(bad_water) == "pick.bad_water",
+				"валидатор: на воде/скале город не ставится")
+	# основание: spawn переносится, площадка чистится, все достижимо,
+	# симуляция встаёт у НОВОГО места (жители/площадь/голем)
+	m.found_at(land)
+	_check(m.spawn_tile == land, "found_at: точка появления перенесена")
+	var reach: Dictionary = m._reachable_from(m.spawn_tile)
+	_check(reach.has(m.anomaly_tile) and reach.has(m.world_exit_tile),
+			"после основания аномалия и выход достижимы от нового города")
+	var sim = load("res://scripts/city_sim.gd").new()
+	sim.setup(m, cfg, 1, "normal")
+	_check(sim.residents.size() >= 1, "симуляция создана на найденном месте")
+	var near_ok := true
+	for r in sim.residents:
+		if Vector2(r["pos"]).distance_to(m.tile_center_px(m.spawn_tile)) > 6.0 * float(m.ts):
+			near_ok = false
+	_check(near_ok, "жители появляются у выбранного места города")
+	_check(sim.plaza != Vector2i(-1, -1)
+			and Vector2(sim.plaza).distance_to(Vector2(m.spawn_tile)) <= 3.0,
+			"площадь накрывает новое место города")
+	# Полный путь Game.prepare_city_map/found_city покрывает живой прогон
+	# (автозагрузки в headless-тестах недоступны — грабли AGENTS.md).

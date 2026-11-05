@@ -126,6 +126,10 @@ func _draw() -> void:
 	_draw_plaza_pulse()
 	_draw_field_live()
 	if lod:
+		# v1.52: три яруса детализации — чем дальше камера, тем реже
+		# живые травинки и блики (мельче пикселя — глаз не отличит,
+		# команд в разы меньше)
+		_grass_step = 4 if _zoom < 2.2 else 2
 		_draw_water_glints()
 		_draw_swaying_grass()
 	_draw_hive()
@@ -134,7 +138,8 @@ func _draw() -> void:
 	_draw_world_sorted()
 	_draw_ghost()
 
-var _zoom := 2.0   # текущий зум камеры города (v1.50: LOD живых деталей)
+var _zoom := 2.0        # текущий зум камеры города (v1.50: LOD живых деталей)
+var _grass_step := 2    # v1.52: шаг прореживания травы/бликов по зуму
 
 
 ## Прямоугольник карты, видимый камерой (запас 3 тайла на высокие деревья).
@@ -162,7 +167,7 @@ func _draw_swaying_grass() -> void:
 	var y1 := clampi(int(_vis.end.y / ts) + 1, 0, map.h - 1)
 	for y in range(y0, y1 + 1):
 		for x in range(x0, x1 + 1):
-			if map.grid[y][x] != map.TILE_GRASS or _hash(x, y, 3) % 2 != 0:
+			if map.grid[y][x] != map.TILE_GRASS or _hash(x, y, 3) % _grass_step != 0:
 				continue
 			var t := Vector2i(x, y)
 			var ph := float(t.x * 5 + t.y * 11)
@@ -191,7 +196,7 @@ func _draw_water_glints() -> void:
 			var t := Vector2i(x, y)
 			# плотность бликов прорежена хэшем (FPS-замер 2026-10-27): мерцает
 			# половина тайлов — картинка та же, команд вдвое меньше
-			if _hash(t.x, t.y, 3) % 2 == 0:
+			if _hash(t.x, t.y, 3) % _grass_step == 0:
 				continue
 			var ph := float(t.x * 7 + t.y * 13)
 			var s := sin(_anim_time * 1.6 + ph)
@@ -1035,6 +1040,10 @@ func _draw_building(b: Dictionary) -> void:
 	# v1.36.1: здание на плато приподнято вместе с плоскостью плато —
 	# вся коробка (заливка, дверь, метки, надпись) на высоте уровня
 	rect.position.y -= _bld_lift(b)
+	# v1.52 (FPS): здание за экраном не рисуем (двери/метки/подписи —
+	# десятки команд на дом; при карте ×4 их сотни)
+	if not _vis.grow(float(ts) * 2.0).intersects(rect):
+		return
 	var type_id := String(b["type"])
 	var col: Color = _bld_fill.get(type_id, Color(0.91, 0.85, 0.62))
 	var anchor: Vector2 = Vector2(rect.get_center().x, rect.end.y - 2.0)
