@@ -110,14 +110,13 @@ jobs:
   pages:
     name: Deploy web game to GitHub Pages
     needs: publish
-    # ВКЛЮЧЕНИЕ PAGES — ОДИН РАЗ ВРУЧНУЮ (владелец репо, admin-право,
-    # ни CI-токен, ни API-токен агента его не имеют):
-    #   Settings → Pages → Build and deployment → Source: «GitHub Actions»
-    # после этого любой прогон publish деплоит игру на
-    #   https://sdvgames-studio.github.io/pepel-i-mana/
-    # до включения этот job падает мягко (continue-on-error), не портя релиз;
-    # enablement: true оставлен — активируется автоматически, если права появятся
-    continue-on-error: true
+    # GITHUB_TOKEN с administration: write сам создаёт Pages-сайт
+    # (enablement: true ниже); «Resource not accessible by integration»
+    # был именно из-за отсутствия этого права у токена
+    permissions:
+      pages: write
+      id-token: write
+      administration: write
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     environment:
