@@ -110,6 +110,9 @@ jobs:
   pages:
     name: Deploy web game to GitHub Pages
     needs: publish
+    # Pages должен быть включён в настройках репо (Settings → Pages →
+    # Source: GitHub Actions) — до этого job падает, не портя релиз
+    continue-on-error: true
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     environment:
