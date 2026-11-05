@@ -110,13 +110,15 @@ jobs:
   pages:
     name: Deploy web game to GitHub Pages
     needs: publish
-    # GITHUB_TOKEN с administration: write сам создаёт Pages-сайт
-    # (enablement: true ниже); «Resource not accessible by integration»
-    # был именно из-за отсутствия этого права у токена
+    # ВНИМАНИЕ: создать Pages-сайт может только ВЛАДЕЛЕЦ репо из UI
+    # (Settings → Pages → Source: GitHub Actions) — GITHUB_TOKEN не имеет
+    # права administration (ключ отвергается, workflow = Invalid), а PAT
+    # агента не админ. После одноразового включения деплоится автоматически.
+    # До того — job падает мягко, релиз (exe/linux/web.zip) выходит как всегда.
+    continue-on-error: true
     permissions:
       pages: write
       id-token: write
-      administration: write
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     environment:
