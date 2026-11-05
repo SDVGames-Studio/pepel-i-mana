@@ -93,9 +93,14 @@ jobs:
             --target "$GITHUB_SHA" \
             --notes "Автосборка из main (v${{ steps.version.outputs.version }}, коммит $GITHUB_SHA). Запуск: скачать exe и запустить — установка не нужна."
 
-          # вернуть ассету русское имя (кириллица в имени ФАЙЛА
-          # недетерминированно переживает zip-артефакт — переименовываем
-          # уже на ассете, через API — это детерминированно)
+          # вернуть ассету русское имя: gh -f (form) с кириллицей
+          # недетерминирован — PATCH JSON-ом через curl и проверка
           ASSET_ID=$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/latest" --jq '.assets[0].id')
-          gh api --method PATCH "repos/$GITHUB_REPOSITORY/releases/assets/$ASSET_ID" \
-            -f name="ПепелИМана.exe" --silent
+          curl -sSf -X PATCH \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Content-Type: application/json" \
+            "https://api.github.com/repos/$GITHUB_REPOSITORY/releases/assets/$ASSET_ID" \
+            -d '{"name":"\u041f\u0435\u043f\u0435\u043b\u0418\u041c\u0430\u043d\u0430.exe"}'
+          NAME=$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/latest" --jq '.assets[0].name')
+          echo "asset name: $NAME"
+          test "$NAME" = "ПепелИМана.exe"
