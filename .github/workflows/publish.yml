@@ -44,14 +44,16 @@ jobs:
       - name: Export Windows
         run: |
           mkdir -p build
-          godot --headless --export-release "Windows Desktop" "build/ПепелИМана.exe"
-          test -s "build/ПепелИМана.exe"
+          # ASCII-имя: кириллица в путях экспорта недетерминированно
+          # переживает zip-артефакт/загрузку релиза; в релизе переименуем
+          godot --headless --export-release "Windows Desktop" build/PepelIMana.exe
+          test -s build/PepelIMana.exe
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
           name: pepel-i-mana-build
-          path: build/ПепелИМана.exe
+          path: build/PepelIMana.exe
           if-no-files-found: error
 
   release:
@@ -75,15 +77,6 @@ jobs:
           name: pepel-i-mana-build
           path: dist
 
-      # кириллическое имя файла не переживает распаковку артефакта в CI
-      # (приходил «default.exe») — переименовываем явно
-      - name: Normalize exe name
-        run: |
-          cd dist
-          EXE=$(ls *.exe | head -1)
-          mv "$EXE" "ПепелИМана.exe"
-          test -s "ПепелИМана.exe"
-
       - name: Create latest release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -94,8 +87,15 @@ jobs:
             --yes 2>/dev/null || true
 
           gh release create latest \
-            "dist/ПепелИМана.exe" \
+            dist/PepelIMana.exe \
             --repo "$GITHUB_REPOSITORY" \
             --title "Пепел и Мана — v${{ steps.version.outputs.version }}" \
             --target "$GITHUB_SHA" \
-            --notes "Автосборка из main (v${{ steps.version.outputs.version }}, коммит $GITHUB_SHA). Запуск: скачать ПепелИМана.exe и запустить — установка не нужна."
+            --notes "Автосборка из main (v${{ steps.version.outputs.version }}, коммит $GITHUB_SHA). Запуск: скачать exe и запустить — установка не нужна."
+
+          # вернуть ассету русское имя (кириллица в имени ФАЙЛА
+          # недетерминированно переживает zip-артефакт — переименовываем
+          # уже на ассете, через API — это детерминированно)
+          ASSET_ID=$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/latest" --jq '.assets[0].id')
+          gh api --method PATCH "repos/$GITHUB_REPOSITORY/releases/assets/$ASSET_ID" \
+            -f name="ПепелИМана.exe" --silent
