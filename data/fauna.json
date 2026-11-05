@@ -10,23 +10,201 @@
 	"flee_radius_px": 70.0,
 	"interact_dist_px": 44.0,
 	"species": [
-		{ "id": "deer", "loc": "fauna.deer", "biomes": ["plains", "forest"], "behavior": "flee",
-			"speed": 60.0, "size": 1.0, "color": "#b08a5a",
-			"drop": [ { "id": "meat", "count": [1, 2] }, { "id": "hide", "count": [1, 1] } ] },
-		{ "id": "boar", "loc": "fauna.boar", "biomes": ["forest"], "behavior": "flee",
-			"speed": 45.0, "size": 0.9, "color": "#6b5a45",
-			"drop": [ { "id": "meat", "count": [2, 3] }, { "id": "hide", "count": [1, 1] } ] },
-		{ "id": "bird", "loc": "fauna.bird", "biomes": ["forest", "plains", "hills", "waste"],
-			"behavior": "flee", "speed": 90.0, "size": 0.55, "color": "#d8d8d8",
-			"drop": [ { "id": "feather", "count": [1, 2] } ] },
-		{ "id": "wolf", "loc": "fauna.wolf", "biomes": ["forest", "hills", "waste"], "behavior": "hunt",
-			"speed": 75.0, "size": 0.85, "color": "#8a8a92",
-			"drop": [ { "id": "meat", "count": [1, 2] }, { "id": "hide", "count": [1, 1] } ] },
-		{ "id": "fish", "loc": "fauna.fish", "biomes": ["water"], "behavior": "fish",
-			"speed": 0.0, "size": 0.6, "color": "#7fd0e0",
-			"drop": [ { "id": "fish_raw", "count": [1, 1] } ] },
-		{ "id": "toad", "loc": "fauna.toad", "biomes": ["swamp"], "behavior": "flee",
-			"speed": 35.0, "size": 0.7, "color": "#7a9a4a",
-			"drop": [ { "id": "meat", "count": [1, 1] } ] }
+		{
+			"id": "deer",
+			"loc": "fauna.deer",
+			"biomes": [
+				"plains",
+				"forest"
+			],
+			"behavior": "flee",
+			"speed": 60.0,
+			"size": 1.0,
+			"color": "#b08a5a",
+			"drop": [
+				{
+					"id": "meat",
+					"count": [
+						1,
+						2
+					]
+				},
+				{
+					"id": "hide",
+					"count": [
+						1,
+						1
+					]
+				}
+			]
+		},
+		{
+			"id": "boar",
+			"loc": "fauna.boar",
+			"biomes": [
+				"forest"
+			],
+			"behavior": "flee",
+			"speed": 45.0,
+			"size": 0.9,
+			"color": "#6b5a45",
+			"drop": [
+				{
+					"id": "meat",
+					"count": [
+						2,
+						3
+					]
+				},
+				{
+					"id": "hide",
+					"count": [
+						1,
+						1
+					]
+				}
+			]
+		},
+		{
+			"id": "bird",
+			"loc": "fauna.bird",
+			"biomes": [
+				"forest",
+				"plains",
+				"hills",
+				"waste"
+			],
+			"behavior": "flee",
+			"speed": 90.0,
+			"size": 0.55,
+			"color": "#d8d8d8",
+			"drop": [
+				{
+					"id": "feather",
+					"count": [
+						1,
+						2
+					]
+				}
+			]
+		},
+		{
+			"id": "hare",
+			"loc": "fauna.hare",
+			"biomes": [
+				"plains",
+				"forest"
+			],
+			"behavior": "flee",
+			"speed": 80.0,
+			"size": 0.5,
+			"color": "#a89a8a",
+			"drop": [
+				{
+					"id": "meat",
+					"count": [
+						1,
+						1
+					]
+				}
+			]
+		},
+		{
+			"id": "fox",
+			"loc": "fauna.fox",
+			"biomes": [
+				"forest",
+				"plains"
+			],
+			"behavior": "hunt",
+			"speed": 70.0,
+			"size": 0.7,
+			"color": "#c26a2e",
+			"drop": [
+				{
+					"id": "meat",
+					"count": [
+						1,
+						1
+					]
+				},
+				{
+					"id": "hide",
+					"count": [
+						1,
+						1
+					]
+				}
+			]
+		},
+		{
+			"id": "wolf",
+			"loc": "fauna.wolf",
+			"biomes": [
+				"forest",
+				"hills",
+				"waste"
+			],
+			"behavior": "hunt",
+			"speed": 75.0,
+			"size": 0.85,
+			"color": "#8a8a92",
+			"drop": [
+				{
+					"id": "meat",
+					"count": [
+						1,
+						2
+					]
+				},
+				{
+					"id": "hide",
+					"count": [
+						1,
+						1
+					]
+				}
+			]
+		},
+		{
+			"id": "fish",
+			"loc": "fauna.fish",
+			"biomes": [
+				"water"
+			],
+			"behavior": "fish",
+			"speed": 0.0,
+			"size": 0.6,
+			"color": "#7fd0e0",
+			"drop": [
+				{
+					"id": "fish_raw",
+					"count": [
+						1,
+						1
+					]
+				}
+			]
+		},
+		{
+			"id": "toad",
+			"loc": "fauna.toad",
+			"biomes": [
+				"swamp"
+			],
+			"behavior": "flee",
+			"speed": 35.0,
+			"size": 0.7,
+			"color": "#7a9a4a",
+			"drop": [
+				{
+					"id": "meat",
+					"count": [
+						1,
+						1
+					]
+				}
+			]
+		}
 	]
 }

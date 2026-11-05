@@ -59,10 +59,29 @@ func setup(city_map, city_cfg: Dictionary, city_sim = null, cache_key := "") -> 
 		_zone_colors[String(t)] = Color(String(city_cfg["zones"]["types"][t]["color"]))
 	_grass_shades = [colors["grass"], colors.get("grass_alt", colors["grass"]),
 			colors.get("grass2", colors["grass"]).darkened(0.03)]
-	for fam in ["L", "M", "D"]:
-		for v in 2:
-			_grass_texs.append(Assets.tex(
-					"res://assets/sprites/env/grass_%s%d.png" % [fam, v + 1]))
+	# v1.50 «Живая земля»: трава — тайлы природы ForgottenMemories. База —
+	# ПЛОСКАЯ заливка (L0 яркий луг / D0 сумрачный), детальный тайл с
+	# цветами/травинками — редким выбором по хэшу (иначе лист «коллажем»);
+	# семейство выбирают пятна луга. Плюс земляные проплешины с кромками.
+	_grass_texs = [
+		Assets.tex("res://assets/sprites/env/fm_grass_L0.png"),
+		Assets.tex("res://assets/sprites/env/fm_grass_L1.png"),
+		Assets.tex("res://assets/sprites/env/fm_grass_L2.png"),
+		Assets.tex("res://assets/sprites/env/fm_grass_L3.png"),
+		Assets.tex("res://assets/sprites/env/fm_grass_D0.png"),
+		Assets.tex("res://assets/sprites/env/fm_grass_D1.png"),
+		Assets.tex("res://assets/sprites/env/fm_grass_D2.png"),
+		Assets.tex("res://assets/sprites/env/fm_grass_D3.png"),
+	]
+	for i in range(_grass_texs.size()):
+		if _grass_texs[i] == null:
+			_grass_texs[i] = Assets.tex("res://assets/sprites/env/grass_L1.png")
+	_dirt_texs = [
+		Assets.tex("res://assets/sprites/env/fm_dirt_0.png"),
+		Assets.tex("res://assets/sprites/env/fm_dirt_1.png"),
+		Assets.tex("res://assets/sprites/env/fm_dirt_2.png"),
+		Assets.tex("res://assets/sprites/env/fm_dirt_3.png"),
+	]
 	_rock_deep = colors.get("rock_deep", Color("#565248"))
 	_water_lake = colors.get("water_lake", _water_lake)
 	_water_river = colors.get("water_river", _water_river)
@@ -295,17 +314,23 @@ func _draw() -> void:
 		return
 	if map == null:
 		return
+	# v1.50 (FPS): рисуем только чанки в видимой области — при большом
+	# зуме-отдалении и так все видны, вблизи экономит десятки квадов
+	var xf := get_viewport_transform()
+	var vis: Rect2 = (xf.affine_inverse() * get_viewport_rect()).grow(float(CHUNK_TILES * map.ts))
 	var cts := float(CHUNK_TILES * map.ts)
 	for cy in ceili(float(map.h) / CHUNK_TILES):
 		for cx in ceili(float(map.w) / CHUNK_TILES):
 			var key := Vector2i(cx, cy)
 			var rect := Rect2(float(cx) * cts, float(cy) * cts, cts, cts)
+			if not vis.intersects(rect):
+				continue
 			var tex: Texture2D = _chunks.get(key)
 			if tex != null:
 				draw_texture_rect(tex, rect, false)
 			else:
 				# чанк ещё печётся — плоская земля без деталей
-				draw_rect(rect, _grass_shades[0].darkened(0.05) if not _grass_shades.is_empty() 						else Color("#5d7a3a"))
+				draw_rect(rect, _grass_shades[0].darkened(0.05) if not _grass_shades.is_empty() 					else Color("#5d7a3a"))
 	if _tex2 != null:
 		draw_texture_rect(_tex2, Rect2(Vector2.ZERO, Vector2(map.w * map.ts, map.h * map.ts)), false)
 
@@ -382,11 +407,22 @@ func _draw_tiles(region: Rect2i) -> void:
 						_drawer.draw_texture_rect(tex, rect, false)
 					else:
 						_drawer.draw_rect(rect, _grass_at(x, y))
-					# v1.48.1: при уменьшенной запечке (bs<32) детали травы
-					# мельче пикселя — пропускаем (чанк печётся в разы быстрее)
-					if _bs >= 32:
-						_draw_grass_detail(x, y, rect, ts)
-						_draw_grass_prop(x, y, rect, ts)
+					# v1.50: земляная проплешина — fm_dirt поверх травы
+					# (плоская база + редкая фактура)
+					if tile == map.TILE_GRASS and _is_dirt_patch(x, y) \
+							and not _dirt_texs.is_empty():
+						var dv := 0
+						if _hash(x, y, 6) % 100 < 30:
+							dv = 1 + _hash(x, y, 7) % maxi(1, _dirt_texs.size() - 1)
+						var dtex: Texture2D = _dirt_texs[mini(dv, _dirt_texs.size() - 1)]
+						if dtex != null:
+							_drawer.draw_texture_rect(dtex, rect, false)
+					# v1.50: декор луга — цветы полянами, камешки, кусты/валуны.
+					# Запекается В ЧАНК (раньше — живой слой: тысячи команд
+					# каждый кадр; теперь ноль, и декор есть и на карте ×4,
+					# где запечка 8px/тайл прежде его вообще не тянула)
+					if tile == map.TILE_GRASS:
+						_draw_meadow_decor(x, y, rect)
 				map.TILE_DEADROCK:
 					_rock_view.draw_deadrock(x, y, rect, ts)
 				map.TILE_RUIN:
@@ -401,12 +437,16 @@ func _draw_tiles(region: Rect2i) -> void:
 						_drawer.draw_rect(
 								Rect2(rect.position + Vector2(6.0 + ox, 6.0 + oy), Vector2(sz, sz)),
 								_rock_deep.lightened(0.12 if k % 2 == 0 else 0.0))
-	# проход 2: скалы и жилы — «Природа 2.0» (v1.39.0): фактурные утёсы
+	# проход 2: земляные проплешины — кромки пятен (v1.50): painterly
+	# обводка по сглаженным контурам маски (тёмная травяная губа снаружи,
+	# светлый срез земли внутри) — прячет квадраты тайлов
+	_draw_dirt_edges(region)
+	# проход 3: скалы и жилы — «Природа 2.0» (v1.39.0): фактурные утёсы
 	# с травяными шапками языком высот плато (rock_terrain.gd).
 	# Вода в духовке НЕ рисуется: она живая (water_terrain.gd, город).
 	_rebuild_rock_cache()
 	_rock_view.draw_blobs(ts, region)
-	# проход 3: плато и утёсы (v1.36) — верхние грани, срезы-кромки
+	# проход 4: плато и утёсы (v1.36) — верхние грани, срезы-кромки
 	# по схеме Hills, лестницы-проходы и тени у подножия
 	_plateau_view.draw_plateaus(ts, region)
 
@@ -425,7 +465,10 @@ func _draw_static_content() -> void:
 
 ## Несглаженные замкнутые контуры маски тайлов (углы = центры тайлов).
 ## Контур идёт по серединам рёбер между «сухим» и «мокрым» тайлом.
-func _mask_loops(is_set: Callable) -> Array:
+## v1.50: необязательный регион (изначально вся карта) — кромки земляных
+## пятен считаются ПО ЧАНКУ с запасом 2 тайла; маска — чистая функция
+## координат, контуры на стыках чанков совпадают (швов нет).
+func _mask_loops(is_set: Callable, from := Vector2i(-1, -1), to := Vector2i(-1, -1)) -> Array:
 	var ts := float(map.ts)
 	var edges := {}   # ключ точки -> массив соседних точек (ключи)
 	# сегмент одной клетки: связь двух середин рёбер
@@ -438,8 +481,12 @@ func _mask_loops(is_set: Callable) -> Array:
 		if not edges.has(kb):
 			edges[kb] = []
 		edges[kb].append([ka, a])
-	for j in range(-1, map.h):
-		for i in range(-1, map.w):
+	var i0: int = from.x if from.x > -1 else -1
+	var j0: int = from.y if from.y > -1 else -1
+	var i1: int = to.x if to.x > -1 else int(map.w)
+	var j1: int = to.y if to.y > -1 else int(map.h)
+	for j in range(j0, j1):
+		for i in range(i0, i1):
 			var tl := _wet_at(is_set, i, j)
 			var tr := _wet_at(is_set, i + 1, j)
 			var bl := _wet_at(is_set, i, j + 1)
@@ -863,82 +910,75 @@ func _grass_at(x: int, y: int) -> Color:
 	return shade.darkened(0.01 * -j)
 
 
-## Текстура травяного тайла: семейство тонов — крупный шум (пятна луга,
-## тот же масштаб, что выбирает и _grass_at), вариант внутри семейства —
-## хэш тайла (соседние тайлы всегда разные, повтор 32px не ловится глазом).
+## Текстура травяного тайла (v1.50): пятна луга (крупный шум) выбирают
+## семейство ForgottenMemories — яркий луг (L0–L3) или сумрачную траву
+## (D0–D3). База тайла — плоская заливка, детальный вариант с цветами —
+## редкий выбор по хэшу (~22% тайлов): трава читается лугом, а не коллажем.
 func _grass_texture_at(x: int, y: int) -> Texture2D:
 	if _grass_texs.is_empty():
 		return null
-	var fam := clampi(int(_noise2(x / 7.0, y / 7.0, 3, 11)), 0, 2)
-	var v: int = _hash(x, y, 2)
-	return _grass_texs[fam * 2 + v]
+	var fam := 0 if _noise2(x / 7.0, y / 7.0, 2, 11) < 0.5 else 4
+	var v := 0
+	if _hash(x, y, 5) % 100 < 22:
+		v = 1 + _hash(x, y, 3) % 3
+	return _grass_texs[fam + v]
 
 
-## Трава: редкие камешки + ЦВЕТОЧНЫЕ ПОЛЯНЫ (v1.27) поверх текстурного
-## тайла (v1.32: пучки травинок теперь живут В текстуре — tools/
-## make_video_grass.py — и живом слое колыхания city_view.gd).
-## Крупноячеистый шум выделяет луга, на них по хэшу цветут 2–4 цветка
-## (белый/жёлтый/розовый/василёк/мак) — поляны, а не рассыпанный горох.
+## Земляная проплешина (v1.50): крупный шум выделяет пятна голой земли —
+## тайлы заливаются fm_dirt (плоская база + редкая фактура), кромка пятна —
+## painterly-обводка (см. _draw_dirt_edges).
+func _is_dirt_patch(x: int, y: int) -> bool:
+	return _noise2(x / 9.0, y / 9.0, 100, 83) / 99.0 > 0.76
+
+
+## ---------- декор луга и земляные проплешины (v1.50 «Живая земля») ----------
+
 const FLOWER_COLS := [
 	Color("#f2f0e4"), Color("#e8d44d"), Color("#e88bb0"),
 	Color("#8fb4e8"), Color("#d9584f"),
 ]
 
+var _prop_texs: Array = []   # кусты/валуны ForgottenMemories (кэш)
 
-func _draw_grass_detail(x: int, y: int, rect: Rect2, ts: float) -> void:
-	# камешек: редкий серый бугорок (v1.49: гуще — карта «ожила»)
-	if _hash(x * 13, y * 3, 120) == 0:
-		_drawer.draw_circle(rect.position + Vector2(8.0 + float(_hash(x, y, 40) % 14), 9.0), 1.8,
-				Color("#9a958a"))
-		_drawer.draw_circle(rect.position + Vector2(7.4, 8.4), 0.9, Color("#b5b0a4"))
-	# цветочная поляна: шум крупными пятнами (нормирован 0..1), цветёт
-	# только сердцевина пятна — поляна читается островом среди луга
+
+## Декор травяного тайла: цветы (поляны по крупному шуму + редкие одиночки),
+## камешки и кусты/валуны у воды. Всё детерминировано хэшами — одинаково
+## при каждой перевыпечке чанка. Детали масштаба 1px при запечке 8px/тайл.
+func _draw_meadow_decor(x: int, y: int, rect: Rect2) -> void:
 	var field := _noise2(x / 6.0, y / 6.0, 100, 71) / 99.0
-	if field > 0.72:
-		var blooms := 1 + _hash(x, y, 13) % 2
-		for i in blooms:
-			var h2 := _hash(x * 17 + i, y * 19 + i, 100)
-			var c := rect.position + Vector2(5.0 + float(h2 % int(ts - 10.0)),
-					5.0 + float((h2 / 7) % int(ts - 10.0)))
-			var fcol: Color = FLOWER_COLS[_hash(x + i, y - i, FLOWER_COLS.size())]
-			# цветок: 4 лепестка и жёлтая серединка (при 32px — читаемая точка)
-			_drawer.draw_circle(c + Vector2(-1.0, -1.0), 0.9, fcol)
-			_drawer.draw_circle(c + Vector2(1.0, -1.0), 0.9, fcol)
-			_drawer.draw_circle(c + Vector2(-1.0, 1.0), 0.9, fcol)
-			_drawer.draw_circle(c + Vector2(1.0, 1.0), 0.9, fcol)
-			_drawer.draw_circle(c, 0.7, Color("#e8c94d"))
-
-## ---------- Природа 2.0 (v1.39.0) -------------------------------------------
-## Вода — живой слой (water_terrain.gd, добавлен городом над ландшафтом);
-## скалы/жилы — rock_terrain.gd (проход 2 духовки). Здесь остались только
-## статичные пропсы травы и ромб-кристалл руды (общая утилита).
-
-var _rock_cached: Array = []   # блобы скал (кэш, перестройка по grid_ver)
-var _prop_texs: Dictionary = {}  # имя -> Texture2D (кусты/камни пака)
-
-
-## Пропсы на лугу: кусты и валуны ForgottenMemories — редкие, по хэшу
-## (маскируют «пустоту» ровного газона; у воды гуще — по соседству).
-func _draw_grass_prop(x: int, y: int, rect: Rect2, ts: float) -> void:
+	var blooms := 0
+	if field > 0.62:
+		blooms = 1 + _hash(x, y, 13) % 2   # сердцевина поляны цветёт гуще
+	elif _hash(x * 5, y * 7, 300) == 0:
+		blooms = 1   # редкий одиночный цветок
+	var dot := 2.5 if _bs >= 32 else 1.2
+	for i in blooms:
+		var h2 := _hash(x * 17 + i, y * 19 + i, 100)
+		var c := rect.position + Vector2(4.0 + float(h2 % 24), 4.0 + float((h2 / 7) % 24))
+		var fcol: Color = FLOWER_COLS[_hash(x + i, y - i, FLOWER_COLS.size())]
+		_drawer.draw_rect(Rect2(c, Vector2(dot, dot)), fcol)
+		if dot >= 2.0:
+			_drawer.draw_rect(Rect2(c + Vector2(0.8, 0.8), Vector2(1.0, 1.0)), Color("#e8c94d"))
+	# камешек: редкий серый бугорок
+	if _hash(x * 13, y * 3, 120) == 0:
+		_drawer.draw_rect(Rect2(rect.position + Vector2(8.0 + float(_hash(x, y, 40) % 14), 9.0),
+				Vector2(dot, dot)), Color("#9a958a"))
+	# кусты/валуны ForgottenMemories: у воды 12%, на лугу 6%
 	if _prop_texs.is_empty():
 		for n in ["bush2_a", "bush2_b", "bush2_c", "bush2_d", "stone2_a", "stone2_b"]:
-			_prop_texs[n] = Assets.tex("res://assets/sprites/props/%s.png" % n)
-	var h: int = _hash(x * 17, y * 11, 1000)
+			_prop_texs.append(Assets.tex("res://assets/sprites/props/%s.png" % n))
 	var near_water := false
 	for d: Vector2i in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
 		var p: Vector2i = Vector2i(x, y) + d
 		if map.in_bounds(p) and map.grid[p.y][p.x] == map.TILE_WATER:
 			near_water = true
 			break
-	# шанс: у воды 12%, на лугу 6% (v1.49: кустов/валунов вдвое больше)
-	var threshold := 120 if near_water else 60
-	if h >= threshold:
+	if _hash(x * 17, y * 11, 1000) >= (120 if near_water else 60):
 		return
-	var idx: int = _hash(x * 3, y * 5, _prop_texs.size())
-	var name: String = _prop_texs.keys()[idx]
-	var tex: Texture2D = _prop_texs[name]
+	var tex: Texture2D = _prop_texs[_hash(x * 3, y * 5, _prop_texs.size())]
 	if tex == null:
 		return
+	var ts := float(map.ts)
 	var scale := (0.42 + 0.14 * float(_hash(x, y, 7))) * ts
 	var s := scale / float(tex.get_height())
 	var w := tex.get_width() * s
@@ -947,6 +987,82 @@ func _draw_grass_prop(x: int, y: int, rect: Rect2, ts: float) -> void:
 			float(_hash(x, y * 5, 9) - 4) * ts * 0.02)
 	_drawer.draw_texture_rect(tex, Rect2(
 			Vector2(pos.x - w * 0.5, pos.y - scale * 0.62), Vector2(w, scale)), false)
+
+
+## ---------- земляные проплешины (v1.50 «Живая земля») -----------------------
+## Маска — чистая функция (x, y) и типа тайла; кромки считаются ПО ЧАНКУ
+## с запасом 2 тайла через _mask_loops (контуры совпадают на стыках),
+## поверх — painterly-кольцо: тёмная «губа травы» снаружи, светлый
+## срез земли внутри (приём «кромка в 2–3 тона», РЕФЕРЕНСЫ-СТИЛЬ).
+
+var _dirt_texs: Array = []   # fm_dirt_1..3 — фактурная голая земля
+
+
+## Кромки земляных пятен региона (вызывается из _draw_tiles по чанку).
+func _draw_dirt_edges(region: Rect2i) -> void:
+	if map == null or map.ts <= 0:
+		return
+	var grown := Rect2i(region.position - Vector2i(2, 2), region.size + Vector2i(4, 4))
+	var is_dirt := func(t: Vector2i) -> bool:
+		if t.x < 0 or t.y < 0 or t.x >= map.w or t.y >= map.h:
+			return false
+		return map.grid[t.y][t.x] == map.TILE_GRASS and _is_dirt_patch(t.x, t.y)
+	for raw in _mask_loops(is_dirt, grown.position, grown.end - Vector2i(1, 1)):
+		var smooth := _smooth_loop(raw)
+		if smooth.size() < 3:
+			continue
+		var clean := _clean_loop(smooth)
+		if clean.size() < 3 or not _loop_is_simple(clean):
+			continue
+		# крошечные проплешины (1–2 тайла) — кромка не читается, а тонкие
+		# полосы дают «прямые линии» — обводку не рисуем
+		if _loop_area(clean) < 3.0 * float(map.ts) * float(map.ts):
+			continue
+		# рисуем только кольца, пересекающие регион запечки
+		var bbox := Rect2(clean[0], Vector2.ZERO)
+		for p in clean:
+			bbox = bbox.expand(p)
+		var region_px := Rect2(Vector2(region.position) * float(map.ts),
+				Vector2(region.size) * float(map.ts))
+		if not bbox.grow(float(map.ts)).intersects(region_px):
+			continue
+		_dirt_edge_ring(clean)
+
+
+## Painterly-кромка пятна земли: наружная тёмная линия (трава нависает)
+## и внутренняя светлая (срез земли) — ступени тайлов не читаются.
+func _dirt_edge_ring(loop: PackedVector2Array) -> void:
+	var c := _poly_centroid(loop)
+	var n := loop.size()
+	var out_pts := PackedVector2Array()
+	var in_pts := PackedVector2Array()
+	for i in n:
+		var p := loop[i]
+		var q := loop[(i + 1) % n]
+		var dir := q - p
+		if dir.length() < 0.001:
+			continue
+		var nrm := Vector2(dir.y, -dir.x).normalized()
+		if nrm.dot(p - c) < 0.0:
+			nrm = -nrm   # наружу от центроида
+		out_pts.append(p + nrm * 2.0)
+		in_pts.append(p - nrm * 1.5)
+	if out_pts.size() < 2:
+		return
+	out_pts.append(out_pts[0])
+	in_pts.append(in_pts[0])
+	# при запечке 8px/тайл линии худеют в 4 раза — рисуем жирно
+	_drawer.draw_polyline(out_pts, Color(0.27, 0.33, 0.19, 0.55), 6.5)
+	_drawer.draw_polyline(in_pts, Color(0.82, 0.72, 0.52, 0.55), 3.5)
+
+
+## ---------- Природа 2.0 (v1.39.0) -------------------------------------------
+## Вода — живой слой (water_terrain.gd, добавлен городом над ландшафтом);
+## скалы/жилы — rock_terrain.gd (проход 3 духовки). Цветы/кусты/камешки
+## луга — живой декор city_view.gd (v1.50; запечка на больших картах 8px
+## их не тянет). Здесь ромб-кристалл руды (общая утилита).
+
+var _rock_cached: Array = []   # блобы скал (кэш, перестройка по grid_ver)
 
 
 ## Ромб-кристалл (руда) с центром center и полудиагональю r.

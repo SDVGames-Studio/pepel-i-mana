@@ -111,10 +111,14 @@ func set_point_solid(p: Vector2i, is_solid: bool) -> void:
 	if not in_bounds(p):
 		return
 	if is_solid:
+		if solid.has(p) or not astar.has_point(_id(p)):
+			return   # v1.50: повтор или точка ещё не построена — без спама движка
 		solid[p] = true
 		for d in DIRS:
 			var n: Vector2i = p + d
-			if in_bounds(n):
+			# v1.50: сосед-скала тоже может не иметь точки (rebuild не добавляет
+			# сплошные) — иначе движок спамит «Can't disconnect points»
+			if in_bounds(n) and astar.has_point(_id(n)):
 				astar.disconnect_points(_id(p), _id(n))
 	else:
 		solid.erase(p)

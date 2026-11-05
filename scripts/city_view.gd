@@ -111,17 +111,30 @@ func _draw() -> void:
 	# и дороги всей карты уходили в кадр даже за экраном
 	var xf := get_viewport_transform()
 	_vis = (xf.affine_inverse() * get_viewport_rect()).grow(float(map.ts) * 3.0)
+	# v1.50 (FPS): уровень детализации — при отдалении (<1.5) покачивание
+	# травинок и блики воды мельче пикселя — не рисуем вовсе
+	_zoom = 0.0
+	var hero_node: Node = city.hero if city != null else null
+	if hero_node != null:
+		var cam: Node = hero_node.get_node_or_null("Camera")
+		if cam != null and (cam is Camera2D):
+			_zoom = float((cam as Camera2D).zoom.x)
+	var lod := _zoom >= 1.5
 	# земля (зоны/дороги/плиты площади) запечена в текстуру ландшафта
-	# city_terrain.gd (v1.22); растения и полосы обустройства — живые
+	# city_terrain.gd (v1.22); v1.50: декор луга (цветы/камешки/кусты)
+	# тоже в запечке — живой слой не платит за него каждый кадр
 	_draw_plaza_pulse()
 	_draw_field_live()
-	_draw_water_glints()
-	_draw_swaying_grass()
+	if lod:
+		_draw_water_glints()
+		_draw_swaying_grass()
 	_draw_hive()
 	_draw_anomaly()
 	_draw_world_exit()
 	_draw_world_sorted()
 	_draw_ghost()
+
+var _zoom := 2.0   # текущий зум камеры города (v1.50: LOD живых деталей)
 
 
 ## Прямоугольник карты, видимый камерой (запас 3 тайла на высокие деревья).
@@ -325,6 +338,22 @@ var _trees_dirty := true
 var _trees_cache: Array = []
 var _static_sorted: Array = []      # [y, kind, payload] деревья+здания, готово к слиянию
 var _static_sorted_blds := -1       # размер sim.buildings при сборке (смена — пересобрать)
+var _hero_px := Vector2.INF         # v1.50: герой для прозрачности деревьев
+
+
+## v1.50 (FPS): первый индекс статики, чья линия ног вошла в видимую
+## полосу (список отсортирован по y — двоичный поиск, не линейный проход).
+func _static_window_start() -> int:
+	var y_min := _vis.position.y - float(map.ts) * 3.0
+	var lo := 0
+	var hi := _static_sorted.size()
+	while lo < hi:
+		var mid := (lo + hi) / 2
+		if float(_static_sorted[mid][0]) < y_min:
+			lo = mid + 1
+		else:
+			hi = mid
+	return lo
 
 func _process(delta: float) -> void:
 	_anim_time += delta
@@ -469,6 +498,9 @@ func _tree_composite(ref: String, t: Texture2D, src: Rect2) -> ImageTexture:
 ## списком (живые существа + кучи) — вместо пересортировки всего слоя каждый кадр.
 func _draw_world_sorted() -> void:
 	var ts := float(map.ts)
+	# v1.50: позиция героя — деревья у него полупрозрачные
+	_hero_px = city.hero.global_position if city != null and city.hero != null \
+			and not city.hero.dead else Vector2.INF
 	# обитатели внутри домов (этап 2, аспект 2): для светящихся окон
 	_inside_homes.clear()
 	for r in sim.residents:
@@ -525,15 +557,23 @@ func _draw_world_sorted() -> void:
 	dyn.sort_custom(func(a, b) -> bool: return float(a[0]) < float(b[0]))
 	_draw_campfire()
 	_draw_founded_cemetery()   # могилы кладбища без здания (v1.23)
-	# слияние двух отсортированных списков: O(n+m) вместо sort всей карты
-	var si := 0
+	# слияние двух отсортированных списков: O(n+m) вместо sort всей карты.
+	# v1.50 (FPS): статика отсортирована по y — стартуем двоичным поиском
+	# с первой видимой строки и выходим, как только ушли ниже экрана
+	var si := _static_window_start()
 	var di := 0
-	while si < _static_sorted.size() or di < dyn.size():
-		var e: Array
+	var y_max := _vis.end.y + float(map.ts) * 3.0
+	while true:
+		var take_dyn := false
 		if di >= dyn.size():
-			e = _static_sorted[si]
-			si += 1
-		elif si >= _static_sorted.size() or float(dyn[di][0]) < float(_static_sorted[si][0]):
+			if si >= _static_sorted.size() or float(_static_sorted[si][0]) > y_max:
+				break
+		elif si >= _static_sorted.size():
+			take_dyn = true
+		elif float(dyn[di][0]) < float(_static_sorted[si][0]):
+			take_dyn = true
+		var e: Array
+		if take_dyn:
 			e = dyn[di]
 			di += 1
 		else:
@@ -541,10 +581,19 @@ func _draw_world_sorted() -> void:
 			si += 1
 		match String(e[1]):
 			"tree":
-				# v1.21.5: дескриптор из кэша; v1.22: тень впечена в текстуру
+				# v1.21.5: дескриптор из кэша; v1.22: тень впечена в текстуру.
+				# v1.50: дерево рядом с героем — полупрозрачное (видно, что
+				# за ним), плавный спад от 2.4 тайла до 1.2
 				if not _vis.intersects(e[5]):
 					continue   # за экраном — дерево целиком пропускаем
-				draw_texture_rect_region(e[3], e[5], e[4])
+				var mod := Color(1.0, 1.0, 1.0, 1.0)
+				if _hero_px != Vector2.INF:
+					var d: float = (e[6] as Vector2).distance_to(_hero_px)
+					var ts_f := float(map.ts)
+					var a := clampf((d - ts_f * 1.2) / (ts_f * 1.2), 0.0, 1.0)
+					if a < 1.0:
+						mod.a = lerpf(0.18, 1.0, a)
+				draw_texture_rect_region(e[3], e[5], e[4], mod)
 			"sapling":
 				if not _vis.has_point(e[6]):
 					continue
@@ -746,8 +795,8 @@ func _near_swamp(tile: Vector2i) -> bool:
 	return false
 
 
-static func _hash(x: int, y: int, n: int) -> int:
-	var v := int((x * 73856093) ^ (y * 19349663))
+static func _hash(x: int, y: int, n: int, salt: int = 0) -> int:
+	var v := int((x * 73856093) ^ (y * 19349663) ^ (salt * 83492791))
 	return absi(v) % maxi(1, n)
 
 
@@ -803,7 +852,8 @@ func _draw_animal(a: Dictionary) -> void:
 	if not pth.is_empty():
 		vel = pth[0] - pos
 	var kind := String(a.get("kind", "turkey"))
-	if kind == "deer" or kind == "boar" or kind == "wolf" or kind == "bird":
+	if kind == "deer" or kind == "boar" or kind == "wolf" or kind == "bird" \
+			or kind == "hare" or kind == "fox":
 		_draw_fauna_animal(a, kind, pos, vel)
 		return
 	Assets.draw_animal(self, "turkey", Assets.dir_of(vel), not pth.is_empty(),
@@ -844,6 +894,20 @@ func _draw_fauna_animal(a: Dictionary, kind: String, pos: Vector2, vel: Vector2)
 		"bird":
 			draw_circle(pos + Vector2(4.2 * size, -5.2 * size), 1.7 * size, Color("#3a3a3a"))
 			draw_line(pos + Vector2(-3.0 * size, -2.4 * size), pos + Vector2(-6.0 * size, -4.4 * size), col.darkened(0.2), 1.2)
+		"hare":
+			# v1.50: заяц — мелкий, уши торчком, скачет (усиленный бобинг)
+			draw_line(pos + Vector2(3.2 * size, -6.6 * size - bob), pos + Vector2(4.2 * size, -11.5 * size - bob), col.darkened(0.25), 1.4)
+			draw_line(pos + Vector2(5.0 * size, -6.4 * size - bob), pos + Vector2(6.6 * size, -10.8 * size - bob), col.darkened(0.25), 1.4)
+			draw_circle(pos + Vector2(5.8 * size, -4.2 * size - bob * 0.4), 0.8 * size, Color.WHITE)
+		"fox":
+			# v1.50: лиса — рыжая, острая морда и пушистый хвост
+			draw_colored_polygon(PackedVector2Array([
+				pos + Vector2(-4.0 * size, -3.0 * size), pos + Vector2(-8.5 * size, -5.0 * size),
+				pos + Vector2(-7.5 * size, -1.5 * size)]), col.lightened(0.15))
+			draw_colored_polygon(PackedVector2Array([
+				pos + Vector2(4.6 * size, -6.0 * size), pos + Vector2(5.8 * size, -9.0 * size),
+				pos + Vector2(6.8 * size, -5.8 * size)]), col.darkened(0.1))
+			draw_circle(pos + Vector2(6.4 * size, -4.2 * size), 0.8 * size, Color("#e8e2d0"))
 
 
 ## Скот на пастбищах (M10): коровы/овцы/свиньи/куры, детёныши мельче.

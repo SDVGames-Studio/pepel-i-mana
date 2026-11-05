@@ -222,8 +222,10 @@ func _update_resident(r: Dictionary, dt: float) -> void:
 	var tcfg: Dictionary = cfg.get("threat", {})
 	# v1.47: ВЕЧЕРНЯЯ СОЦЖИЗНЬ («Новый мир v2» этап 5) — до ночи, без осады:
 	# свободные жители гуляют к другу/любимому; встреча — свидание; свидетель
-	# ревнует (любовный треугольник рождается из прогулок)
-	if not night and not raid_active and not raid_breached:
+	# ревнует (любовный треугольник рождается из прогулок).
+	# v1.50: бригада починки вечером не гуляет — чинит целый день
+	if not night and not raid_active and not raid_breached \
+			and int(r.get("repair_bld", 0)) <= 0:
 		var day_frac := fmod(time, float(cfg["day_length"])) / float(cfg["day_length"])
 		var evening := day_frac >= float(cfg.get("evening_start", 0.62)) \
 				and day_frac <= 1.0 - float(cfg.get("night_fraction", 0.22))
@@ -287,6 +289,9 @@ func _update_resident(r: Dictionary, dt: float) -> void:
 		r["fatigue"] = maxf(0.0, float(r["fatigue"]) - _restore_rate(r, false) * dt / day_len)
 		r["path"] = PackedVector2Array()
 		return
+	# бригада починки (v1.50): работа целого дня — раньше вечерних увеселений
+	if _repair_errand(r, dt):
+		return
 	# вечер (M12): работа кончилась; правки v1.20.1 — сперва работник уносит
 	# произведённую кучу своего здания на склад (или в центр), потом отдыхает
 	if not raid_active and not _raid_warned and _is_evening() \
@@ -338,8 +343,8 @@ func _update_resident(r: Dictionary, dt: float) -> void:
 	if String(r["prof"]) == "porter":
 		_porter_work(r, dt)   # носит кучи со зданий на склад (M6)
 		return
-	if _repair_errand(r, dt):
-		return   # город послал с инструментом чинить (v1.21.3)
+	# (бригадная починка проверяется выше — v1.50: работа целого дня,
+	# раньше вечерних увеселений)
 	if String(r["prof"]) == "elder":
 		# староста при деле: пока есть незаполненные клетки зон и спелые
 		# грядки — работает ими (иначе в соло-городе поле стоит пустым),

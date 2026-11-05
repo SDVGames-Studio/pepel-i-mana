@@ -949,6 +949,13 @@ func _try_ruin_loot() -> bool:
 
 
 func _unhandled_input(event: InputEvent) -> void:
+	# v1.50 «Живая земля»: зум карты колесом мыши — землю города можно
+	# приближать и отдалять (границы — data/city.json → zoom)
+	if event is InputEventMouseButton and event.pressed \
+			and (event.button_index == MOUSE_BUTTON_WHEEL_UP \
+				or event.button_index == MOUSE_BUTTON_WHEEL_DOWN):
+		_wheel_zoom(1.12 if event.button_index == MOUSE_BUTTON_WHEEL_UP else 1.0 / 1.12)
+		return
 	if event.is_action_pressed("interact"):
 		# в чужом городе герой — гость: аномалия, оружейка, храм и ручной
 		# труд — только дома («Мир v2», этап 3)
@@ -1478,6 +1485,21 @@ func toggle_pause() -> void:
 	sim.paused = not sim.paused
 	if sim.paused:
 		hud.toast(Loc.t("city.paused"))
+
+
+## Зум камеры колесом (v1.50): приближение показывает землю/тайлы крупно,
+## отдаление — всю карту. Границы и шаг — data/city.json → zoom.
+func _wheel_zoom(factor: float) -> void:
+	if hero == null:
+		return
+	var cam: Node = hero.get_node_or_null("Camera")
+	if cam == null or not (cam is Camera2D):
+		return
+	var zcfg: Dictionary = sim.cfg.get("zoom", {})
+	var zmin := float(zcfg.get("min", 1.2))
+	var zmax := float(zcfg.get("max", 3.0))
+	var z: Vector2 = (cam.zoom as Vector2) * factor
+	cam.zoom = Vector2(clampf(z.x, zmin, zmax), clampf(z.y, zmin, zmax))
 
 
 ## --- Магия (M3): крафт, городские заклинания, зачарование ----------------

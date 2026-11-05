@@ -38,6 +38,8 @@ var cfg: Dictionary = {}
 var res: Dictionary = {"wood": 0, "stone": 0, "food": 0, "crystal": 0, "seeds": 0, "saplings": 0, "gems": 0}
 var residents: Array = []
 var buildings: Array = []
+var brigade_job: Dictionary = {}   # v1.50: бригадная починка — {bld, work, need,
+                                   # frac, total, logs}; дневное поручение горожанам
 var time := 0.0                 # игровое время, сек (x1)
 var day := 1
 var speed := 1

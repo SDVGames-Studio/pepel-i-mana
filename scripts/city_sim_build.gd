@@ -730,8 +730,9 @@ func repair_cost(type_id: String, frac_v := -1.0) -> Dictionary:
 ## Мгновенный ремонт за долю стоимости: чинит и повреждённое здание, и
 ## руины (поднимает, клетки снова преграждают путь). Доля героя — cost_frac
 ## (40%); город чинит сам — строитель за builder_frac, непрофильный житель
-## за other_frac (v1.21.3). "" — успех | "bad" | "full" | "no_res".
-func repair_building(b: Dictionary, frac_v := -1.0) -> String:
+## за other_frac (v1.21.3). v1.50: free=true — «голыми руками» бригадой
+## без ресурсов (ресурсы не списываются). "" — успех | "bad" | "full" | "no_res".
+func repair_building(b: Dictionary, frac_v := -1.0, free := false) -> String:
 	if b.is_empty() or not bool(b.get("done", false)):
 		return "bad"
 	var max_hp := float(_bld_max_hp(String(b["type"])))
@@ -739,10 +740,11 @@ func repair_building(b: Dictionary, frac_v := -1.0) -> String:
 	if not was_razed and float(b.get("hp", max_hp)) >= max_hp:
 		return "full"   # чинить нечего
 	var cost := repair_cost(String(b["type"]), frac_v)
-	if not can_afford(cost):
-		return "no_res"
-	for key in cost:
-		res[key] = int(res[key]) - int(cost[key])
+	if not free:
+		if not can_afford(cost):
+			return "no_res"
+		for key in cost:
+			res[key] = int(res[key]) - int(cost[key])
 	b["hp"] = max_hp
 	if was_razed:
 		b["razed"] = false
@@ -760,12 +762,33 @@ func repair_building(b: Dictionary, frac_v := -1.0) -> String:
 	return ""
 
 
-## Дневной бросок (v1.21.3): город чинит сам. Самое битое здание (сперва
-## руины, затем минимум прочности) получает мастера: свободный строитель
-## чинит за 50% стоимости, строителя нет — любой непрофильный взрослый
-## за 70%. Не по карману — завтра (мастерская лечит медленно бесплатно).
+## Здание по id (v1.50: бригаде и поручению нужен обратный поиск).
+func _building_by_id(bid: int) -> Dictionary:
+	for b in buildings:
+		if int(b["id"]) == bid:
+			return b
+	return {}
+
+
+## Дневной бросок (v1.21.3 → v1.50 «Живая земля»): город чинит сам БРИГАДОЙ.
+## Самое битое здание (сперва руины, затем минимум прочности) чинит бригада
+## до brigade_size свободных горожан (сперва строители): собирается и
+## работает ЦЕЛЫЙ день — need = day_length × доля бодрствования × day_frac.
+## Ресурсы — из пула (доля стоимости builder_frac/other_frac); ресурсов НЕТ —
+## «голыми руками» в no_res_mult раз дольше; брёвна из пула (срубленные
+## деревья) ускоряют (расход logs_per_job wood при старте, ×log_speedup).
+## Незаконченная работа продолжается и на следующий день.
 func _roll_city_repair() -> void:
 	var rcfg: Dictionary = cfg.get("repair", {})
+	# вчерашняя бригада: если цель ещё битая — работает и сегодня
+	if not brigade_job.is_empty():
+		var prev: Dictionary = _building_by_id(int(brigade_job["bld"]))
+		var prev_hp := float(_bld_max_hp(String(prev["type"]))) if not prev.is_empty() else 0.0
+		if not prev.is_empty() and bool(prev.get("done", false)) \
+				and (bool(prev.get("razed", false)) or float(prev.get("hp", prev_hp)) < prev_hp):
+			return
+		brigade_job = {}
+	# цель: самое битое (сперва руины, затем минимум прочности)
 	var worst: Dictionary = {}
 	var worst_rank := 0.0
 	for b in buildings:
@@ -781,59 +804,96 @@ func _roll_city_repair() -> void:
 			worst_rank = rank
 	if worst.is_empty():
 		return
-	var repairer := {}
+	# бригада: свободные строители, без них — непрофильные взрослые
+	var members: Array = []
 	var frac := 0.0
 	for r in residents:
+		if members.size() >= int(rcfg.get("brigade_size", 3)):
+			break
 		if String(r["prof"]) == "builder" and r["site"] == null and r["bld"] == null \
 				and String(r.get("ail", "")) == "" and int(r.get("repair_bld", 0)) <= 0:
-			repairer = r
-			frac = float(rcfg.get("builder_frac", 0.5))
-			break
-	if repairer.is_empty():
+			members.append(r)
+	if members.is_empty():
+		frac = float(rcfg.get("other_frac", 0.7))
 		for r in residents:
+			if members.size() >= int(rcfg.get("brigade_size", 3)):
+				break
 			var prof := String(r["prof"])
 			if prof != "" and prof != "elder" and prof != "builder" \
 					and r["site"] == null and r["bld"] == null \
 					and String(r.get("ail", "")) == "" and int(r.get("repair_bld", 0)) <= 0:
-				repairer = r
-				frac = float(rcfg.get("other_frac", 0.7))
-				break
-	if repairer.is_empty():
+				members.append(r)
+	else:
+		frac = float(rcfg.get("builder_frac", 0.5))
+	if members.is_empty():
 		return
-	if not can_afford(repair_cost(String(worst["type"]), frac)):
-		return   # не по карману — завтра
-	repairer["repair_bld"] = int(worst["id"])
-	repairer["repair_frac"] = frac
+	# сроки: ЦЕЛЫЙ рабочий день (без ночи); модификаторы — ресурсы и брёвна
+	var awake := maxf(0.3, 1.0 - float(cfg.get("night_fraction", 0.22)))
+	var need := float(cfg["day_length"]) * awake * float(rcfg.get("day_frac", 1.0))
+	var has_res := can_afford(repair_cost(String(worst["type"]), frac))
+	var use_logs := false
+	if has_res:
+		var logs_need := int(rcfg.get("logs_per_job", 4))
+		if int(res.get("wood", 0)) >= logs_need and float(rcfg.get("log_speedup", 0.5)) < 1.0:
+			use_logs = true
+			res["wood"] = int(res["wood"]) - logs_need   # брёвна заготовлены
+			need *= float(rcfg.get("log_speedup", 0.5))
+	else:
+		need *= float(rcfg.get("no_res_mult", 3.5))   # «голыми руками»
+	brigade_job = {"bld": int(worst["id"]), "work": 0.0, "need": need,
+			"frac": frac, "total": members.size(), "logs": use_logs}
+	for r in members:
+		r["repair_bld"] = int(worst["id"])
+		r["repair_frac"] = frac
 
 
-## Поручение города (v1.21.3): житель идёт с инструментом к битому зданию,
-## по приходе поднимает его за долю стоимости. False — поручения нет.
+## Поручение города (v1.21.3 → v1.50): житель бригады идёт с инструментом
+## к битому зданию и работает ЦЕЛЫЙ день: каждый пришедший добавляет
+## dt/total (полная бригада укладывается в need). Как работа наберётся —
+## здание чинится (ресурсы списывает repair_building; без ресурсов —
+## «голыми руками», бесплатно). False — жителю поручения нет.
 func _repair_errand(r: Dictionary, dt: float) -> bool:
 	var bid := int(r.get("repair_bld", 0))
 	if bid <= 0:
 		return false
-	var b: Dictionary = {}
-	for bb in buildings:
-		if int(bb["id"]) == bid:
-			b = bb
-			break
+	var b: Dictionary = _building_by_id(bid)
 	var max_hp := float(_bld_max_hp(String(b["type"]))) if not b.is_empty() else 0.0
-	if b.is_empty() or not bool(b.get("done", false)) \
+	if brigade_job.is_empty() or int(brigade_job["bld"]) != bid or b.is_empty() \
+			or not bool(b.get("done", false)) \
 			or (not bool(b.get("razed", false)) and float(b.get("hp", max_hp)) >= max_hp):
-		r["repair_bld"] = 0   # исчезло или уже починили (герой/мастерская)
+		# исчезло или уже починили (герой/мастерская) — работу закрываем
+		r["repair_bld"] = 0
+		if not brigade_job.is_empty() and int(brigade_job["bld"]) == bid:
+			brigade_job = {}
+			for other in residents:
+				if int(other.get("repair_bld", 0)) == bid:
+					other["repair_bld"] = 0
 		return false
 	if not at_bld(r, b):
 		r["state"] = "repair"
 		_move_towards(r, bld_spot(b), dt)
 		return true
-	var frac := float(r.get("repair_frac", 0.7))
-	r["repair_bld"] = 0
-	if not can_afford(repair_cost(String(b["type"]), frac)):
-		return true   # дошёл, денег не хватает — завтра снова
-	repair_building(b, frac)
-	events.append({"type": "city_repaired", "bld": String(b["type"]),
-			"name": String(r["name"]), "frac": frac})
+	# работа у здания: полный бригадный темп — need за рабочий день;
+	# пришёл не всякий — идёт пропорционально медленнее
+	r["state"] = "repair"
+	brigade_job["work"] = float(brigade_job["work"]) + dt / maxf(1.0, float(brigade_job["total"]))
+	if float(brigade_job["work"]) < float(brigade_job["need"]):
+		return true
+	# день работы вышел — здание поднято
+	var frac := float(brigade_job["frac"])
+	var free := not can_afford(repair_cost(String(b["type"]), frac))
+	repair_building(b, frac, free)
+	if free:
+		events.append({"type": "city_repaired_bare", "bld": String(b["type"]),
+				"mult": float(cfg.get("repair", {}).get("no_res_mult", 3.5))})
+	else:
+		events.append({"type": "city_repaired", "bld": String(b["type"]),
+				"name": String(r["name"]), "frac": frac})
 	_chron("chron.city_repaired", String(r["name"]), String(b["type"]))
+	brigade_job = {}
+	for other in residents:
+		if int(other.get("repair_bld", 0)) == bid:
+			other["repair_bld"] = 0
 	return true
 
 

@@ -29,6 +29,8 @@ var terrain                 # city_terrain — карта, хэш-утилиты
 var map = null
 var colors: Dictionary = {}
 var _texs := {}             # kind -> Texture2D (полоса 3 тайлов 96x32)
+var _fm_water: Texture2D = null  # v1.50: анимированная вода ForgottenMemories
+                             # (полоса 6 кадров × 3 ряда, 192×96)
 var _time := 0.0
 var _cache_ver := -1
 var _coast: Array = []      # [{tile, sides:[Vector2i]}] — береговые тайлы
@@ -36,6 +38,7 @@ var _inner: Array = []      # открытая вода (8 соседей — в
 var _swamp_tiles: Array = []
 var _swamp_near: Array = [] # трава вокруг болота (тёмный ореол + камыши)
 var _ford_tiles: Array = []
+var _water_tiles: Array = [] # v1.50: все водные тайлы (для анимированной заливки)
 
 # --- запечка статики ---
 var _vp: SubViewport = null
@@ -58,6 +61,9 @@ func setup(terrain_ref, cfg_colors: Dictionary) -> void:
 	colors = cfg_colors
 	for kind in ["lake", "river", "swamp"]:
 		_texs[kind] = Assets.tex("res://assets/sprites/env/n2_water_%s.png" % kind)
+	# v1.50 «Живая земля»: вода — 6-кадровая анимация ForgottenMemories;
+	# кадры полосы 192×96: колонка = кадр, ряд = вариант фактуры
+	_fm_water = Assets.tex("res://assets/sprites/env/fm_water.png")
 	# духовка статики: v1.43 — большие карты пекутся 8px/тайл (LINEAR при
 	# уменьшении, глобальный NEAREST растягивает обратно в _draw)
 	var bs: int = 8 if maxi(map.w, map.h) > 150 else int(map.ts)
@@ -123,11 +129,13 @@ func _ensure_cache() -> void:
 	_swamp_tiles = []
 	_swamp_near = []
 	_ford_tiles = []
+	_water_tiles = []
 	for y in map.h:
 		for x in map.w:
 			var t := Vector2i(x, y)
 			var g: int = map.grid[y][x]
 			if g == map.TILE_WATER:
+				_water_tiles.append(t)
 				var sides: Array = []
 				for d: Vector2i in [Vector2i(0, -1), Vector2i(1, 0), Vector2i(0, 1), Vector2i(-1, 0)]:
 					var n: Vector2i = t + d
@@ -166,6 +174,11 @@ func _kind_at(t: Vector2i) -> String:
 func _draw() -> void:
 	if map == null or _vp == null:
 		return
+	# v1.50: анимированная вода ForgottenMemories — НИЖЕ статичных
+	# оверлеев (мель/скругления/тина запечены на прозрачном фоне и
+	# ложатся поверх живой фактуры), 6 кадров, кап _fps()
+	if _fm_water != null:
+		_draw_fm_water()
 	if _baked != null:
 		draw_texture_rect(_baked, Rect2(Vector2.ZERO,
 				Vector2(map.w * map.ts, map.h * map.ts)), false)
@@ -189,6 +202,30 @@ func _draw() -> void:
 	_draw_ford_sparks(ts)
 
 
+## Анимированная заливка воды (v1.50): видимые тайлы, кадр — колонка
+## полосы fm_water (6 кадров), фактура — ряд ПО МИРОВОМУ Y (строки полосы
+## стыкуются без швов по вертикали). Тон — под палитру игры: озеро глубже,
+## река светлее, болото глухо-зелёное (тина поверх — в запечке).
+func _draw_fm_water() -> void:
+	var ts := float(map.ts)
+	var xf := get_viewport_transform()
+	var vis: Rect2 = (xf.affine_inverse() * get_viewport_rect()).grow(ts * 2.0)
+	var frame := int(_time * _fps()) % 6
+	for t: Vector2i in _water_tiles:
+		var px := Vector2(t) * ts
+		if not vis.grow_individual(0, 0, ts, ts).has_point(px):
+			continue
+		var variant: int = absi(t.y) % 3
+		var src := Rect2(frame * 32.0, variant * 32.0, 32.0, 32.0)
+		var mod := Color(0.72, 0.92, 1.18)   # озеро: глубже и синее
+		match _kind_at(t):
+			"river":
+				mod = Color(0.85, 1.0, 1.18)   # светло-бирюзовая река
+			"swamp":
+				mod = Color(0.62, 0.68, 0.55)  # мутная зелёная топь
+		draw_texture_rect_region(_fm_water, Rect2(px, Vector2(ts, ts)), src, mod)
+
+
 ## ==================== СТАТИКА (запечка) ====================
 
 func _draw_static() -> void:
@@ -197,7 +234,8 @@ func _draw_static() -> void:
 	# тёмный ореол земли вокруг болота (грязная топь у кромки)
 	for t: Vector2i in _swamp_near:
 		_out.draw_rect(Rect2(Vector2(t) * ts, Vector2(ts, ts)), Color("#3f4a33", 0.55))
-	# тело воды по тайлам
+	# тело воды по тайлам (v1.50: фактуру рисует живой слой — fm_water,
+	# здесь только глубина озера и глухая тина болота поверх анимации)
 	for y in map.h:
 		for x in map.w:
 			if map.grid[y][x] != map.TILE_WATER:
@@ -205,10 +243,6 @@ func _draw_static() -> void:
 			var t := Vector2i(x, y)
 			var kind := _kind_at(t)
 			var rect := Rect2(Vector2(t) * ts, Vector2(ts, ts))
-			var tex: Texture2D = _texs[kind]
-			if tex != null:
-				var variant: int = terrain._hash(x, y, 3)
-				_out.draw_texture_rect_region(tex, rect, Rect2(variant * TS, 0, TS, TS))
 			match kind:
 				"lake":
 					var deep := _deep_color("lake")

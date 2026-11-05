@@ -12,6 +12,7 @@ func _initialize() -> void:
 		loc.name = "Loc"
 		root.add_child(loc)
 	game.test_mode = true
+	seed(20261105)   # v1.50: фиксированный сид мира — FPS-сравнение честное
 	game.new_city()
 	root.add_child(load("res://scenes/city.tscn").instantiate())
 func _process(_d) -> bool:

@@ -990,15 +990,20 @@ func _new_animal() -> Dictionary:
 			"path": PackedVector2Array(), "idle": _event_rng.randf_range(0.0, 4.0)}
 
 
-## Виды диких животных города: мирные чаще, волк — реже.
+## Виды диких животных города (v1.50: +заяц и лиса — живности разнообразнее):
+## мирные чаще, волк и лиса — реже.
 func _roll_animal_kind() -> String:
 	var roll := _event_rng.randf()
-	if roll < 0.38:
+	if roll < 0.30:
 		return "deer"
-	if roll < 0.60:
+	if roll < 0.50:
 		return "boar"
-	if roll < 0.80:
+	if roll < 0.65:
 		return "bird"
+	if roll < 0.78:
+		return "hare"
+	if roll < 0.88:
+		return "fox"
 	return "wolf"
 
 

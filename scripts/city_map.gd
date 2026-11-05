@@ -123,6 +123,9 @@ func generate(seed_value: int, params: Dictionary, hydro := {}) -> void:
 
 
 ## Добор природы (v1.49): деревья, скалы и малые пруды вне ядра города.
+## v1.50 «Живая земля»: + ЛЕСНЫЕ МАССИВЫ (кластеры 30–120 деревьев с
+## полянами) и СКАЛЬНЫЕ ХРЕБТЫ (связные гряды 20–60 тайлов с изгибами) —
+## по сиду не на каждой карте (chance), заметно гуще прежнего.
 ## min_radius — от старта (кольцо стен, поля и застройка свободны),
 ## anomaly_radius — вокруг аномалии (улью и герою нужен подход).
 func _extra_nature_pass(seed_value: int, params: Dictionary) -> void:
@@ -133,8 +136,21 @@ func _extra_nature_pass(seed_value: int, params: Dictionary) -> void:
 	erng.seed = hash("extra-nature:%d" % seed_value)
 	var min_r := int(ncfg.get("min_radius", 26))
 	var anom_r := int(ncfg.get("anomaly_radius", 8))
-	# деревья — лес кольцом вокруг города (луг между ядром и стеной чистый)
+	# лесные массивы (v1.50): не на каждой карте — шанс по сиду
+	var fcfg: Dictionary = ncfg.get("forests", {})
+	if bool(fcfg.get("enabled", true)) and erng.randf() < float(fcfg.get("chance", 0.85)):
+		for f in erng.randi_range(1, int(fcfg.get("count_max", 2))):
+			_forest_cluster(erng, fcfg, min_r, anom_r)
+	# скальные хребты (v1.50): тоже по шансу; сплошные для A*, связность
+	# карты проверяется после каждой гряды — сломавшая откатывается
+	var rcfg: Dictionary = ncfg.get("ridges", {})
+	if bool(rcfg.get("enabled", true)) and erng.randf() < float(rcfg.get("chance", 0.65)):
+		for g in erng.randi_range(1, int(rcfg.get("count_max", 2))):
+			_rock_ridge(erng, rcfg, min_r, anom_r)
+	# деревья — лес кольцом вокруг города (луг между ядром и стеной чистый);
+	# v1.50: одиночки ПОКРУПНЕЕ (lone_big — свой бросок размера, вангал цел)
 	var n_trees := int(ncfg.get("trees", 0))
+	var lone_big := bool(ncfg.get("lone_big", true))
 	var placed := 0
 	var guard := 0
 	while placed < n_trees and guard < n_trees * 30:
@@ -143,7 +159,8 @@ func _extra_nature_pass(seed_value: int, params: Dictionary) -> void:
 		if grid[p.y][p.x] != TILE_GRASS or not _extra_spot_ok(p, min_r, anom_r):
 			continue
 		grid[p.y][p.x] = TILE_TREE
-		tree_size[p] = _roll_tree_size(erng.randf())
+		tree_size[p] = _roll_lone_tree_size(erng.randf()) if lone_big \
+				else _roll_tree_size(erng.randf())
 		placed += 1
 	# малые пруды: вода сплошная — на карте появляются новые водоёмы
 	for i in int(ncfg.get("ponds", 0)):
@@ -180,6 +197,114 @@ func _extra_nature_pass(seed_value: int, params: Dictionary) -> void:
 				rock_hp[t] = hp
 			elif grid[y][x] == TILE_ORE and not rock_hp.has(t):
 				rock_hp[t] = hp * 1.3
+
+
+## Детерминированный шум 0..1 по координатам и соли (для лесов/полян —
+## одинаковый при перегенерации с тем же сидом).
+static func _vnoise(x: int, y: int, salt: int) -> float:
+	var v := int((x * 73856093) ^ (y * 19349663) ^ (salt * 83492791))
+	return float(absi(v) % 1000) / 1000.0
+
+
+## Лесной массив (v1.50): органический блоб (овал с гармоникой кромки),
+## деревья по полю плотности, поляны — прогалы второго шума. За раз —
+## от size_min до size_max деревьев; не влез целиком — остаётся рощицей.
+func _forest_cluster(erng: RandomNumberGenerator, fcfg: Dictionary,
+		min_r: int, anom_r: int) -> void:
+	var size_min := int(fcfg.get("size_min", 30))
+	var size_max := int(fcfg.get("size_max", 120))
+	var density := clampf(float(fcfg.get("density", 0.8)), 0.3, 0.95)
+	var clearing := clampf(float(fcfg.get("clearing", 0.16)), 0.0, 0.5)
+	var r_min := int(fcfg.get("radius_min", 4))
+	var r_max := int(fcfg.get("radius_max", 8))
+	for attempt in 12:
+		var c := Vector2i(erng.randi_range(8, w - 9), erng.randi_range(8, h - 9))
+		var r := erng.randi_range(r_min, r_max)
+		if not _extra_blob_ok(c, r, min_r, anom_r):
+			continue
+		var ph := erng.randf() * TAU
+		var salt := int(erng.randi_range(1, 1 << 28))
+		var placed := 0
+		for y in range(maxi(1, c.y - r - 1), mini(h - 1, c.y + r + 2)):
+			for x in range(maxi(1, c.x - r - 1), mini(w - 1, c.x + r + 2)):
+				if placed >= size_max:
+					break
+				var t := Vector2i(x, y)
+				var dx := float(x - c.x) / float(r)
+				var dy := float(y - c.y) / float(r)
+				var ang := atan2(float(y - c.y), float(x - c.x))
+				var k := 1.0 + 0.14 * sin(2.0 * ang + ph)
+				if dx * dx + dy * dy > k * k:
+					continue
+				if grid[y][x] != TILE_GRASS or not _extra_spot_ok(t, min_r, anom_r):
+					continue
+				if _vnoise(x, y, salt + 77) < clearing:
+					continue   # поляна среди леса
+				if _vnoise(x, y, salt) >= density:
+					continue   # прогал по плотности
+				grid[y][x] = TILE_TREE
+				tree_size[t] = _roll_tree_size(erng.randf())
+				placed += 1
+		if placed >= size_min:
+			return
+
+
+## Скальный хребет (v1.50): связная гряда — шаг по направлению с изгибом,
+## тайл скалы + с шансом сосед «толщины» (width 1.0..2.0). Хребет сплошной
+## для A*: после укладки проверяется связность карты — сломавшая гряда
+## откатывается (герой не должен оказаться отрезан от аномалии/выхода).
+func _rock_ridge(erng: RandomNumberGenerator, rcfg: Dictionary,
+		min_r: int, anom_r: int) -> void:
+	var len_min := int(rcfg.get("len_min", 20))
+	var len_max := int(rcfg.get("len_max", 60))
+	var width := clampf(float(rcfg.get("width", 1.6)), 1.0, 2.0)
+	for attempt in 12:
+		var c := Vector2i(erng.randi_range(8, w - 9), erng.randi_range(8, h - 9))
+		if grid[c.y][c.x] != TILE_GRASS or not _extra_spot_ok(c, min_r, anom_r):
+			continue
+		var ang := erng.randf() * TAU
+		var pos := Vector2(c)
+		var placed: Array = []
+		var target := erng.randi_range(len_min, len_max)
+		var misses := 0
+		while placed.size() < target and misses < 16:
+			ang += erng.randf_range(-0.5, 0.5)   # изгиб гряды
+			var step := Vector2(cos(ang), sin(ang))
+			var nxt := Vector2i((pos + step).round())
+			if nxt.x < 2 or nxt.y < 2 or nxt.x > w - 3 or nxt.y > h - 3 \
+					or grid[nxt.y][nxt.x] != TILE_GRASS \
+					or not _extra_spot_ok(nxt, min_r, anom_r):
+				misses += 1
+				ang += (0.4 if erng.randf() < 0.5 else -0.4)   # обогнуть помеху
+				continue
+			pos = Vector2(nxt)
+			grid[nxt.y][nxt.x] = TILE_ROCK
+			placed.append(nxt)
+			# «толщина» хребта: сосед сбоку от направления гряды
+			var side := nxt + Vector2i(roundi(-step.y), roundi(step.x))
+			if side.x > 1 and side.y > 1 and side.x < w - 2 and side.y < h - 2 \
+					and grid[side.y][side.x] == TILE_GRASS \
+					and _extra_spot_ok(side, min_r, anom_r) \
+					and erng.randf() < width - 1.0:
+				grid[side.y][side.x] = TILE_ROCK
+				placed.append(side)
+		var ok := placed.size() >= len_min
+		if ok:
+			ok = _connected()   # хребет не отрезал часть карты
+		if ok:
+			return
+		for t: Vector2i in placed:
+			grid[t.y][t.x] = TILE_GRASS   # откат неудавшейся гряды
+
+
+## Размер одиночного дерева добора (v1.50, lone_big): 15% малое, 45%
+## среднее, 40% БОЛЬШОЕ — одиночки на лугу заметнее прежнего.
+static func _roll_lone_tree_size(roll: float) -> int:
+	if roll < 0.15:
+		return TREE_SMALL
+	if roll < 0.60:
+		return TREE_MEDIUM
+	return TREE_LARGE
 
 
 ## Годен ли тайл под добор природы: вне ядра застройки, не у аномалии/выхода,

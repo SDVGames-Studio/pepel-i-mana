@@ -332,6 +332,10 @@ func _physics_process(delta: float) -> void:
 	var dir := Input.get_vector("move_left", "move_right", "move_up", "move_down")
 	var agi_speed := stat("agi") * float(attrs_cfg().get("agi_speed", 1.5))   # ловкость — бег (v1.24)
 	if city_mode:
+		# v1.50: facing по движению — герой смотрит, куда бежит (в покое
+		# сохраняет последний взгляд; раньше в городе был всегда вправо)
+		if dir != Vector2.ZERO:
+			facing = dir.normalized()
 		# рывок в городе тоже (паритет с данжем): отпрыг в сторону движения
 		if Input.is_action_just_pressed("dash") and _dash_cd <= 0.0 and dir != Vector2.ZERO:
 			facing = dir.normalized()
@@ -639,31 +643,60 @@ func draw_body(canvas: CanvasItem, pos: Vector2) -> void:
 		dst.size.x = -dst.size.x
 	canvas.draw_texture_rect(tex, dst, false)
 	canvas.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+	# v1.50: оружие в руке по надетому предмету — в покое и беге. В кадрах
+	# атаки НЕ рисуем (меч вшит в knight_Attack — иначе двоится), в рывке
+	# и смерти тоже: тело скручено/лежит.
+	var anim := _sprite.animation
+	if anim == "idle" or anim == "run":
+		_draw_held_weapon(canvas, pos, facing.x < 0.0)
 
 
-## Меч героя (M11): виден в руке, при ударе — дуга замаха в сторону курсора.
-func _draw_sword(canvas: CanvasItem, pos: Vector2, flip := false) -> void:
-	var tex: Texture2D = Assets.sprite("e:sword")
-	if tex == null:
-		return
-	var h := float(p["radius"]) * 1.7
-	var s := h / float(tex.get_height())
-	var w := float(tex.get_width()) * s
-	var cd_full := float(p["attack_cooldown"])
-	var attacking := _attack_cd > cd_full - 0.18
-	var hand: Vector2
-	var ang: float
-	if attacking:
-		# замах: от заноса за спиной (-2.2 рад) к завершению дуги (+1.4)
-		var swing := 1.0 - (_attack_cd - (cd_full - 0.18)) / 0.18   # 0..1
-		var arc := lerpf(-2.2, 1.4, clampf(swing, 0.0, 1.0))
-		ang = facing.angle() + arc
-		hand = facing.rotated(arc) * (float(p["radius"]) * 0.8) + Vector2(0, -float(p["radius"]) * 0.6)
-	else:
-		# в покое меч опущен по боку, отражается вместе с корпусом
-		var side := 1.0 if not flip else -1.0
-		ang = facing.angle() + 1.25 * side
-		hand = Vector2(side * float(p["radius"]) * 0.55, float(p["radius"]) * 0.15)
-	canvas.draw_set_transform(pos + hand, ang + PI / 2.0, Vector2.ONE)
-	canvas.draw_texture_rect(tex, Rect2(Vector2(-w / 2.0, -h / 2.0), Vector2(w, h)), false)
-	canvas.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+## Оружие в руке героя (v1.50, правка приёмки «оружие в руках»): FreeKnight
+## без меча в idle/run — рисуем надетое оружие (меч/топор — спрайт env,
+## копьё/лук/посох — вектор), опущенное по боку, зеркалится с корпусом.
+func _draw_held_weapon(canvas: CanvasItem, pos: Vector2, flip := false) -> void:
+	var wpn: Dictionary = Game.weapon_params()
+	var wid := String(wpn.get("id", "sword"))
+	var side := -1.0 if flip else 1.0
+	var hand := pos + Vector2(side * float(p["radius"]) * 0.55, float(p["radius"]) * 0.15)
+	var ang := facing.angle() + 1.25 * side
+	var r := float(p["radius"])
+	match wid:
+		"sword", "axe":
+			var tex: Texture2D = Assets.sprite("e:sword")
+			if tex == null:
+				return
+			var h := r * 1.7
+			var s := h / float(tex.get_height())
+			var w := float(tex.get_width()) * s
+			canvas.draw_set_transform(hand, ang + PI / 2.0, Vector2.ONE)
+			canvas.draw_texture_rect(tex, Rect2(Vector2(-w / 2.0, -h / 2.0), Vector2(w, h)), false)
+			canvas.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+		"spear":
+			# древко с наконечником, длиннее меча
+			canvas.draw_set_transform(hand, ang + PI / 2.0, Vector2.ONE)
+			var hl := r * 2.3
+			canvas.draw_rect(Rect2(Vector2(-1.0, -hl * 0.95), Vector2(2.0, hl)), Color("#7a5a3a"))
+			canvas.draw_colored_polygon(PackedVector2Array([
+				Vector2(0, -hl * 1.12), Vector2(-2.2, -hl * 0.9), Vector2(2.2, -hl * 0.9)]),
+				Color("#b8bcc4"))
+			canvas.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+		"bow":
+			# дуга лука с тетивой, «открыта» вперёд
+			canvas.draw_set_transform(hand, ang + PI / 2.0, Vector2.ONE)
+			var br := r * 0.85
+			canvas.draw_arc(Vector2(0, -br * 0.1), br, -PI / 2.0 - 1.05, -PI / 2.0 + 1.05, 14,
+					Color("#8a6438"), 2.2)
+			var a0 := -PI / 2.0 - 1.05
+			var a1 := -PI / 2.0 + 1.05
+			canvas.draw_line(Vector2(cos(a0), sin(a0)) * br, Vector2(cos(a1), sin(a1)) * br,
+					Color("#d8d2c0", 0.9), 1.0)
+			canvas.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+		"staff":
+			# посох: древко и светящийся кристалл-навершие
+			canvas.draw_set_transform(hand, ang + PI / 2.0, Vector2.ONE)
+			var hl := r * 2.0
+			canvas.draw_rect(Rect2(Vector2(-1.2, -hl * 0.9), Vector2(2.4, hl)), Color("#6d5238"))
+			canvas.draw_circle(Vector2(0, -hl * 0.98), r * 0.28, Color("#6fb6e8"))
+			canvas.draw_circle(Vector2(0, -hl * 0.98), r * 0.16, Color("#cfe8ff"))
+			canvas.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
