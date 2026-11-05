@@ -8,6 +8,8 @@ on:
 
 permissions:
   contents: write
+  pages: write
+  id-token: write
 
 concurrency:
   group: publish-${{ github.ref }}
@@ -51,11 +53,32 @@ jobs:
           godot --headless --export-release "Windows Desktop" build/PepelIMana.exe
           test -s build/PepelIMana.exe
 
+      - name: Export Linux
+        run: |
+          mkdir -p build/linux
+          godot --headless --export-release "Linux" build/linux/PepelIMana.x86_64
+          test -s build/linux/PepelIMana.x86_64
+
+      - name: Export Web
+        run: |
+          mkdir -p build/web
+          godot --headless --export-release "Web" build/web/index.html
+          test -s build/web/index.html
+          test -s build/web/index.wasm
+          cd build/web && zip -q -r ../PepelIMana-web.zip . && cd ../..
+          test -s build/PepelIMana-web.zip
+
       - name: Read game version
         id: version
         run: |
           V=$(python3 -c "import json;print(json.load(open('data/version.json'))['version'])")
           echo "version=$V" >> "$GITHUB_OUTPUT"
+
+      - name: Upload web build artifact
+        if: github.ref == 'refs/heads/main'
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: build/web
 
       - name: Create latest release
         if: github.ref == 'refs/heads/main'
@@ -69,9 +92,33 @@ jobs:
 
           gh release create latest \
             build/PepelIMana.exe \
+            build/linux/PepelIMana.x86_64 \
+            build/PepelIMana-web.zip \
             --repo "$GITHUB_REPOSITORY" \
             --title "Пепел и Мана — v${{ steps.version.outputs.version }}" \
             --target "$GITHUB_SHA" \
-            --notes "Автосборка из main (v${{ steps.version.outputs.version }}, коммит $GITHUB_SHA). Запуск: скачать PepelIMana.exe и запустить — установка не нужна (при желании файл можно переименовать, на игру имя не влияет)."
+            --notes "Автосборка из main (v${{ steps.version.outputs.version }}, коммит $GITHUB_SHA).
+
+          - **Windows**: PepelIMana.exe — скачать и запустить, установка не нужна.
+          - **Linux**: PepelIMana.x86_64 — chmod +x PepelIMana.x86_64 && ./PepelIMana.x86_64.
+          - **Браузер**: PepelIMana-web.zip — распаковать и открыть index.html, или играть онлайн на GitHub Pages.
+
+          (при желании файлы можно переименовать, на игру имя не влияет)."
 
           echo "asset: PepelIMana.exe (GitHub не принимает кириллицу в именах ассетов)" >> "$GITHUB_STEP_SUMMARY"
+
+  pages:
+    name: Deploy web game to GitHub Pages
+    needs: publish
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Setup Pages
+        uses: actions/configure-pages@v6
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v5
