@@ -59,23 +59,15 @@ func setup(city_map, city_cfg: Dictionary, city_sim = null, cache_key := "") -> 
 		_zone_colors[String(t)] = Color(String(city_cfg["zones"]["types"][t]["color"]))
 	_grass_shades = [colors["grass"], colors.get("grass_alt", colors["grass"]),
 			colors.get("grass2", colors["grass"]).darkened(0.03)]
-	# v1.50 «Живая земля»: трава — тайлы природы ForgottenMemories. База —
-	# ПЛОСКАЯ заливка (L0 яркий луг / D0 сумрачный), детальный тайл с
-	# цветами/травинками — редким выбором по хэшу (иначе лист «коллажем»);
-	# семейство выбирают пятна луга. Плюс земляные проплешины с кромками.
-	_grass_texs = [
-		Assets.tex("res://assets/sprites/env/fm_grass_L0.png"),
-		Assets.tex("res://assets/sprites/env/fm_grass_L1.png"),
-		Assets.tex("res://assets/sprites/env/fm_grass_L2.png"),
-		Assets.tex("res://assets/sprites/env/fm_grass_L3.png"),
-		Assets.tex("res://assets/sprites/env/fm_grass_D0.png"),
-		Assets.tex("res://assets/sprites/env/fm_grass_D1.png"),
-		Assets.tex("res://assets/sprites/env/fm_grass_D2.png"),
-		Assets.tex("res://assets/sprites/env/fm_grass_D3.png"),
-	]
-	for i in range(_grass_texs.size()):
-		if _grass_texs[i] == null:
-			_grass_texs[i] = Assets.tex("res://assets/sprites/env/grass_L1.png")
+	# v1.50.1 (правка приёмки): трава — ПРИНЯТЫЕ текстуры dual-grid v1.32
+	# (3 тона-семейства × 2 варианта, каждый тайл с нарисованными травинками).
+	# FM-плоская база давала гигантские одноцветные «плиты» — возвращено.
+	# Из ForgottenMemories остались: земля мелких проплешин, вода, декор.
+	_grass_texs = []
+	for fam in ["L", "M", "D"]:
+		for v in 2:
+			_grass_texs.append(Assets.tex(
+					"res://assets/sprites/env/grass_%s%d.png" % [fam, v + 1]))
 	_dirt_texs = [
 		Assets.tex("res://assets/sprites/env/fm_dirt_0.png"),
 		Assets.tex("res://assets/sprites/env/fm_dirt_1.png"),
@@ -910,25 +902,23 @@ func _grass_at(x: int, y: int) -> Color:
 	return shade.darkened(0.01 * -j)
 
 
-## Текстура травяного тайла (v1.50): пятна луга (крупный шум) выбирают
-## семейство ForgottenMemories — яркий луг (L0–L3) или сумрачную траву
-## (D0–D3). База тайла — плоская заливка, детальный вариант с цветами —
-## редкий выбор по хэшу (~22% тайлов): трава читается лугом, а не коллажем.
+## Текстура травяного тайла — как в принятой v1.32: семейство тонов
+## (L/M/D) — крупный шум пятен луга, вариант внутри семейства — хэш тайла
+## (соседние тайлы всегда разные, повтор 32px не ловится глазом).
 func _grass_texture_at(x: int, y: int) -> Texture2D:
 	if _grass_texs.is_empty():
 		return null
-	var fam := 0 if _noise2(x / 7.0, y / 7.0, 2, 11) < 0.5 else 4
-	var v := 0
-	if _hash(x, y, 5) % 100 < 22:
-		v = 1 + _hash(x, y, 3) % 3
-	return _grass_texs[fam + v]
+	var fam := clampi(int(_noise2(x / 7.0, y / 7.0, 3, 11)), 0, 2)
+	var v: int = _hash(x, y, 2)
+	return _grass_texs[fam * 2 + v]
 
 
-## Земляная проплешина (v1.50): крупный шум выделяет пятна голой земли —
-## тайлы заливаются fm_dirt (плоская база + редкая фактура), кромка пятна —
-## painterly-обводка (см. _draw_dirt_edges).
+## Земляная проплешина (v1.50.1 после правки приёмки): МЕЛКИЕ пятна голой
+## земли — шум мелкого масштаба и высокий порог (2–5 тайлов, редко),
+## тайлы заливаются fm_dirt, кромка — painterly-обводка. Прежние крупные
+## пятна (/9, порог 0.76) накрывали пол-карты и рвались на границах чанков.
 func _is_dirt_patch(x: int, y: int) -> bool:
-	return _noise2(x / 9.0, y / 9.0, 100, 83) / 99.0 > 0.76
+	return _noise2(x / 4.0, y / 4.0, 100, 83) / 99.0 > 0.84
 
 
 ## ---------- декор луга и земляные проплешины (v1.50 «Живая земля») ----------
@@ -1014,9 +1004,9 @@ func _draw_dirt_edges(region: Rect2i) -> void:
 		var clean := _clean_loop(smooth)
 		if clean.size() < 3 or not _loop_is_simple(clean):
 			continue
-		# крошечные проплешины (1–2 тайла) — кромка не читается, а тонкие
-		# полосы дают «прямые линии» — обводку не рисуем
-		if _loop_area(clean) < 3.0 * float(map.ts) * float(map.ts):
+		# малым проплешинам (до ~18 тайлов) обводка не нужна — без неё
+		# пятно читается вытоптанной землёй, с ней — «ковриком с рамкой»
+		if _loop_area(clean) < 18.0 * float(map.ts) * float(map.ts):
 			continue
 		# рисуем только кольца, пересекающие регион запечки
 		var bbox := Rect2(clean[0], Vector2.ZERO)
