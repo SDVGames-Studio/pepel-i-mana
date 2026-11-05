@@ -75,6 +75,15 @@ jobs:
           name: pepel-i-mana-build
           path: dist
 
+      # кириллическое имя файла не переживает распаковку артефакта в CI
+      # (приходил «default.exe») — переименовываем явно
+      - name: Normalize exe name
+        run: |
+          cd dist
+          EXE=$(ls *.exe | head -1)
+          mv "$EXE" "ПепелИМана.exe"
+          test -s "ПепелИМана.exe"
+
       - name: Create latest release
         env:
           GH_TOKEN: ${{ github.token }}
