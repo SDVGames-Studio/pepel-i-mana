@@ -174,6 +174,10 @@ const BLOCKS := [
 	"_test_v150_forests_ridges",
 	"_test_v150_brigade",
 ]],
+	["res://tests/test_v151.gd", [
+	"_test_v151_overview",
+	"_test_v151_start_pick",
+]],
 
 	["res://tests/test_dungeon2.gd", [
 	"_test_dungeon2_assets",

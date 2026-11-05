@@ -42,6 +42,7 @@ var _near_armory: Dictionary = {}   # оружейка рядом с герое�
 var _equip_panel = null         # панель экипировки и крафта (M14-B, клавиша I)
 var _gov_panel = null           # панель управления: законы/вера/дипломатия (M14-H, L)
 var _quests_panel = null        # доска объявлений (M14-K, клавиша Q)
+var _overview = null            # обзорная карта города (v1.51, клавиша N)
 var _codex_panel = null         # кодекс и статистика (M14-K, клавиша K)
 var _ambience = null            # светлячки и огоньки (M14-C, T21/T23)
 var _weather_fx = null          # погода: дождь/снег/туман/буря (M14-J)
@@ -156,6 +157,11 @@ func _ready() -> void:
 	# кодекс и статистика (M14-K, клавиша K)
 	_codex_panel = load("res://scripts/codex_panel.gd").new()
 	add_child(_codex_panel)
+	# обзорная карта города (v1.51, клавиша N): вся локация с ресурсами
+	_overview = load("res://scripts/city_overview.gd").new()
+	_overview.setup(map, sim)
+	_overview.hero_cb = func(): return hero
+	add_child(_overview)
 
 
 ## Крафт предмета (M14-B/T05): оружейка куёт оружие и броню, мастерская —
@@ -1010,6 +1016,9 @@ func _unhandled_input(event: InputEvent) -> void:
 				hud.toggle_chronicle()
 			KEY_M:
 				hud.toggle_market()
+			KEY_N:
+				_overview.toggle()   # обзорная карта города (v1.51)
+				return
 			# v1.50.2: масштаб карты города и с клавиатуры — «+»/«−»
 			# (дубль колеса мыши: у кого-то его нет под рукой)
 			KEY_EQUAL, KEY_KP_ADD:

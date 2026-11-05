@@ -341,7 +341,10 @@ func _input(event: InputEvent) -> void:
 
 ## Создать город с настройками старта (новая игра). Рюкзак и спеллбук очищаются.
 ## Новая игра — новый мир (M8): карта мира генерируется заново.
-func new_city() -> void:
+## chosen_tile (v1.51): клетка мира, выбранная игроком на старте
+## (сцена start_pick уже создала мир — new_world() повторно не зовётся);
+## Vector2i(-1,-1) — прежний путь: мир создаётся заново, город по сиду.
+func new_city(chosen_tile := Vector2i(-1, -1)) -> void:
 	inventory = []
 	spellbook = []
 	last_run_death = false
@@ -368,7 +371,11 @@ func new_city() -> void:
 	stats = {"days": 0, "bosses": 0, "buildings": 0, "quests": 0, "hunts": 0}
 	if skills != null:
 		skills.reset()
-	new_world()
+	if chosen_tile.x >= 0 and world_map != null:
+		# мир уже создан сценой выбора места — город на выбранную клетку
+		world_map.set_city_tile(chosen_tile)
+	else:
+		new_world()
 	var cfg: Variant = _read_json(CITY_CFG_PATH)
 	if not (cfg is Dictionary):
 		push_error("Не читается data/city.json")

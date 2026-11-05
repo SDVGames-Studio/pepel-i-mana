@@ -199,5 +199,6 @@ func _on_begin_pressed() -> void:
 	Game.start_level = LEVELS[_level_option.selected]
 	Game.test_mode = _test_check.button_pressed
 	Game.conflicts_enabled = _conflicts_check.button_pressed
-	Game.new_city()
-	get_tree().change_scene_to_file("res://scenes/city.tscn")
+	# v1.51: выбор места города на карте мира — экран поверх меню
+	var pick: Control = load("res://scripts/start_pick.gd").new()
+	add_child(pick)

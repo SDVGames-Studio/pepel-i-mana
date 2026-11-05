@@ -156,6 +156,69 @@ func _clear_around_land(center: Vector2i, radius: int) -> void:
 			grid[y][x] = TILE_PLAINS
 
 
+## Годна ли клетка под основание города (v1.51, выбор на старте):
+## суша (не вода/болото/русло), не у края (запас 3) и не ближе 6 клеток
+## к чужому поселению/городу НПС (occupancy — их тайлы, empty = нет списка).
+func can_found_city_at(t: Vector2i, occupancy: Array = []) -> String:
+	if not in_bounds(t) or t.x < 3 or t.y < 3 or t.x > w - 4 or t.y > h - 4:
+		return "pick.bad_edge"
+	if grid[t.y][t.x] == TILE_WATER or grid[t.y][t.x] == TILE_SWAMP or river.has(t):
+		return "pick.bad_water"
+	for o in occupancy:
+		if Vector2(t).distance_to(Vector2(Vector2i(o))) < 6.0:
+			return "pick.bad_near"
+	return ""
+
+
+## Перенести город игрока на выбранную клетку (v1.51): чистим площадку,
+## двигаем POI города и его «дверь» в данж (аномалия-вход 3–5 клеток от
+## города — читается и картой мира, и целями путей).
+func set_city_tile(t: Vector2i) -> void:
+	var old_tile := city_tile
+	city_tile = Vector2i(t)
+	_clear_around_land(city_tile, 2)
+	# место «двери» у НОВОГО города: ограниченное кольцо (фолбэк _find_spot
+	# ищет БЕЗ верхней границы и уносил аномалию за пол-карты)
+	var spot := Vector2i(-1, -1)
+	for r in [[3, 5], [2, 8]]:
+		spot = _gateway_spot_near(city_tile, int(r[0]), int(r[1]))
+		if spot != Vector2i(-1, -1):
+			break
+	var gateway: Dictionary = {}
+	var gd := 1 << 30
+	for poi in pois:
+		if String(poi["kind"]) == "city":
+			poi["tile"] = city_tile
+		elif String(poi["kind"]) == "dungeon" and String(poi["biome"]) == "":
+			var d: float = Vector2(poi["tile"]).distance_to(Vector2(old_tile))
+			if d < float(gd):
+				gd = int(d)
+				gateway = poi
+	if spot != Vector2i(-1, -1):
+		if gateway.is_empty():
+			_add_poi("dungeon", "", "", spot)
+		else:
+			gateway["tile"] = spot
+	_terrain_bake = null
+
+
+## Свободная проходимая клетка в кольце [rmin..rmax] от центра — для
+## переноса городской аномалии (без фолбэка «куда угодно»).
+func _gateway_spot_near(center: Vector2i, rmin: int, rmax: int) -> Vector2i:
+	for dy in range(-rmax, rmax + 1):
+		for dx in range(-rmax, rmax + 1):
+			var d := int(Vector2(dx, dy).length())
+			if d < rmin or d > rmax:
+				continue
+			var p := center + Vector2i(dx, dy)
+			if not in_bounds(p) or not is_walkable(p) or river.has(p):
+				continue
+			if _poi_near(p, 4) != null:
+				continue
+			return p
+	return Vector2i(-1, -1)
+
+
 func _random_inner_tile() -> Vector2i:
 	return Vector2i(_rng.randi_range(4, w - 5), _rng.randi_range(4, h - 5))
 

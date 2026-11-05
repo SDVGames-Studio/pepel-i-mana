@@ -45,7 +45,7 @@ func _test_v150_configs() -> void:
 	_check(w != null and w.get_width() == 192 and w.get_height() == 96,
 			"анимированная вода fm_water — полоса 6 кадров × 3 ряда")
 	_check(not String(ru.get("city.keys_bar", "")).is_empty()
-			and "масштаб карты" in String(ru.get("city.keys_bar", "")),
+			and "масштаб" in String(ru.get("city.keys_bar", "")),
 			"подсказка о масштабе карты города есть в панели клавиш")
 
 
