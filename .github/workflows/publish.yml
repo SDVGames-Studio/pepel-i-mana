@@ -17,8 +17,8 @@ env:
   GODOT_VERSION: 4.7.2-stable
 
 jobs:
-  export:
-    name: Export Windows build
+  publish:
+    name: Export Windows build and publish
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -46,24 +46,8 @@ jobs:
           mkdir -p build
           # ASCII-имя: кириллица в путях экспорта недетерминированно
           # переживает zip-артефакт/загрузку релиза; в релизе переименуем
-          godot --headless --export-release "Windows Desktop" build/PepelIMana.exe
-          test -s build/PepelIMana.exe
-
-      - name: Upload build artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: pepel-i-mana-build
-          path: build/PepelIMana.exe
-          if-no-files-found: error
-
-  release:
-    name: Create latest release
-    needs: export
-    if: github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout (for version in notes)
-        uses: actions/checkout@v5
+          godot --headless --export-release "Windows Desktop" "build/ПепелИМана.exe"
+          test -s "build/ПепелИМана.exe"
 
       - name: Read game version
         id: version
@@ -71,13 +55,8 @@ jobs:
           V=$(python3 -c "import json;print(json.load(open('data/version.json'))['version'])")
           echo "version=$V" >> "$GITHUB_OUTPUT"
 
-      - name: Download build
-        uses: actions/download-artifact@v4
-        with:
-          name: pepel-i-mana-build
-          path: dist
-
       - name: Create latest release
+        if: github.ref == 'refs/heads/main'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -87,20 +66,22 @@ jobs:
             --yes 2>/dev/null || true
 
           gh release create latest \
-            dist/PepelIMana.exe \
+            "build/ПепелИМана.exe" \
             --repo "$GITHUB_REPOSITORY" \
             --title "Пепел и Мана — v${{ steps.version.outputs.version }}" \
             --target "$GITHUB_SHA" \
             --notes "Автосборка из main (v${{ steps.version.outputs.version }}, коммит $GITHUB_SHA). Запуск: скачать exe и запустить — установка не нужна."
 
-          # вернуть ассету русское имя: gh -f (form) с кириллицей
-          # недетерминирован — PATCH JSON-ом через curl и проверка
+          # вернуть ассету русское имя (ASCII-путь надёжен в upload,
+          # имя ассета меняем через API); ответ и итог — в step summary
           ASSET_ID=$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/latest" --jq '.assets[0].id')
-          curl -sSf -X PATCH \
+          echo "PATCH asset id=$ASSET_ID" >> "$GITHUB_STEP_SUMMARY"
+          curl -sS -X PATCH \
             -H "Authorization: Bearer $GH_TOKEN" \
             -H "Content-Type: application/json" \
             "https://api.github.com/repos/$GITHUB_REPOSITORY/releases/assets/$ASSET_ID" \
-            -d '{"name":"\u041f\u0435\u043f\u0435\u043b\u0418\u041c\u0430\u043d\u0430.exe"}'
+            -d '{"name":"\u041f\u0435\u043f\u0435\u043b\u0418\u041c\u0430\u043d\u0430.exe"}' \
+            | head -c 400 >> "$GITHUB_STEP_SUMMARY"
           NAME=$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/latest" --jq '.assets[0].name')
-          echo "asset name: $NAME"
-          test "$NAME" = "ПепелИМана.exe"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "final asset name: $NAME" >> "$GITHUB_STEP_SUMMARY"
