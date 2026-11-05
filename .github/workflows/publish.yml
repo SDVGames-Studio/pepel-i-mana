@@ -46,8 +46,10 @@ jobs:
           mkdir -p build
           # ASCII-имя: кириллица в путях экспорта недетерминированно
           # переживает zip-артефакт/загрузку релиза; в релизе переименуем
-          godot --headless --export-release "Windows Desktop" "build/ПепелИМана.exe"
-          test -s "build/ПепелИМана.exe"
+          # ASCII-имя: GitHub санитизирует не-ASCII имена ассетов релиза
+          # (кириллица превращается в default.exe, PATCH не помогает)
+          godot --headless --export-release "Windows Desktop" build/PepelIMana.exe
+          test -s build/PepelIMana.exe
 
       - name: Read game version
         id: version
@@ -66,22 +68,10 @@ jobs:
             --yes 2>/dev/null || true
 
           gh release create latest \
-            "build/ПепелИМана.exe" \
+            build/PepelIMana.exe \
             --repo "$GITHUB_REPOSITORY" \
             --title "Пепел и Мана — v${{ steps.version.outputs.version }}" \
             --target "$GITHUB_SHA" \
-            --notes "Автосборка из main (v${{ steps.version.outputs.version }}, коммит $GITHUB_SHA). Запуск: скачать exe и запустить — установка не нужна."
+            --notes "Автосборка из main (v${{ steps.version.outputs.version }}, коммит $GITHUB_SHA). Запуск: скачать PepelIMana.exe и запустить — установка не нужна (при желании файл можно переименовать, на игру имя не влияет)."
 
-          # вернуть ассету русское имя (ASCII-путь надёжен в upload,
-          # имя ассета меняем через API); ответ и итог — в step summary
-          ASSET_ID=$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/latest" --jq '.assets[0].id')
-          echo "PATCH asset id=$ASSET_ID" >> "$GITHUB_STEP_SUMMARY"
-          curl -sS -X PATCH \
-            -H "Authorization: Bearer $GH_TOKEN" \
-            -H "Content-Type: application/json" \
-            "https://api.github.com/repos/$GITHUB_REPOSITORY/releases/assets/$ASSET_ID" \
-            -d '{"name":"\u041f\u0435\u043f\u0435\u043b\u0418\u041c\u0430\u043d\u0430.exe"}' \
-            | head -c 400 >> "$GITHUB_STEP_SUMMARY"
-          NAME=$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/latest" --jq '.assets[0].name')
-          echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "final asset name: $NAME" >> "$GITHUB_STEP_SUMMARY"
+          echo "asset: PepelIMana.exe (GitHub не принимает кириллицу в именах ассетов)" >> "$GITHUB_STEP_SUMMARY"
