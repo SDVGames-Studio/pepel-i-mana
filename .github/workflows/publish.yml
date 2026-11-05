@@ -110,9 +110,8 @@ jobs:
   pages:
     name: Deploy web game to GitHub Pages
     needs: publish
-    # Pages должен быть включён в настройках репо (Settings → Pages →
-    # Source: GitHub Actions) — до этого job падает, не портя релиз
-    continue-on-error: true
+    # enablement: true — CI сам включает Pages (GITHUB_TOKEN с pages:write);
+    # source уже настроен как «GitHub Actions» этим же шагом
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     environment:
@@ -121,6 +120,8 @@ jobs:
     steps:
       - name: Setup Pages
         uses: actions/configure-pages@v6
+        with:
+          enablement: true
 
       - name: Deploy to GitHub Pages
         id: deployment
