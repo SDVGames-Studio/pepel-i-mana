@@ -35,18 +35,29 @@ func ncfg() -> Dictionary:
 ## поселенцы не новорожденные). Павших поселений здесь нет: их города
 ## уничтожаются при падении (destroy). Городов не больше max_cities
 ## (правки приёмки v1.41.1: страховка от разрастания, по умолчанию 20).
-func ensure(mature_days := 0) -> void:
+## limit > 0 (v1.54): создать не больше limit БЛИЖАЙШИХ к городу игрока —
+## старт игры больше не генерит все 20 городов одним куском; полный набор
+## достраивается при входе на карту мира (world.gd) и в сейве.
+func ensure(mature_days := 0, limit := 0) -> void:
 	if world_map == null:
 		return
 	var cap := maxi(0, int(ncfg().get("mature_cap_days", 25)))
 	var max_cities := maxi(1, int(ncfg().get("max_cities", 20)))
+	var todo: Array = []
 	for poi in world_map.pois:
-		if cities.size() >= max_cities:
-			break
 		if String(poi["kind"]) != "settlement" or String(poi["state"]) != "ok":
 			continue
 		if cities.has(int(poi["id"])):
 			continue
+		todo.append(poi)
+	if limit > 0 and todo.size() > limit:
+		var ct: Vector2i = world_map.city_tile
+		todo.sort_custom(func(a, b) -> bool:
+			return Vector2(a["tile"]).distance_squared_to(Vector2(ct)) 					< Vector2(b["tile"]).distance_squared_to(Vector2(ct)))
+		todo.resize(limit)
+	for poi in todo:
+		if cities.size() >= max_cities:
+			break
 		_create(poi, mini(maxi(0, mature_days), cap))
 
 

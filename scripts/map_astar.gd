@@ -16,6 +16,10 @@ extends RefCounted
 var w := 0
 var h := 0
 var astar: AStar2D = null
+var _edges_built := false   # v1.54: рёбра строятся лениво — первым
+                            # запросом пути (старт карты без 2с на рёбра)
+var _harr := PackedInt32Array()   # высоты для ленивых рёбер
+
 var height: Dictionary = {}      # Vector2i -> int (0 — равнина)
 var stairs: Dictionary = {}      # Vector2i -> true (проход между уровнями)
 var solid: Dictionary = {}       # Vector2i -> true (вода/скалы/здания/ворота)
@@ -46,6 +50,7 @@ func rebuild(solid_dict: Dictionary) -> void:
 		astar = AStar2D.new()
 	solid = {}
 	astar.clear()
+	_edges_built = false   # точки построим, рёбра — лениво по запросу
 	var harr := PackedInt32Array()
 	harr.resize(w * h)
 	for t: Vector2i in height:
@@ -56,6 +61,19 @@ func rebuild(solid_dict: Dictionary) -> void:
 		for x in w:
 			if not solid_dict.has(Vector2i(x, y)):
 				astar.add_point(base + x, Vector2(x, y))
+	_harr = harr
+	solid = solid_dict.duplicate()
+	# v1.54: РЁБРА — ЛЕНИВО (_ensure_edges): rebuild строит только точки;
+	# прежде построение 440к рёбер ело ~2 сек старта на карте ×4
+
+
+## Построить рёбра сетки (первый запрос пути). Вызывается из get_id_path.
+func _ensure_edges() -> void:
+	if _edges_built or astar == null:
+		return
+	_edges_built = true
+	var solid_dict := solid
+	var harr := _harr
 	for y in h:
 		var base := y * w
 		for x in w:
@@ -70,10 +88,12 @@ func rebuild(solid_dict: Dictionary) -> void:
 					astar.connect_points(i, i + 1)
 			# вниз
 			if y + 1 < h:
-				var n := Vector2i(x, y + 1)
-				if not solid_dict.has(n) 						and (stairs.has(p) or stairs.has(n) 						or harr[i] == harr[i + w]):
+				var n2 := Vector2i(x, y + 1)
+				if not solid_dict.has(n2) 						and (stairs.has(p) or stairs.has(n2) 						or harr[i] == harr[i + w]):
 					astar.connect_points(i, i + w)
-	solid = solid_dict.duplicate()
+
+
+
 
 
 func in_bounds(p: Vector2i) -> bool:
@@ -136,6 +156,7 @@ func set_point_weight_scale(p: Vector2i, wscale: float) -> void:
 
 ## Путь A*: массив Vector2i от начала до цели; пустой — пути нет.
 func get_id_path(from_id: Vector2i, to_id: Vector2i) -> Array:
+	_ensure_edges()   # v1.54: рёбра лениво — первым запросом пути
 	if not in_bounds(from_id) or not in_bounds(to_id) \
 			or solid.has(from_id) or solid.has(to_id):
 		return []

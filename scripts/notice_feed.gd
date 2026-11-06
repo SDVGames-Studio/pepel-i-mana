@@ -1,10 +1,13 @@
 extends CanvasLayer
-## Донесения (v1.53): крупные события города — не тосты, а «письма»
-## в правом верхнем углу: штурмы, бури, улей, лес, некромант, торговцы,
-## беженцы, странники… Письмо можно прочитать и оставить (висит, максимум
-## 5 старших вытесняются новыми) или закрыть крестиком, если неважно.
+## Донесения (v1.53 → v1.54): крупные события города — «письма» в правом
+## верхнем углу (штурмы, бури, улей, лес, некромант, торговцы, беженцы…).
+## v1.54 (правка «не занимать много места»): письмо показывается
+## развёрнутым 6 секунд, затем само сворачивается в узкую ЗАКЛАДКУ
+## (цветная полоска группы) у правого края — клик разворачивает снова.
+## ✕ закрывает совсем. Лимит 5 донесений, старейшие вытесняются.
 
 const MAX_LETTERS := 5
+const OPEN_SECONDS := 6.0   # сколько письмо живёт развёрнутым до закладки
 
 ## Тип события -> группа (заголовок письма и цвет полоски). Тестовый контракт.
 const LETTER_KINDS := {
@@ -67,12 +70,9 @@ static func group_of(type: String) -> String:
 	return String(LETTER_KINDS.get(type, ""))
 
 
-## Новое донесение: заголовок по группе, текст события, кнопка закрытия.
-func push(ev_type: String, text: String) -> void:
-	if _box == null or not is_letter(ev_type):
-		return
-	var group := group_of(ev_type)
-	var col: Color = GROUP_COLORS.get(group, Color.GRAY)
+## Узел донесения: развёрнутое письмо + его закладка (v1.54).
+## Возвращает {panel, tab}; таймер сворачивания ставит push().
+func _make_letter(group: String, col: Color, text: String) -> Dictionary:
 	var panel := PanelContainer.new()
 	var st := StyleBoxFlat.new()
 	st.bg_color = Color("#f4e9cf").darkened(0.05)
@@ -109,12 +109,70 @@ func push(ev_type: String, text: String) -> void:
 	close.focus_mode = Control.FOCUS_NONE
 	close.custom_minimum_size = Vector2(24, 24)
 	close.pressed.connect(func() -> void:
+		var t: Control = panel.get_meta(&"tab")
+		t.queue_free()
 		panel.queue_free())
 	row.add_child(close)
+	# закладка: узкая полоска у края; клик — развернуть письмо снова
+	var tab := Button.new()
+	tab.flat = true
+	tab.custom_minimum_size = Vector2(26, 46)
+	tab.tooltip_text = Loc.t("letter." + group)
+	var tst := StyleBoxFlat.new()
+	tst.bg_color = col
+	tst.set_corner_radius_all(3)
+	tab.add_theme_stylebox_override("normal", tst)
+	tab.add_theme_stylebox_override("hover", tst.darkened(0.15))
+	tab.add_theme_stylebox_override("pressed", tst.darkened(0.25))
+	tab.add_theme_stylebox_override("focus", tst)
+	tab.visible = false
+	tab.pressed.connect(func() -> void:
+		_expand_letter(panel))
+	panel.set_meta(&"tab", tab)
+	return {"panel": panel, "tab": tab}
+
+
+## Развернуть письмо из закладки: показать панель, спрятать закладку,
+## таймер сворачивания заново.
+func _expand_letter(panel: PanelContainer) -> void:
+	var tab: Control = panel.get_meta(&"tab")
+	tab.visible = false
+	panel.visible = true
+	_arm_collapse(panel)
+
+
+## Запустить таймер: письмо само свернётся в закладку через OPEN_SECONDS.
+func _arm_collapse(panel: PanelContainer) -> void:
+	var tab: Control = panel.get_meta(&"tab")
+	var tw := panel.create_tween()
+	tw.tween_interval(OPEN_SECONDS)
+	tw.tween_callback(func() -> void:
+		if is_instance_valid(panel) and panel.visible:
+			panel.visible = false
+			tab.visible = true)
+
+
+## Новое донесение: развёрнутое письмо, через 6 сек — узкая закладка.
+func push(ev_type: String, text: String) -> void:
+	if _box == null or not is_letter(ev_type):
+		return
+	var group := group_of(ev_type)
+	var col: Color = GROUP_COLORS.get(group, Color.GRAY)
+	var made := _make_letter(group, col, text)
+	var panel: PanelContainer = made["panel"]
+	var tab: Control = made["tab"]
 	_box.add_child(panel)
-	# лимит: старейшие вытесняются новыми донесениями
-	while _box.get_child_count() > MAX_LETTERS:
-		_box.get_child(0).queue_free()
+	_box.add_child(tab)
+	# лимит: пары «письмо+закладка» старейших вытесняются новыми
+	while _box.get_child_count() > MAX_LETTERS * 2:
+		var old1: Node = _box.get_child(0)
+		var old2: Node = _box.get_child(1)
+		if old1 is PanelContainer and old2 is Button:
+			old1.queue_free()
+			old2.queue_free()
+		else:
+			old1.queue_free()
+	_arm_collapse(panel)
 	# лёгкое проявление письма
 	var tw := panel.create_tween()
 	panel.modulate.a = 0.0

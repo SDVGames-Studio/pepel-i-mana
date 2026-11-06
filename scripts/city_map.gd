@@ -151,12 +151,17 @@ func _extra_nature_pass(seed_value: int, params: Dictionary) -> void:
 	if bool(fcfg.get("enabled", true)) and erng.randf() < float(fcfg.get("chance", 0.85)):
 		for f in erng.randi_range(1, int(fcfg.get("count_max", 2))):
 			_forest_cluster(erng, fcfg, min_r, anom_r)
-	# скальные хребты (v1.50): тоже по шансу; сплошные для A*, связность
-	# карты проверяется после каждой гряды — сломавшая откатывается
+	# скальные хребты (v1.50; v1.54-ускорение): связность проверяется ОДИН
+	# раз после всех гряд (прежде — полный BFS после каждой: до 4 секунд
+	# на старт). Сломали — откатываем гряды целиком, карта валидна и без них
 	var rcfg: Dictionary = ncfg.get("ridges", {})
+	var ridge_tiles: Array = []
 	if bool(rcfg.get("enabled", true)) and erng.randf() < float(rcfg.get("chance", 0.65)):
 		for g in erng.randi_range(1, int(rcfg.get("count_max", 2))):
-			_rock_ridge(erng, rcfg, min_r, anom_r)
+			ridge_tiles.append_array(_rock_ridge(erng, rcfg, min_r, anom_r))
+		if not ridge_tiles.is_empty() and not _connected():
+			for t: Vector2i in ridge_tiles:
+				grid[t.y][t.x] = TILE_GRASS
 	# деревья — лес кольцом вокруг города (луг между ядром и стеной чистый);
 	# v1.50: одиночки ПОКРУПНЕЕ (lone_big — свой бросок размера, вангал цел)
 	var n_trees := int(ncfg.get("trees", 0))
@@ -264,17 +269,17 @@ func _forest_cluster(erng: RandomNumberGenerator, fcfg: Dictionary,
 ## для A*: после укладки проверяется связность карты — сломавшая гряда
 ## откатывается (герой не должен оказаться отрезан от аномалии/выхода).
 func _rock_ridge(erng: RandomNumberGenerator, rcfg: Dictionary,
-		min_r: int, anom_r: int) -> void:
+		min_r: int, anom_r: int) -> Array:
 	var len_min := int(rcfg.get("len_min", 20))
 	var len_max := int(rcfg.get("len_max", 60))
 	var width := clampf(float(rcfg.get("width", 1.6)), 1.0, 2.0)
+	var placed: Array = []   # тайлы гряды (живёт и после цикла попыток)
 	for attempt in 12:
 		var c := Vector2i(erng.randi_range(8, w - 9), erng.randi_range(8, h - 9))
 		if grid[c.y][c.x] != TILE_GRASS or not _extra_spot_ok(c, min_r, anom_r):
 			continue
 		var ang := erng.randf() * TAU
 		var pos := Vector2(c)
-		var placed: Array = []
 		var target := erng.randi_range(len_min, len_max)
 		var misses := 0
 		while placed.size() < target and misses < 16:
@@ -298,13 +303,13 @@ func _rock_ridge(erng: RandomNumberGenerator, rcfg: Dictionary,
 					and erng.randf() < width - 1.0:
 				grid[side.y][side.x] = TILE_ROCK
 				placed.append(side)
-		var ok := placed.size() >= len_min
-		if ok:
-			ok = _connected()   # хребет не отрезал часть карты
-		if ok:
-			return
-		for t: Vector2i in placed:
-			grid[t.y][t.x] = TILE_GRASS   # откат неудавшейся гряды
+		break   # placed готов (или короткая гряда — откат ниже)
+	# связность карты проверяет вызывающий (один раз на все гряды)
+	if placed.size() >= len_min:
+		return placed
+	for t: Vector2i in placed:
+		grid[t.y][t.x] = TILE_GRASS   # короткая гряда — откат
+	return []
 
 
 ## Размер одиночного дерева добора (v1.50, lone_big): 15% малое, 45%

@@ -1,9 +1,9 @@
 extends CanvasLayer
-## Обзорная карта города (v1.51, клавиша N): вся локация одним взглядом —
-## земля, ресурсы (лес/скалы/руда/вода), постройки, жители, герой, аномалия
-## и выход на карту мира. Карта местности печётся в Image (1px = тайл) и
-## растягивается NEAREST-фильтром; поверх — значки зданий и метки. Легенда
-## справа поясняет цвета. N или Esc — закрыть.
+## Обзорная карта города (v1.51, клавиша N; v1.54 — СТАТИЧНАЯ): вся
+## локация одним взглядом — земля, ресурсы (лес/скалы/руда/вода),
+## постройки, аномалия и выход. Карта печётся в Image РАЗ В ДЕНЬ (и при
+## первом открытии нового дня) — БЕЗ живых жителей и непрерывных обновлений
+## (заказчик: не динамичная, не тратить ресурсы); живая метка одна — герой.
 
 
 var map = null    # city_map
@@ -14,7 +14,7 @@ var open := false
 var _panel: PanelContainer = null
 var _map_rect: Control = null      # куда рисуем карту (custom _draw)
 var _tex: ImageTexture = null      # земля+ресурсы, 1px/тайл
-var _refresh_accum := 0.0
+var _baked_day := -1   # день последней запечки (v1.54: статика раз в день)
 var _legend: RichTextLabel = null
 
 
@@ -95,6 +95,7 @@ static func legend_entries() -> Array:
 		[Color(0.45, 0.85, 0.45), "legend.exit"],
 		[Color(1.0, 1.0, 1.0), "legend.hero"],
 	]
+	# v1.54: карта статична — жители по ней не бегают
 
 
 func _legend_bbcode() -> String:
@@ -109,20 +110,13 @@ func toggle() -> void:
 	open = not open
 	visible = open
 	if open:
-		_rebake_map()
+		# v1.54: перезапечка только если наступил новый день (статичная
+		# карта: без бегущих жителей и ежесекундных обновлений)
+		if sim != null and sim.day_number() != _baked_day:
+			_rebake_map()
+			_baked_day = sim.day_number()
 		_map_rect.queue_redraw()
 		_center_panel()
-
-
-func _process(delta: float) -> void:
-	if not open:
-		return
-	# здания/жители меняются — обновлять значки не чаще раза в 2 сек
-	_refresh_accum += delta
-	if _refresh_accum >= 2.0:
-		_refresh_accum = 0.0
-		_rebake_map()
-		_map_rect.queue_redraw()
 
 
 ## Запечь землю и ресурсы в Image 1px/тайл (детерминировано по сетке).
@@ -205,13 +199,6 @@ func _draw_map() -> void:
 			if label != "" and not razed and s > 1.5:
 				_map_rect.draw_string(font, c + Vector2(4, -4), label,
 						HORIZONTAL_ALIGNMENT_LEFT, -1, 11, Color(1, 1, 1, 0.85))
-		# жители — серые точки, герой — белая
-		for r in sim.residents:
-			if int(r.get("inside", 0)) > 0:
-				continue
-			var rp: Vector2 = r["pos"]
-			var rpp: Vector2 = rp / float(map.ts)
-			_map_rect.draw_circle(origin + rpp * s, maxf(1.5, s * 0.22), Color(0.85, 0.85, 0.9, 0.8))
 	if hero_cb.is_valid():
 		var hero: Node2D = hero_cb.call()
 		if hero != null and is_instance_valid(hero):

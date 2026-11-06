@@ -479,10 +479,11 @@ func _draw_rock_shadow(rect: Rect2, h: float, t: float, nf: float,
 	# триангуляцию (шум в логе с v1.29.4) — честная выпуклая оболочка
 	# «подошва + подошва со смещением»
 	if off.y < 0.5 or absf(off.x) < 0.5:
-		var hull := Geometry2D.convex_hull(PackedVector2Array([
-			tl, tr, bl, br, tl + off, tr + off, bl + off, br + off]))
-		if hull.size() >= 3:
-			draw_colored_polygon(hull, col)
+		# v1.54 (правка «тень словно падает сверху»): прежденяя оболочка
+		# включала ВЕРХНИЕ углы (tl/tr) — в полдень тень накрывала саму
+		# скалу. Тень кладём только от южной подошвы — вбок и вниз
+		draw_colored_polygon(PackedVector2Array([
+			bl, br, br + off, bl + off]), col)
 		return
 	# ОДНА L-фигура (юг+бок единым полигоном): раньше два отдельных
 	# четырёхугольника читались «двойной тенью» (v1.31.1, заказчик).

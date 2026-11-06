@@ -44,6 +44,8 @@ var _gov_panel = null           # панель управления: закон�
 var _quests_panel = null        # доска объявлений (M14-K, клавиша Q)
 var _overview = null            # обзорная карта города (v1.51, клавиша N)
 var _notices = null             # донесения-письма (v1.53, справа)
+var _menu_layer: CanvasLayer = null  # меню-оверлей (v1.54: Esc больше НЕ
+                                     # пересоздаёт сцену — город под паузой)
 var _codex_panel = null         # кодекс и статистика (M14-K, клавиша K)
 var _ambience = null            # светлячки и огоньки (M14-C, T21/T23)
 var _weather_fx = null          # погода: дождь/снег/туман/буря (M14-J)
@@ -312,6 +314,11 @@ var _baked_grid_ver := -1   # версия сетки, на которую за�
 
 
 func _process(delta: float) -> void:
+	# v1.54: меню-оверлей закрыли изнутри меню — снимаем слой и паузу
+	if _menu_layer != null and not Game.menu_overlay:
+		_menu_layer.queue_free()
+		_menu_layer = null
+		sim.paused = false
 	# герой в городе: мутанты могут гнаться за ним (M5)
 	if not hero.dead:
 		sim.hero_pos = hero.global_position
@@ -1183,8 +1190,30 @@ func _unhandled_input(event: InputEvent) -> void:
 			_quests_panel.close()
 		elif _codex_panel.is_open():
 			_codex_panel.close()
+		elif _menu_layer != null:
+			pass   # меню уже открыто поверх — Esc съест само меню
 		else:
-			_exit_to_menu()
+			_open_menu_overlay()
+
+
+## Меню-оверлей (v1.54): Esc в городе БЕЗ смены сцены — главный экран
+## меню ложится поверх, город на паузе. Прежний выход пересоздавал сцену:
+## полная перевыпечка воды/теней давала «долго думает, текстуры не
+## прогружены». Закрывает меню само (Esc/«Продолжить») — через флаг.
+func _open_menu_overlay() -> void:
+	if _menu_layer != null:
+		return
+	sim.paused = true
+	Game.menu_overlay = true
+	_menu_layer = CanvasLayer.new()
+	_menu_layer.layer = 100
+	var dim := ColorRect.new()
+	dim.color = Color(0, 0, 0, 0.55)
+	dim.set_anchors_preset(Control.PRESET_FULL_RECT)
+	dim.mouse_filter = Control.MOUSE_FILTER_STOP
+	_menu_layer.add_child(dim)
+	_menu_layer.add_child(load("res://scenes/main_menu.tscn").instantiate())
+	add_child(_menu_layer)
 
 
 ## Esc (фидбек заказчика 2026-10-20): как раньше — сразу в меню; перед выходом

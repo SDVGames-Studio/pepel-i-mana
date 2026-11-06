@@ -54,6 +54,12 @@ func _read_json(path: String) -> Variant:
 
 
 func _on_continue_pressed() -> void:
+	# v1.54: меню открыто ОВЕРЛЕЕМ над городом — «продолжить» просто
+	# закрывает меню (сцена города не пересоздаётся)
+	if Game.menu_overlay:
+		Game.menu_overlay = false
+		queue_free()
+		return
 	# M14-A: сессии нет — пробуем файл сейва (город и мир целиком из user://)
 	if Game.city_sim == null:
 		var err: String = Game.load_game()
@@ -91,9 +97,18 @@ func _on_save_pressed(save: Button) -> void:
 	save.text = Loc.t("menu.save_done") if err == "" else Loc.t(err)
 
 
+func _close_overlay_if_any() -> bool:
+	if Game.menu_overlay:
+		Game.menu_overlay = false
+		queue_free()
+		return true
+	return false
+
+
 ## v1.53: «Новая игра» — сразу экран места города (основание города =
 ## новая игра; настройки старта — циклическими кнопками на нём).
 func _on_new_game_pressed() -> void:
+	Game.menu_overlay = false   # v1.54: из оверлея — чистый переход
 	get_tree().change_scene_to_file("res://scenes/start_found.tscn")
 
 
@@ -105,6 +120,9 @@ func _on_exit_pressed() -> void:
 ## работает как пауза. Без сессии Esc ничего не делает.
 func _unhandled_input(event: InputEvent) -> void:
 	if not event.is_action_pressed("ui_cancel"):
+		return
+	# v1.54: оверлей-меню — Esc просто закрывает его (город под ним жив)
+	if _close_overlay_if_any():
 		return
 	if Game.city_sim == null:
 		return

@@ -183,6 +183,11 @@ const BLOCKS := [
 	"_test_v153_letters",
 	"_test_v153_icons",
 ]],
+	["res://tests/test_v154.gd", [
+	"_test_v154_letters_tabs",
+	"_test_v154_start_and_menu",
+	"_test_v154_shadow_and_map",
+]],
 
 	["res://tests/test_dungeon2.gd", [
 	"_test_dungeon2_assets",

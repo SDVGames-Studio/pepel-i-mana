@@ -22,6 +22,7 @@ var inventory: Array = []        # [{id: String, count: int}]
 var last_run_death := false      # true, если последний забег закончился гибелью
 var city_sim = null              # city_sim.gd, нетипизированно (грабли GDScript 4)
 var pending_city_map = null      # v1.52: карта города, сгенерённая для выбора места
+var menu_overlay := false        # v1.54: меню открыто оверлеем над городом
 var city_bake_cache := {}   # v1.43: LRU-кэш чанков запечки городов (большие карты)
 var magic = null                 # magic.gd — школы/рецепты/заклинания (M3)
 var skills = null                # skills.gd — XP, уровни, дерево навыков героя (M7)
@@ -451,7 +452,9 @@ func new_world() -> void:
 	var city_cfg_v: Variant = _read_json(CITY_CFG_PATH)
 	npc_cities = load("res://scripts/npc_cities.gd").new()
 	npc_cities.setup(world_map, cfg, city_cfg_v if city_cfg_v is Dictionary else {})
-	npc_cities.ensure(0)
+	# v1.54 (долгий старт): все 20 городов НПС генерились на старте одним
+	# куском; теперь 3 ближайших, остальные — при входе на карту мира
+	npc_cities.ensure(0, 3)
 	visiting_city_id = -1
 
 

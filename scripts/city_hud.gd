@@ -9,6 +9,7 @@ var guest := false             # v1.41: герой в поселении НПС 
                                # управляет сам, панель стройки спрятана
 
 var _res_counts: Dictionary = {}      # res id -> Label числа (v1.53: иконки)
+var _res_name: Label = null           # v1.54: мгновенная подпись под курсором
 var _res_icons: Dictionary = {}       # res id -> ImageTexture (кэш)
 var _pop_label: Label
 var _day_label: Label
@@ -685,6 +686,17 @@ func _build() -> void:
 		cell.add_child(num)
 		res_grid.add_child(cell)
 		_res_counts[rid] = num
+		# v1.54: наведение показывает название СРАЗУ (тултип Godot тянется
+		# ~секунду — заказчик просил быстрее) — подпись под сеткой
+		var rid_cap: String = rid
+		cell.mouse_entered.connect(func() -> void:
+			_res_name.text = Loc.t("res." + rid_cap))
+		cell.mouse_exited.connect(func() -> void:
+			_res_name.text = "")
+	# строка мгновенной подписи
+	_res_name = _label(15)
+	_res_name.add_theme_color_override("font_color", Color("#e8d9a8"))
+	tl_box.add_child(_res_name)
 	_pop_label = _label(20)
 	tl_box.add_child(_pop_label)
 	_day_label = _label(20)
