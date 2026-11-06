@@ -8,7 +8,8 @@ var cfg: Dictionary = {}
 var guest := false             # v1.41: герой в поселении НПС — стройкой город
                                # управляет сам, панель стройки спрятана
 
-var _res_label: Label
+var _res_counts: Dictionary = {}      # res id -> Label числа (v1.53: иконки)
+var _res_icons: Dictionary = {}       # res id -> ImageTexture (кэш)
 var _pop_label: Label
 var _day_label: Label
 var _weather_label: Label
@@ -71,21 +72,14 @@ func _process(delta: float) -> void:
 func refresh() -> void:
 	if sim == null:
 		return
-	# v1.25: накопление без лимита — потолок хранилища больше не показываем
-	_res_label.text = "%s %d   %s %d   %s %d   %s %d   %s %d\n%s %d   %s %d   %s %d   %s %d   %s %d   %s %d   %s %d" % [
-		Loc.t("res.wood"), int(sim.res["wood"]),
-		Loc.t("res.stone"), int(sim.res["stone"]),
-		Loc.t("res.food"), int(sim.res["food"]),
-		Loc.t("res.crystal"), int(sim.res["crystal"]),
-		Loc.t("res.tools"), int(sim.res.get("tools", 0)),
-		Loc.t("res.gems"), int(sim.res.get("gems", 0)),
-		Loc.t("res.iron"), int(sim.res.get("iron", 0)),
-		Loc.t("res.metal"), int(sim.res.get("metal", 0)),
-		Loc.t("res.kits"), int(sim.res.get("kits", 0)),
-		Loc.t("res.seeds"), int(sim.res.get("seeds", 0)),
-		Loc.t("res.saplings"), int(sim.res.get("saplings", 0)),
-		Loc.t("res.coins"), Game.coins,
-	]
+	# v1.53: ресурсы — ИКОНКИ с числами (вместо двух текстовых строк);
+	# названия — во всплывающей подсказке у иконки
+	for id in _res_counts:
+		var val := int(Game.coins) if id == "coins" else int(sim.res.get(id, 0))
+		var lbl: Label = _res_counts[id]
+		var txt := str(val)
+		if lbl.text != txt:
+			lbl.text = txt
 	_pop_label.text = Loc.t("city.pop") % [sim.residents.size(), sim.pop_cap()]
 	var day_text: String = Loc.t("city.day") % sim.day_number()
 	if sim.is_night():
@@ -668,8 +662,29 @@ func _build() -> void:
 	root.add_child(top_left)
 	var tl_box := VBoxContainer.new()
 	top_left.add_child(tl_box)
-	_res_label = _label(22)
-	tl_box.add_child(_res_label)
+	# v1.53: панель ресурсов — сетка ИКОНОК 6×2 (число рядом с картинкой,
+	# название ресурса — всплывающая подсказка)
+	var res_grid := GridContainer.new()
+	res_grid.columns = 6
+	res_grid.add_theme_constant_override("h_separation", 8)
+	res_grid.add_theme_constant_override("v_separation", 2)
+	tl_box.add_child(res_grid)
+	for rid in ["wood", "stone", "food", "crystal", "tools", "gems",
+			"iron", "metal", "kits", "seeds", "saplings", "coins"]:
+		var cell := HBoxContainer.new()
+		cell.add_theme_constant_override("separation", 3)
+		var icon := TextureRect.new()
+		icon.texture = res_icon(rid)
+		icon.custom_minimum_size = Vector2(18, 18)
+		icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		icon.tooltip_text = Loc.t("res." + rid)
+		cell.add_child(icon)
+		var num := _label(19)
+		num.text = "0"
+		num.tooltip_text = icon.tooltip_text
+		cell.add_child(num)
+		res_grid.add_child(cell)
+		_res_counts[rid] = num
 	_pop_label = _label(20)
 	tl_box.add_child(_pop_label)
 	_day_label = _label(20)
@@ -1199,3 +1214,88 @@ func _set_rect(control: Control, pos: Vector2, size: Vector2) -> void:
 	else:
 		control.position = pos
 	control.custom_minimum_size = size
+
+
+## ---------- иконки ресурсов (v1.53): процедурные 16×16, свой стиль ------
+
+const RES_ICON_STYLE := {
+	"wood": ["log", Color("#8d6e63")],
+	"stone": ["rock", Color("#9e9e9e")],
+	"food": ["leaf", Color("#8bc34a")],
+	"crystal": ["gem", Color("#b46ee0")],
+	"tools": ["gear", Color("#78909c")],
+	"gems": ["gem", Color("#e0b13e")],
+	"iron": ["nugget", Color("#b0684a")],
+	"metal": ["bar", Color("#cfd8dc")],
+	"kits": ["box", Color("#ffb74d")],
+	"seeds": ["dots", Color("#c9b458")],
+	"saplings": ["sprout", Color("#66aa50")],
+	"coins": ["coin", Color("#ffd54f")],
+}
+
+
+func res_icon(id: String) -> ImageTexture:
+	if _res_icons.has(id):
+		return _res_icons[id]
+	var st: Array = RES_ICON_STYLE.get(id, ["rock", Color.GRAY])
+	var kind := String(st[0])
+	var col: Color = st[1]
+	var img := Image.create(16, 16, false, Image.FORMAT_RGBA8)
+	var px := func(x: int, y: int, c: Color) -> void:
+		if x >= 0 and y >= 0 and x < 16 and y < 16:
+			img.set_pixel(x, y, c)
+	var rectf := func(x0: int, y0: int, w: int, h: int, c: Color) -> void:
+		for yy in range(y0, y0 + h):
+			for xx in range(x0, x0 + w):
+				px.call(xx, yy, c)
+	match kind:
+		"log":
+			rectf.call(1, 6, 14, 5, col)
+			rectf.call(1, 6, 14, 1, col.lightened(0.25))
+			rectf.call(12, 5, 3, 7, col.darkened(0.3))
+		"rock":
+			rectf.call(4, 6, 8, 6, col)
+			rectf.call(3, 8, 10, 4, col)
+			rectf.call(5, 6, 4, 2, col.lightened(0.25))
+		"leaf":
+			rectf.call(6, 3, 4, 9, col)
+			rectf.call(4, 5, 8, 5, col)
+			rectf.call(7, 12, 2, 2, Color("#5d4037"))
+		"gem":
+			for yy in 16:
+				for xx in 16:
+					var d := absi(xx - 8) + absi(yy - 8)
+					if d <= 6:
+						px.call(xx, yy, col if (xx + yy) % 7 != 0 else col.lightened(0.35))
+		"gear":
+			rectf.call(5, 2, 6, 12, col)
+			rectf.call(2, 5, 12, 6, col)
+			rectf.call(6, 6, 4, 4, col.darkened(0.4))
+		"nugget":
+			rectf.call(4, 6, 8, 6, col)
+			rectf.call(6, 4, 5, 4, col)
+			rectf.call(5, 5, 3, 2, col.lightened(0.2))
+		"bar":
+			rectf.call(2, 6, 12, 6, col)
+			rectf.call(2, 6, 12, 1, Color.WHITE.lerp(col, 0.4))
+		"box":
+			rectf.call(3, 4, 10, 9, col)
+			rectf.call(3, 4, 10, 2, col.lightened(0.2))
+			rectf.call(7, 4, 2, 9, col.darkened(0.25))
+		"dots":
+			for c in [Vector2i(4, 5), Vector2i(9, 4), Vector2i(6, 9), Vector2i(11, 9), Vector2i(3, 12), Vector2i(9, 12)]:
+				rectf.call(c.x, c.y, 3, 3, col)
+		"sprout":
+			rectf.call(7, 8, 2, 6, Color("#5d4037"))
+			rectf.call(3, 4, 4, 4, col)
+			rectf.call(9, 3, 4, 4, col)
+			rectf.call(6, 6, 4, 3, col.darkened(0.15))
+		"coin":
+			for yy in 16:
+				for xx in 16:
+					var dd := Vector2(xx - 8, yy - 8).length()
+					if dd <= 6.0:
+						px.call(xx, yy, col if dd > 4.5 else col.lightened(0.3))
+	var tex := ImageTexture.create_from_image(img)
+	_res_icons[id] = tex
+	return tex

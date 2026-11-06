@@ -1281,5 +1281,13 @@
 	"pick.bad_edge": "Слишком близко к краю карты (нужно место под стены и поля)",
 	"pick.confirm": "Основать город здесь",
 	"pick.bad_anomaly": "Слишком близко к аномалии (нужен подход для боя)",
-	"pick.bad_exit": "Слишком близко к выходу на карту мира"
+	"pick.bad_exit": "Слишком близко к выходу на карту мира",
+	"letter.threat": "Угроза",
+	"letter.storm": "Стихия",
+	"letter.hive": "Улей мутантов",
+	"letter.forest": "Лес",
+	"letter.necro": "Тьма",
+	"letter.trade": "Торговля",
+	"letter.people": "Люди",
+	"letter.world": "Вести мира"
 }

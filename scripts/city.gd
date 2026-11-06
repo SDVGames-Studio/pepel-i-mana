@@ -43,6 +43,7 @@ var _equip_panel = null         # панель экипировки и краф�
 var _gov_panel = null           # панель управления: законы/вера/дипломатия (M14-H, L)
 var _quests_panel = null        # доска объявлений (M14-K, клавиша Q)
 var _overview = null            # обзорная карта города (v1.51, клавиша N)
+var _notices = null             # донесения-письма (v1.53, справа)
 var _codex_panel = null         # кодекс и статистика (M14-K, клавиша K)
 var _ambience = null            # светлячки и огоньки (M14-C, T21/T23)
 var _weather_fx = null          # погода: дождь/снег/туман/буря (M14-J)
@@ -162,6 +163,9 @@ func _ready() -> void:
 	_overview.setup(map, sim)
 	_overview.hero_cb = func(): return hero
 	add_child(_overview)
+	# донесения-письма (v1.53): крупные события справа, читается/закрывается
+	_notices = load("res://scripts/notice_feed.gd").new()
+	add_child(_notices)
 
 
 ## Крафт предмета (M14-B/T05): оружейка куёт оружие и броню, мастерская —
@@ -578,6 +582,13 @@ func _hover_base(b: Dictionary) -> String:
 	return bld_name
 
 
+## Донесение-письмо вместо тоста (v1.53): крупные события — справа.
+func _letter(ev_type: String, msg: String) -> void:
+	hud.toast(msg)   # короткая вспышка внизу остаётся
+	if _notices != null:
+		_notices.push(ev_type, msg)
+
+
 func _process_events() -> void:
 	for ev in sim.events:
 		var bld_name := _bld_name(String(ev.get("bld", "")))
@@ -597,7 +608,7 @@ func _process_events() -> void:
 			"wild_gift":
 				hud.toast(Loc.t("magic.wild_gift"))
 			"refugee":
-				hud.toast(Loc.t("city.refugee_came") % String(ev["name"]))
+				_letter("refugee", Loc.t("city.refugee_came") % String(ev["name"]))
 			"birth":
 				hud.toast(Loc.t("city.birth_toast") % String(ev["name"]))
 			"grown":
@@ -615,10 +626,10 @@ func _process_events() -> void:
 			"morning_plan":
 				hud.toast(Loc.t("city.morning_plan_toast"))
 			"winter_soon":
-				hud.toast(Loc.t("city.winter_soon") % int(ev["days"]))
+				_letter("winter_soon", Loc.t("city.winter_soon") % int(ev["days"]))
 				hud.refresh()
 			"legend_joined":
-				hud.toast(Loc.t("world.legend_joined") % String(ev["name"]))
+				_letter("legend_joined", Loc.t("world.legend_joined") % String(ev["name"]))
 				hud.refresh()
 			"hauled":
 				hud.toast(Loc.t("city.hauled_toast") % [String(ev["name"]), int(ev["n"]),
@@ -649,30 +660,30 @@ func _process_events() -> void:
 				hud.toast(Loc.t("story.mutation_bad_toast") % String(ev["name"]))
 			# --- угрозы (M5) ---
 			"raid_warn":
-				hud.toast(Loc.t("city.raid_warn") % "%.1f" % float(ev["eta"]))
+				_letter("raid_warn", Loc.t("city.raid_warn") % "%.1f" % float(ev["eta"]))
 			"raid_start":
-				hud.toast(Loc.t("city.raid_siege_toast" if bool(ev["siege"]) else "city.raid_toast") % int(ev["count"]))
+				_letter("raid_start", Loc.t("city.raid_siege_toast" if bool(ev["siege"]) else "city.raid_toast") % int(ev["count"]))
 			"raid_repelled":
-				hud.toast(Loc.t("city.raid_repelled_toast") % int(ev["crystals"]))
+				_letter("raid_repelled", Loc.t("city.raid_repelled_toast") % int(ev["crystals"]))
 			"raid_breached":
-				hud.toast(Loc.t("city.raid_breached_toast") % int(ev["razed"]))
+				_letter("raid_breached", Loc.t("city.raid_breached_toast") % int(ev["razed"]))
 			"razed":
-				hud.toast(Loc.t("city.razed_toast") % bld_name)
+				_letter("razed", Loc.t("city.razed_toast") % bld_name)
 				_rebuild_collision()
 			"dungeon_calm":
 				# данж у города зачищен — волны мутантов сдвинулись (2026-10-21)
 				hud.toast(Loc.t("city.dungeon_calm_toast") % int(ev["days"]))
 			# --- улей мутантов («Новый мир v2», v1.44) ---
 			"hive_built":
-				hud.toast(Loc.t("event.hive_built"))
+				_letter("hive_built", Loc.t("event.hive_built"))
 			"hive_grew":
-				hud.toast(Loc.t("event.hive_grew") % int(ev["level"]))
+				_letter("hive_grew", Loc.t("event.hive_grew") % int(ev["level"]))
 			"hive_wave":
-				hud.toast(Loc.t("event.hive_wave") % int(ev["count"]))
+				_letter("hive_wave", Loc.t("event.hive_wave") % int(ev["count"]))
 			"mutant_hit":
 				hud.toast(Loc.t("event.mutant_hit") % String(ev["name"]))
 			"hive_destroyed":
-				hud.toast(Loc.t("event.hive_destroyed") % int(ev["level"]))
+				_letter("hive_destroyed", Loc.t("event.hive_destroyed") % int(ev["level"]))
 				_rebuild_collision()
 			"hero_kill":
 				# v1.49: убийства мутантов в городе качают навыки, как в данже
@@ -681,14 +692,14 @@ func _process_events() -> void:
 					hud.toast(Loc.t("hud.level_up") % Game.skills.level)
 			# --- эпицентр катастрофы («Новый мир v2», v1.45) ---
 			"twisted_fell":
-				hud.toast(Loc.t("event.twisted_fell") % String(ev["a"]))
+				_letter("twisted_fell", Loc.t("event.twisted_fell") % String(ev["a"]))
 			"twisted_attack":
-				hud.toast(Loc.t("event.twisted_attack") % String(ev["a"]))
+				_letter("twisted_attack", Loc.t("event.twisted_attack") % String(ev["a"]))
 			"eruption":
-				hud.toast(Loc.t("event.eruption") % int(ev["power"]))
+				_letter("eruption", Loc.t("event.eruption") % int(ev["power"]))
 			# --- соцжизнь/паника (v1.47) ---
 			"raid_panic":
-				hud.toast(Loc.t("city.raid_panic_toast"))
+				_letter("raid_panic", Loc.t("city.raid_panic_toast"))
 			"date":
 				hud.toast(Loc.t("city.date_toast") % [String(ev["a"]), String(ev["b"])])
 			"jealous":
@@ -713,13 +724,13 @@ func _process_events() -> void:
 				hud.toast(Loc.t("city.moved_toast") % bld_name)
 				_rebuild_collision()
 			"storm_warn":
-				hud.toast(Loc.t("city.storm_warn_toast"))
+				_letter("storm_warn", Loc.t("city.storm_warn_toast"))
 			"storm_start":
-				hud.toast(Loc.t("city.storm_start_toast"))
+				_letter("storm_start", Loc.t("city.storm_start_toast"))
 			"storm_end":
-				hud.toast(Loc.t("city.storm_end_toast"))
+				_letter("storm_end", Loc.t("city.storm_end_toast"))
 			"storm_strike":
-				hud.toast(Loc.t("city.storm_strike_toast") % bld_name)
+				_letter("storm_strike", Loc.t("city.storm_strike_toast") % bld_name)
 			"hero_hit":
 				hero.take_damage(int(ev["dmg"]))
 			"hunt":
@@ -749,15 +760,15 @@ func _process_events() -> void:
 			"orchard_harvest":
 				hud.toast(Loc.t("city.orchard_toast") % int(ev["food"]))
 			"caravan_arrived":
-				hud.toast(Loc.t("city.caravan_arrived_toast"))
+				_letter("caravan_arrived", Loc.t("city.caravan_arrived_toast"))
 			"caravan_left":
-				hud.toast(Loc.t("city.caravan_left_toast"))
+				_letter("caravan_left", Loc.t("city.caravan_left_toast"))
 			"caravan_sent":
 				hud.toast(Loc.t("city.caravan_sent_toast") % [int(ev["amount"]), Loc.t("res." + String(ev["res"]))])
 			"caravan_returned":
-				hud.toast(Loc.t("city.caravan_returned_toast") % int(ev["coins"]))
+				_letter("caravan_returned", Loc.t("city.caravan_returned_toast") % int(ev["coins"]))
 			"caravan_lost":
-				hud.toast(Loc.t("city.caravan_lost_toast") % Loc.t("res." + String(ev["res"])))
+				_letter("caravan_lost", Loc.t("city.caravan_lost_toast") % Loc.t("res." + String(ev["res"])))
 			# --- торговые палатки (этап 2, аспект 4) ---
 			"tent_income":
 				hud.toast(Loc.t("city.tent_income_toast") % int(ev["coins"]))
@@ -781,7 +792,7 @@ func _process_events() -> void:
 			"tree_grown":
 				hud.toast(Loc.t("city.tree_grown_toast"))
 			"forest_warn":
-				hud.toast(Loc.t("city.forest_warn_toast"))
+				_letter("forest_warn", Loc.t("city.forest_warn_toast"))
 			"spirit_attack":
 				hud.toast(Loc.t("city.spirit_toast") % int(ev.get("count", 0)))
 			"forest_boss_attack":
@@ -806,7 +817,7 @@ func _process_events() -> void:
 			"necro_summon":
 				hud.toast(Loc.t("city.necro_summon_toast"))
 			"undead_rising":
-				hud.toast(Loc.t("city.undead_toast") % int(ev.get("count", 0)))
+				_letter("undead_rising", Loc.t("city.undead_toast") % int(ev.get("count", 0)))
 			"necro_purged":
 				hud.toast(Loc.t("city.necro_purged_toast"))
 				_rebuild_collision()
@@ -822,7 +833,7 @@ func _process_events() -> void:
 			"log_hauled":
 				hud.toast(Loc.t("city.log_hauled_toast") % String(ev.get("name", "")))
 			"dark_storm":
-				hud.toast(Loc.t("city.dark_storm_toast"))
+				_letter("dark_storm", Loc.t("city.dark_storm_toast"))
 			# --- вишлист M13: пары и День основания ---
 			"wedding":
 				hud.toast(Loc.t("story.wedding_toast") % [String(ev["a"]), String(ev["b"])])

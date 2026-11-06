@@ -17,6 +17,15 @@ const TILE_COLS := {
 	6: Color(0.62, 0.58, 0.50),   # руины
 }
 
+const LEVELS := ["low", "normal", "high"]   # настройки старта (v1.53)
+
+var _level_idx := 1
+var _test_on := false
+var _conflicts_on := true
+var _level_btn: Button = null
+var _test_btn: Button = null
+var _conf_btn: Button = null
+
 var map = null                 # pending_city_map
 var _map_rect: Control = null
 var _status: Label = null
@@ -61,6 +70,22 @@ func _ready() -> void:
 	_status.custom_minimum_size = Vector2(1120, 0)
 	_status.add_theme_color_override("font_color", Color(0.85, 0.85, 0.8))
 	box.add_child(_status)
+	# настройки старта (v1.53): три циклические кнопки — щелчок меняет
+	# вариант, значение видно на самой кнопке (вместо бывшей панели в меню)
+	var opts := HBoxContainer.new()
+	opts.alignment = BoxContainer.ALIGNMENT_CENTER
+	opts.add_theme_constant_override("separation", 10)
+	box.add_child(opts)
+	_level_btn = _cycle_button(opts, func() -> String:
+		return Loc.t("menu.start_level") + ": " + Loc.t("menu.level." + LEVELS[_level_idx]),
+		func() -> void:
+			_level_idx = (_level_idx + 1) % LEVELS.size())
+	_test_btn = _cycle_button(opts, func() -> String:
+		return Loc.t("menu.test_mode") + (": ВКЛ" if _test_on else ": выкл"),
+		func() -> void: _test_on = not _test_on)
+	_conf_btn = _cycle_button(opts, func() -> String:
+		return Loc.t("menu.conflicts") + (": ВКЛ" if _conflicts_on else ": выкл"),
+		func() -> void: _conflicts_on = not _conflicts_on)
 	var row := HBoxContainer.new()
 	row.alignment = BoxContainer.ALIGNMENT_CENTER
 	row.add_theme_constant_override("separation", 12)
@@ -80,6 +105,20 @@ func _ready() -> void:
 	_picked = map.spawn_tile
 	_update_status()
 	_rebake()
+
+
+## Циклическая кнопка: текст по колбеку-геттеру, клик — по колбеку-сеттеру.
+func _cycle_button(parent: Control, getter: Callable, on_click: Callable) -> Button:
+	var b := Button.new()
+	b.focus_mode = Control.FOCUS_NONE
+	b.add_theme_font_size_override("font_size", 15)
+	var refresh := func() -> void: b.text = String(getter.call())
+	refresh.call()
+	b.pressed.connect(func() -> void:
+		on_click.call()
+		refresh.call())
+	parent.add_child(b)
+	return b
 
 
 func _rebake() -> void:
@@ -191,6 +230,9 @@ func _draw_map() -> void:
 func _found() -> void:
 	if _picked.x < 0:
 		return
+	Game.start_level = LEVELS[_level_idx]
+	Game.test_mode = _test_on
+	Game.conflicts_enabled = _conflicts_on
 	var err: String = Game.found_city(_picked)
 	if err != "":
 		_update_status()

@@ -178,6 +178,11 @@ const BLOCKS := [
 	"_test_v151_overview",
 	"_test_v151_city_found",
 ]],
+	["res://tests/test_v153.gd", [
+	"_test_v153_menu",
+	"_test_v153_letters",
+	"_test_v153_icons",
+]],
 
 	["res://tests/test_dungeon2.gd", [
 	"_test_dungeon2_assets",

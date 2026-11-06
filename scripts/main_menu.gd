@@ -11,10 +11,6 @@ const LEVELS := ["low", "normal", "high"]
 @onready var continue_button: Button = %ContinueButton
 @onready var exit_button: Button = %ExitButton
 
-var _setup_box: VBoxContainer
-var _level_option: OptionButton
-var _test_check: CheckButton
-var _conflicts_check: CheckButton
 
 
 func _ready() -> void:
@@ -95,12 +91,10 @@ func _on_save_pressed(save: Button) -> void:
 	save.text = Loc.t("menu.save_done") if err == "" else Loc.t(err)
 
 
+## v1.53: «Новая игра» — сразу экран места города (основание города =
+## новая игра; настройки старта — циклическими кнопками на нём).
 func _on_new_game_pressed() -> void:
-	if _setup_box != null:
-		_setup_box.visible = not _setup_box.visible
-		return
-	_build_setup()
-	_setup_box.visible = true
+	get_tree().change_scene_to_file("res://scenes/start_found.tscn")
 
 
 func _on_exit_pressed() -> void:
@@ -114,90 +108,9 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 	if Game.city_sim == null:
 		return
-	# панель настроек новой игры открыта — сначала закрываем её
-	if _setup_box != null and _setup_box.visible:
-		_setup_box.visible = false
-		return
 	if Game.world_active and Game.world_map != null:
 		get_tree().change_scene_to_file("res://scenes/world.tscn")
 	else:
 		get_tree().change_scene_to_file("res://scenes/city.tscn")
 
 
-## Панель настроек старта (вопрос 11): запас ресурсов; жители всегда с одного.
-func _build_setup() -> void:
-	_setup_box = VBoxContainer.new()
-	_setup_box.add_theme_constant_override("separation", 10)
-	($VBox as VBoxContainer).add_child(_setup_box)
-	_setup_box.visible = false
-
-	var title := Label.new()
-	title.text = Loc.t("menu.setup_title")
-	title.add_theme_font_size_override("font_size", 24)
-	_setup_box.add_child(title)
-
-	# правки v1.12.0: герой начинает ОДИН, поселенцы приходят сами —
-	# выбор числа жителей убран, меню объясняет новый старт
-	var solo := Label.new()
-	solo.text = Loc.t("menu.solo_start")
-	solo.add_theme_font_size_override("font_size", 18)
-	solo.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	solo.custom_minimum_size = Vector2(460, 0)
-	_setup_box.add_child(solo)
-
-	var lvl_row := HBoxContainer.new()
-	_setup_box.add_child(lvl_row)
-	var lvl_label := Label.new()
-	lvl_label.text = Loc.t("menu.start_level") + ": "
-	lvl_label.add_theme_font_size_override("font_size", 20)
-	lvl_row.add_child(lvl_label)
-	_level_option = OptionButton.new()
-	for key in LEVELS:
-		_level_option.add_item(Loc.t("menu.level." + key))
-	_level_option.selected = 1
-	_level_option.add_theme_font_size_override("font_size", 20)
-	lvl_row.add_child(_level_option)
-
-	var test_check := CheckButton.new()
-	test_check.text = Loc.t("menu.test_mode")
-	test_check.add_theme_font_size_override("font_size", 18)
-	test_check.focus_mode = Control.FOCUS_NONE
-	_setup_box.add_child(test_check)
-	_test_check = test_check
-
-	var conflicts_check := CheckButton.new()
-	conflicts_check.text = Loc.t("menu.conflicts")
-	conflicts_check.button_pressed = true
-	conflicts_check.add_theme_font_size_override("font_size", 18)
-	conflicts_check.focus_mode = Control.FOCUS_NONE
-	_setup_box.add_child(conflicts_check)
-	_conflicts_check = conflicts_check
-
-	# идёт игра — предупреждаем, что новая её затрёт (фидбек приёмки M8)
-	if Game.city_sim != null:
-		var warn := Label.new()
-		warn.text = Loc.t("menu.new_game_warn")
-		warn.add_theme_font_size_override("font_size", 16)
-		warn.add_theme_color_override("font_color", Color("#ff8a80"))
-		_setup_box.add_child(warn)
-
-	var begin := Button.new()
-	begin.text = Loc.t("menu.begin")
-	begin.add_theme_font_size_override("font_size", 24)
-	begin.pressed.connect(_on_begin_pressed)
-	_setup_box.add_child(begin)
-
-	var back := Button.new()
-	back.text = Loc.t("menu.back")
-	back.add_theme_font_size_override("font_size", 20)
-	back.pressed.connect(func() -> void: _setup_box.visible = false)
-	_setup_box.add_child(back)
-
-
-func _on_begin_pressed() -> void:
-	Game.start_residents = 1   # правки v1.12.0: стартуем в одиночестве
-	Game.start_level = LEVELS[_level_option.selected]
-	Game.test_mode = _test_check.button_pressed
-	Game.conflicts_enabled = _conflicts_check.button_pressed
-	# v1.52: выбор места города НА КАРТЕ ГОРОДА — отдельный экран
-	get_tree().change_scene_to_file("res://scenes/start_found.tscn")
