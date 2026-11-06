@@ -43,6 +43,15 @@ var _tex: Texture2D = null          # устарело (оставлено дл�
 var _vp2: SubViewport = null
 var _drawer2: Node2D = null
 var _tex2: Texture2D = null
+# v1.52.2 (веб-фризы): надстройки — инкремент. Духовка №2 полна (первый
+# бейк); при static_dirty ПЕРЕРИСОВЫВАЮТСЯ ТОЛЬКО изменённые тайлы:
+# содержимое клетки пересчитывается в мини-Image (CPU, без GPU-вьюпорта)
+# и блитуется в _static_img; текстура обновляется одним update.
+# Прежняя полная перевыпечка (110К тайлов, дорога самостроя каждый день)
+# в вебе давала секундные фризы.
+var _static_img: Image = null
+var _static_tex: ImageTexture = null
+var _static_full_bake := true
 
 
 func setup(city_map, city_cfg: Dictionary, city_sim = null, cache_key := "") -> void:
@@ -100,7 +109,7 @@ func setup(city_map, city_cfg: Dictionary, city_sim = null, cache_key := "") -> 
 	_drawer2 = Node2D.new()
 	_drawer2.draw.connect(_draw_static_content)
 	_vp2.add_child(_drawer2)
-	_tex2 = _vp2.get_texture()
+	_tex2 = _vp2.get_texture()   # после первого UPDATE_ONCE уходим на _static_tex
 	# кисти чанков (2 в конвейере: пока один копируется, второй рисуется)
 	for i in 2:
 		var vp := SubViewport.new()
@@ -224,10 +233,22 @@ func rebake(heavy := false, grid_ver := -1, edited: Array = []) -> void:
 		for c in wanted:
 			if not _chunk_queue.has(c):
 				_chunk_queue.append(c)
-	# надстройки всегда перерисовываются — их мало (сотни команд)
-	_drawer2.queue_redraw()
-	_vp2.render_target_update_mode = SubViewport.UPDATE_DISABLED
-	_vp2.render_target_update_mode = SubViewport.UPDATE_ONCE
+	# надстройки: полный бейк — только первый кадр (или v1-сейв), дальше
+	# ИНКРЕМЕНТ по изменённым тайлам (см. _static_increment);
+	# sim может потребовать полный ребейк (площадь переехала)
+	if sim != null and sim.map.get_meta(&"static_full_rebake", false):
+		sim.map.set_meta(&"static_full_rebake", false)
+		_static_full_bake = true
+	if _static_full_bake:
+		_drawer2.queue_redraw()
+		_vp2.render_target_update_mode = SubViewport.UPDATE_DISABLED
+		_vp2.render_target_update_mode = SubViewport.UPDATE_ONCE
+		_snapshot_static.call_deferred()
+	else:
+		var edits: Array = sim.map.edited_static.duplicate() if sim != null else []
+		sim.map.edited_static.clear()
+		if not edits.is_empty():
+			_static_increment(edits)
 	queue_redraw()
 
 
@@ -317,8 +338,8 @@ func _draw() -> void:
 			else:
 				# чанк ещё печётся — плоская земля без деталей
 				draw_rect(rect, _grass_shades[0].darkened(0.05) if not _grass_shades.is_empty() 					else Color("#5d7a3a"))
-	if _tex2 != null:
-		draw_texture_rect(_tex2, Rect2(Vector2.ZERO, Vector2(map.w * map.ts, map.h * map.ts)), false)
+	if _static_tex != null:
+		draw_texture_rect(_static_tex, Rect2(Vector2.ZERO, Vector2(map.w * map.ts, map.h * map.ts)), false)
 
 
 ## Отрисовка тайлов — в холст духовки (те же команды, что рисовали в _draw
@@ -431,6 +452,75 @@ func _draw_static_content() -> void:
 	_draw_roads_baked()
 	_draw_zones_baked()
 	_draw_plaza_baked()
+
+
+## Снять содержимое духовки №2 в историю (после полного бейка).
+func _snapshot_static() -> void:
+	if _vp2 == null or not is_inside_tree():
+		return
+	var img := _vp2.get_texture().get_image()
+	if img != null:
+		_static_img = img
+		if _static_tex == null:
+			_static_tex = ImageTexture.create_from_image(_static_img)
+		else:
+			_static_tex.update(_static_img)
+		_static_full_bake = false
+
+
+## Инкремент надстроек: пересчитать изменённые тайлы на CPU (мини-Image
+## на клетку: фон прозрачен, сверху дорога/зона) и влить в историю.
+## Полная перевыпечка больше не нужна — фризов в вебе нет.
+func _static_increment(edits: Array) -> void:
+	if _static_img == null:
+		_static_full_bake = true
+		return
+	var ts := float(map.ts)
+	var px := _bs
+	for e in edits:
+		var t: Vector2i = e
+		var cell := Image.create(px, px, false, Image.FORMAT_RGBA8)
+		cell.fill(Color(0, 0, 0, 0))
+		_cell_static_into(cell, t, ts)
+		_static_img.blit_rect(cell, Rect2i(Vector2i.ZERO, Vector2i(px, px)),
+				Vector2i(t.x * px, t.y * px))
+	if _static_tex == null:
+		_static_tex = ImageTexture.create_from_image(_static_img)
+	else:
+		_static_tex.update(_static_img)
+
+
+## Содержимое одной клетки надстроек (дорога/зона/площадь) в мини-Image.
+## Пиксельные координаты масштабируются от тайла к px-клетке истории.
+func _cell_static_into(cell: Image, t: Vector2i, ts: float) -> void:
+	if map.road.has(t):
+		var col: Color = colors.get("road", Color("#6e5f4a"))
+		_cell_fill(cell, ts, t, Vector2.ZERO, Vector2(ts, ts), col)
+		_cell_fill(cell, ts, t, Vector2(ts * 0.24, ts * 0.33), Vector2(3.5, 3.5), col.lightened(0.2))
+		_cell_fill(cell, ts, t, Vector2(ts * 0.53, ts * 0.55), Vector2(2.8, 2.8), col.lightened(0.15))
+	if sim != null:
+		var fill_work: float = float(sim.cfg.get("zones", {}).get("fill_work", 4.0))
+		for z in sim.zones:
+			var cells: Array = z["cells"]
+			var idx: int = cells.find(t)
+			if idx < 0:
+				continue
+			var zc: Color = _zone_colors.get(String(z["type"]), Color(0.7, 0.7, 0.4))
+			var filled: bool = float(z["progress"][idx]) >= fill_work
+			_cell_fill(cell, ts, t, Vector2.ZERO, Vector2(ts, ts),
+					Color(zc.r, zc.g, zc.b, 0.42 if filled else 0.32))
+			break
+
+
+## Заливка прямоугольника (координаты тайла) в мини-Image клетки истории.
+func _cell_fill(cell: Image, ts: float, t: Vector2i, off: Vector2, sz: Vector2,
+		col: Color) -> void:
+	var s := float(_bs) / ts
+	var r := Rect2i(Vector2((Vector2(t) * ts + off) * s), Vector2(sz * s))
+	r = r.intersection(Rect2i(0, 0, _bs, _bs))
+	if r.size.x <= 0 or r.size.y <= 0:
+		return
+	cell.fill_rect(r, col)
 
 
 ## ---------- блобы: marching squares + сглаживание ----------

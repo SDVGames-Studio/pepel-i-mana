@@ -22,12 +22,22 @@ var ts := 32
 var ruin_loot: Dictionary = {}   # v1.48: лут-тайлы руин (Vector2i -> true)
 var grid_ver := 0
 var edited: Array = []        # v1.43: тайлы правок сетки — чанкам запечки
+var edited_static: Array = [] # v1.52.2: тайлы правок НАДСТРОЕК (дороги/зоны/
+                              # площадь) — инкремент духовки №2 (веб-фризы)
 
 
 ## Отметить правку сетки (для точечной перевыпечки чанка запечки).
 func note_edit(t: Vector2i) -> void:
 	if not edited.has(t):
 		edited.append(t)
+
+
+## Отметить правку надстроек (дорога/зона/площадь) — v1.52.2.
+func note_edit_static(t: Vector2i) -> void:
+	if not edited_static.has(t):
+		edited_static.append(t)
+		if edited_static.size() > 512:
+			edited_static.pop_front()
 	if edited.size() > 128:
 		edited.pop_front()             # v1.28.1: версия масок воды/скал — инкремент при выработке породы
 var grid: Array = []            # grid[y][x] -> TILE_*

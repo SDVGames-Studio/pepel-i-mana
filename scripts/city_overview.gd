@@ -74,6 +74,8 @@ func _build_ui() -> void:
 
 
 func _center_panel() -> void:
+	if not is_inside_tree():
+		return
 	await get_tree().process_frame
 	var vp := _panel.get_viewport_rect().size
 	_panel.position = (Vector2(vp) - _panel.get_minimum_size()) * 0.5

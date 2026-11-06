@@ -455,7 +455,8 @@ func place_road(tile: Vector2i) -> String:
 		return "no_stone"
 	res["stone"] = int(res["stone"]) - cost
 	map.set_road(tile, float(rcfg.get("astar_weight", 0.4)))
-	static_dirty = true   # новая плитка дороги — перевыпечь духовку (v1.22)
+	static_dirty = true   # новая плитка дороги — духовка №2 (v1.22)
+	map.note_edit_static(tile)   # v1.52.2: инкремент, а не вся карта
 	return ""
 
 
@@ -804,9 +805,12 @@ func _roll_city_repair() -> void:
 			worst_rank = rank
 	if worst.is_empty():
 		return
-	# бригада: свободные строители, без них — непрофильные взрослые
+	# бригада: сперва СВОБОДНЫЕ строители, затем свободные непрофильные;
+	# если город разорён и все при деле — работающий строитель уходит
+	# с поста на починку руин (v1.52.2: раньше при занятых жителях бригада
+	# не собиралась вовсе — «жители не чинят здания»)
 	var members: Array = []
-	var frac := 0.0
+	var frac := float(rcfg.get("builder_frac", 0.5))
 	for r in residents:
 		if members.size() >= int(rcfg.get("brigade_size", 3)):
 			break
@@ -823,13 +827,22 @@ func _roll_city_repair() -> void:
 					and r["site"] == null and r["bld"] == null \
 					and String(r.get("ail", "")) == "" and int(r.get("repair_bld", 0)) <= 0:
 				members.append(r)
-	else:
-		frac = float(rcfg.get("builder_frac", 0.5))
+	if members.is_empty():
+		# все при деле: руины важнее смены — один строитель срывается с работы
+		for r in residents:
+			if not members.is_empty():
+				break
+			if String(r["prof"]) == "builder" and String(r.get("ail", "")) == "" \
+					and int(r.get("repair_bld", 0)) <= 0 and not _is_golem(r):
+				r["site"] = null
+				r["bld"] = null
+				members.append(r)
 	if members.is_empty():
 		return
 	# сроки: ЦЕЛЫЙ рабочий день (без ночи); модификаторы — ресурсы и брёвна
 	var awake := maxf(0.3, 1.0 - float(cfg.get("night_fraction", 0.22)))
-	var need := float(cfg["day_length"]) * awake * float(rcfg.get("day_frac", 1.0))
+	# бригадный день: полная бригада (total).finishes за день; каждый тик dt
+	var need := float(cfg["day_length"]) * awake * float(rcfg.get("day_frac", 1.0)) 			* maxf(1.0, float(members.size()))
 	var has_res := can_afford(repair_cost(String(worst["type"]), frac))
 	var use_logs := false
 	if has_res:
@@ -873,10 +886,11 @@ func _repair_errand(r: Dictionary, dt: float) -> bool:
 		r["state"] = "repair"
 		_move_towards(r, bld_spot(b), dt)
 		return true
-	# работа у здания: полный бригадный темп — need за рабочий день;
-	# пришёл не всякий — идёт пропорционально медленнее
+	# работа у здания (v1.52.2: раньше dt делился на total — ПОЛНАЯ бригада
+	# работала не быстрее одиночки, а без ресурсов ×3.5 не влезала в светлые
+	# часы вовсе). Теперь: каждый пришедший вносит dt; need — бригадный день.
 	r["state"] = "repair"
-	brigade_job["work"] = float(brigade_job["work"]) + dt / maxf(1.0, float(brigade_job["total"]))
+	brigade_job["work"] = float(brigade_job["work"]) + dt
 	if float(brigade_job["work"]) < float(brigade_job["need"]):
 		return true
 	# день работы вышел — здание поднято

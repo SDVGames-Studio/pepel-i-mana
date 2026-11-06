@@ -320,7 +320,9 @@ func move_plaza(tile: Vector2i) -> String:
 		if not building_at(c).is_empty():
 			return "city.plaza_bad_spot"
 	plaza = tile
-	static_dirty = true   # плиты площади переехали — перевыпечь духовку (v1.22)
+	static_dirty = true   # плиты площади переехали — духовка №2 (v1.52.2:
+	# площадь редка — после переезда честный ПОЛНЫЙ бейк надстроек)
+	_static_full_rebake()
 	_chron("chron.plaza_moved")
 	return ""
 
@@ -717,3 +719,7 @@ func work_mult(r: Dictionary) -> float:
 func working_tents() -> Array:
 	return []
 
+## v1.52.2: форсировать полный бейк надстроек (площадь переехала и т.п.).
+func _static_full_rebake() -> void:
+	static_dirty = true
+	map.set_meta(&"static_full_rebake", true)

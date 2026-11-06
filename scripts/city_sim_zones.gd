@@ -198,7 +198,9 @@ func add_zone(type_id: String, cells: Array, crop := "turnip") -> int:
 		return 0
 	_zone_id += 1
 	zones.append(zone)
-	static_dirty = true   # новая зона на земле — перевыпечь духовку (v1.22)
+	static_dirty = true   # новая зона на земле — духовка №2 (v1.22)
+	for t: Vector2i in zone["cells"]:
+		map.note_edit_static(t)   # v1.52.2: инкремент надстроек
 	return added
 
 
@@ -439,7 +441,8 @@ func _zone_fill_do(r: Dictionary, target: Dictionary, dt: float) -> void:
 			r["_fill_zone"] = -1
 			r["_fill_idx"] = -1
 			events.append({"type": "zone_cell", "zone": String(z["type"])})
-			static_dirty = true   # клетка обустроена — заливка плотнее (v1.22)
+			static_dirty = true   # клетка обустроена — духовка №2 (v1.22)
+			map.note_edit_static(tile)   # v1.52.2: инкремент надстроек
 			_zone_check_done(z, r)
 	else:
 		_move_towards(r, tile, dt)

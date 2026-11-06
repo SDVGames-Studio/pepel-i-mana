@@ -177,7 +177,7 @@ func _test_v150_brigade() -> void:
 		if not bool(house.get("razed", false)):
 			done1 = true
 			break
-	_check(done1, "за день работы бригада подняла руину")
+	_check(done1, "за бригадный день работа завершена")
 	_check(int(sim.res["wood"]) < 200 or int(sim.res["stone"]) < 200,
 			"ресурсы на ремонт взяты из общего пула")
 	_check(sim.brigade_job.is_empty(), "работа закрыта после починки")
