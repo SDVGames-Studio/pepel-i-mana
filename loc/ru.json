@@ -1289,5 +1289,16 @@
 	"letter.necro": "Тьма",
 	"letter.trade": "Торговля",
 	"letter.people": "Люди",
-	"letter.world": "Вести мира"
+	"letter.world": "Вести мира",
+	"letter.region": "Вести региона",
+	"world.region_raid": "Люди %s разграбили наш караван (−%d монет)",
+	"world.region_migrants": "Из %s пришли переселенцы: %s присоединился к городу",
+	"world.region_sabotage": "Саботажники из %s подожгли склад: %s повреждён",
+	"world.region_gift": "%s прислал дары соседям: +%d монет",
+	"world.region_war": "%s разбил войско %s — регион гремит от войны",
+	"world.region_capital": "Наш город — ПЕРВЫЙ в регионе! Так держать (%d-й день)",
+	"world.region_capital_hold": "Мы удерживаем первенство региона уже %d дней",
+	"world.region_lost_capital": "%s обошёл нас: теперь мы №%d в регионе",
+	"gov.region": "Города региона",
+	"gov.our_city": "НАШ ГОРОД"
 }

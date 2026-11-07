@@ -40,6 +40,8 @@ var residents: Array = []
 var buildings: Array = []
 var brigade_job: Dictionary = {}   # v1.50: бригадная починка — {bld, work, need,
                                    # frac, total, logs}; дневное поручение горожанам
+var rivalry_cb := Callable()    # v1.55: дневной бросок соперничества
+                                # (город.gd подшивает npc_cities.rivalry_day)
 var time := 0.0                 # игровое время, сек (x1)
 var day := 1
 var speed := 1

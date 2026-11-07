@@ -188,6 +188,11 @@ const BLOCKS := [
 	"_test_v154_start_and_menu",
 	"_test_v154_shadow_and_map",
 ]],
+	["res://tests/test_v155.gd", [
+	"_test_v155_soak",
+	"_test_v155_rivalry",
+	"_test_v155_save_migration",
+]],
 
 	["res://tests/test_dungeon2.gd", [
 	"_test_dungeon2_assets",

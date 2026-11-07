@@ -13,7 +13,29 @@ extends RefCounted
 ## восстанавливаются ссылками на словари из buildings после загрузки.
 
 const SAVE_PATH := "user://saves/save.json"
-const FORMAT_VERSION := 1
+
+
+## Пошаговая миграция сейва: from-1 → to. Возвращает мигрированный словарь
+## или {} (миграция невозможна). v1→v2: города НПС добирают rel/standing
+## (дефолты подставит npc_cities.load_block), в мир — метка формата.
+## v1.55 «Сейвы — не мина»: каждое будущее изменение формата добавляет
+## сюда шаг, а не ломает старые сейвы.
+static func _migrate_save(data: Dictionary, to: int) -> Dictionary:
+	match to:
+		2:
+			if not data.has("npc_cities"):
+				return data   # старый сейв без городов НПС — совместимо
+			var nc: Variant = data.get("npc_cities", {})
+			if not (nc is Dictionary) or (nc as Dictionary).is_empty():
+				return data
+			for poi_id in (nc as Dictionary):
+				var blk: Variant = (nc as Dictionary)[poi_id]
+				if blk is Dictionary and not (blk as Dictionary).has("rel"):
+					(blk as Dictionary)["rel"] = 0
+					(blk as Dictionary)["standing"] = 0.0
+			return data
+	return {}
+const FORMAT_VERSION := 2   # v2 (v1.55): в блоках городов НПС — rel/standing
 
 const CITY_CFG_PATH := "res://data/city.json"
 const CITY_MAP_SCRIPT := "res://scripts/city_map.gd"
@@ -111,8 +133,19 @@ static func load_game(game) -> String:
 	if not (parsed is Dictionary):
 		return "save.load_failed"
 	var data: Dictionary = parsed
-	if int(data.get("v", 0)) != FORMAT_VERSION:
-		return "save.bad_version"
+	# v1.55: МИГРАЦИИ — старый сейв дотягивается до текущего формата
+	# пошагово (v1→v2: у городов НПС появились rel/standing — они
+	# подставляются дефолтами в load_block, сама миграция — метка версии).
+	var sv := int(data.get("v", 0))
+	if sv > FORMAT_VERSION:
+		return "save.bad_version"   # сейв из БУДУЩЕЙ версии — не тянем
+	if sv > 0 and sv < FORMAT_VERSION:
+		while sv < FORMAT_VERSION:
+			sv += 1
+			data = _migrate_save(data, sv)
+			if data.is_empty():
+				return "save.bad_version"
+		data["v"] = FORMAT_VERSION
 	if not (data.has("game") and data.has("city") and data.has("world")):
 		return "save.load_failed"
 	if _apply_world(game, data["world"]) != "":

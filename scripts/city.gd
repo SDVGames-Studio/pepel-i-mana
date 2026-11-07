@@ -168,6 +168,11 @@ func _ready() -> void:
 	# донесения-письма (v1.53): крупные события справа, читается/закрывается
 	_notices = load("res://scripts/notice_feed.gd").new()
 	add_child(_notices)
+	# v1.55: ежедневное соперничество регионов — события уходят ПИСЬМАМИ
+	if not guest and Game.npc_cities != null:
+		sim.rivalry_cb = func() -> void:
+			for ev in Game.npc_cities.rivalry_day(sim):
+				_letter(String(ev["type"]), _region_text(ev))
 
 
 ## Крафт предмета (M14-B/T05): оружейка куёт оружие и броню, мастерская —
@@ -587,6 +592,27 @@ func _hover_base(b: Dictionary) -> String:
 		return Loc.t("city.hover_damaged") % [bld_name,
 				int(round(100.0 * float(b.get("hp", max_hp)) / max_hp))]
 	return bld_name
+
+
+## Текст события региона (v1.55) по словарю из npc_cities.rivalry_day.
+func _region_text(ev: Dictionary) -> String:
+	var key := "world." + String(ev["type"])
+	match String(ev["type"]):
+		"region_raid":
+			return Loc.t(key) % [String(ev["name"]), int(ev["n"])]
+		"region_migrants":
+			return Loc.t(key) % [String(ev["name"]), String(ev["who"])]
+		"region_sabotage":
+			return Loc.t(key) % [String(ev["name"]), _bld_name(String(ev["bld"]))]
+		"region_gift":
+			return Loc.t(key) % [String(ev["name"]), int(ev["n"])]
+		"region_war":
+			return Loc.t(key) % [String(ev["winner"]), String(ev["loser"])]
+		"region_capital", "region_capital_hold":
+			return Loc.t(key) % int(ev["days"])
+		"region_lost_capital":
+			return Loc.t(key) % [String(ev["name"]), int(ev["rank"])]
+	return Loc.t(key)
 
 
 ## Донесение-письмо вместо тоста (v1.53): крупные события — справа.

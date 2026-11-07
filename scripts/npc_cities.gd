@@ -12,7 +12,11 @@ const CITY_MAP_SCRIPT := "res://scripts/city_map.gd"
 const CITY_SIM_SCRIPT := "res://scripts/city_sim.gd"
 const SAVE_SCRIPT := "res://scripts/save_game.gd"
 
-var cities := {}            # poi_id -> {poi_id, faction, seed, coins, sim, pop}
+var cities := {}            # poi_id -> {poi_id, faction, seed, coins, sim, pop,
+                            #   rel, standing, name} — v1.55 «Противостояние»
+var player_standing := 0.0  # влияние города игрока (для ранга региона)
+var capital_days := 0       # дней подряд на 1-м месте (путь к столице)
+var _was_capital := false   # письмо «потерял столицу» — один раз за серию
 var world_map = null        # world_map.gd
 var world_cfg: Dictionary = {}
 var city_cfg: Dictionary = {}
@@ -28,6 +32,16 @@ func setup(wmap, wcfg: Dictionary, ccfg: Dictionary) -> void:
 ## Тюнинг городов НПС — world.json -> npc_city.
 func ncfg() -> Dictionary:
 	return world_cfg.get("npc_city", {})
+
+
+## Имя города НПС: детерминированно по poi_id из таблицы world.json
+## (письмам и панели дипломатии нужны имена, а не «поселение культа»).
+func city_name(poi_id: int) -> String:
+	var names: Array = ncfg().get("city_names", [])
+	if names.is_empty():
+		return "город"
+	var idx := absi(hash("name:%d" % poi_id)) % names.size()
+	return String(names[idx])
 
 
 ## Поселения без города получают его (идемпотентно). mature_days — сколько
@@ -94,6 +108,9 @@ func _create(poi: Dictionary, mature_days: int) -> void:
 		"coins": int(ncfg().get("start_coins", 30)),
 		"sim": sim,
 		"pop": sim.residents.size(),
+		"name": city_name(poi_id),   # v1.55
+		"rel": 0,                     # v1.55: отношение к игроку -100..100
+		"standing": 0.0,              # v1.55: влияние в регионе
 	}
 	attach_wallet(entry)
 	cities[poi_id] = entry
@@ -280,6 +297,8 @@ func save_block() -> Dictionary:
 			"faction": String(e["faction"]),
 			"seed": int(e["seed"]),
 			"coins": int(e["coins"]),
+			"rel": int(e.get("rel", 0)),
+			"standing": float(e.get("standing", 0.0)),
 			"city": sg._city_block(e["sim"], false),
 		}
 	return out
@@ -313,7 +332,165 @@ func load_block(block: Dictionary) -> void:
 			"coins": int(d.get("coins", 0)),
 			"sim": sim,
 			"pop": sim.residents.size(),
+			"name": city_name(int(poi_id)),   # v1.55
+			"rel": int(d.get("rel", 0)),       # v1.55
+			"standing": float(d.get("standing", 0.0)),
 		}
 		attach_wallet(entry)
 		cities[int(poi_id)] = entry
 		_sync_pop(entry)
+
+# --- Противостояние регионов (v1.55 «Глубокая игра») ------------------------
+## Ежедневный бросок мира: у каждого города — Влияние (standing: жители,
+## казна, постройки), у игрока — своё. Регион живёт сам: города воюют между
+## собой, соперники грабят караваны/шлют саботажников, дружественные
+## присылают мигрантов и дары. Долгая цель: стать и УДЕРЖАТЬ титул
+## столицы региона (ранг 1 N дней подряд).
+
+## Ежедневный бросок. psim — симуляция города игрока (null, когда игрок
+## на карте мира без города рядом). Возвращает события-словари
+## (type: region_*) — сцена показывает их письмами/тостами.
+func rivalry_day(psim = null) -> Array:
+	var evs: Array = []
+	_update_standings(psim)
+	var rng := RandomNumberGenerator.new()
+	rng.randomize()
+	# --- ранг игрока и столица ---
+	var rank := _player_rank()
+	if rank == 1:
+		capital_days += 1
+		if not _was_capital:
+			_was_capital = true
+			evs.append({"type": "region_capital", "name": "", "days": capital_days})
+		elif capital_days % 10 == 0:
+			evs.append({"type": "region_capital_hold", "name": "", "days": capital_days})
+	else:
+		if _was_capital:
+			_was_capital = false
+			evs.append({"type": "region_lost_capital", "name": _top_city_name(), "rank": rank})
+		capital_days = 0
+	if cities.is_empty():
+		return evs
+	# --- события соперничества (письма раз в 1–3 дня, не спам) ---
+	var rivals := cities.values().filter(func(e): return int(e.get("rel", 0)) < -30)
+	var friends := cities.values().filter(func(e): return int(e.get("rel", 0)) > 40)
+	var roll := rng.randf()
+	if not rivals.is_empty() and roll < 0.22 and psim != null:
+		var rival: Dictionary = rivals[rng.randi_range(0, rivals.size() - 1)]
+		var loss := mini(_player_coins(psim), rng.randi_range(5, 15))
+		if loss > 0 and psim.coins_sink.is_valid():
+			psim.coins_sink.call(-loss)   # караван разграблен по дороге
+			evs.append({"type": "region_raid", "name": String(rival["name"]), "n": loss})
+	elif not friends.is_empty() and roll < 0.45 and psim != null:
+		var friend: Dictionary = friends[rng.randi_range(0, friends.size() - 1)]
+		var profs: Array = psim.cfg.get("professions", [])
+		var pname: String = psim.cfg.get("names", ["гость"])[0]
+		var prof := String(profs[rng.randi_range(0, profs.size() - 1)]["id"]) if not profs.is_empty() else "farmer"
+		var res: Dictionary = psim._new_resident(pname, prof, psim.map.spawn_tile)
+		psim.residents.append(res)
+		evs.append({"type": "region_migrants", "name": String(friend["name"]), "who": pname})
+	elif not rivals.is_empty() and roll < 0.60 and psim != null:
+		var rival2: Dictionary = rivals[rng.randi_range(0, rivals.size() - 1)]
+		var targets: Array = psim.buildings.filter(func(b): return bool(b.get("done", false)) and not bool(b.get("razed", false)))
+		if not targets.is_empty():
+			var b: Dictionary = targets[rng.randi_range(0, targets.size() - 1)]
+			psim._damage_building(b, float(psim._bld_max_hp(String(b["type"]))) * 0.3)
+			evs.append({"type": "region_sabotage", "name": String(rival2["name"]),
+					"bld": String(b["type"])})
+	elif not friends.is_empty() and roll < 0.75 and psim != null:
+		var friend2: Dictionary = friends[rng.randi_range(0, friends.size() - 1)]
+		var gift := rng.randi_range(8, 20)
+		if psim.coins_sink.is_valid():
+			psim.coins_sink.call(gift)
+		evs.append({"type": "region_gift", "name": String(friend2["name"]), "n": gift})
+	# --- война городов НПС между собой (мир живёт без игрока) ---
+	if cities.size() >= 2 and rng.randf() < 0.30:
+		var keys := cities.keys()
+		var a: Dictionary = cities[keys[rng.randi_range(0, keys.size() - 1)]]
+		var b: Dictionary = cities[keys[rng.randi_range(0, keys.size() - 1)]]
+		if int(a["poi_id"]) != int(b["poi_id"]):
+			var winner := a if float(a["standing"]) >= float(b["standing"]) else b
+			var loser := b if winner == a else a
+			var lsim = loser["sim"]
+			if lsim.residents.size() > 2:
+				lsim.residents.remove_at(lsim.residents.size() - 1)
+				_sync_pop(loser)
+			loser["rel"] = clampi(int(loser.get("rel", 0)) - 2, -100, 100)
+			evs.append({"type": "region_war", "winner": String(winner["name"]),
+					"loser": String(loser["name"])})
+	# --- дрейф отношений: зависть к лидеру, симпатия к сильному союзу ---
+	for poi_id in cities:
+		var e: Dictionary = cities[poi_id]
+		var drift := 0
+		if rank == 1:
+			drift = -1   # зависть к столице
+		elif player_standing > float(e["standing"]):
+			drift = 1    # за сильным игроком — будущее
+		e["rel"] = clampi(int(e.get("rel", 0)) + drift, -100, 100)
+	return evs
+
+
+## Пересчёт влияния: жители × казна × постройки × оборона.
+func _update_standings(psim = null) -> void:
+	for poi_id in cities:
+		var e: Dictionary = cities[poi_id]
+		var sim = e["sim"]
+		var blds := 0
+		for b in sim.buildings:
+			if bool(b.get("done", false)):
+				blds += 1
+		e["standing"] = float(sim.residents.size()) * 3.0 				+ float(e.get("coins", 0)) * 0.05 				+ float(blds) * 2.0 				+ defense_of(int(poi_id))
+	if psim != null and psim.map != null:
+		var pblds := 0
+		for b in psim.buildings:
+			if bool(b.get("done", false)):
+				pblds += 1
+		player_standing = float(psim.residents.size()) * 3.0 				+ float(_player_coins(psim)) * 0.05 				+ float(pblds) * 2.0
+	else:
+		player_standing = 0.0
+
+
+func _top_city_name() -> String:
+	var best_e: Dictionary = {}
+	var best := -1.0
+	for poi_id in cities:
+		var e: Dictionary = cities[poi_id]
+		if float(e["standing"]) > best:
+			best = float(e["standing"])
+			best_e = e
+	return String(best_e.get("name", "соперник")) if not best_e.is_empty() else ""
+
+
+## Место игрока в регионе (1 = столица).
+func _player_rank() -> int:
+	var rank := 1
+	for poi_id in cities:
+		if float(cities[poi_id]["standing"]) > player_standing:
+			rank += 1
+	return rank
+
+
+## Монеты города игрока (пул Game.coins через колбэк сима).
+func _player_coins(psim) -> int:
+	if psim != null and psim.coins_source != null and Callable(psim.coins_source).is_valid():
+		return int(psim.coins_source.call())
+	return 0
+
+
+## Сводка региона для панели дипломатии: [{name, faction, rel, standing, rank}]
+func region_summary(psim = null) -> Array:
+	_update_standings(psim)
+	var out: Array = []
+	for poi_id in cities:
+		var e: Dictionary = cities[poi_id]
+		var r := 1
+		for other_id in cities:
+			if float(cities[other_id]["standing"]) > float(e["standing"]):
+				r += 1
+		out.append({"name": String(e.get("name", "")), "faction": String(e["faction"]),
+				"rel": int(e.get("rel", 0)), "standing": float(e["standing"]), "rank": r})
+	var prank := _player_rank()
+	out.append({"name": "—", "faction": "player", "rel": 0,
+			"standing": player_standing, "rank": prank})
+	out.sort_custom(func(a, b) -> bool: return int(a["rank"]) < int(b["rank"]))
+	return out

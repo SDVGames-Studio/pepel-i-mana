@@ -89,6 +89,23 @@ func _rebuild() -> void:
 	var gods: Dictionary = Game.city_sim._religion_cfg()
 	for g: Dictionary in gods.get("gods", []):
 		_content.add_child(_god_row(g, staffed))
+	# --- города региона (v1.55 «Противостояние») ---
+	_content.add_child(_spacer(8))
+	_content.add_child(_header(Loc.t("gov.region")))
+	if Game.npc_cities != null:
+		for row: Dictionary in Game.npc_cities.region_summary(Game.city_sim):
+			var rel := int(row["rel"])
+			var is_player := String(row["faction"]) == "player"
+			var col := Color("#9fb8ff") if is_player 					else (Color("#ff8a80") if rel < -30 					else (Color("#a5d6a7") if rel > 40 else Color("#e0e0e0")))
+			var nm := Label.new()
+			nm.add_theme_font_size_override("font_size", 16)
+			nm.add_theme_color_override("font_color", col)
+			var rel_str := "МЫ" if is_player 					else ("вражда" if rel < -30 else ("друг" if rel > 40 else "нейтрально"))
+			var title: String = String(row["name"]) if not is_player else Loc.t("gov.our_city")
+			nm.text = "№%d  %s · влияние %.0f · %s" % [int(row["rank"]), title,
+					float(row["standing"]), rel_str]
+			_content.add_child(nm)
+
 	# --- дипломатия ---
 	_content.add_child(_spacer(8))
 	_content.add_child(_header(Loc.t("gov.diplomacy")))

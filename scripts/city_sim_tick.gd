@@ -74,6 +74,8 @@ func tick(dt_raw: float) -> void:
 		_daily_phase = 1
 		_ensure_elder()
 		_ensure_plaza()
+		if rivalry_cb.is_valid():
+			rivalry_cb.call()   # v1.55: ежедневное соперничество регионов
 	match _daily_phase:
 		1:
 			# фаза 1 — самая тяжёлая: стройка и переназначение всех жителей

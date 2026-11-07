@@ -300,6 +300,11 @@ func _advance_world_day() -> void:
 	# города НПС проживают день пути так же, как город игрока (№120)
 	if Game.npc_cities != null:
 		Game.npc_cities.advance_days(1)
+		# v1.55 «Противостояние регионов»: ежедневный бросок соперничества —
+		# события пойдут тостами по карте мира (и в летопись)
+		for ev in Game.npc_cities.rivalry_day(Game.city_sim):
+			hud.toast(_event_text(ev))
+		_flush_chronicle()
 	_maybe_encounter()
 
 

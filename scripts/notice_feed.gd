@@ -24,6 +24,10 @@ const LETTER_KINDS := {
 	"caravan_returned": "trade", "caravan_lost": "trade",
 	"wanderer": "people", "refugee": "people", "legend_joined": "people",
 	"winter_soon": "world",
+	"region_raid": "region", "region_sabotage": "region", "region_war": "region",
+	"region_migrants": "region", "region_gift": "region",
+	"region_capital": "region", "region_capital_hold": "region",
+	"region_lost_capital": "region",
 }
 
 const GROUP_COLORS := {
@@ -35,6 +39,7 @@ const GROUP_COLORS := {
 	"trade": Color("#b89a4a"),
 	"people": Color("#5a9a8a"),
 	"world": Color("#8a94a0"),
+	"region": Color("#b09a5a"),
 }
 
 var _box: VBoxContainer = null
