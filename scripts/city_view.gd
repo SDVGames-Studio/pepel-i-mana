@@ -293,6 +293,14 @@ func _crop_sprite(crop_vis: int, stage: int) -> ImageTexture:
 	if crop_vis == 2:
 		fruit = Color("#e8892c")
 		fruit_r = 4.2
+	elif crop_vis == 4:
+		# хмель: светло-зелёные шишки
+		fruit = Color("#a8c860")
+		fruit_r = 2.6
+	elif crop_vis == 5:
+		# виноград: фиолетовые грозди
+		fruit = Color("#9a5ab0")
+		fruit_r = 2.6
 	elif crop_vis == 3:
 		# пшеница (v1.22): золотой колос
 		leaf = Color("#b7a44a")

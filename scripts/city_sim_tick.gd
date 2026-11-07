@@ -1156,6 +1156,31 @@ func _apply_resource_bonuses() -> void:
 	if float(res.get("lux", 0.0)) >= float(bcfg.get("lux_min", 1.0)):
 		for r in residents:
 			r["mood"] = clampf(float(r["mood"]) + float(bcfg.get("lux_mood", 1.0)), 0.0, 100.0)
+	# v1.57: АЛКОГОЛЬ — гуляка городу (зимой вдвое веселее — согревает)
+	var alcohol := float(res.get("alcohol", 0.0))
+	if alcohol >= 1.0:
+		var winter := season() == "winter"
+		var am := float(cfg.get("alcohol_mood_winter" if winter else "alcohol_mood", 1.5))
+		if alcohol >= 3.0:
+			am += 1.0
+		for r in residents:
+			r["mood"] = clampf(float(r["mood"]) + am, 0.0, 100.0)
+	# v1.57: РАЗНООБРАЗИЕ ЕДЫ — за каждый возделанный вид культуры +0.5
+	# настроения (до 3 видов) + рыбное изобилие считается
+	var kinds := {}
+	for z in zones:
+		if String(z["type"]) != "field":
+			continue
+		for c in z["crops"]:
+			if not (c as Dictionary).is_empty():
+				kinds[String(c.get("crop", "?"))] = true
+	if map.region_resource == "fish_abound":
+		kinds["fish"] = true
+	var variety := mini(3, kinds.size())
+	if variety > 0:
+		var vm := float(bcfg.get("variety_mood", 0.5)) * float(variety)
+		for r in residents:
+			r["mood"] = clampf(float(r["mood"]) + vm, 0.0, 100.0)
 	if map.region_resource == "fish_abound" and not buildings.filter(
 			func(b): return _active(b) and String(b["type"]) == "pier").is_empty():
 		_add_resource_capped("food", float(bcfg.get("fish_food", 3.0)))

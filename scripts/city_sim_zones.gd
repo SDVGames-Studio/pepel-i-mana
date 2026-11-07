@@ -561,6 +561,14 @@ func _update_zones(dt: float, day_len: float) -> void:
 func _harvest_cell(zone: Dictionary, idx: int) -> void:
 	var cdef: Dictionary = crop_def(String(zone.get("crop", "turnip")))
 	var fcfg: Dictionary = cfg.get("farming", {})
+	# v1.57: ресурсные культуры (хмель/виноград) дают свой ресурс, не еду
+	var yres: String = String(cdef.get("yield_res", ""))
+	if yres != "":
+		_add_resource_capped(yres, float(cdef.get("yield_amount", 6.0)) * crop_mult())
+		_add_resource_capped("seeds", float(fcfg.get("seed_return", 1)))
+		var crops2: Array = zone["crops"]
+		crops2[idx] = {}
+		return
 	_add_resource_capped("food", float(cdef.get("harvest", fcfg.get("harvest_food", 6.0))) * crop_mult())
 	# v1.56: фермер хвастается урожаем — обоснованный слух
 	var farmers: Array = residents.filter(func(r): return String(r["prof"]) == "farmer" \
@@ -575,7 +583,12 @@ func _harvest_cell(zone: Dictionary, idx: int) -> void:
 	var crops: Array = zone["crops"]
 	if float(res.get("seeds", 0.0)) >= float(fcfg.get("seed_sow", 1)):
 		res["seeds"] = float(res["seeds"]) - float(fcfg.get("seed_sow", 1))
-		crops[idx] = {"stage": 0, "t": 0.0, "ripe": false}
+		# v1.57: ЖИТЕЛИ САМИ ВЫБИРАЮТ культуру — с винокурней каждый второй
+		# ход засеивается хмелем/виноградом (чередование с едой)
+		var crop := String(zone.get("crop", "turnip"))
+		if _brewery_active() and idx % 2 == 1:
+			crop = "hops" if idx % 4 == 1 else "grapes"
+		crops[idx] = {"stage": 0, "t": 0.0, "ripe": false, "crop": crop}
 	else:
 		crops[idx] = {}
 

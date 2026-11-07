@@ -228,6 +228,7 @@ func _spawn_hero() -> void:
 		Game.hero_saved_hp = -1
 	# экипировка (M14-B): бонусы брони/аксессуара применяются при спавне
 	hero.set_equipment_bonuses(Game.equipment_bonuses())
+	_apply_resource_hero_bonuses()   # v1.57: кристалл лича / кровь вампира
 	add_child(hero)
 	hero.set_camera_limits(Rect2(0, 0, map.w * map.ts, map.h * map.ts))
 
@@ -595,6 +596,16 @@ func _hover_base(b: Dictionary) -> String:
 
 
 ## Текст события региона (v1.55) по словарю из npc_cities.rivalry_day.
+## Бонусы герою от уникальных богатств (v1.57): кристалл лича — заклинания,
+## кровь вампира — здоровье. Пока ресурсы в пуле города.
+func _apply_resource_hero_bonuses() -> void:
+	if hero == null or sim == null:
+		return
+	hero.resource_spell_mult = 1.15 if float(sim.res.get("lich_crystal", 0.0)) >= 1.0 else 1.0
+	hero.resource_hp = 15 if float(sim.res.get("vampire_blood", 0.0)) >= 1.0 else 0
+	hero.hp = mini(hero.hp, hero.hp_max())
+
+
 ## Слухи и разговоры (v1.56): событие города → житель подходящей профессии
 ## «говорит» обоснованную фразу (урожай — фермер, жила — шахтёр...).
 func _gossip(event_type: String, prof: String) -> void:

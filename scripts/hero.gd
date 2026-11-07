@@ -33,6 +33,8 @@ var projectile_solid_check := Callable()   # сцена передаёт про�
 var city_speed_mult := 1.0        # вязкая земля у воды в городе (M14-I)
 var _sk: Dictionary = {}          # постоянные бонусы дерева навыков (M7)
 var _eq: Dictionary = {}          # бонусы экипировки (M14-B): броня/аксессуар
+var resource_spell_mult := 1.0    # v1.57: кристалл лича — заклинания ×1.15
+var resource_hp := 0              # v1.57: кровь вампира — +15 к здоровью
 var _temp_dmg_left := 0.0         # временное усиление (заклинание «Перегрузка», M7)
 var _temp_dmg := 0
 var _temp_armor_left := 0.0       # каменная кожа (M7)
@@ -165,7 +167,7 @@ func eq_mult(key: String, fallback: float) -> float:
 
 
 func hp_max() -> int:
-	return int(p["hp"]) + skill_bonus("hp") + eq_bonus("hp") \
+	return int(p["hp"]) + skill_bonus("hp") + eq_bonus("hp") + resource_hp \
 			+ stat_hp_bonus(attrs_cfg(), stat("end"))   # выносливость — здоровье (v1.24)
 
 
@@ -193,7 +195,7 @@ func eff_armor() -> int:
 
 ## Множитель силы заклинаний от интеллекта (v1.24).
 func spell_mult() -> float:
-	return stat_spell_mult(attrs_cfg(), stat("int"))
+	return stat_spell_mult(attrs_cfg(), stat("int")) * resource_spell_mult
 
 
 ## Мана: мудрость расширяет запас (v1.24) — кап считается на лету.

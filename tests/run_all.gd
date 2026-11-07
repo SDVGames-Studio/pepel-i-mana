@@ -193,9 +193,6 @@ const BLOCKS := [
 	"_test_v155_rivalry",
 	"_test_v155_save_migration",
 ]],
-	["res://tests/debug_mine.gd", [
-	"_test_debug_mine",
-]],
 	["res://tests/test_v156.gd", [
 	"_test_v156_pier_water",
 	"_test_v156_region_resources",

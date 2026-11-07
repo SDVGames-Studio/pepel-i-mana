@@ -414,6 +414,32 @@
 					"summer",
 					"autumn"
 				]
+			},
+			"hops": {
+				"loc": "crop.hops",
+				"desc": "crop.hops.desc",
+				"stage_days": 1.1,
+				"harvest": 0.0,
+				"sprite": 4,
+				"yield_res": "hops",
+				"yield_amount": 6.0,
+				"seasons": [
+					"summer",
+					"autumn"
+				]
+			},
+			"grapes": {
+				"loc": "crop.grapes",
+				"desc": "crop.grapes.desc",
+				"stage_days": 1.5,
+				"harvest": 2.0,
+				"sprite": 5,
+				"yield_res": "grapes",
+				"yield_amount": 6.0,
+				"seasons": [
+					"summer",
+					"autumn"
+				]
 			}
 		},
 		"winter_prep_days": 4
@@ -1309,6 +1335,30 @@
 			"craft": {
 				"cost_raw": 2
 			}
+		},
+		{
+			"id": "brewery",
+			"w": 2,
+			"sprite": "b:tavern",
+			"short": "bld.short.brewery",
+			"loc": "bld.brewery",
+			"desc": "bld.desc.brewery",
+			"color": "#d4a24d",
+			"cost": {
+				"wood": 18,
+				"stone": 6
+			},
+			"build_work": 35,
+			"worker": "bartender",
+			"produce": {
+				"res": "alcohol",
+				"per_day": 2.0,
+				"inputs": {
+					"hops": 2.0
+				}
+			},
+			"district": "work",
+			"cat": "resource"
 		}
 	],
 	"placement": {
@@ -1402,6 +1452,9 @@
 		"gold_coins": 2,
 		"lux_min": 1,
 		"lux_mood": 1.0,
-		"fish_food": 3.0
-	}
+		"fish_food": 3.0,
+		"variety_mood": 0.5
+	},
+	"alcohol_mood": 1.5,
+	"alcohol_mood_winter": 2.5
 }

@@ -1252,6 +1252,11 @@ const RES_ICON_STYLE := {
 	"lux": ["box", Color("#ce93d8")],
 	"dragon_bone": ["bone", Color("#e8e2d0")],
 	"dragon_hide": ["hide", Color("#7a8a4a")],
+	"hops": ["leaf", Color("#a8c860")],
+	"grapes": ["gem", Color("#9a5ab0")],
+	"alcohol": ["bar", Color("#d4a24d")],
+	"lich_crystal": ["gem", Color("#7a5a9a")],
+	"vampire_blood": ["coin", Color("#c05a5a")],
 }
 
 

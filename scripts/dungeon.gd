@@ -1273,13 +1273,21 @@ func _check_dungeon_cleared() -> void:
 	if Game.poi_id == 0 and Game.city_sim != null \
 			and Game.city_sim.has_method("delay_raids_after_dungeon_clear"):
 		Game.city_sim.delay_raids_after_dungeon_clear()
-	# v1.56: ДРАКОНЬЕ ЛОГОВО — уникальные богатства в пул города
+	# v1.56/1.57: УНИКАЛЬНЫЕ ЛОГОВА — богатства в пул города
 	if Game.forced_biome == "dragon_lair" and Game.city_sim != null:
 		var dragon_loot := {"dragon_bone": 2, "dragon_hide": 2, "gold": 30}
 		for key in dragon_loot:
 			Game.city_sim._add_resource_capped(String(key), float(dragon_loot[key]))
 		hud.toast(Loc.t("event.dragon_loot"))
 		Game.city_sim.chronicle_add("chron.dragon_lair")
+	if Game.forced_biome == "lich_tower" and Game.city_sim != null:
+		Game.city_sim._add_resource_capped("lich_crystal", 1.0)
+		hud.toast(Loc.t("event.lich_loot"))
+		Game.city_sim.chronicle_add("chron.lich_lair")
+	if Game.forced_biome == "vampire_keep" and Game.city_sim != null:
+		Game.city_sim._add_resource_capped("vampire_blood", 1.0)
+		hud.toast(Loc.t("event.vampire_loot"))
+		Game.city_sim.chronicle_add("chron.vampire_lair")
 	# карта мира (M8): монеты за лагерь/руины и отметка точки интереса
 	if Game.poi_coins > 0:
 		Game.coins += Game.poi_coins

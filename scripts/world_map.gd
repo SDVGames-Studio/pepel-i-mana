@@ -725,6 +725,14 @@ func _place_pois(params: Dictionary) -> void:
 	d = dist_cfg.get("obelisk", [18, 34])
 	_place_kind("obelisk", "", int(d[0]), int(d[1]), int(pconf.get("obelisks", 2)))
 	# замок дракона (вишлист M13): один дальний, логово-биом и сокровищница
+	# v1.57: БИОМ СМЕРТИ — крипты жмутся к замкам вампира/лича (нежить
+	# гнездится у своих владений); числа — расстояния от замков
+	for keep in pois:
+		if String(keep["kind"]) in ["vampire_keep", "lich_tower"]:
+			for i in 1:
+				var near := _walkable_near(keep["tile"], 3, 6)
+				if near != Vector2i(-1, -1) and _poi_near(near, 2) == null:
+					_add_poi("dungeon", "midnight_crypt", "", near)
 	d = dist_cfg.get("dragon_castle", [20, 36])
 	_place_kind("dragon_castle", "dragon_lair", int(d[0]), int(d[1]), int(pconf.get("dragon_castles", 0)))
 	# замок вампира и башня лича (M14-D): уникальные тёмные POI
@@ -786,6 +794,19 @@ func _find_spot(dmin: int, dmax: int) -> Vector2i:
 		if Vector2(p).distance_to(Vector2(city_tile)) >= float(dmin) and is_walkable(p) \
 				and not river.has(p) and _poi_near(p, 2) == null:
 			return p
+	return Vector2i(-1, -1)
+
+
+## Проходимая клетка в кольце [rmin..rmax] от центра (для гнездований POI).
+func _walkable_near(center: Vector2i, rmin: int, rmax: int) -> Vector2i:
+	for dy in range(-rmax, rmax + 1):
+		for dx in range(-rmax, rmax + 1):
+			var d := int(Vector2(dx, dy).length())
+			if d < rmin or d > rmax:
+				continue
+			var p := center + Vector2i(dx, dy)
+			if in_bounds(p) and is_walkable(p) and not river.has(p) and _poi_near(p, 2) == null:
+				return p
 	return Vector2i(-1, -1)
 
 

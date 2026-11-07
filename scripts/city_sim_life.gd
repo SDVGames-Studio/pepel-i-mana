@@ -658,6 +658,14 @@ func day_number() -> int:
 
 ## Быстрая перемотка на n дней (M8): герой в пути — город живёт (ежедневные
 ## броски, еда, угрозы, стройка). Шаг по четверти дня — устойчиво для боёв.
+## Работающая винокурня есть? (v1.57: земледельцы сеют хмель/виноград)
+func _brewery_active() -> bool:
+	for b in buildings:
+		if _active(b) and String(b["type"]) == "brewery" and int(b["worker"]) > 0:
+			return true
+	return false
+
+
 ## v1.56: напасть «жуки» — редкий урон полю с обоснованной жалобой фермера.
 func _roll_pests() -> void:
 	var pcfg: Dictionary = cfg.get("farming", {}).get("pests", {})
