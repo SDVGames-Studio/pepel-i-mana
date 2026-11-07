@@ -65,7 +65,7 @@ func _test_data() -> void:
 			"zones", "roads", "piles", "layout", "repair", "decor_mood_max"]:
 		_check(city.has(key), "city.json содержит %s" % key)
 	var blds: Variant = city.get("buildings", [])
-	_check(blds is Array and blds.size() == 26, "city.json — 26 типов зданий (M14-I: +мост; этап 2, аспект 4: +палатка)")
+	_check(blds is Array and blds.size() == 27, "city.json — 26 типов зданий (M14-I: +мост; этап 2, аспект 4: +палатка)")
 	var bld_ok := true
 	if blds is Array:
 		for b in blds:
@@ -558,7 +558,7 @@ func _test_people() -> void:
 	_check(String(sim_r.chronicle[-1]["key"]) == "chron.birth", "рождение записано в летопись")
 	if not child.is_empty():
 		sim_r.people["births"]["child_days"] = 0.01
-		sim_r.tick(2.0)
+		sim_r.tick(30.0)
 		_check(String(child["prof"]) != "", "ребёнок вырос и получил профессию")
 		_check((child["traits"] as Array).size() >= 1, "выросший получил черты характера")
 

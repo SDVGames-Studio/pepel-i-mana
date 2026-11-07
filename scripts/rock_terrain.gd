@@ -104,8 +104,10 @@ func _draw_rock_tile(tk: Vector2i, is_ore: bool, ts: float) -> void:
 	# юг ниже — КАМЕННЫЙ ОБРЫВ (видимая сторона скалы)
 	if not _is_rock(tk + Vector2i(0, 1)):
 		_draw_cliff_face(tk, x, y, ts)
-	# декор лужайки / руда
-	if is_ore:
+	# декор лужайки / руда / МЕСТОРОЖДЕНИЕ РЕГИОНА (v1.56 — цвет ресурса)
+	if t.map.deposit_tiles.has(tk):
+		_draw_deposit(tk, Vector2(x, y), ts)
+	elif is_ore:
 		_draw_ore(tk, Vector2(x, y), ts)
 	else:
 		_draw_top_decor(tk, x, y, ts)
@@ -199,6 +201,20 @@ func _draw_ore(tk: Vector2i, origin: Vector2, ts: float) -> void:
 		var fy := origin.y + 8.0 + float((h / 3) % int(ts - 14.0))
 		t._draw_diamond(Vector2(fx, fy), 2.4 + float(h % 3), col)
 		t._draw_diamond(Vector2(fx - 1.0, fy - 1.2), 1.1, col.lightened(0.4))
+
+
+## Месторождение регионального ресурса (v1.56): кристаллы цвета ресурса.
+func _draw_deposit(tk: Vector2i, origin: Vector2, ts: float) -> void:
+	var rid: String = t.map.region_resource
+	var rdef: Dictionary = t.REGION_RESOURCES.get(rid, {})
+	var col := Color(String(rdef.get("color", "#d0c8b0")))
+	for i in 4:
+		var h: int = t._hash(tk.x * 13 + i, tk.y * 17 + i, 100)
+		var fx := origin.x + 5.0 + float(h % int(ts - 10.0))
+		var fy := origin.y + 7.0 + float((h / 3) % int(ts - 12.0))
+		var r := 2.6 + float(h % 3)
+		t._draw_diamond(Vector2(fx, fy), r, col)
+		t._draw_diamond(Vector2(fx - 1.0, fy - 1.2), r * 0.45, col.lightened(0.4))
 
 
 ## Редкий декор лужайки на верху гряды: пучки травы, цветы, мелкие валуны.

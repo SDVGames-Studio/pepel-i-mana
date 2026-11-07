@@ -674,7 +674,7 @@ func _test_m9() -> void:
 			continue
 		if ref == "" or assets.sprite(ref) == null:
 			missing += 1
-	_check(missing == 0 and cfg["buildings"].size() == 26,
+	_check(missing == 0 and cfg["buildings"].size() == 27,
 			"у всех 25 зданий есть PNG-спрайт (недостающих: %d)" % missing)
 	missing = 0
 	for it: Dictionary in _read_json("res://data/loot.json")["items"]:

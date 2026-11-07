@@ -31,7 +31,7 @@ extends RefCounted
 ## Рейдер: {id, type, p(строка enemies.json), hp, max_hp, pos, target, path,
 ##          atk_cd, goal(тайл), mode(advance|break|fight|flee)}
 
-const RESOURCES := ["wood", "stone", "food", "crystal", "tools", "iron", "metal", "kits", "seeds", "saplings", "gems"]
+const RESOURCES := ["wood", "stone", "food", "crystal", "tools", "iron", "metal", "kits", "seeds", "saplings", "gems", "copper", "silver", "gold", "amber", "pearls", "dragon_bone", "dragon_hide", "lux"]
 
 var map = null                  # city_map.gd, нетипизированно (см. грабли GDScript)
 var cfg: Dictionary = {}

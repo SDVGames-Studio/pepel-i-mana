@@ -541,11 +541,20 @@ func _adjacent(a: Vector2i, b: Vector2i) -> bool:
 
 ## Шахта (ставится у жил и пустой породы): медленно добывает железо и камень
 ## из тайлов в радиусе mine.range клеток; выработанная жила становится породой.
+## Тайл годен для шахты: руда, выработка или МЕСТОРОЖДЕНИЕ региона (v1.56).
+func _is_mineable(t: Vector2i) -> bool:
+	var g := int(map.grid[t.y][t.x])
+	if g in [map.TILE_ORE, map.TILE_DEADROCK]:
+		return true
+	return g == map.TILE_ROCK and map.deposit_tiles.has(t)
+
+
 func _mine_work(r: Dictionary, bld: Dictionary, dt: float) -> void:
 	var day_len := float(cfg["day_length"])
 	var mcfg: Dictionary = cfg.get("mountain", {}).get("mine", {})
 	var cap: float = float(mcfg.get("carry", 8.0))
-	var total: float = float(r.get("carry_iron", 0.0)) + float(r.get("carry_stone", 0.0))
+	var total: float = float(r.get("carry_iron", 0.0)) + float(r.get("carry_stone", 0.0)) \
+			+ float(r.get("carry_res_n", 0.0))
 	# жила/порода в радиусе от шахты (липкая цель)
 	var pair: Dictionary = _vein_target(r, bld)
 	# несём добычу к шахте — когда руки полны или тайлы кончились
@@ -558,9 +567,14 @@ func _mine_work(r: Dictionary, bld: Dictionary, dt: float) -> void:
 			_add_resource_capped("iron", float(r["carry_iron"]) * blessing_boost() * production_mult(bld))
 		if float(r.get("carry_stone", 0.0)) > 0.0:
 			_add_resource_capped("stone", float(r["carry_stone"]) * blessing_boost() * production_mult(bld))
+		if float(r.get("carry_res_n", 0.0)) > 0.0:
+			# v1.56: богатство региона — медь/серебро/золото/янтарь в общий пул
+			_add_resource_capped(String(map.region_resource),
+					float(r["carry_res_n"]) * blessing_boost() * production_mult(bld))
 		events.append({"type": "mine_hauled"})
 		r["carry_iron"] = 0.0
 		r["carry_stone"] = 0.0
+		r["carry_res_n"] = 0.0
 		r["carry_slow"] = 1.0
 		return
 	if pair.is_empty():
@@ -572,16 +586,22 @@ func _mine_work(r: Dictionary, bld: Dictionary, dt: float) -> void:
 		_move_towards(r, stand, dt)
 		return
 	var kind := int(map.grid[tile.y][tile.x])
+	var is_deposit: bool = map.deposit_tiles.has(tile)
 	var max_hp := float(cfg.get("mountain", {}).get("deadrock_hp", 60.0))
 	var per_tile := float(cfg.get("mountain", {}).get("deadrock_stone", 6.0))
 	if kind == map.TILE_ORE:
 		max_hp = _rock_max_hp(tile)
 		per_tile = float(mcfg.get("ore_iron", 8.0))
+	if is_deposit:
+		max_hp = float(mcfg.get("deposit_hp", 90.0))
 	var hp := float(map.rock_hp.get(tile, max_hp))
 	var drained: float = minf(hp, float(mcfg.get("rate", 35.0)) * dt / day_len * work_mult(r))
 	hp -= drained
 	var frac := drained / maxf(1.0, max_hp)
-	if kind == map.TILE_ORE:
+	if is_deposit:
+		# v1.56: богатство региона в корзину (отдельно от железа/камня)
+		r["carry_res_n"] = minf(cap, float(r.get("carry_res_n", 0.0)) + 10.0 * frac)
+	elif kind == map.TILE_ORE:
 		r["carry_iron"] = minf(cap, float(r.get("carry_iron", 0.0)) + per_tile * frac)
 		r["carry_stone"] = minf(cap - float(r.get("carry_iron", 0.0)),
 				float(r.get("carry_stone", 0.0)) + float(mcfg.get("ore_stone", 2.0)) * frac)
@@ -590,7 +610,8 @@ func _mine_work(r: Dictionary, bld: Dictionary, dt: float) -> void:
 	r["state"] = "work"
 	r["fatigue"] += dt / day_len * _fatigue_cost(r)
 	_grow_skill(r, dt)
-	if float(r.get("carry_iron", 0.0)) + float(r.get("carry_stone", 0.0)) >= cap:
+	if float(r.get("carry_iron", 0.0)) + float(r.get("carry_stone", 0.0)) \
+			+ float(r.get("carry_res_n", 0.0)) >= cap:
 		r["carry_slow"] = float(mcfg.get("carry_slow", 0.8))
 		r["gath_tile"] = Vector2i(-1, -1)
 		r["gath_res"] = Vector2i(-1, -1)
@@ -600,6 +621,10 @@ func _mine_work(r: Dictionary, bld: Dictionary, dt: float) -> void:
 		return
 	# жила выработана — становится пустой породой (и дальше шахта её доит)
 	map.rock_hp[tile] = float(cfg.get("mountain", {}).get("deadrock_hp", 60.0))
+	if is_deposit:
+		map.deposit_tiles.erase(tile)   # богатство иссякло
+		events.append({"type": "deposit_gone"})
+		terrain_dirty = true
 	if kind == map.TILE_ORE:
 		map.grid[tile.y][tile.x] = map.TILE_DEADROCK
 		map.note_edit(tile)
@@ -620,8 +645,7 @@ func _vein_target(r: Dictionary, bld: Dictionary) -> Dictionary:
 	var cached_res: Vector2i = r.get("gath_res", Vector2i(-1, -1))
 	if cached != Vector2i(-1, -1) and cached_res != Vector2i(-1, -1) \
 			and map.in_bounds(cached_res) and map.in_bounds(cached) and map.is_walkable(cached) \
-			and int(map.grid[cached_res.y][cached_res.x]) in [map.TILE_ORE, map.TILE_DEADROCK] \
-			and _adjacent(cached, cached_res):
+			and _is_mineable(cached_res) and _adjacent(cached, cached_res):
 		return {"stand": cached, "rock": cached_res}
 	var bw := bld_w(bld)
 	var best := {}
@@ -630,7 +654,7 @@ func _vein_target(r: Dictionary, bld: Dictionary) -> Dictionary:
 	for dy in range(-radius - bw, radius + bw + 1):
 		for dx in range(-radius - bw, radius + bw + 1):
 			var rock: Vector2i = bc + Vector2i(dx, dy)
-			if not map.in_bounds(rock) or not (int(map.grid[rock.y][rock.x]) in [map.TILE_ORE, map.TILE_DEADROCK]):
+			if not map.in_bounds(rock) or not _is_mineable(rock):
 				continue
 			# тайл в радиусе range от прямоугольника шахты (чебышев от края)
 			var cdx := maxi(rock.x - bc.x, bc.x + bw - 1 - rock.x)

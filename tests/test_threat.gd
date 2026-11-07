@@ -323,11 +323,12 @@ func _test_defense() -> void:
 	# город сыт (голод резал бы работу), майнера ставим прямо у жилы
 	sim.time = 10.0
 	sim.res["food"] = 500.0
+	sim.map.deposit_tiles.clear()   # v1.56: тест про железо
 	var iron0_chain := float(sim.res["iron"])
 	var mine_pair: Dictionary = sim._vein_target(sim._resident_by_id(int(mine["worker"])), mine)
 	if not mine_pair.is_empty():
 		_teleport(sim, sim._resident_by_id(int(mine["worker"])), mine_pair["stand"])
-	for i in 60:
+	for i in 150:
 		sim.tick(10.0)
 		sim.time = 10.0   # держим утро — шахтёр не спит
 		if float(sim.res["iron"]) > iron0_chain:
@@ -757,6 +758,7 @@ func _test_gathering() -> void:
 	_teleport(sim_mi, miner_mi, mtile)
 	sim_mi.time = 10.0
 	var iron_pile := 0.0
+	sim_mi.map.deposit_tiles.clear()   # v1.56: тест про железо
 	var iron0_mi := float(sim_mi.res["iron"])
 	for i in 80:   # жила ~104 hp по 35/день — пара ходок с ходьбой
 		sim_mi.tick(12.0)

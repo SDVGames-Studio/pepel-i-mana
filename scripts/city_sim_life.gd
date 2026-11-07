@@ -658,6 +658,34 @@ func day_number() -> int:
 
 ## Быстрая перемотка на n дней (M8): герой в пути — город живёт (ежедневные
 ## броски, еда, угрозы, стройка). Шаг по четверти дня — устойчиво для боёв.
+## v1.56: напасть «жуки» — редкий урон полю с обоснованной жалобой фермера.
+func _roll_pests() -> void:
+	var pcfg: Dictionary = cfg.get("farming", {}).get("pests", {})
+	if pcfg.get("enabled", true) == false or zones.is_empty():
+		return
+	if _event_rng.randf() > float(pcfg.get("chance", 0.10)):
+		return
+	var fields: Array = zones.filter(func(z): return String(z["type"]) == "field")
+	if fields.is_empty():
+		return
+	var z: Dictionary = fields[_event_rng.randi_range(0, fields.size() - 1)]
+	var hit := 0
+	for i in (z["crops"] as Array).size():
+		var c: Dictionary = z["crops"][i]
+		if not c.is_empty() and bool(c.get("ripe", false)) == false and float(c.get("t", 0.0)) > 0.5:
+			c["t"] = maxf(0.0, float(c["t"]) - float(pcfg.get("damage_days", 0.4)))
+			hit += 1
+	if hit == 0:
+		return
+	var farmers: Array = residents.filter(func(r): return String(r["prof"]) == "farmer" \
+			and String(r.get("say", "")) == "")
+	if not farmers.is_empty():
+		var f: Dictionary = farmers[_event_rng.randi_range(0, farmers.size() - 1)]
+		f["say"] = "say.farmer.pests"
+		f["say_until"] = float(time) + 9.0
+	events.append({"type": "pests", "lost": hit})
+
+
 func advance_days(n: int) -> void:
 	var was_paused := paused
 	paused = false

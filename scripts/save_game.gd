@@ -34,8 +34,16 @@ static func _migrate_save(data: Dictionary, to: int) -> Dictionary:
 					(blk as Dictionary)["rel"] = 0
 					(blk as Dictionary)["standing"] = 0.0
 			return data
+		3:
+			# v2→v3: у города игрока появилось богатство региона — дефолт
+			var city: Variant = data.get("city", {})
+			if city is Dictionary:
+				var cb: Dictionary = city.get("city", city)
+				if cb is Dictionary and not (cb as Dictionary).has("res_region"):
+					(cb as Dictionary)["res_region"] = "copper"
+			return data
 	return {}
-const FORMAT_VERSION := 2   # v2 (v1.55): в блоках городов НПС — rel/standing
+const FORMAT_VERSION := 3   # v3 (v1.56): у города игрока — богатство региона
 
 const CITY_CFG_PATH := "res://data/city.json"
 const CITY_MAP_SCRIPT := "res://scripts/city_map.gd"
@@ -235,6 +243,7 @@ static func _city_block(sim, include_map := true) -> Dictionary:
 	if include_map:
 		out["map"] = {
 			"w": int(m.w), "h": int(m.h), "ts": int(m.ts),
+			"res_region": String(m.get("region_resource") if "region_resource" in m else "copper"),
 			"grid": _grid_rows(m),
 			"anomaly": [m.anomaly_tile.x, m.anomaly_tile.y],
 			"spawn": [m.spawn_tile.x, m.spawn_tile.y],
@@ -566,6 +575,9 @@ static func _build_city(cd: Variant, seed_value := 0, hydro := {}):
 		map.generate(0, cfg)   # каркас (astar, размеры) — состояние перекрывается ниже
 		if _apply_city_map(map, md, cfg) != "":
 			return null
+	# v1.56: богатство региона игрока — из сейва (месторождения уже в сетке)
+	if md is Dictionary and (md as Dictionary).has("res_region"):
+		map.region_resource = String((md as Dictionary)["res_region"])
 	map.classify_water()   # v1.29.1: типы воды (река/озеро/болото) — по
 	                       # ВОССТАНОВЛЕННОЙ сетке, не по каркасу сида 0
 	var sim = load(CITY_SIM_SCRIPT).new()

@@ -68,7 +68,7 @@ func _test_wishlist() -> void:
 	sim_f.cfg["food_per_resident_day"] = 0.0
 	sim_f.time = 10.0
 	var guard_ticks := 0
-	while sim_f.map.grid[tree_tile.y][tree_tile.x] == sim_f.map.TILE_TREE and guard_ticks < 60:
+	while sim_f.map.grid[tree_tile.y][tree_tile.x] == sim_f.map.TILE_TREE and guard_ticks < 150:
 		guard_ticks += 1
 		sim_f.tick(2.0)
 		sim_f.time = fmod(sim_f.time, float(sim_f.cfg["day_length"]) * 0.5) + 5.0
@@ -786,7 +786,8 @@ func _test_m14_b() -> void:
 			craft_ok = false
 		for key in it["craft"].get("cost", {}):
 			if not item_ids.has(String(key)) and String(key) not in \
-					["wood", "stone", "food", "crystal", "tools", "iron", "metal", "kits", "seeds"]:
+					["wood", "stone", "food", "crystal", "tools", "iron", "metal", "kits", "seeds",
+				"copper", "silver", "gold", "amber", "pearls", "dragon_bone", "dragon_hide"]:
 				craft_ok = false
 	_check(craft_ok, "стоимости крафта — из известных ресурсов и рун")
 

@@ -381,11 +381,53 @@ func is_buildable_tile(tile: Vector2i, type_id := "") -> bool:
 		# мост (M14-I) ставится прямо на воду
 		elif type_id == "bridge" and map.grid[tile.y][tile.x] == map.TILE_WATER:
 			pass
+		# v1.56: здания с place="water" (ПРИСТАНЬ) — прямо на воду. Прежде
+		# «place: water» требовал лишь воды рядом, и пристань приходилось
+		# лепить на землю — заказчик: «пристань не работает, не ставится».
+		elif _place_of_type(type_id) == "water" \
+				and map.grid[tile.y][tile.x] == map.TILE_WATER:
+			pass
 		else:
 			return false
 	if type_id == "bridge" and map.grid[tile.y][tile.x] != map.TILE_WATER:
 		return false   # мост — только на воде
+	# пристани на открытои воде нужен берег под боком (рабочий дойдёт до
+	# входа bld_entrance); 2×2 в чистом озере — недостижима
+	if type_id == "pier" and map.grid[tile.y][tile.x] == map.TILE_WATER \
+			and not _shore_near_rect(tile, 2):
+		return false
 	return building_at(tile).is_empty()
+
+
+## Месторождение региона в радиусе (v1.56).
+func _deposit_near(tile: Vector2i, radius: float) -> bool:
+	var r2 := radius * radius
+	for dt in map.deposit_tiles:
+		if Vector2(dt).distance_squared_to(Vector2(tile)) <= r2:
+			return true
+	return false
+
+
+## place здания по типу ("", если нет) — v1.56 для water-построек.
+func _place_of_type(type_id: String) -> String:
+	for d in cfg["buildings"]:
+		if String(d["id"]) == type_id:
+			return String(d.get("place", ""))
+	return ""
+
+
+## Есть ли проходимая суша вплотную к прямоугольнику w×w от tile.
+func _shore_near_rect(tile: Vector2i, w: int) -> bool:
+	for dy in range(-1, w + 1):
+		for dx in range(-1, w + 1):
+			if dx >= 0 and dy >= 0 and dx < w and dy < w:
+				continue
+			if dx != -1 and dx != w and dy != -1 and dy != w:
+				continue   # только периметр, не диагонали
+			var n := tile + Vector2i(dx, dy)
+			if map.in_bounds(n) and map.is_nature_walkable(n):
+				return true
+	return false
 
 
 ## Заложить стройплощадку: ресурсы списываются сразу (ответ №16 — достраивают рабочие).
@@ -530,8 +572,9 @@ func placement_block(type_id: String, tile: Vector2i, skip_count := false) -> St
 		return "city.tent_limit"   # лимит построек типа (этап 2, аспект 4)
 	match place:
 		"ore", "veins":
-			# шахта (v1.21) — у рудной жилы или выработанного массива (радиус 2)
-			if _nature_near_rect(type_id, tile, [map.TILE_ORE, map.TILE_DEADROCK], 2.0) == Vector2i(-1, -1):
+			# шахта (v1.21) — у жилы, выработки ИЛИ месторождения региона (v1.56)
+			if _nature_near_rect(type_id, tile, [map.TILE_ORE, map.TILE_DEADROCK], 2.0) == Vector2i(-1, -1) \
+					and not _deposit_near(tile, 2.0):
 				return "city.placement_ore"
 		"water":
 			if not _water_near(tile):

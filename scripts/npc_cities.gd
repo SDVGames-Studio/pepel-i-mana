@@ -419,6 +419,14 @@ func rivalry_day(psim = null, roll := -1.0) -> Array:
 			loser["rel"] = clampi(int(loser.get("rel", 0)) - 2, -100, 100)
 			evs.append({"type": "region_war", "winner": String(winner["name"]),
 					"loser": String(loser["name"])})
+	# --- фирменное богатство фракции (v1.56): монеты городу ежедневно ---
+	var fres: Dictionary = ncfg().get("faction_resource", {})
+	for poi_id in cities:
+		var e: Dictionary = cities[poi_id]
+		var rid: String = String(fres.get(String(e["faction"]), ""))
+		if rid != "":
+			e["coins"] = int(e["coins"]) + rng.randi_range(1, 3)
+
 	# --- дрейф отношений: зависть к лидеру, симпатия к сильному союзу ---
 	for poi_id in cities:
 		var e: Dictionary = cities[poi_id]

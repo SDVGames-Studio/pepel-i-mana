@@ -562,6 +562,13 @@ func _harvest_cell(zone: Dictionary, idx: int) -> void:
 	var cdef: Dictionary = crop_def(String(zone.get("crop", "turnip")))
 	var fcfg: Dictionary = cfg.get("farming", {})
 	_add_resource_capped("food", float(cdef.get("harvest", fcfg.get("harvest_food", 6.0))) * crop_mult())
+	# v1.56: фермер хвастается урожаем — обоснованный слух
+	var farmers: Array = residents.filter(func(r): return String(r["prof"]) == "farmer" \
+			and String(r.get("say", "")) == "")
+	if not farmers.is_empty():
+		var f: Dictionary = farmers[_event_rng.randi_range(0, farmers.size() - 1)]
+		f["say"] = "say.farmer.harvest"
+		f["say_until"] = float(time) + 9.0
 	_add_resource_capped("seeds", float(fcfg.get("seed_return", 1)))
 	if _event_rng.randf() < float(fcfg.get("seed_bonus_chance", 0.15)):
 		_add_resource_capped("seeds", 1.0)

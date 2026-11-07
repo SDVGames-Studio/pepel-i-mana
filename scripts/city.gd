@@ -595,6 +595,24 @@ func _hover_base(b: Dictionary) -> String:
 
 
 ## Текст события региона (v1.55) по словарю из npc_cities.rivalry_day.
+## Слухи и разговоры (v1.56): событие города → житель подходящей профессии
+## «говорит» обоснованную фразу (урожай — фермер, жила — шахтёр...).
+func _gossip(event_type: String, prof: String) -> void:
+	if sim == null:
+		return
+	var candidates: Array = []
+	for r in sim.residents:
+		if String(r["prof"]) == prof and String(r.get("say", "")) == "" \
+				and int(r.get("inside", 0)) == 0:
+			candidates.append(r)
+	if candidates.is_empty():
+		return
+	var pick: Dictionary = candidates[randi() % candidates.size()]
+	pick["say"] = "say." + prof + "." + event_type
+	pick["say_until"] = float(sim.time) + 9.0
+
+
+## Текст события региона (v1.55) по словарю из npc_cities.rivalry_day.
 func _region_text(ev: Dictionary) -> String:
 	var key := "world." + String(ev["type"])
 	match String(ev["type"]):
@@ -632,6 +650,7 @@ func _process_events() -> void:
 				hud.toast(Loc.t("city.built_done") % bld_name)
 				_rebuild_collision()
 				Game.stat("buildings")   # статистика (M14-K)
+				_gossip("built", "builder")   # v1.56: строитель гордится
 			"no_worker":
 				hud.toast(Loc.t("city.no_free_worker") % bld_name)
 			"wild_flash":
@@ -693,6 +712,7 @@ func _process_events() -> void:
 				hud.toast(Loc.t("story.mutation_bad_toast") % String(ev["name"]))
 			# --- угрозы (M5) ---
 			"raid_warn":
+				_gossip("raid", "guard")   # v1.56: страж предупреждает
 				_letter("raid_warn", Loc.t("city.raid_warn") % "%.1f" % float(ev["eta"]))
 			"raid_start":
 				_letter("raid_start", Loc.t("city.raid_siege_toast" if bool(ev["siege"]) else "city.raid_toast") % int(ev["count"]))
@@ -877,6 +897,12 @@ func _process_events() -> void:
 			"found_skip":
 				hud.toast(Loc.t("city.found_skip_toast"))
 			# --- сейв (M14-A) ---
+			"lux_made":
+				hud.toast(Loc.t("event.lux_made"))
+			"pests":
+				hud.toast(Loc.t("event.pests") % int(ev["lost"]))
+			"deposit_gone":
+				hud.toast(Loc.t("event.deposit_gone"))
 			"autosaved":
 				hud.toast(Loc.t("menu.autosaved"))
 			# --- жизнь v3 (M14-F) ---

@@ -670,8 +670,9 @@ func _build() -> void:
 	res_grid.add_theme_constant_override("h_separation", 8)
 	res_grid.add_theme_constant_override("v_separation", 2)
 	tl_box.add_child(res_grid)
-	for rid in ["wood", "stone", "food", "crystal", "tools", "gems",
-			"iron", "metal", "kits", "seeds", "saplings", "coins"]:
+	for rid in ["wood", "stone", "food", "copper", "silver", "gold",
+			"iron", "metal", "crystal", "gems", "tools", "kits",
+			"amber", "pearls", "lux", "seeds", "saplings", "coins"]:
 		var cell := HBoxContainer.new()
 		cell.add_theme_constant_override("separation", 3)
 		var icon := TextureRect.new()
@@ -1243,6 +1244,14 @@ const RES_ICON_STYLE := {
 	"seeds": ["dots", Color("#c9b458")],
 	"saplings": ["sprout", Color("#66aa50")],
 	"coins": ["coin", Color("#ffd54f")],
+	"copper": ["nugget", Color("#c87941")],
+	"silver": ["bar", Color("#d7dde3")],
+	"gold": ["coin", Color("#e8b923")],
+	"amber": ["gem", Color("#e8963c")],
+	"pearls": ["pearl", Color("#ead9e8")],
+	"lux": ["box", Color("#ce93d8")],
+	"dragon_bone": ["bone", Color("#e8e2d0")],
+	"dragon_hide": ["hide", Color("#7a8a4a")],
 }
 
 
@@ -1308,6 +1317,23 @@ func res_icon(id: String) -> ImageTexture:
 					var dd := Vector2(xx - 8, yy - 8).length()
 					if dd <= 6.0:
 						px.call(xx, yy, col if dd > 4.5 else col.lightened(0.3))
+		"pearl":
+			for c in [Vector2i(4, 6), Vector2i(9, 5), Vector2i(6, 10)]:
+				for yy in range(c.y, c.y + 4):
+					for xx in range(c.x, c.x + 4):
+						if Vector2(xx - c.x - 1.5, yy - c.y - 1.5).length() <= 2.0:
+							px.call(xx, yy, col if (xx + yy) % 5 != 0 else col.lightened(0.4))
+		"bone":
+			rectf.call(4, 7, 8, 3, col)
+			rectf.call(2, 5, 3, 4, col)
+			rectf.call(2, 8, 3, 4, col)
+			rectf.call(11, 5, 3, 4, col)
+			rectf.call(11, 8, 3, 4, col)
+		"hide":
+			rectf.call(3, 4, 10, 9, col)
+			rectf.call(2, 3, 3, 3, col.darkened(0.2))
+			rectf.call(11, 3, 3, 3, col.darkened(0.2))
+			rectf.call(6, 8, 4, 3, col.lightened(0.25))
 	var tex := ImageTexture.create_from_image(img)
 	_res_icons[id] = tex
 	return tex

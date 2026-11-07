@@ -19,7 +19,7 @@
 	},
 	"trees": 190,
 	"resident_speed": 70.0,
-	"day_length": 180.0,
+	"day_length": 300.0,
 	"night_fraction": 0.22,
 	"life": {
 		"evening_len": 0.1,
@@ -1288,6 +1288,27 @@
 			"max_count": 3,
 			"district": "work",
 			"cat": "special"
+		},
+		{
+			"id": "craftsman",
+			"w": 2,
+			"sprite": "b:workshop",
+			"short": "bld.short.craftsman",
+			"loc": "bld.craftsman",
+			"desc": "bld.desc.craftsman",
+			"color": "#ce93d8",
+			"cost": {
+				"wood": 15,
+				"stone": 10
+			},
+			"build_work": 40,
+			"worker": "smith",
+			"place": "",
+			"district": "work",
+			"cat": "resource",
+			"craft": {
+				"cost_raw": 2
+			}
 		}
 	],
 	"placement": {
@@ -1373,5 +1394,14 @@
 		"_comment": "v1.50: зум карты города колесом мыши (базовый 2.0 — в hero.gd)",
 		"min": 1.2,
 		"max": 3.0
+	},
+	"day_length_note": "v1.56: день 300 с — люди дольше работают и отдыхают в реальном времени (баланс масштабируется от day_length автоматически)",
+	"resource_bonuses": {
+		"_note": "v1.56: бонусы владения богатствами региона (ежедневно, в тике)",
+		"gold_min": 1,
+		"gold_coins": 2,
+		"lux_min": 1,
+		"lux_mood": 1.0,
+		"fish_food": 3.0
 	}
 }

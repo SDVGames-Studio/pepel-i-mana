@@ -74,6 +74,8 @@ func tick(dt_raw: float) -> void:
 		_daily_phase = 1
 		_ensure_elder()
 		_ensure_plaza()
+		_apply_resource_bonuses()   # v1.56: богатства региона
+		_craftsman_convert()        # v1.56: ремесленный двор — сырьё в предметы роскоши
 		if rivalry_cb.is_valid():
 			rivalry_cb.call()   # v1.55: ежедневное соперничество регионов
 	match _daily_phase:
@@ -90,6 +92,7 @@ func tick(dt_raw: float) -> void:
 		2:
 			# фаза 2 — люди и события (болезни/беженцы/рождения/стражи/охота...)
 			_roll_ailments()
+			_roll_pests()   # v1.56: жуки на поля — обоснованная жалоба фермера
 			_roll_refugees()
 			_roll_births()
 			_roll_stories()
@@ -1127,7 +1130,9 @@ func _do_build(r: Dictionary, site: Dictionary, dt: float) -> void:
 		return
 	if bld_has_cell(site, map.tile_of_px(r["pos"])):
 		r["state"] = "build"
-		site["progress"] = float(site["progress"]) + dt * work_mult(r)
+		# v1.56: медные инструменты ускоряют стройку на 10%
+		var copper_mult := 1.1 if float(res.get("copper", 0.0)) >= 5.0 else 1.0
+		site["progress"] = float(site["progress"]) + dt * work_mult(r) * copper_mult
 		r["fatigue"] += dt / float(cfg["day_length"]) * _fatigue_cost(r)
 		_grow_skill(r, dt)
 		if float(site["progress"]) >= float(_def(site)["build_work"]):
@@ -1136,6 +1141,53 @@ func _do_build(r: Dictionary, site: Dictionary, dt: float) -> void:
 			_complete_site(site)
 	else:
 		_move_towards(r, site["tile"], dt)
+
+
+## Бонусы владения богатствами региона (v1.56): данные в city.json
+## → resource_bonuses. Золото — монеты, рыбное изобилие — еда, предметы
+## роскоши — настроение всем, янтарь — медленнее падает настроение.
+func _apply_resource_bonuses() -> void:
+	var bcfg: Dictionary = cfg.get("resource_bonuses", {})
+	if bcfg.is_empty():
+		return
+	if float(res.get("gold", 0.0)) >= float(bcfg.get("gold_min", 1.0)):
+		if coins_sink.is_valid():
+			coins_sink.call(int(bcfg.get("gold_coins", 2)))   # налог золотом
+	if float(res.get("lux", 0.0)) >= float(bcfg.get("lux_min", 1.0)):
+		for r in residents:
+			r["mood"] = clampf(float(r["mood"]) + float(bcfg.get("lux_mood", 1.0)), 0.0, 100.0)
+	if map.region_resource == "fish_abound" and not buildings.filter(
+			func(b): return _active(b) and String(b["type"]) == "pier").is_empty():
+		_add_resource_capped("food", float(bcfg.get("fish_food", 3.0)))
+
+
+## Ремесленный двор (v1.56): за день превращает сырьё в ПРЕДМЕТЫ РОСКОШИ.
+## Приоритет сырья: золото → серебро → жемчуг → янтарь → медь (2 → 1 lux).
+func _craftsman_convert() -> void:
+	var cdef: Dictionary = {}
+	for d in cfg.get("buildings", []):
+		if String(d.get("id", "")) == "craftsman":
+			cdef = d
+			break
+	if cdef.is_empty():
+		return
+	var craft: Dictionary = cdef.get("craft", {})
+	if craft.is_empty():
+		return
+	var per := float(cdef.get("cost_raw", 2.0))
+	var working := false
+	for b in buildings:
+		if _active(b) and String(b["type"]) == "craftsman" and int(b["worker"]) > 0:
+			working = true
+			break
+	if not working:
+		return
+	for raw_id in ["gold", "silver", "pearls", "amber", "copper"]:
+		if float(res.get(raw_id, 0.0)) >= per:
+			res[raw_id] = float(res[raw_id]) - per
+			_add_resource_capped("lux", 1.0)
+			events.append({"type": "lux_made", "res": raw_id})
+			return   # один товар в день — роскошь редкая по определению
 
 
 func _do_work(r: Dictionary, bld: Dictionary, dt: float) -> void:
@@ -1215,6 +1267,10 @@ func _produce_tick(r: Dictionary, bld: Dictionary, dt: float) -> void:
 	var boost: float = blessing_boost()
 	var amount: float = float(prod["per_day"]) * portion * boost * production_mult(bld) * work_mult(r)
 	_add_resource_capped(String(prod["res"]), amount)
+	# v1.56: пристань добывает богатство воды (жемчуг/рыбное изобилие) —
+	# половина темпа от еды; на суше у пристани ресурса нет
+	if String(bld["type"]) == "pier" and map.region_resource in ["pearls", "fish_abound"]:
+		_add_resource_capped(String(map.region_resource), amount * 0.5)
 	# шахта даёт и камень вместе с рудой (заказчик)
 	if prod.has("res2"):
 		var amount2: float = float(prod["per_day2"]) * portion * boost * production_mult(bld) * work_mult(r)

@@ -8,6 +8,8 @@ const TILE_ROCK := 2
 const TILE_TREE := 3
 const TILE_ORE := 4       # скала с железной рудой — под ней можно поставить шахту (M5+)
 const TILE_DEADROCK := 5  # выработанный массив (правки v1.21): пустая порода/жилы —
+const TILE_DEPOSIT := 7   # v1.56: месторождение регионального ресурса
+                          # (медь/серебро/золото/янтарь) — добывается шахтой
 const TILE_RUIN := 6      # v1.48: руины городской карты (куча древних камней,
                           # добывается как скала; лут-тайлы — ruin_loot)
                           # стоит на месте выработанной скалы, добывается шахтой
@@ -41,6 +43,8 @@ func note_edit_static(t: Vector2i) -> void:
 	if edited.size() > 128:
 		edited.pop_front()             # v1.28.1: версия масок воды/скал — инкремент при выработке породы
 var grid: Array = []            # grid[y][x] -> TILE_*
+var region_resource := "copper"   # v1.56: богатство локации (гарантирован)
+var deposit_tiles := {}         # Vector2i -> true — клетки месторождения
 var road := {}                  # Vector2i -> true: дороги (M6) — ускорение и приоритет путей
 var wear := {}                  # Vector2i -> float: износ троп (M6) — город сам строит дороги там, где ходят
 var rock_hp := {}               # Vector2i -> float: запас скалы (M11) — добыча истощает тайл
@@ -129,6 +133,7 @@ func generate(seed_value: int, params: Dictionary, hydro := {}) -> void:
 	# добираются вне ядра застройки и вдали от аномалии. ДО mark_terrain_solid —
 	# новые скалы сразу сплошные для A*.
 	_extra_nature_pass(seed_value, params)
+	_pick_region_resource(seed_value, params)
 	mark_terrain_solid()
 
 
@@ -212,6 +217,83 @@ func _extra_nature_pass(seed_value: int, params: Dictionary) -> void:
 				rock_hp[t] = hp
 			elif grid[y][x] == TILE_ORE and not rock_hp.has(t):
 				rock_hp[t] = hp * 1.3
+
+
+## ---------- богатства региона (v1.56) --------------------------------------
+## У КАЖДОЙ локации гарантирован (100%) свой ресурс: медь, серебро, золото,
+## янтарь — на суше; жемчуг, рыбное изобилие — на воде. Месторождения
+## добываются шахтой (жилы), водные — пристанью (рыбак).
+
+const REGION_RESOURCES := {
+	"copper": {"loc": "res.copper", "color": "#c87941"},
+	"silver": {"loc": "res.silver", "color": "#d7dde3"},
+	"gold": {"loc": "res.gold", "color": "#ffd54f"},
+	"amber": {"loc": "res.amber", "color": "#e8963c"},
+	"pearls": {"loc": "res.pearls", "color": "#ead9e8"},
+	"fish_abound": {"loc": "res.fish_abound", "color": "#4dd0e1"},
+}
+
+
+## Выбрать богатство локации и разложить месторождения (детерминированно
+## по сиду — NPC-карты перегенерируются и ресурс совпадает).
+func _pick_region_resource(seed_value: int, params: Dictionary) -> void:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = hash("region:%d" % seed_value)
+	var has_water := false
+	for y in h:
+		for x in w:
+			if grid[y][x] == TILE_WATER:
+				has_water = true
+				break
+		if has_water:
+			break
+	var land_pool := ["copper", "silver", "gold", "amber"]
+	var water_pool := ["pearls", "fish_abound"]
+	var pool := land_pool + (water_pool if has_water else [])
+	region_resource = pool[rng.randi_range(0, pool.size() - 1)]
+	deposit_tiles = {}
+	if region_resource in ["pearls", "fish_abound"]:
+		_place_water_beds(rng)
+	else:
+		_place_rock_deposits(rng)
+
+
+## Ячейки месторождения на скалах (металлы/янтарь): 2 гнезда по 3–5 клеток.
+func _place_rock_deposits(rng: RandomNumberGenerator) -> void:
+	var rocks: Array = []
+	for y in range(1, h - 1):
+		for x in range(1, w - 1):
+			if grid[y][x] == TILE_ROCK:
+				rocks.append(Vector2i(x, y))
+	if rocks.is_empty():
+		return
+	for nest in 2:
+		var c: Vector2i = rocks[rng.randi_range(0, rocks.size() - 1)]
+		for i in rng.randi_range(3, 5):
+			var t := c + Vector2i(rng.randi_range(-2, 2), rng.randi_range(-2, 2))
+			if in_bounds(t) and grid[t.y][t.x] == TILE_ROCK:
+				deposit_tiles[t] = true
+
+
+## Жемчужные/рыбные банки: 2–4 водных клетки у берега.
+func _place_water_beds(rng: RandomNumberGenerator) -> void:
+	var waters: Array = []
+	for y in range(1, h - 1):
+		for x in range(1, w - 1):
+			if grid[y][x] == TILE_WATER:
+				var shore := false
+				for d: Vector2i in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
+					var n := Vector2i(x, y) + d
+					if in_bounds(n) and grid[n.y][n.x] != TILE_WATER:
+						shore = true
+						break
+				if shore:
+					waters.append(Vector2i(x, y))
+	if waters.is_empty():
+		return
+	for i in rng.randi_range(2, 4):
+		var t: Vector2i = waters[rng.randi_range(0, waters.size() - 1)]
+		deposit_tiles[t] = true
 
 
 ## Детерминированный шум 0..1 по координатам и соли (для лесов/полян —

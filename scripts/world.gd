@@ -783,6 +783,7 @@ func _enter_location(poi: Dictionary) -> void:
 		"dragon_castle":
 			# логово древнего дракона (M13): гуща врагов и богатая сокровищница
 			Game.dungeon_scale = 1.4
+			Game.forced_biome = "dragon_lair"   # v1.56: драконы и награда костью
 			Game.poi_coins = sim.coin_reward(poi)
 		"vampire_keep":
 			# замок вампира (M14-D): ночь-готика, лут +3, монеты 20–40

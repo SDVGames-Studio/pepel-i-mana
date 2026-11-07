@@ -1412,7 +1412,9 @@ func _draw_resident(r: Dictionary) -> void:
 	var chat_key := String(r.get("chat_key", ""))
 	if chat_key != "" and String(r["state"]) == "chat":
 		_draw_speech_bubble(center, Loc.t(chat_key))
-
+	# v1.56: обоснованные слухи/диалоги — событие дня выводится облачком
+	if String(r.get("say", "")) != "" and float(r.get("say_until", 0.0)) > float(sim.time):
+		_draw_speech_bubble(pos, Loc.t(String(r["say"])))
 
 func _is_elder_golem(r: Dictionary) -> bool:
 	return String(r.get("prof", "")) == "elder"

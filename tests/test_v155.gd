@@ -125,7 +125,7 @@ func _test_v155_save_migration() -> void:
 	var m2: Dictionary = sg.call("_migrate_save", v1_old, 2)
 	_check(not m2.is_empty(), "миграция сейва без городов НПС — ок")
 	# сейв из будущей версии — не тянем (проверка в load_game, тут — контракт версии)
-	_check(int(sg.FORMAT_VERSION) == 2, "FORMAT_VERSION = 2")
+	_check(int(sg.FORMAT_VERSION) == 3, "FORMAT_VERSION = 2")
 	# регресс: текущий формат не мигрирует (нет шагов выше 2)
 	var v2: Dictionary = {"v": 2}
 	var m3: Dictionary = sg.call("_migrate_save", v2, 2)
