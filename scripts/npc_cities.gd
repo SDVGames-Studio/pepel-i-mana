@@ -348,9 +348,10 @@ func load_block(block: Dictionary) -> void:
 ## столицы региона (ранг 1 N дней подряд).
 
 ## Ежедневный бросок. psim — симуляция города игрока (null, когда игрок
-## на карте мира без города рядом). Возвращает события-словари
-## (type: region_*) — сцена показывает их письмами/тостами.
-func rivalry_day(psim = null) -> Array:
+## на карте мира без города рядом). roll >= 0 — ВНЕСЁННЫЙ бросок (тесты
+## задают детерминированный сценарий), иначе честный рандом. Возвращает
+## события-словари (type: region_*) — сцена показывает письмами/тостами.
+func rivalry_day(psim = null, roll := -1.0) -> Array:
 	var evs: Array = []
 	_update_standings(psim)
 	var rng := RandomNumberGenerator.new()
@@ -374,14 +375,14 @@ func rivalry_day(psim = null) -> Array:
 	# --- события соперничества (письма раз в 1–3 дня, не спам) ---
 	var rivals := cities.values().filter(func(e): return int(e.get("rel", 0)) < -30)
 	var friends := cities.values().filter(func(e): return int(e.get("rel", 0)) > 40)
-	var roll := rng.randf()
-	if not rivals.is_empty() and roll < 0.22 and psim != null:
+	var r := roll if roll >= 0.0 else rng.randf()
+	if not rivals.is_empty() and r < 0.22 and psim != null:
 		var rival: Dictionary = rivals[rng.randi_range(0, rivals.size() - 1)]
 		var loss := mini(_player_coins(psim), rng.randi_range(5, 15))
-		if loss > 0 and psim.coins_sink.is_valid():
+		if psim.coins_sink.is_valid():
 			psim.coins_sink.call(-loss)   # караван разграблен по дороге
-			evs.append({"type": "region_raid", "name": String(rival["name"]), "n": loss})
-	elif not friends.is_empty() and roll < 0.45 and psim != null:
+		evs.append({"type": "region_raid", "name": String(rival["name"]), "n": loss})
+	elif not friends.is_empty() and r < 0.45 and psim != null:
 		var friend: Dictionary = friends[rng.randi_range(0, friends.size() - 1)]
 		var profs: Array = psim.cfg.get("professions", [])
 		var pname: String = psim.cfg.get("names", ["гость"])[0]
@@ -389,7 +390,7 @@ func rivalry_day(psim = null) -> Array:
 		var res: Dictionary = psim._new_resident(pname, prof, psim.map.spawn_tile)
 		psim.residents.append(res)
 		evs.append({"type": "region_migrants", "name": String(friend["name"]), "who": pname})
-	elif not rivals.is_empty() and roll < 0.60 and psim != null:
+	elif not rivals.is_empty() and r < 0.60 and psim != null:
 		var rival2: Dictionary = rivals[rng.randi_range(0, rivals.size() - 1)]
 		var targets: Array = psim.buildings.filter(func(b): return bool(b.get("done", false)) and not bool(b.get("razed", false)))
 		if not targets.is_empty():
@@ -397,7 +398,7 @@ func rivalry_day(psim = null) -> Array:
 			psim._damage_building(b, float(psim._bld_max_hp(String(b["type"]))) * 0.3)
 			evs.append({"type": "region_sabotage", "name": String(rival2["name"]),
 					"bld": String(b["type"])})
-	elif not friends.is_empty() and roll < 0.75 and psim != null:
+	elif not friends.is_empty() and r < 0.75 and psim != null:
 		var friend2: Dictionary = friends[rng.randi_range(0, friends.size() - 1)]
 		var gift := rng.randi_range(8, 20)
 		if psim.coins_sink.is_valid():
