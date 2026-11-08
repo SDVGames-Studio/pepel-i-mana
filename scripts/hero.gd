@@ -233,16 +233,17 @@ func _ready() -> void:
 	_sprite.scale = Vector2.ONE * ks
 	_sprite.position = Vector2(0, float(p["radius"]) - (KNIGHT_FRAME_H * 0.5 - KNIGHT_FEET_Y) * ks)
 	_sprite.play("idle")
+	# v1.58.1: нода-спрайт — ТОЛЬКО источник кадров/тайминга анимации; она
+	# всегда скрыта, иначе в данже тело рисовалось дважды (сам _draw +
+	# видимый AnimatedSprite2D — «два персонажа»). В городе тело и меч
+	# выводит draw_body в общий Y-сортированный слой city_view (M12).
+	_sprite.visible = false
 	add_child(_sprite)
 	var cam := Camera2D.new()
 	cam.name = "Camera"
 	cam.zoom = Vector2(2, 2)
 	add_child(cam)
 	cam.make_current()
-	# в городе героя рисует общий Y-сортированный слой сцены (M12):
-	# спрайт-нода скрыта, тело и меч выводит draw_body в city_view
-	if city_mode and _sprite != null:
-		_sprite.visible = false
 	queue_redraw()
 
 
