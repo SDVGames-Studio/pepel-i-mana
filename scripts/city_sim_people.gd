@@ -62,6 +62,29 @@ func _assign_jobs() -> void:
 				r["sub_prof"] = ""
 				break
 		break
+	# 3.6 v1.59 (приёмка: «к 60 дню 3 жителя и ничего не починено», еда тает):
+	# жизненно важные здания не должны пустовать, пока при деле сидят
+	# необязательные — ферма/пристань/добыча отбирают работника у рынка,
+	# алтаря, мастерской. Без этого спелые грядки гнили: работник фермы
+	# умирал, свободных не оставалось, подмены брать было не откуда.
+	for vt in ["farm", "pier", "sawmill", "quarry", "mine"]:
+		for b in buildings:
+			if String(b["type"]) != vt or not _active(b) or not bool(b["done"]) \
+					or int(b["worker"]) > 0:
+				continue
+			for r in residents:
+				var rb = r.get("bld")
+				if rb == null or String(r.get("ail", "")) != "" or _is_golem(r):
+					continue
+				var ot := String((rb as Dictionary).get("type", ""))
+				if ot in ["farm", "pier", "sawmill", "quarry", "mine", "well"]:
+					continue   # не отнимаем у такого же жизненно важного
+				(rb as Dictionary)["worker"] = -1
+				r["bld"] = null
+				r["sub_prof"] = ""
+				_substitute_into(String(_def(b)["worker"]), {}, b, false)
+				if int(b["worker"]) > 0:
+					break
 	# 4. подмена строек и зданий свободными жителями (с обучением)
 	for b in buildings:
 		if not bool(b["done"]) and (int(b["worker"]) <= 0 or not taken.has(int(b["worker"]))):
