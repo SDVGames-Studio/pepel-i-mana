@@ -28,6 +28,7 @@ const LETTER_KINDS := {
 	"region_migrants": "region", "region_gift": "region",
 	"region_capital": "region", "region_capital_hold": "region",
 	"region_lost_capital": "region",
+	"caravan_in": "region", "caravan_out": "region", "ally_raid": "region",
 }
 
 const GROUP_COLORS := {

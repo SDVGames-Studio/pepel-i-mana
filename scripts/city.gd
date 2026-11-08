@@ -173,6 +173,9 @@ func _ready() -> void:
 		sim.rivalry_cb = func() -> void:
 			for ev in Game.npc_cities.rivalry_day(sim):
 				_letter(String(ev["type"]), _region_text(ev))
+			# v1.60: караваны и союзные походы — письма из той же серии
+			for ev2 in Game.npc_cities.trade_day(sim):
+				_letter(String(ev2["type"]), _region_text(ev2))
 
 
 ## Крафт предмета (M14-B/T05): оружейка куёт оружие и броню, мастерская —
@@ -641,6 +644,11 @@ func _region_text(ev: Dictionary) -> String:
 			return Loc.t(key) % int(ev["days"])
 		"region_lost_capital":
 			return Loc.t(key) % [String(ev["name"]), int(ev["rank"])]
+		"caravan_in", "caravan_out":
+			return Loc.t(key) % [String(ev["name"]), Loc.t("res." + String(ev["res"])),
+					int(ev["n"]), int(ev["pay"])]
+		"ally_raid":
+			return Loc.t(key) % [String(ev["name"]), int(ev["n"])]
 	return Loc.t(key)
 
 
