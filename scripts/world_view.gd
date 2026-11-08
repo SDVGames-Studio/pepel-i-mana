@@ -481,6 +481,17 @@ func _draw_poi(poi: Dictionary, ts: float) -> void:
 	# подложка-пятно цвета точки (видно поверх биома) + спрайт (M9)
 	var pulse := 0.8 + 0.2 * sin(_time * 2.5)
 	draw_circle(pos, ts * 0.62 * pulse, Color(color.r, color.g, color.b, 0.18))
+	# v1.59 (заказчик): точка «city» — единственная: стартовый город игрока.
+	# Золотой пульсирующий ореол + флажок, чтобы его было видно с любого зума
+	if String(poi["kind"]) == "city":
+		var gc := Color(1.0, 0.84, 0.35)
+		draw_arc(pos, ts * 1.05 * pulse, 0.0, TAU, 40, Color(gc.r, gc.g, gc.b, 0.55), 3.0)
+		draw_arc(pos, ts * 1.35 * (1.6 - pulse), 0.0, TAU, 40, Color(gc.r, gc.g, gc.b, 0.22), 2.0)
+		var pole := pos + Vector2(ts * 0.5, -ts * 0.15)
+		draw_line(pole, pole + Vector2(0, -ts * 0.8), Color("#6b5233"), 2.5)
+		draw_colored_polygon(PackedVector2Array([
+				pole + Vector2(0, -ts * 0.8), pole + Vector2(ts * 0.55, -ts * 0.62),
+				pole + Vector2(0, -ts * 0.44)]), gc)
 	var ref: String = KIND_SPRITES.get(String(poi["kind"]), "")
 	if ref != "":
 		var fallen := String(poi["kind"]) == "settlement" and String(poi["state"]) == "fallen"

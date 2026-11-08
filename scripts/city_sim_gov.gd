@@ -1064,6 +1064,10 @@ func _roll_ailments() -> void:
 		var recov: float = float(acfg.get("recover_chance", 0.25))
 		if _healer_ready():
 			recov = float(acfg.get("healer_recover_chance", 0.7))
+		elif residents.size() <= 2:
+			# v1.59: малому городу нельзя вымирать от одной хвори — без
+			# лекаря и без преемников болезнь означала конец поселения
+			recov = maxf(recov, float(acfg.get("tiny_recover_chance", 0.5)))
 		if _event_rng.randf() < recov:
 			r["ail"] = ""
 			_assign_jobs()   # выздоровел — вернулся в раздачу работы
@@ -1096,7 +1100,12 @@ func _roll_refugees() -> void:
 	var rcfg: Dictionary = people.get("refugees", {})
 	if rcfg.is_empty() or residents.size() >= pop_cap():
 		return
-	if not _food_reserve_ok() or _avg_mood() < float(rcfg.get("mood_gate", 45.0)):
+	if not _food_reserve_ok():
+		return
+	# v1.59: в городе из 1-2 человек настроение не блокирует переселенцев —
+	# иначе смерть одного жителя (горе -20) навсегда закрывала приток людей
+	# и город вымирал за считанные недели (приёмка v1.59: 3 жителя к 60 дню)
+	if residents.size() > 2 and _avg_mood() < float(rcfg.get("mood_gate", 45.0)):
 		return
 	if _event_rng.randf() >= _refugee_chance():
 		return

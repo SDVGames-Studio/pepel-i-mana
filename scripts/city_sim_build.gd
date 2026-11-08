@@ -502,6 +502,19 @@ func place_road(tile: Vector2i) -> String:
 	return ""
 
 
+## v1.59: поле (зона-«field») ближе dist клеток к прямоугольнику здания?
+func _farm_zone_near(tile: Vector2i, dist: int) -> bool:
+	var w := bld_w_of_type("sawmill")
+	for z in zones:
+		if String(z["type"]) != "field":
+			continue
+		for c in z["cells"]:
+			if c.x >= tile.x - dist and c.x < tile.x + w + dist \
+					and c.y >= tile.y - dist and c.y < tile.y + w + dist:
+				return true
+	return false
+
+
 ## Клетка занята зоной?
 func _tile_in_zone(tile: Vector2i) -> bool:
 	for z in zones:
@@ -570,6 +583,10 @@ func placement_block(type_id: String, tile: Vector2i, skip_count := false) -> St
 			break
 	if not skip_count and max_count > 0 and _count_type(type_id) >= max_count:
 		return "city.tent_limit"   # лимит построек типа (этап 2, аспект 4)
+	# v1.59 (заказчик): лесопилку не ставят вплотную к полям — щепа и пыль
+	# портят урожай; правило для игрока и самостроя одинаково
+	if type_id == "sawmill" and _farm_zone_near(tile, 2):
+		return "city.placement_sawmill_farm"
 	match place:
 		"ore", "veins":
 			# шахта (v1.21) — у жилы, выработки ИЛИ месторождения региона (v1.56)
@@ -871,12 +888,14 @@ func _roll_city_repair() -> void:
 					and String(r.get("ail", "")) == "" and int(r.get("repair_bld", 0)) <= 0:
 				members.append(r)
 	if members.is_empty():
-		# все при деле: руины важнее смены — один строитель срывается с работы
+		# все при деле: руины важнее смены — строитель срывается с работы;
+		# v1.59: строителей может не быть вовсе (город выгорел) — тогда с
+		# поста срывается любой здоровый не-староста, иначе руины вечны
 		for r in residents:
 			if not members.is_empty():
 				break
-			if String(r["prof"]) == "builder" and String(r.get("ail", "")) == "" \
-					and int(r.get("repair_bld", 0)) <= 0 and not _is_golem(r):
+			if String(r.get("ail", "")) == "" and int(r.get("repair_bld", 0)) <= 0 \
+					and not _is_golem(r) and String(r["prof"]) != "elder":
 				r["site"] = null
 				r["bld"] = null
 				members.append(r)

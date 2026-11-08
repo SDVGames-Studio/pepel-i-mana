@@ -206,6 +206,14 @@ const BLOCKS := [
 	"_test_v158_dragon_bones",
 ]],
 
+	["res://tests/test_v159.gd", [
+	"_test_v159_sawmill_not_near_fields",
+	"_test_v159_vital_steal",
+	"_test_v159_repair_without_builder",
+	"_test_v159_refugees_to_tiny_city",
+	"_test_v159_world_home_marker",
+]],
+
 	["res://tests/test_dungeon2.gd", [
 	"_test_dungeon2_assets",
 	"_test_dungeon2_spots",

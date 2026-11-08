@@ -128,8 +128,10 @@ func setup(city_map, city_cfg: Dictionary, city_sim = null, cache_key := "") -> 
 	var Game: Node = _game()
 	if Game != null and _cache_key != "":
 		var cached: Dictionary = Game.city_bake_cache.get(_cache_key, {})
-		if int(cached.get("grid_ver", -9)) == int(map.grid_ver) and int(cached.get("bs", 0)) == _bs 				and (cached.get("chunks", {}) as Dictionary).size() >= _chunk_count():
-			_chunks = cached["chunks"]
+		# v1.59: кэш может быть ЧАСТИЧНЫМ (уход в данж посреди запечки) —
+		# восстанавливаем всё, что есть; добор докатится по очереди
+		if int(cached.get("grid_ver", -9)) == int(map.grid_ver) and int(cached.get("bs", 0)) == _bs 				and (cached.get("chunks", {}) as Dictionary).size() > 0:
+			_chunks = (cached.get("chunks", {}) as Dictionary).duplicate()
 			_chunk_queue.clear()
 	queue_redraw()
 
@@ -210,6 +212,25 @@ var _blob_cache_dirty := true  # с их рендером; версия сетк
 ## ЧАНКИ с правками (edited: Vector2i-список от city_map.note_edit);
 ## без списка — все чанки (прогрессивно). Лёгкий вызов — только
 ## надстройки (дёшево при любом размере карты).
+## v1.59: уходим из города — сохранить текущий прогресс запечки. Раньше
+## кэш писался только для полностью пропечённой карты: уход в данж до
+## конца запечки + смерть = возврат перекраивал ВСЁ с нуля (минуты).
+func _exit_tree() -> void:
+	if _cache_key == "" or _chunks.is_empty() or map == null:
+		return
+	var g: Node = _game()
+	if g == null:
+		return
+	var cache: Dictionary = g.city_bake_cache
+	var old: Dictionary = cache.get(_cache_key, {})
+	var merged: Dictionary = {}
+	if int(old.get("grid_ver", -9)) == int(map.grid_ver) and int(old.get("bs", 0)) == _bs:
+		merged = (old.get("chunks", {}) as Dictionary).duplicate()
+	merged.merge(_chunks)
+	cache[_cache_key] = {"grid_ver": int(map.grid_ver), "bs": _bs,
+			"chunks": merged, "stamp": Time.get_ticks_msec()}
+
+
 func rebake(heavy := false, grid_ver := -1, edited: Array = []) -> void:
 	if _vp == null:
 		return
@@ -231,6 +252,7 @@ func rebake(heavy := false, grid_ver := -1, edited: Array = []) -> void:
 						if nb.x >= 0 and nb.y >= 0 								and nb.x < ceili(float(map.w) / CHUNK_TILES) 								and nb.y < ceili(float(map.h) / CHUNK_TILES) 								and not wanted.has(nb):
 							wanted.append(nb)
 		for c in wanted:
+			_chunks.erase(c)   # v1.59: правленый чанк обязан перекроиться
 			if not _chunk_queue.has(c):
 				_chunk_queue.append(c)
 	# надстройки: полный бейк — только первый кадр (или v1-сейв), дальше
@@ -260,7 +282,8 @@ func _process(_delta: float) -> void:
 	if not is_inside_tree():
 		return
 	var done_all := _chunk_queue.is_empty() and _chunks.size() >= _chunk_count()
-	var budget_ms := 10.0
+	# v1.59: пока карта не допечена — это «экран загрузки», бюджет шире
+	var budget_ms := 24.0 if not done_all else 10.0
 	var frame_t0 := Time.get_ticks_usec()
 	_new_brushes_this_frame = 0
 	for b in _brushes:
@@ -279,7 +302,10 @@ func _process(_delta: float) -> void:
 			queue_redraw()
 		elif not _chunk_queue.is_empty():
 			var c: Vector2i = _chunk_queue.pop_front()
-			if _chunks.has(c) and _chunk_queue.is_empty():
+			# v1.59: готовый чанк не перерисовываем (раньше скип был только
+			# для последнего — вход в город перекрашивал все 100+ чанков).
+			# Перекраиваемые правками чанки вынимаются из _chunks в rebake().
+			if _chunks.has(c):
 				continue
 			b["chunk"] = c
 			var k := float(_bs) / float(map.ts)
