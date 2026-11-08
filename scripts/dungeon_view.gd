@@ -66,6 +66,17 @@ func _draw() -> void:
 	draw_rect(Rect2(0, 0, gen.w * ts, gen.h * ts), _void_col)
 	# биом без пака (старый/модовый): откат на плоские цвета
 	var use_pack: bool = bool(biome.get("v2_pack", true))
+	# v1.58: биом может переопределить тайлы пака (крипта — некротический
+	# набор d3 из Undead Tileset); полный словарь дефолтов — d2
+	var P: Dictionary = biome.get("pack_refs", {})
+	# v1.58: спрайтовый декор биома (набор заказчика: кости/могилы/кристаллы);
+	# рисуется после тайлов, чтобы высокие объекты не обрезались полом ниже
+	var dsp: Array = biome.get("decor_sprites", [])
+	var dbig: Array = biome.get("decor_big", [])
+	var dchance := maxi(4, int(biome.get("decor_chance", 14)))
+	var dsize := float(biome.get("decor_size", 22))
+	var dbig_size := float(biome.get("decor_big_size", 56))
+	var decor_draws: Array = []
 	var half := Vector2(ts, ts) * 0.5
 	for y in gen.h:
 		for x in gen.w:
@@ -79,18 +90,18 @@ func _draw() -> void:
 					# как в демо-карте пака); в центре — чистая кладка
 					var ref := ""
 					if gen.tile_at(Vector2i(x, y - 1)) != gen.TILE_FLOOR:
-						ref = "e:d2_edge_n"
+						ref = String(P.get("edge_n", "e:d2_edge_n"))
 					elif gen.tile_at(Vector2i(x, y + 1)) != gen.TILE_FLOOR:
-						ref = "e:d2_edge_s"
+						ref = String(P.get("edge_s", "e:d2_edge_s"))
 					elif gen.tile_at(Vector2i(x - 1, y)) != gen.TILE_FLOOR:
-						ref = "e:d2_edge_w"
+						ref = String(P.get("edge_w", "e:d2_edge_w"))
 					elif gen.tile_at(Vector2i(x + 1, y)) != gen.TILE_FLOOR:
-						ref = "e:d2_edge_e"
+						ref = String(P.get("edge_e", "e:d2_edge_e"))
 					else:
 						match h % 7:
-							0, 3: ref = "e:d2_floor_b"
-							5: ref = "e:d2_floor_c"
-							_: ref = "e:d2_floor_a"
+							0, 3: ref = String(P.get("floor_b", "e:d2_floor_b"))
+							5: ref = String(P.get("floor_c", "e:d2_floor_c"))
+							_: ref = String(P.get("floor_a", "e:d2_floor_a"))
 					Assets.draw_ref(self, ref, pos + half, float(ts), false, col)
 				else:
 					draw_rect(Rect2(pos, Vector2(ts, ts)), col)
@@ -109,8 +120,8 @@ func _draw() -> void:
 				if _face_mask[y][x]:
 					# грань: кирпич + светлая кромка верха; тень кладём на пол ниже
 					if use_pack:
-						Assets.draw_ref(self, "e:d2_wall_face", pos + half, float(ts),
-								false, wall_col)
+						Assets.draw_ref(self, String(P.get("wall_face", "e:d2_wall_face")),
+								pos + half, float(ts), false, wall_col)
 					else:
 						draw_rect(Rect2(pos, Vector2(ts, ts)), wall_col.darkened(0.18))
 					if y + 1 < gen.h and gen.grid[y + 1][x] == gen.TILE_FLOOR:
@@ -119,8 +130,8 @@ func _draw() -> void:
 				else:
 					# верх стены: кап кладки
 					if use_pack:
-						Assets.draw_ref(self, "e:d2_wall_top", pos + half, float(ts),
-								h % 5 == 0, wall_col.darkened(0.08))
+						Assets.draw_ref(self, String(P.get("wall_top", "e:d2_wall_top")),
+								pos + half, float(ts), h % 5 == 0, wall_col.darkened(0.08))
 					else:
 						draw_rect(Rect2(pos, Vector2(ts, ts)), wall_col.darkened(0.18))
 						Assets.draw_ref(self, String(biome.get("wall_sprite", "")),
@@ -128,6 +139,17 @@ func _draw() -> void:
 			else:
 				# глубинная порода вне коридоров и комнат — чернота без спрайта
 				draw_rect(Rect2(pos, Vector2(ts, ts)), _void_col)
+			# декор: только внутри комнат (пол со всех 4 сторон), чтобы
+			# кости не липли к проходам и не перекрывали грани стен
+			if not dsp.is_empty() and tile == gen.TILE_FLOOR \
+					and gen.tile_at(Vector2i(x, y - 1)) == gen.TILE_FLOOR \
+					and gen.tile_at(Vector2i(x, y + 1)) == gen.TILE_FLOOR \
+					and gen.tile_at(Vector2i(x - 1, y)) == gen.TILE_FLOOR \
+					and gen.tile_at(Vector2i(x + 1, y)) == gen.TILE_FLOOR \
+					and h % dchance == 0:
+				decor_draws.append([
+						String(dsp[(h / dchance) % dsp.size()]),
+						pos + Vector2(ts * 0.5, ts * 0.62), h % 4 == 0, dsize])
 			# угольки огненных биомов (v1.33): редкие, жарко-яркие
 			var ember_hex := String(biome.get("ember_color", ""))
 			if ember_hex != "" and tile == gen.TILE_FLOOR and h % 7 == 3:
@@ -138,6 +160,24 @@ func _draw() -> void:
 				draw_circle(ep, 1.3, Color(ember.r, ember.g, ember.b, 0.9))
 				draw_circle(ep + Vector2(-0.8, -0.8), 0.6,
 						Color(ember.r, ember.g, ember.b).lightened(0.5))
+
+
+	# крупные объекты пака: по одному в центре большой комнаты
+	# (мёртвое дерево, куча черепов, руина — якорь комнаты)
+	for r in gen.rooms:
+		if dbig.is_empty() or int(r.w) < 5 or int(r.h) < 5:
+			continue
+		var cx: int = int(r.x) + int(r.w) / 2
+		var cy: int = int(r.y) + int(r.h) / 2
+		var hh := _hash(cx, cy)
+		decor_draws.append([String(dbig[hh % dbig.size()]),
+				Vector2(cx, cy) * ts + Vector2(ts * 0.5, ts * 0.7),
+				hh % 4 == 0, dbig_size])
+	# декор поверх всех тайлов: тень объекта уже вшита в PNG (набор *_shadow)
+	for d in decor_draws:
+		Assets.draw_ref(self, d[0], d[1], float(d[3]), d[2],
+				Color(floor_col.r * 0.5 + 0.5, floor_col.g * 0.5 + 0.5,
+						floor_col.b * 0.5 + 0.5))
 
 
 static func _hash(x: int, y: int) -> int:

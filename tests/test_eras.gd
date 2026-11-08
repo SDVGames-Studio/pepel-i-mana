@@ -708,7 +708,8 @@ func _test_m9() -> void:
 			or String(vdata.get("stage", "")).begins_with("Живая земля")
 			or String(vdata.get("stage", "")).begins_with("Противостояние")
 			or String(vdata.get("stage", "")).begins_with("Богатства региона")
-			or String(vdata.get("stage", "")).begins_with("Хмель, вино и тьма")),
+			or String(vdata.get("stage", "")).begins_with("Хмель, вино и тьма")
+			or String(vdata.get("stage", "")).begins_with("Биом смерти")),
 			"проект в программе «Мир v2/Новый мир v2/Живая земля» (версия %s)" % (String(vdata.get("version", "?")) if vdata is Dictionary else "?"))
 
 

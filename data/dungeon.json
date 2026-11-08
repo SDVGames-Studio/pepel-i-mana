@@ -150,7 +150,18 @@
 			"wall_sprite": "k:2",
 			"moss": false,
 			"crystals": false,
-			"humanoids": false
+			"humanoids": false,
+			"decor_sprites": [
+				"img:death/bones1",
+				"img:death/bones1",
+				"img:death/bones2"
+			],
+			"decor_chance": 12,
+			"decor_size": 28,
+			"decor_big": [
+				"img:death/sculls"
+			],
+			"decor_big_size": 56
 		},
 		"lich_tower": {
 			"ambient": "#080612",
@@ -304,9 +315,39 @@
 			"pollution_on_visit": 2.0,
 			"wall_color": "#565179",
 			"wall_sprite": "k:36",
-			"moss": true,
+			"moss": false,
 			"crystals": false,
-			"humanoids": false
+			"humanoids": false,
+			"pack_refs": {
+				"floor_a": "e:d3_floor_a",
+				"floor_b": "e:d3_floor_b",
+				"floor_c": "e:d3_floor_c",
+				"edge_n": "e:d3_edge_n",
+				"edge_s": "e:d3_edge_s",
+				"edge_w": "e:d3_edge_w",
+				"edge_e": "e:d3_edge_e",
+				"wall_face": "e:d3_wall_face",
+				"wall_top": "e:d3_wall_top"
+			},
+			"decor_sprites": [
+				"img:death/bones1",
+				"img:death/bones1",
+				"img:death/bones2",
+				"img:death/grave1",
+				"img:death/grave2",
+				"img:death/crystal1",
+				"img:death/crystal2"
+			],
+			"decor_chance": 10,
+			"decor_size": 28,
+			"decor_big": [
+				"img:death/tree_dead1",
+				"img:death/sculls",
+				"img:death/thorn1",
+				"img:death/ruin1",
+				"img:death/skull_door"
+			],
+			"decor_big_size": 62
 		},
 		"yaga_hut": {
 			"ambient": "#0c0806",

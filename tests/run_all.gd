@@ -200,6 +200,12 @@ const BLOCKS := [
 	"_test_v156_dragon_and_save",
 ]],
 
+	["res://tests/test_v158.gd", [
+	"_test_v158_crypt_pack_refs",
+	"_test_v158_crypt_decor",
+	"_test_v158_dragon_bones",
+]],
+
 	["res://tests/test_dungeon2.gd", [
 	"_test_dungeon2_assets",
 	"_test_dungeon2_spots",
