@@ -244,85 +244,125 @@ const BAKE_ROCK := Color("#8a8276")   # скальный тон вершин
 
 
 func _bake_terrain() -> void:
+	# v1.61 «Объёмная и красочная»: сочная палитра биомов (два тона травы
+	# по влажности, пляжи, бирюза мель, снежные шапки), рельеф = свет с СЗ
+	# + тени ступеней с ЮВ + террасы высот, кроны леса пятнами.
 	var biomes: Dictionary = map.cfg.get("biomes", {})
-	var plains := Color(String(biomes.get("plains", {}).get("color", "#5d7a3a")))
-	var water := Color(String(biomes.get("water", {}).get("color", "#2e5f7a")))
-	var forest := Color(String(biomes.get("forest", {}).get("color", "#3e5a2a")))
-	var hills := Color(String(biomes.get("hills", {}).get("color", "#6e6a63")))
-	var waste := Color(String(biomes.get("waste", {}).get("color", "#7a6a55")))
-	var swamp := Color(String(biomes.get("swamp", {}).get("color", "#5a6b4a")))
 	var hill_thr := float(map.cfg.get("hydro", {}).get("hill_threshold", 0.62))
-	# базовые цвета тайлов: дороги красятся линией поверх — в поле они
-	# равнина; лёгкая пятнистость по хэшу тайла оживляет массу биома.
-	# Биом-регионы (v1.40): снег/вулкан/пустыня/мёртвель перекрашивают
-	# сушу своими цветами из world.json → regions.list[].colors
+	var COL_DEEP := Color("#1b3a54")
+	var COL_SURF := Color("#3d7ba6")
+	var COL_WET := Color("#4d7c33")
+	var COL_DRY := Color("#93a04b")
+	var COL_BEACH := Color("#c9b478")
+	var COL_FOREST := Color("#2d5122")
+	var COL_HILL := Color("#807247")
+	var COL_WASTE := Color("#91795a")
+	var COL_SWAMP := Color("#49603c")
+	var COL_ROCK := Color("#7d766b")
+	var COL_SNOW := Color("#e9edf0")
+	var COL_SHALLOW := Color("#7fc4d8")
 	var cols: Array = []
 	var wmask: Array = []
-	var tile_names := {
-		map.TILE_PLAINS: "plains", map.TILE_FOREST: "forest",
-		map.TILE_HILL: "hills", map.TILE_WASTE: "waste",
-	}
+	var moist_ok: bool = (map.get("_moist") as Array).size() == map.h
 	for y in map.h:
 		var rowc: Array = []
 		var roww: Array = []
 		rowc.resize(map.w)
 		roww.resize(map.w)
 		for x in map.w:
-			var c := plains
 			var t: int = map.grid[y][x]
+			var h := float(map.height[y][x])
+			var m := float((map._moist as Array)[y][x]) if moist_ok else 0.5
+			var c: Color
 			match t:
 				map.TILE_WATER:
-					c = water
+					c = COL_SURF.lerp(COL_DEEP, clampf((0.34 - h) * 3.6, 0.0, 1.0))
 				map.TILE_FOREST:
-					c = forest
+					c = COL_FOREST.lerp(COL_WET, 0.35 * clampf(m, 0.0, 1.0))
 				map.TILE_HILL:
-					c = hills
+					c = COL_HILL.lerp(COL_DRY, 0.3 * (1.0 - clampf(m, 0.0, 1.0)))
 				map.TILE_WASTE:
-					c = waste
+					c = COL_WASTE
 				map.TILE_SWAMP:
-					c = swamp
+					c = COL_SWAMP
+				_:
+					c = COL_DRY.lerp(COL_WET, clampf(m, 0.0, 1.0))
+					# пляж: равнина вплотную к воде
+					for d in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
+						var n: Vector2i = Vector2i(x, y) + d
+						if n.x >= 0 and n.y >= 0 and n.x < map.w and n.y < map.h \
+								and map.grid[n.y][n.x] == map.TILE_WATER:
+							c = COL_BEACH
+							break
+			# биом-регионы (v1.40) перекрашивают сушу своими цветами
 			var rid: String = map.region_at(Vector2i(x, y)) if map.get("region") != null else ""
-			if rid != "" and tile_names.has(t):
+			if rid != "" and t != map.TILE_WATER:
 				var rc: Dictionary = map.region_def(rid).get("colors", {})
-				if rc.has(tile_names[t]):
-					c = Color(String(rc[tile_names[t]]))
+				var nm := ""
+				match t:
+					map.TILE_FOREST: nm = "forest"
+					map.TILE_HILL: nm = "hills"
+					map.TILE_WASTE: nm = "waste"
+					_: nm = "plains"
+				if rc.has(nm):
+					c = Color(String(rc[nm]))
 			roww[x] = 1.0 if t == map.TILE_WATER else 0.0
-			rowc[x] = c.lightened(0.02 * float(_hash2(x, y, 5) - 2))
+			rowc[x] = c.lightened(0.03 * float(_hash2(x, y, 5) - 2))
 		cols.append(rowc)
 		wmask.append(roww)
 	var sub := _bake_sub()
 	var iw := int(map.w) * sub
 	var ih := int(map.h) * sub
-	# проход 1: сглаженное поле высот (сосед для светотени — чтение из сетки)
+	# проход 1: сглаженные поля высот и влажности (обе оси — на sub!)
 	var hgrid: Array = []
+	var mgrid: Array = []
 	for py in ih:
 		var fy := (float(py) + 0.5) / float(sub) - 0.5
-		var row: Array = []
-		row.resize(iw)
+		var rowh: Array = []
+		var rowm: Array = []
+		rowh.resize(iw)
+		rowm.resize(iw)
 		for px in iw:
-			var fx := (float(px) + 0.5) / float(BAKE_SUB) - 0.5
-			row[px] = _bilinear_f(map.height, fx, fy)
-		hgrid.append(row)
-	# проход 2: цвет пикселя — сглаженный биом + светотень + высота + мель
+			var fx := (float(px) + 0.5) / float(sub) - 0.5
+			rowh[px] = _bilinear_f(map.height, fx, fy)
+			rowm[px] = _bilinear_f(map._moist, fx, fy) if moist_ok else 0.5
+		hgrid.append(rowh)
+		mgrid.append(rowm)
+	# проход 2: пиксель = суша (свет СЗ + тень ступени ЮВ + терраса +
+	# скала/снег + кроны леса) или вода (глубина + мель + рябь), бленд по кромке
 	var img := Image.create_empty(iw, ih, false, Image.FORMAT_RGB8)
 	for py in ih:
 		var fy := (float(py) + 0.5) / float(sub) - 0.5
 		for px in iw:
-			var fx := (float(px) + 0.5) / float(BAKE_SUB) - 0.5
-			var col: Color = _bilinear_col(cols, fx, fy)
+			var fx := (float(px) + 0.5) / float(sub) - 0.5
+			var base: Color = _bilinear_col(cols, fx, fy)
 			var wmk := clampf(_bilinear_f(wmask, fx, fy), 0.0, 1.0)
-			var land := 1.0 - wmk
 			var hgt := float(hgrid[py][px])
-			var nw := float(hgrid[maxi(0, py - sub)][maxi(0, px - sub)])
-			# свет с северо-запада — ТОЛЬКО на суше; вода держит свой цвет
-			# (v1.35.2: раньше множитель «не рельефить воду» чернил воду
-			# до чёрной массы — внутренние моря читались дырой в карте)
-			var shade := clampf(1.0 + (hgt - nw) * 6.5 * land, 0.55, 1.45)
-			col = col * ((0.88 + 0.22 * hgt) * land + (1.0 - 0.06 * wmk) * wmk) * shade
-			# вершины — скальный тон (по высоте, поверх биома)
-			col = col.lerp(BAKE_ROCK, clampf((hgt - (hill_thr - 0.05)) * 2.6, 0.0, 0.78) * land)
-			# светлая мель у кромки воды
-			col = col.lightened(0.12 * (1.0 - absf(wmk * 2.0 - 1.0)))
+			var mst := float(mgrid[py][px])
+			# --- вода: живая глубина, бирюза мель, редкая рябь ---
+			var deep := clampf((0.34 - hgt) * 3.6, 0.0, 1.0)
+			var wcol := COL_SURF.lerp(COL_DEEP, deep)
+			wcol = wcol.lerp(COL_SHALLOW, clampf(1.0 - deep * 2.4, 0.0, 0.55))
+			if _hash2(px, py, 13) == 0:
+				wcol = wcol.lightened(0.07)
+			# --- суша: объём ---
+			var lcol := base
+			var nw: float = float(hgrid[maxi(0, py - sub)][maxi(0, px - sub)])
+			var se: float = float(hgrid[mini(ih - 1, py + sub)][mini(iw - 1, px + sub)])
+			var shade := clampf(1.0 + (hgt - nw) * 8.0, 0.5, 1.5)
+			shade *= clampf(1.0 - (hgt - se) * 5.0, 0.6, 1.0)
+			# террасы высот: граница пояса — тонкая тёмная линия
+			if floorf(hgt / 0.09) != floorf((hgt + 0.014) / 0.09):
+				shade *= 0.85
+			lcol = lcol * ((0.86 + 0.26 * hgt)) * shade
+			lcol = lcol.lerp(COL_ROCK, clampf((hgt - (hill_thr - 0.02)) * 3.0, 0.0, 0.8))
+			lcol = lcol.lerp(COL_SNOW, clampf((hgt - (hill_thr + 0.16)) * 4.0, 0.0, 0.92))
+			# кроны деревьев: тёмные пятна на лесной земле
+			if mst > 0.0 and _hash2(px, py, 11) % 6 == 0 and lcol.g > lcol.r * 1.05:
+				lcol = lcol.darkened(0.2)
+			var col := lcol.lerp(wcol, wmk)   # wmk = маска воды: 1 -> вода
+			# светлый припёк береговой кромки
+			col = col.lightened(0.1 * (1.0 - absf(wmk * 2.0 - 1.0)))
 			img.set_pixel(px, py, col)
 	var tw := maxi(1, int(float(map.w * map.ts) * _bake_k))
 	var th := maxi(1, int(float(map.h * map.ts) * _bake_k))
@@ -478,6 +518,10 @@ func _erase_fog(tiles: Array) -> void:
 func _draw_poi(poi: Dictionary, ts: float) -> void:
 	var pos: Vector2 = Vector2(poi["tile"]) * ts + Vector2(ts, ts) / 2.0
 	var color := Color(String(KIND_COLORS.get(String(poi["kind"]), "#ffffff")))
+	# v1.61: мягкая тень под маркером — объект «стоит» на карте
+	draw_set_transform(pos + Vector2(0, ts * 0.42), 0.0, Vector2(1.0, 0.42))
+	draw_circle(Vector2.ZERO, ts * 0.5, Color(0, 0, 0, 0.22))
+	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 	# подложка-пятно цвета точки (видно поверх биома) + спрайт (M9)
 	var pulse := 0.8 + 0.2 * sin(_time * 2.5)
 	draw_circle(pos, ts * 0.62 * pulse, Color(color.r, color.g, color.b, 0.18))
