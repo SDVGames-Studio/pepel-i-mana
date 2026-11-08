@@ -351,6 +351,84 @@ func load_block(block: Dictionary) -> void:
 ## на карте мира без города рядом). roll >= 0 — ВНЕСЁННЫЙ бросок (тесты
 ## задают детерминированный сценарий), иначе честный рандом. Возвращает
 ## события-словари (type: region_*) — сцена показывает письмами/тостами.
+## v1.60 «Караваны и союзы»: ежедневный бросок торговли и союзных походов.
+## Входящий караван (rel > 40): город привозит фирменный ресурс фракции
+## и получает монеты. Исходящий: скупка богатства региона игрока.
+## Союзный поход (rel >= ally_rel): отряд города сам выбивает гнездовье
+## у себя под боком и делится добычей. Возвращает события для писем.
+func trade_day(psim = null, roll := -1.0) -> Array:
+	var evs: Array = []
+	if psim == null or cities.is_empty():
+		return evs
+	var rng := RandomNumberGenerator.new()
+	rng.randomize()
+	var r := roll if roll >= 0.0 else rng.randf()
+	var tcfg: Dictionary = ncfg().get("trade", {})
+	var friends := cities.values().filter(func(e): return int(e.get("rel", 0)) > 40)
+	if friends.is_empty():
+		return evs
+	var fres: Dictionary = ncfg().get("faction_resource", {})
+	var in_ch := float(tcfg.get("in_chance", 0.18))
+	var out_ch := float(tcfg.get("out_chance", 0.30))
+	# --- входящий караван: ресурс фракции за монеты ---
+	if r < in_ch:
+		var c: Dictionary = friends[rng.randi_range(0, friends.size() - 1)]
+		var rid := String(fres.get(String(c["faction"]), ""))
+		var pay := rng.randi_range(int(tcfg.get("in_pay_min", 8)), int(tcfg.get("in_pay_max", 16)))
+		if rid == "" or _player_coins(psim) < pay:
+			return evs   # нечем торговать — караван не пришёл
+		var amount := rng.randi_range(int(tcfg.get("in_amt_min", 2)), int(tcfg.get("in_amt_max", 4)))
+		psim._add_resource_capped(rid, float(amount))
+		if psim.coins_sink.is_valid():
+			psim.coins_sink.call(-pay)
+		c["rel"] = clampi(int(c.get("rel", 0)) + int(tcfg.get("rel_bonus", 2)), -100, 100)
+		evs.append({"type": "caravan_in", "name": String(c["name"]),
+				"res": rid, "n": amount, "pay": pay})
+		return evs
+	# --- исходящий караван: скупка богатства региона ---
+	if r < out_ch:
+		var region := String(psim.map.region_resource)
+		if region in ["copper", "silver", "gold", "amber", "pearls"] \
+				and float(psim.res.get(region, 0.0)) >= float(tcfg.get("out_min", 6)):
+			var c2: Dictionary = friends[rng.randi_range(0, friends.size() - 1)]
+			var take := int(tcfg.get("out_take", 4))
+			var gain := rng.randi_range(int(tcfg.get("out_pay_min", 10)), int(tcfg.get("out_pay_max", 20)))
+			psim.res[region] = float(psim.res.get(region, 0.0)) - float(take)
+			if psim.coins_sink.is_valid():
+				psim.coins_sink.call(gain)
+			c2["rel"] = clampi(int(c2.get("rel", 0)) + int(tcfg.get("rel_bonus", 2)), -100, 100)
+			evs.append({"type": "caravan_out", "name": String(c2["name"]),
+					"res": region, "n": take, "pay": gain})
+		return evs
+	# --- союзный поход: сильный союзник выбивает гнездовье ---
+	if r < float(tcfg.get("ally_chance_max", 0.42)) and world_map != null:
+		var allies := cities.values().filter(
+				func(e): return int(e.get("rel", 0)) >= int(tcfg.get("ally_rel", 70)))
+		if allies.is_empty():
+			return evs
+		var ally: Dictionary = allies[rng.randi_range(0, allies.size() - 1)]
+		var poi: Dictionary = world_map.poi_by_id(int(ally["poi_id"]))
+		if poi.is_empty():
+			return evs
+		var target: Dictionary = {}
+		var best_d := int(tcfg.get("ally_range", 14)) + 1
+		for p2 in world_map.pois:
+			if String(p2.get("kind", "")) != "camp" or int(p2.get("nest_level", 0)) < 1:
+				continue
+			var d := int(Vector2(p2["tile"]).distance_to(Vector2(poi["tile"])))
+			if d < best_d:
+				best_d = d
+				target = p2
+		if target.is_empty():
+			return evs
+		target["nest_level"] = int(target.get("nest_level", 1)) - 1
+		var share := rng.randi_range(int(tcfg.get("ally_coin_min", 8)), int(tcfg.get("ally_coin_max", 18)))
+		if psim.coins_sink.is_valid():
+			psim.coins_sink.call(share)
+		evs.append({"type": "ally_raid", "name": String(ally["name"]), "n": share})
+	return evs
+
+
 func rivalry_day(psim = null, roll := -1.0) -> Array:
 	var evs: Array = []
 	_update_standings(psim)

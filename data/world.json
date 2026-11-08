@@ -245,6 +245,25 @@
 			"angels": "gold",
 			"demons": "gold",
 			"undead": "silver"
+		},
+		"trade": {
+			"_comment": "v1.60: караваны и союзные походы; бросок раз в день поверх rivalry",
+			"in_chance": 0.18,
+			"in_amt_min": 2,
+			"in_amt_max": 4,
+			"in_pay_min": 8,
+			"in_pay_max": 16,
+			"out_chance": 0.3,
+			"out_min": 6,
+			"out_take": 4,
+			"out_pay_min": 10,
+			"out_pay_max": 20,
+			"ally_chance_max": 0.42,
+			"ally_rel": 70,
+			"ally_range": 14,
+			"ally_coin_min": 8,
+			"ally_coin_max": 18,
+			"rel_bonus": 2
 		}
 	},
 	"legends": {

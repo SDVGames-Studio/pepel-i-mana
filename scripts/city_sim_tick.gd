@@ -1165,6 +1165,15 @@ func _apply_resource_bonuses() -> void:
 			am += 1.0
 		for r in residents:
 			r["mood"] = clampf(float(r["mood"]) + am, 0.0, 100.0)
+	# v1.60: караванные богатства — серебро (торговая репутация, монеты)
+	# и янтарь (красота в домах, настроение)
+	if float(res.get("silver", 0.0)) >= float(bcfg.get("silver_min", 10.0)) \
+			and coins_sink.is_valid():
+		coins_sink.call(int(bcfg.get("silver_coins", 2)))
+	if float(res.get("amber", 0.0)) >= float(bcfg.get("amber_min", 8.0)):
+		var am_mood := float(bcfg.get("amber_mood", 1.0))
+		for r in residents:
+			r["mood"] = clampf(float(r["mood"]) + am_mood, 0.0, 100.0)
 	# v1.57: РАЗНООБРАЗИЕ ЕДЫ — за каждый возделанный вид культуры +0.5
 	# настроения (до 3 видов) + рыбное изобилие считается
 	var kinds := {}

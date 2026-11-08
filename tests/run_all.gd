@@ -214,6 +214,14 @@ const BLOCKS := [
 	"_test_v159_world_home_marker",
 ]],
 
+	["res://tests/test_v160.gd", [
+	"_test_v160_caravan_in",
+	"_test_v160_caravan_out",
+	"_test_v160_ally_raid",
+	"_test_v160_trade_bonuses",
+	"_test_v160_letters_region",
+]],
+
 	["res://tests/test_dungeon2.gd", [
 	"_test_dungeon2_assets",
 	"_test_dungeon2_spots",
