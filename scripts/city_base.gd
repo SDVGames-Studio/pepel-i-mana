@@ -2,6 +2,7 @@
 # Структура v1.62.0: бывший city.gd (1979 строк) разрезан на extends-цепочку
 # Node2D (city_base -> city_events -> city_input -> city.gd) — это один класс,
 # сцена scenes/city.tscn по-прежнему ссылается на city.gd. Поведение не меняется.
+extends Node2D
 
 ## Город (M2): карта, стройка мышью, жители-статисты, пул ресурсов,
 ## переключение город↔данж у аномалии, пауза и скорость x1/x2/x3.
@@ -483,3 +484,74 @@ func _armory_near_hero() -> Dictionary:
 
 
 ## Название здания под курсором — тултип у мыши (просьба заказчика).
+
+# --- заглушки для парсера (структура v1.62.0) ------------------------------
+# Цепочка частей одного класса: часть выше зовёт функции, живущие ниже —
+# парсеру нужны сигнатуры (как в city_sim_base.gd). Реальные тела — в частях
+# ниже; в рантайме виртуальная диспетчеризация зовёт их. Сигнатуры в синхроне.
+func _add_fx(kind: String, col: Color, radius: float, dur: float, pos: Vector2) -> void:
+	pass
+
+func _read_json(path: String) -> Dictionary:
+	return {}
+
+func _default_hint() -> String:
+	return ""
+
+func set_speed(value: int) -> void:
+	pass
+
+func set_enchant_mode(ench_id: String) -> void:
+	pass
+
+func _region_text(ev: Dictionary) -> String:
+	return ""
+
+func _letter(ev_type: String, msg: String) -> void:
+	pass
+
+func _cost_str(cost: Dictionary) -> String:
+	return ""
+
+func _bld_name(type_id: String) -> String:
+	return ""
+
+func _on_hero_down() -> void:
+	pass
+
+func _apply_resource_hero_bonuses() -> void:
+	pass
+
+func _update_daylight() -> void:
+	pass
+
+func _night_amount() -> float:
+	return 0.0
+
+func _update_hover() -> void:
+	pass
+
+func _process_events() -> void:
+	pass
+
+func _hero_act() -> bool:
+	return false
+
+func _buy_hero_kit() -> void:
+	pass
+
+func _enter_dungeon() -> void:
+	pass
+
+func _exit_to_world(dir: Vector2i) -> void:
+	pass
+
+func _near_map_border() -> bool:
+	return false
+
+func _try_enchant() -> void:
+	pass
+
+## Свитки героя: ссылка на метод уходит колбэком в панель экипировки (v1.49).
+func _cast_scroll(item_id: String) -> String:
+	return ""

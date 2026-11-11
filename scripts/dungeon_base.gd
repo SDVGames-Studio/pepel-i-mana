@@ -350,3 +350,84 @@ func _redraw_guard_2() -> void:
 ## оказаться вплотную к такой огромной коробке — экструзия тени накрывала
 ## всю лужу света (свет «глох» в узких местах, замерено в v1.33.3).
 ## Коллизии оставлены слитыми (физике это только в плюс).
+
+# --- заглушки для парсера (структура v1.62.0) ------------------------------
+# Цепочка частей одного класса: часть выше зовёт функции, живущие ниже —
+# парсеру нужны сигнатуры (как в city_sim_base.gd). Реальные тела — в частях
+# ниже; в рантайме виртуальная диспетчеризация зовёт их. Сигнатуры в синхроне.
+func _build_walls() -> void:
+	pass
+
+func _build_exit() -> void:
+	pass
+
+func _build_chests() -> void:
+	pass
+
+func _build_crystals() -> void:
+	pass
+
+func _build_hero() -> void:
+	pass
+
+func _apply_equipment() -> void:
+	pass
+
+func _build_enemies() -> void:
+	pass
+
+func _build_fauna() -> void:
+	pass
+
+func _build_traps() -> void:
+	pass
+
+func _build_boss() -> void:
+	pass
+
+func _biome_id() -> String:
+	return ""
+
+func _cast_spell(spell_id: String, free_cast := false) -> void:
+	pass
+
+func _on_enemy_died(enemy) -> void:
+	pass
+
+func _on_pickup_collected(pickup) -> void:
+	pass
+
+func _on_hero_died() -> void:
+	pass
+
+func _on_boss_died(enemy) -> void:
+	pass
+
+func _update_zones() -> void:
+	pass
+
+func _update_mana_hunger(delta: float) -> void:
+	pass
+
+func _update_hint() -> void:
+	pass
+
+func _update_fog() -> void:
+	pass
+
+func _ensure_dungeon_astar() -> void:
+	pass
+
+func _try_interact() -> void:
+	pass
+
+## Свитки героя: ссылка на метод уходит колбэком в панель экипировки (v1.49).
+func _cast_scroll(item_id: String) -> String:
+	return ""
+
+func _read_json(path: String) -> Variant:
+	return null
+
+func _add_fx(kind: String, col: Color, radius: float, duration: float,
+		pos: Vector2, points: PackedVector2Array = PackedVector2Array()) -> void:
+	pass
