@@ -11,7 +11,7 @@ var tree: SceneTree = null
 ## Запуск headless: godot --headless --path . --script res://tests/run_all.gd
 ## В этом режиме автозагрузки не работают — всё проверяем через load()/FileAccess.
 
-const REQUIRED_LOCALES := preload("res://tests/test_locales.gd").REQUIRED_LOCALES
+var REQUIRED_LOCALES: Array = preload("res://tests/test_locales.gd").REQUIRED_LOCALES
 
 
 ## Список ведётся не вручную: папка scripts/ сканируется целиком (урок v1.11.0 —

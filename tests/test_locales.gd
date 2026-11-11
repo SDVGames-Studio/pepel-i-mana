@@ -190,3 +190,4 @@ const REQUIRED_LOCALES := [
 	"chron.ore_revealed", "chron.gem_found", "chron.rock_gone",
 	"chron.necro_chosen", "chron.necro_revealed", "chron.necro_whisper",
 	"chron.undead_rising", "chron.necro_purged",
+]
