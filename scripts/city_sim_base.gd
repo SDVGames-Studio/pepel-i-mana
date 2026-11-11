@@ -685,6 +685,26 @@ func _update_storm(dt: float, day_len: float) -> void:
 func _update_threat(dt: float, day_len: float) -> void:
 	pass
 
+## Улей мутантов и духи леса (тела в city_sim_nature.gd, структура v1.62.0):
+## _update_threat в city_sim_war.gd зовёт их вниз по цепочке.
+func _update_hive(dt: float, day_len: float) -> void:
+	pass
+
+func _update_hive_units(dt: float, tcfg: Dictionary) -> void:
+	pass
+
+func _hive_gatherer_update(r: Dictionary, dt: float) -> bool:
+	return false
+
+func _hive_scout_update(r: Dictionary, dt: float) -> bool:
+	return false
+
+func _hive_guard_update(r: Dictionary, dt: float, tcfg: Dictionary) -> bool:
+	return false
+
+func _spirit_update(r: Dictionary, dt: float) -> bool:
+	return false
+
 func _update_wanderers(dt: float) -> void:
 	pass
 
