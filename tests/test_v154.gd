@@ -49,7 +49,9 @@ func _test_v154_shadow_and_map() -> void:
 	_check(osrc.find("residents") < 0 or osrc.find("for r in sim.residents") < 0,
 			"жители по карте не бегают")
 	_check(osrc.find("hero_cb") >= 0, "живая метка одна — герой")
-	var hud: Script = load("res://scripts/city_hud.gd")
+	# v1.62: раскладка панелей переехала в city_hud_build.gd (цепочка
+	#  city_hud_base -> city_hud_build -> city_hud.gd)
+	var hud: Script = load("res://scripts/city_hud_build.gd")
 	var hsrc: String = hud.source_code
 	_check(hsrc.find("mouse_entered.connect") >= 0 and hsrc.find("_res_name") >= 0,
 			"наведение на ресурс показывает название мгновенно")
