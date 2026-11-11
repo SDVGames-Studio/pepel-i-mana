@@ -5,8 +5,29 @@ extends "res://tests/test_base.gd"
 
 func _test_loc() -> void:
 	print("[Локализация]")
+	# Data-driven: все файлы loc/*.json — валидные словари с непустыми
+	# значениями; новая локаль подхватывается тестом без правок кода.
+	var found := {}
+	var dir := DirAccess.open("res://loc")
+	if dir != null:
+		dir.list_dir_begin()
+		var fname := dir.get_next()
+		while fname != "":
+			if not dir.current_is_dir() and fname.get_extension() == "json":
+				found[fname] = true
+				var loc: Variant = _read_json("res://loc/" + fname)
+				_check(loc is Dictionary, "loc/%s — валидный JSON-словарь" % fname)
+				if loc is Dictionary:
+					var empty: Array = []
+					for key in loc:
+						if String(loc[key]).length() == 0:
+							empty.append(key)
+					_check(empty.is_empty(), "loc/%s: все значения непустые%s"
+							% [fname, ("" if empty.is_empty() else " — пустые: " + ", ".join(empty))])
+			fname = dir.get_next()
+		dir.list_dir_end()
+	_check(found.has("ru.json"), "локаль ru.json на месте")
 	var data: Variant = _read_json("res://loc/ru.json")
-	_check(data is Dictionary, "loc/ru.json — валидный JSON-словарь")
 	if not (data is Dictionary):
 		return
 	for key in REQUIRED_LOCALES:
