@@ -1027,7 +1027,9 @@ func _test_magic_sim() -> void:
 	sim.pollution = 50.0
 	sim.cfg["storm"]["base_chance"] = 0.0
 	sim.cfg["pollution"]["event_chance_per_day"] = 0.0
-	sim.cfg["stories"]["chance_per_day"] = 0.0
+	# фикс латентного бага (было sim.cfg["stories"] — ключа в city.json нет,
+	# SCRIPT ERROR молча обрывал хвост _test_magic_sim с коммита 94fb791)
+	sim.people["stories"]["chance_per_day"] = 0.0
 	sim.tick(float(sim.cfg["day_length"]))
 	_check(absf(float(sim.pollution) - 48.0) < 0.1, "за день загрязнение падает на decay_per_day")
 
@@ -1060,13 +1062,15 @@ func _test_magic_sim() -> void:
 	var food_before: float = float(sim2.res["food"])
 	sim2.cast_city_spell(magic.spell("forest_gift"))
 	_check(absf(float(sim2.res["food"]) - (food_before + 15.0)) < 0.001, "Дары леса: +15 еды")
-	# фикс v0.4.2: дар не режет запас выше вместимости хранилища
+	# v1.25 (решение заказчика «ресурсы без ограничений»): лимитов накопления
+	# больше нет — дар добавляет и сверх хранилища (проверка актуальна с
+	# v1.62: до этого её молча обрывал SCRIPT ERROR строки stories ниже/выше)
 	sim2.res["food"] = 400.0
 	food_before = float(sim2.res["food"])
 	sim2._spell_ready.clear()
 	sim2.cast_city_spell(magic.spell("forest_gift"))
-	_check(absf(float(sim2.res["food"]) - food_before) < 0.001,
-			"Дары леса при запасе выше хранилища не уменьшает еду")
+	_check(absf(float(sim2.res["food"]) - (food_before + 15.0)) < 0.001,
+			"Дары леса при запасе выше хранилища просто добавляет (лимитов нет, v1.25)")
 
 	# зачарование фермы: +25% к производству
 	var sim3 := _make_sim()
