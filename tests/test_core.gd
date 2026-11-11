@@ -1027,7 +1027,9 @@ func _test_magic_sim() -> void:
 	sim.pollution = 50.0
 	sim.cfg["storm"]["base_chance"] = 0.0
 	sim.cfg["pollution"]["event_chance_per_day"] = 0.0
-	sim.cfg["stories"]["chance_per_day"] = 0.0
+	# фикс латентного бага (было sim.cfg["stories"] — ключа в city.json нет,
+	# SCRIPT ERROR молча обрывал хвост _test_magic_sim с коммита 94fb791)
+	sim.people["stories"]["chance_per_day"] = 0.0
 	sim.tick(float(sim.cfg["day_length"]))
 	_check(absf(float(sim.pollution) - 48.0) < 0.1, "за день загрязнение падает на decay_per_day")
 
