@@ -40,9 +40,13 @@ const BLOCKS := [
 	"_test_m12",
 	"_test_m13",
 	"_test_m14_save",
+]],
+	["res://tests/test_life_a2.gd", [
 	"_test_m14_b",
 	"_test_m14_c",
 	"_test_m14_d",
+]],
+	["res://tests/test_life_a3.gd", [
 	"_test_m14_e",
 	"_test_m14_f",
 ]],
