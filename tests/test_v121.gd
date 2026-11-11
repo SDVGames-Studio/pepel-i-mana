@@ -391,7 +391,8 @@ func _test_v21_fps_counter() -> void:
 	_check(text.contains("get_frames_per_second"), "FPS-счётчик в игре (правый верх)")
 	_check(text.contains("_fps_accum") and text.contains("0.25"),
 			"счётчик обновляется 4 раза в секунду (не режет кадр)")
-	var fc := FileAccess.open("res://scripts/city.gd", FileAccess.READ)
+	# v1.62: _process переехал в city_base.gd (цепочка city_base -> ... -> city.gd)
+	var fc := FileAccess.open("res://scripts/city_base.gd", FileAccess.READ)
 	var ctext := fc.get_as_text() if fc != null else ""
 	fc = null
 	_check(ctext.contains("_hud_refresh_accum"), "панели HUD обновляются по таймеру, не каждый кадр")

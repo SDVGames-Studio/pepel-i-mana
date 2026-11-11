@@ -25,7 +25,8 @@ func _test_v154_start_and_menu() -> void:
 	_check(nsrc.find("func ensure(mature_days := 0, limit := 0)") >= 0,
 			"ensure умеет лимит (остальные — на карте мира)")
 	_check(nsrc.find("distance_squared_to") >= 0, "лимит берёт БЛИЖАЙШИЕ к городу")
-	var city: Script = load("res://scripts/city.gd")
+	# v1.62: меню-оверлей живёт в city_input.gd (цепочка city_base -> ... -> city.gd)
+	var city: Script = load("res://scripts/city_input.gd")
 	var csrc: String = city.source_code
 	_check(csrc.find("_open_menu_overlay") >= 0, "Esc открывает меню-оверлей (без смены сцены)")
 	_check(csrc.find("_exit_to_menu()") != csrc.find("_open_menu_overlay()") - 1,
