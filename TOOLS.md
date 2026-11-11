@@ -2,11 +2,12 @@
 
 | Инструмент | Путь | Версия |
 |---|---|---|
-| Godot | `F:\steam\steamapps\common\Godot Engine\godot.windows.opt.tools.64.exe` | 4.7.2.stable.steam (ed1daf0bf) |
+| Godot | каскад в bat-файлах: env `GODOT_EXE` → `F:\Z2\tools\godot.exe` → Steam `F:\steam\steamapps\common\Godot Engine\godot.windows.opt.tools.64.exe` | 4.7.2.stable (обе копии) |
 | Экспорт-шаблоны | `...\Godot Engine\editor_data\export_templates\4.7.2.stable\` | 4.7.2.stable |
 | Git | `C:\Program Files\Git\cmd\git.exe` (установлен через winget) | см. `git --version` |
 
-- Godot — Steam-версия в self-contained режиме (файл `._sc_`), данные редактора лежат рядом с exe.
+- Godot — вторая копия в `F:\Z2\tools\godot.exe`; Steam-версия в
+  self-contained режиме (файл `._sc_`), данные редактора лежат рядом с exe.
 - Запуск тестов: `godot --headless --path . --script res://tests/run_all.gd` (или `test.bat`).
 - Сборка exe: `build.bat` → `build\ПепелИМана.exe`.
 
