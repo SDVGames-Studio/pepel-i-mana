@@ -2,7 +2,7 @@
 chcp 65001 >nul
 rem === Сборка «Пепел и Мана»: build\ПепелИМана.exe ===
 setlocal
-rem Путь к Godot: env GODOT_EXE -> F:\Z2\tools\godot.exe -> Steam-версия
+rem Путь к Godot: env GODOT_EXE -> Steam-версия (у неё экспорт-шаблоны) -> F:\Z2\tools
 set "GODOT=%GODOT_EXE%"
 if not defined GODOT set "GODOT=F:\Z2\tools\godot.exe"
 if not exist "%GODOT%" set "GODOT=F:\steam\steamapps\common\Godot Engine\godot.windows.opt.tools.64.exe"
