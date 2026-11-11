@@ -1,7 +1,7 @@
 # Симуляция города — корень extends-цепочки частей (правки структуры v1.20.2).
-# Файл-указатель: весь код разложен по city_sim_base/life/build/people/tick/
-# residents/produce/gather/zones/trade/gov_plan/gov/stories/war/nature/
-# necro/threat.gd; это один класс, вызовы sim.<метод> не меняются.
+# Файл-указатель: весь код разложен по city_sim_base/life/build/repair/
+# people/tick/residents/produce/gather/zones/trade/gov_plan/gov/stories/war/
+# nature/necro/threat.gd; это один класс, вызовы sim.<метод> не меняются.
 # Новые функции кладите в файл своей подсистемы, новые переменные — в base.
 extends "res://scripts/city_sim_threat.gd"
 
