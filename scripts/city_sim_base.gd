@@ -705,6 +705,63 @@ func _hive_guard_update(r: Dictionary, dt: float, tcfg: Dictionary) -> bool:
 func _spirit_update(r: Dictionary, dt: float) -> bool:
 	return false
 
+## Жизнь жителей, производство и кладбище (тела в city_sim_residents.gd /
+## city_sim_produce.gd / city_sim_necro.gd, структура v1.62.0): тик и звенья
+## выше зовут их вниз по цепочке.
+func _is_evening() -> bool:
+	return false
+
+func _evening_haul(r: Dictionary, dt: float) -> bool:
+	return false
+
+func _leisure(r: Dictionary, dt: float) -> void:
+	pass
+
+func _try_chat(r: Dictionary) -> void:
+	pass
+
+func _hungry_queue(r: Dictionary, dt: float) -> void:
+	pass
+
+func _child_update(r: Dictionary, dt: float, day_len: float) -> void:
+	pass
+
+func _social_walk(r: Dictionary, dt: float) -> bool:
+	return false
+
+func _friend_of(r: Dictionary) -> Dictionary:
+	return {}
+
+func _apply_resource_bonuses() -> void:
+	pass
+
+func _craftsman_convert() -> void:
+	pass
+
+func _do_work(r: Dictionary, bld: Dictionary, dt: float) -> void:
+	pass
+
+func _workshop_work(r: Dictionary, bld: Dictionary, dt: float) -> void:
+	pass
+
+func _start_funeral(dead: Dictionary, dead_pos: Vector2) -> void:
+	pass
+
+func _found_cemetery_tile() -> Vector2i:
+	return Vector2i(-1, -1)
+
+func _funeral_update(r: Dictionary, dt: float) -> void:
+	pass
+
+func _update_cemetery(dt: float, day_len: float) -> void:
+	pass
+
+func _roll_corpse_haul() -> void:
+	pass
+
+func _corpse_work(r: Dictionary, dt: float) -> bool:
+	return false
+
 func _update_wanderers(dt: float) -> void:
 	pass
 
