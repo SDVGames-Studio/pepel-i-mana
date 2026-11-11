@@ -56,15 +56,17 @@ func _test_fog() -> void:
 			and String(dungeon["biomes"]["dragon_lair"].get("ember_color", "")).length() > 0,
 			"огненные биомы тлеют угольками (ember_color)")
 	# 8) скрипт тумана войны на месте и подключён в сцену данжа
+	# (v1.62: переменные и _ready данжа — в dungeon_base.gd, цепочка
+	#  dungeon_base -> dungeon_build -> dungeon.gd)
 	var fog_src := FileAccess.file_exists("res://scripts/dungeon_fog.gd")
-	var dsrc := FileAccess.open("res://scripts/dungeon.gd", FileAccess.READ)
+	var dsrc := FileAccess.open("res://scripts/dungeon_base.gd", FileAccess.READ)
 	var wired: bool = dsrc != null and dsrc.get_as_text().find("dungeon_fog.gd") >= 0
 	_check(fog_src and wired, "слой тумана войны существует и подключён")
 	# 9) туман различает память и живой обзор
 	var fog_f := FileAccess.open("res://scripts/dungeon_fog.gd", FileAccess.READ)
 	var fog_has_memory: bool = fog_f != null \
 			and fog_f.get_as_text().find("MEMORY_ALPHA") >= 0
-	var dgn_f := FileAccess.open("res://scripts/dungeon.gd", FileAccess.READ)
+	var dgn_f := FileAccess.open("res://scripts/dungeon_base.gd", FileAccess.READ)
 	var dgn_has_vis: bool = dgn_f != null \
 			and dgn_f.get_as_text().find("_visible_now") >= 0
 	_check(fog_has_memory and dgn_has_vis,

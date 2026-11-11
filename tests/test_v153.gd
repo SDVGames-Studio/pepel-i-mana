@@ -36,8 +36,12 @@ func _test_v153_letters() -> void:
 	for g in ["threat", "storm", "hive", "forest", "necro", "trade", "people", "world"]:
 		_check(not String(ru.get("letter." + g, "")).is_empty(), "заголовок письма «%s» есть" % g)
 	# city.gd шлёт письма вместо тостов
-	var city: Script = load("res://scripts/city.gd")
-	var csrc: String = city.source_code
+	# (v1.62: city.gd — корень цепочки city_base -> city_events -> city_input;
+	#  вызовы _letter живут в city_events — считаем по всей цепочке)
+	var csrc := ""
+	for city_part in ["city_base", "city_events", "city_input", "city"]:
+		var cf := FileAccess.open("res://scripts/%s.gd" % city_part, FileAccess.READ)
+		csrc += cf.get_as_text() if cf != null else ""
 	_check(csrc.count("_letter(\"") >= 20, "крупные события уходят в письма (%d веток)" % csrc.count("_letter(\""))
 
 
