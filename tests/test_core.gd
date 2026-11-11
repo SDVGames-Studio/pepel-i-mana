@@ -1062,13 +1062,15 @@ func _test_magic_sim() -> void:
 	var food_before: float = float(sim2.res["food"])
 	sim2.cast_city_spell(magic.spell("forest_gift"))
 	_check(absf(float(sim2.res["food"]) - (food_before + 15.0)) < 0.001, "Дары леса: +15 еды")
-	# фикс v0.4.2: дар не режет запас выше вместимости хранилища
+	# v1.25 (решение заказчика «ресурсы без ограничений»): лимитов накопления
+	# больше нет — дар добавляет и сверх хранилища (проверка актуальна с
+	# v1.62: до этого её молча обрывал SCRIPT ERROR строки stories ниже/выше)
 	sim2.res["food"] = 400.0
 	food_before = float(sim2.res["food"])
 	sim2._spell_ready.clear()
 	sim2.cast_city_spell(magic.spell("forest_gift"))
-	_check(absf(float(sim2.res["food"]) - food_before) < 0.001,
-			"Дары леса при запасе выше хранилища не уменьшает еду")
+	_check(absf(float(sim2.res["food"]) - (food_before + 15.0)) < 0.001,
+			"Дары леса при запасе выше хранилища просто добавляет (лимитов нет, v1.25)")
 
 	# зачарование фермы: +25% к производству
 	var sim3 := _make_sim()
