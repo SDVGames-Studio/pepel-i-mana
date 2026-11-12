@@ -85,8 +85,13 @@ func _quest_row(q: Dictionary) -> Control:
 	var can_deliver := false
 	match String(q["kind"]):
 		"bring":
-			var have: int = Game.count_item(String(q["item"]))
-			kind_text = Loc.t("quest.bring") % [int(q["need"]), Loc.t("item." + String(q["item"])), have]
+			var item := String(q["item"])
+			var have: int = Game.count_item(item)
+			# v1.63.1: ресурс города (iron/crystal/wood) — считаем и сдаём
+			# из общего пула города, не из рюкзака героя
+			if Game.city_sim != null and (Game.city_sim.res as Dictionary).has(item):
+				have = int(float(Game.city_sim.res[item]))
+			kind_text = Loc.t("quest.bring") % [int(q["need"]), Loc.t("item." + item), have]
 			can_deliver = have >= int(q["need"])
 		"hunt":
 			kind_text = Loc.t("quest.hunt") % [int(q["progress"]), int(q["need"])]
