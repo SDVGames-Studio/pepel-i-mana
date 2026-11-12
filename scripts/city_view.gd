@@ -1,7 +1,7 @@
 # Часть: отрисовка города — здания с подписями и дверями, рейдеры, жители
 # со спич-баблами, герой, призраки стройки/переноса, превью зон.
 # Корень цепочки: city.gd создаёт отрисовку через этот файл.
-extends "res://scripts/city_view_nature.gd"
+extends "res://scripts/city_view_props.gd"
 
 func _draw_building(b: Dictionary) -> void:
 	var ts := float(map.ts)
@@ -146,6 +146,9 @@ var _bld_ref_cache: Dictionary = {}
 func _bld_sprite_ref(type_id: String, b: Dictionary) -> String:
 	if type_id == "house":
 		return "b:дом_жителей_ур%d" % (1 + int(b["id"]) % 3)
+	if type_id == "statue":
+		# v1.63: статуя — вариации из пака (по хэшу id здания)
+		return STATUE_REFS[_hash(int(b["id"]), 7, STATUE_REFS.size())]
 	if _bld_ref_cache.has(type_id):
 		return _bld_ref_cache[type_id]
 	var ref := ""

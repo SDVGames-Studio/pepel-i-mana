@@ -579,3 +579,11 @@ func _draw_hero(hero) -> void:
 
 func _draw_ghost() -> void:
 	pass
+
+## Пропсы города (v1.63): записи статики и отрисовка живут в
+## city_view_props.gd (ниже по цепочке) — здесь сигнатуры для парсера.
+func _props_static() -> Array:
+	return []
+
+func _draw_prop(p: Dictionary) -> void:
+	pass

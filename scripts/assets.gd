@@ -44,6 +44,9 @@ static func sprite(ref: String) -> Texture2D:
 	if ref.begins_with("p:"):
 		# пропы-предметы (M12, tools/make_props.py)
 		return tex("res://assets/sprites/props/%s.png" % ref.substr(2))
+	if ref.begins_with("pc:"):
+		# пропсы города/кладбища (v1.63, нарезка заказчика 118 шт — ASSETS.md)
+		return tex("res://assets/sprites/props_city/%s.png" % ref.substr(3))
 	return null
 
 

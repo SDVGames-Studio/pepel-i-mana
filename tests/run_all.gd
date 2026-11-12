@@ -234,6 +234,10 @@ const BLOCKS := [
 	"_test_dungeon2_lights_filter",
 	"_test_dungeon2_fog_and_glow",
 ]],
+
+	["res://tests/test_props.gd", [
+	"_test_props",
+]],
 ]
 
 
