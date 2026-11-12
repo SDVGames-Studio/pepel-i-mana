@@ -125,8 +125,10 @@ func _spawn_quest(qcfg: Dictionary) -> void:
 	quests.append(q)
 
 
-## Сдать заказ «принести» (панель Q): предметы из рюкзака героя, монеты —
-## герою, настроение заказчику. Возвращает "" или ключ ошибки.
+## Сдать заказ «принести» (панель Q), монеты — герою, настроение заказчику.
+## v1.63.1 (хвост PLAN «заказы берут не оттуда»): ресурсы города (iron/
+## crystal/wood — их в рюкзаке героя не бывает) сдаются из ОБЩЕГО ПУЛА,
+## руны и данжевый лут — из рюкзака. Возвращает "" или ключ ошибки.
 func quest_deliver(q_id: int, inventory: Array) -> String:
 	var quest: Dictionary = {}
 	for q in quests:
@@ -135,9 +137,17 @@ func quest_deliver(q_id: int, inventory: Array) -> String:
 			break
 	if quest.is_empty() or String(quest["kind"]) != "bring":
 		return "quest.gone"
-	if _count_item(inventory, String(quest["item"])) < int(quest["need"]):
-		return "quest.no_items"
-	_take_item(inventory, String(quest["item"]), int(quest["need"]))
+	var item := String(quest["item"])
+	var need := int(quest["need"])
+	if res.has(item):
+		# ресурс города: заказ для города — сдаётся из пула
+		if float(res[item]) < float(need):
+			return "quest.no_items"
+		res[item] = float(res[item]) - float(need)
+	else:
+		if _count_item(inventory, item) < need:
+			return "quest.no_items"
+		_take_item(inventory, item, need)
 	return _finish_quest(quest)
 
 

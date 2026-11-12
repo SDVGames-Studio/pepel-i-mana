@@ -571,3 +571,14 @@ func _test_m14_d() -> void:
 
 # --- M14-E: грандиозные создания — гиганты (issue #3 T19) --------------------
 
+
+	# v1.63.1 (хвост «anti-кайт боссов»): страх света/паника не рвут
+	# телеграф-рывок — у АРХИВАМПИРА/АРХИЛИЧА (fear) ранний return
+	# замораживал таймер телеграфа навсегда
+	var esrc_f := FileAccess.open("res://scripts/enemy.gd", FileAccess.READ)
+	var esrc: String = esrc_f.get_as_text() if esrc_f != null else ""
+	esrc_f = null
+	_check(esrc.count("and _telegraph_left <= 0.0 and _dash_left <= 0.0") >= 2,
+			"страх/паника гейтятся телеграфом-рывком (архбоссы наказывают кайт)")
+	_check(float(ak.get("cooldown", 9.0)) <= 3.0 and float(ak.get("dash_time", 0.0)) >= 0.4,
+			"рывок боссов ловчее: dash_time %.1f, cooldown %.1f" % [float(ak.get("dash_time", 0.0)), float(ak.get("cooldown", 0.0))])

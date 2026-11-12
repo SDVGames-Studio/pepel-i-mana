@@ -320,7 +320,10 @@ func _physics_process(delta: float) -> void:
 			and int(hp) < int(round(float(p["hp"]) * 0.2)) and dist < float(p["aggro"]):
 		_flee_left = 2.5
 		_alert_allies()
-	if _flee_left > 0.0:
+	# v1.63.1 (хвост «anti-кайт боссов»): паника и боязнь света не рвут
+	# активный телеграф/рывок — раньше ранний return замораживал таймер
+	# телеграфа навсегда (АРХИВАМПИР/АРХИЛИЧ с fear не наказывали кайт)
+	if _flee_left > 0.0 and _telegraph_left <= 0.0 and _dash_left <= 0.0:
 		_flee_left -= delta
 		velocity = -to_hero.normalized() * float(p["speed"]) * 1.25 * _boost
 		move_and_slide()
@@ -331,7 +334,8 @@ func _physics_process(delta: float) -> void:
 	var lit := _lit_value()
 	if lit > 0.0:
 		var sense: Dictionary = p.get("light_sense", {})
-		if sense.has("fear") and lit > float(sense["fear"]):
+		if sense.has("fear") and lit > float(sense["fear"]) \
+				and _telegraph_left <= 0.0 and _dash_left <= 0.0:
 			# боязнь света: прочь от героя, медленно (на краю лужи — медлят)
 			velocity = -to_hero.normalized() * float(p["speed"]) * 0.8 * _boost
 			move_and_slide()

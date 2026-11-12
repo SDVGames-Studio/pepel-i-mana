@@ -480,12 +480,37 @@ func _test_m14_k() -> void:
 				bring = q
 				break
 	_check(not bring.is_empty(), "есть заказ «принести» (досыпали за %d попыток)" % bring_guard)
+	# v1.63.1 (хвост PLAN): ресурсы города сдаются из ПУЛА (их в рюкзаке
+	# не бывает), руны/лут — из рюкзака героя
 	var inv: Array = [{"id": String(bring["item"]), "count": int(bring["need"])}]
+	if (sim.res as Dictionary).has(String(bring["item"])):
+		sim.res[String(bring["item"])] = float(bring["need"]) + 3.0
+		inv = []
 	var reward0: int = int(bring["reward"])
 	_check(sim.quest_deliver(int(bring["id"]), inv) == "", "заказ сдан")
-	_check(inv.is_empty() or int(inv[0]["count"]) == 0, "предметы списаны")
+	if inv == []:
+		_check(absf(float(sim.res[String(bring["item"])]) - 3.0) < 0.001,
+				"ресурс списан из пула города")
+	else:
+		_check(inv.is_empty() or int(inv[0]["count"]) == 0, "предметы списаны")
 	_check(not sim.quests.has(bring), "выполненный заказ снят с доски")
 	_check(sim.quest_deliver(int(bring["id"]), inv) == "quest.gone", "повторная сдача невозможна")
+
+	# прямой прогон обоих путей сдачи (v1.63.1)
+	var q_pool := {"id": 90001, "kind": "bring", "item": "iron", "need": 5,
+			"reward": 10, "days": 1, "customer": "Тест", "customer_id": -1, "progress": 0}
+	sim.quests.append(q_pool)
+	sim.res["iron"] = 8.0
+	_check(sim.quest_deliver(90001, []) == "" and absf(float(sim.res["iron"]) - 3.0) < 0.001,
+			"железо сдано из пула (8−5=3), рюкзак не нужен")
+	var q_rune := {"id": 90002, "kind": "bring", "item": "rune_light", "need": 2,
+			"reward": 10, "days": 1, "customer": "Тест", "customer_id": -1, "progress": 0}
+	sim.quests.append(q_rune)
+	_check(sim.quest_deliver(90002, []) == "quest.no_items",
+			"руну из пула не списать — только из рюкзака")
+	var rinv: Array = [{"id": "rune_light", "count": 2}]
+	_check(sim.quest_deliver(90002, rinv) == "" and rinv.is_empty(),
+			"руна сдана из рюкзака героя")
 
 	# hunt: счётчик охоты
 	var hunt: Dictionary = {}
