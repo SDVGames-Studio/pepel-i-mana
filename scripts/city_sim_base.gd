@@ -353,6 +353,39 @@ func _spawn_golem() -> void:
 	events.append({"type": "golem_awakens", "name": GOLEM_NAME})
 
 
+## Раса жителя (v1.64, п.3 — ответ №108: орк/нежить/ангел/демон/гоблин/
+## кобольд/дворф/гном; различение «силуэт + палитра»): вес — доля среди
+## беженцев, палитра/рост/статы — data/residents.json -> races.
+func _roll_race() -> String:
+	var races: Dictionary = people.get("races", {})
+	if races.is_empty():
+		return "human"
+	var total := 0.0
+	for id in races:
+		if String(id).begins_with("_"):
+			continue
+		total += float((races[id] as Dictionary).get("weight", 0.0))
+	if total <= 0.0:
+		return "human"
+	var roll := _event_rng.randf() * total
+	for id in races:
+		if String(id).begins_with("_"):
+			continue
+		roll -= float((races[id] as Dictionary).get("weight", 0.0))
+		if roll <= 0.0:
+			return String(id)
+	return "human"
+
+
+## Описание расы жителя ({} — человек/неизвестная).
+func _race_def(r: Dictionary) -> Dictionary:
+	var race := String(r.get("race", "human"))
+	var races: Dictionary = people.get("races", {})
+	if races.has(race):
+		return races[race]
+	return {}
+
+
 ## Врождённый пул статов (v1.24): каждый житель рождается разным — пул
 ## start_pool_min..start_pool очков раскидывается по пяти статам со случайными
 ## весами (одна статка не выше start_stat_cap). Мудрость — пятый стат:
@@ -379,6 +412,7 @@ func _new_resident(res_name: String, prof: String, tile: Vector2i) -> Dictionary
 	var traits := _random_traits()
 	var r := {
 		"id": _next_id, "name": res_name, "prof": prof,
+		"race": _roll_race(),           # раса жителя (v1.64, ответ №108)
 		"bld": null, "site": null, "home": null,
 		"state": "idle", "pos": map.tile_center_px(tile),
 		"target": Vector2i(-1, -1), "path": PackedVector2Array(),

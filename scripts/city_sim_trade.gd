@@ -504,7 +504,10 @@ func _stats(r: Dictionary) -> Dictionary:
 
 
 func _stat(r: Dictionary, key: String) -> float:
-	return float(_stats(r).get(key, 0.0))
+	# v1.64: расовый модификатор поверх врождённого пула (орк силён,
+	# дворф вынослив, гном умён…; человек — без модификаторов)
+	return float(_stats(r).get(key, 0.0)) \
+			+ float(_race_def(r).get("stats", {}).get(key, 0.0))
 
 
 ## Прикладные навыки жителя: {id вида деятельности: 0..skill_max}.

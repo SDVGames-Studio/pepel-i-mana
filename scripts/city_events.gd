@@ -47,7 +47,11 @@ func _resident_hover_text() -> String:
 		prof_name = _prof_name(prof)
 	elif prof == "":
 		prof_name = Loc.t("city.res_child")
-	return "%s • %s\n%s" % [String(best["name"]), prof_name, sim.resident_thought(best)]
+	# v1.64: не-человек показывает расу в подписи (человека не пишем — шум)
+	var race := String(best.get("race", "human"))
+	var race_name := "" if race == "human" else " • " + Loc.t("race." + race)
+	return "%s%s • %s\n%s" % [String(best["name"]), race_name, prof_name,
+			sim.resident_thought(best)]
 
 
 ## Подпись зоны при наведении: имя + живая статистика поля/пастбища.

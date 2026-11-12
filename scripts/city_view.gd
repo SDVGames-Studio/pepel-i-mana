@@ -332,23 +332,45 @@ func _draw_resident(r: Dictionary) -> void:
 	if sleeping:
 		col = col.darkened(0.4)
 	var center := pos + Vector2(0, -3.0 - bob - lift)
+	# v1.64: кружки-фолбэки (дети/стражи/старосты рас) тоже несут палитру расы
+	if String(r.get("race", "human")) != "human":
+		var rc := Color(String(sim._race_def(r).get("tint", "#ffffff")))
+		col = col.lerp(rc, 0.3)
+		radius *= float(sim._race_def(r).get("scale", 1.0))
 	# v1.49.1: взрослые с профессией из пака Minifolks рисуются спрайтом
 	# (idle/ходьба/работа); якорь — НОГИ на позиции жителя (y-сортировка),
 	# видимый рост ~23px против 32 у рыцаря. Дети, стражи, староста и
 	# профессии без листа — прежний кружок; оттенок цвета профессии не
 	# применяем (портит арт), кроме болезней/ран
 	var working_states := ["work", "build", "harvest", "fill", "hunt", "chop", "mine", "farm"]
+	# v1.64 (п.3, ответ №108 «силуэт + палитра»): раса жителя — палитра
+	# поверх спрайта профессии и рост (дворф/гном/гоблин ниже); болезнь/рана
+	# перекрашивают сильнее; ангелу — тонкий нимб
+	var race_def: Dictionary = sim._race_def(r)
+	var race_tint := Color.WHITE
+	if not race_def.is_empty():
+		race_tint = Color.WHITE.lerp(Color(String(race_def.get("tint", "#ffffff"))), 0.55)
+	var race_scale := float(race_def.get("scale", 1.0))
+	if ail == "sick":
+		race_tint = race_tint.lerp(Color(0.7, 0.95, 0.6), 0.5)
+	elif ail == "wounded":
+		race_tint = race_tint.lerp(Color(1.0, 0.45, 0.45), 0.5)
 	var drawn_villager := false
 	if not child and not sleeping and not _is_elder_golem(r):
 		var vx: float = 0.0
 		if not pth.is_empty():
 			vx = (pth[0] - pos).x
 		var working: bool = working_states.has(String(r.get("state", "")))
-		var vtint := col if ail in ["sick", "wounded"] else Color.WHITE
+		var vtint := col if ail in ["sick", "wounded"] else race_tint
 		drawn_villager = Assets.draw_villager(self, prof,
 				"left" if vx < -1.0 else "right", moving, working,
 				pos + Vector2(0, -lift - bob * 0.6),
-				_anim_time + float(int(r["id"]) % 7) * 0.13, vtint)
+				_anim_time + float(int(r["id"]) % 7) * 0.13, vtint, race_scale)
+		if drawn_villager and bool(race_def.get("halo", false)):
+			# ангел: тонкий нимб над головой
+			var h := 30.0 * race_scale
+			draw_arc(pos + Vector2(0, -lift - h), 5.0, PI * 0.15, PI * 0.85, 10,
+					Color(1.0, 0.95, 0.6, 0.85), 2.0)
 	if not drawn_villager:
 		# тело — готовая текстурка (v1.21.5): одна команда вместо пяти
 		var body := _res_sprite(col, radius)
