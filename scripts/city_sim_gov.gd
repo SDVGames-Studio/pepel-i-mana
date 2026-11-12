@@ -527,6 +527,7 @@ func _roll_births() -> void:
 	var parent: Dictionary = adults[_event_rng.randi_range(0, adults.size() - 1)]
 	var names: Array = cfg["names"]
 	var child := _new_resident(String(names[_event_rng.randi_range(0, names.size() - 1)]), "", map.tile_of_px(parent["pos"]))
+	child["race"] = String(parent.get("race", "human"))   # v1.64: дети наследуют расу
 	child["age_days"] = 0.0
 	child["traits"] = []
 	child["mood"] = float(people.get("mood_base", 50.0))

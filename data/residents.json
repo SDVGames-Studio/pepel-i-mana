@@ -1,110 +1,306 @@
 {
-	"traits_per_resident_min": 1,
-	"traits_per_resident_max": 2,
-	"mood_base": 50.0,
-	"mood_rate": 1.5,
-	"mood_good": 70.0,
-	"mood_bad": 30.0,
-	"work_mood_good": 1.1,
-	"work_mood_bad": 0.7,
-	"grief_mood": 20.0,
-	"skill_rate": 0.5,
-	"skill_max": 5.0,
-	"skill_expert_at": 3.0,
-	"skill_prod": 0.08,
-	"friend_mood": 6.0,
-	"friend_work": 1.1,
-	"child_food": 0.5,
-	"starving_work": 0.6,
-	"sub_work": 0.5,
-	"v3": {
-		"work_near_bonus": 1.0,
-		"work_near_tiles": 3,
-		"quarrel_rel_hit": -18.0,
-		"wedding_rel_bonus": 40.0,
-		"gift_rel_bonus": 6.0,
-		"friend_threshold": 50.0,
-		"foe_threshold": -30.0,
-		"memory_slots": 3,
-		"memory_decay_days": 10.0,
-		"memory_min_factor": 0.2,
-		"mood_per_event": { "wedding": 6.0, "widow": -12.0, "quarrel": -4.0, "gift": 3.0, "goal": 6.0 },
-		"goal_mood": 6.0,
-		"goal_food_days": 7,
-		"spite_lines": 4
-	},
-	"goals": [
-		{ "id": "become_master", "loc": "goal.become_master", "desc": "goal.desc.become_master" },
-		{ "id": "build_garden", "loc": "goal.build_garden", "desc": "goal.desc.build_garden" },
-		{ "id": "feast_tavern", "loc": "goal.feast_tavern", "desc": "goal.desc.feast_tavern" },
-		{ "id": "store_food", "loc": "goal.store_food", "desc": "goal.desc.store_food" }
-	],
-	"traits": [
-		{"id": "hardworking", "weight": 10, "work_mult": 1.15, "skill_rate": 1.3},
-		{"id": "lazy", "weight": 10, "work_mult": 0.85, "skill_rate": 0.85},
-		{"id": "cheerful", "weight": 10, "mood": 15.0},
-		{"id": "grumpy", "weight": 10, "mood": -12.0, "instigator": true},
-		{"id": "brave", "weight": 8, "grief_mult": 0.5, "fearless": true},
-		{"id": "coward", "weight": 8, "grief_mult": 1.5, "flees": true},
-		{"id": "magephobe", "weight": 8, "pollution_mood": -0.15},
-		{"id": "magiclover", "weight": 8, "pollution_mood": 0.15},
-		{"id": "glutton", "weight": 6, "food_mult": 2.0},
-		{"id": "greedy", "weight": 6, "can_steal": true},
-		{"id": "kind", "weight": 8, "mood": 8.0},
-		{"id": "strong", "weight": 6, "work_mult": 1.1},
-		{"id": "sickly", "weight": 5, "frail": true},
-		{"id": "dreamer", "weight": 6, "mood": 5.0, "work_mult": 0.95},
-		{"id": "stoic", "weight": 6, "grief_mult": 0.7, "pollution_mood": -0.05}
-	],
-	"refugees": {"chance_per_day": 0.45, "wave_max": 2, "mood_gate": 45.0, "tower_bonus": 0.1, "tower_bonus_max": 0.4,
-		"early_bonus": 0.3, "early_below": 8},
-	"births": {"chance_per_day": 0.25, "mood_gate": 60.0, "child_days": 8.0, "couple_boost": 1.5},
-	"ailments": {
-		"sick_chance": 0.02,
-		"pollution_sick_extra": 0.10,
-		"frail_mult": 2.0,
-		"recover_chance": 0.25,
-		"healer_recover_chance": 0.7,
-		"death_chance": 0.04,
-		"death_risk_after_days": 3.0,
-		"death_risk_growth": 0.05,
-		"wounded_on_surge": 1
-	},
-	"couples": {
-		"chance_per_day": 0.25,
-		"mood_gate": 62.0,
-		"pair_mood": 4.0,
-		"widow_grief": 10.0
-	},
-	"stories": {
-		"chance_per_day": 0.5,
-		"weights": {
-			"quarrel": 5, "friendship": 5, "discovery": 5, "betrayal": 4, "mutation": 4,
-			"festival": 3, "prodigy": 2, "brave_deed": 3, "meteor": 2, "herbs": 3,
-			"night_terror": 3, "wedding": 3, "artifact": 2, "good_harvest": 3, "stranger": 2
-		},
-		"quarrel_mood": -15.0,
-		"friendship_mood": 10.0,
-		"discovery_food": 12,
-		"discovery_stone": 6,
-		"discovery_crystal": 1,
-		"betrayal_food": 10,
-		"betrayal_mood": -5.0,
-		"mutation_pollution": 30.0,
-		"mutation_work_bonus": 0.1,
-		"festival_food": 15,
-		"festival_mood": 10.0,
-		"prodigy_skill": 1.0,
-		"brave_deed_mood": 8.0,
-		"meteor_stone": 20,
-		"meteor_pollution": 8.0,
-		"terror_pollution": 20.0,
-		"terror_mood": -6.0,
-		"wedding_mood": 12.0,
-		"artifact_crystal": 1,
-		"artifact_skill": 0.5,
-		"harvest_food": 18,
-		"stranger_food": 10,
-		"stranger_crystal": 1
-	}
+  "traits_per_resident_min": 1,
+  "traits_per_resident_max": 2,
+  "mood_base": 50.0,
+  "mood_rate": 1.5,
+  "mood_good": 70.0,
+  "mood_bad": 30.0,
+  "work_mood_good": 1.1,
+  "work_mood_bad": 0.7,
+  "grief_mood": 20.0,
+  "skill_rate": 0.5,
+  "skill_max": 5.0,
+  "skill_expert_at": 3.0,
+  "skill_prod": 0.08,
+  "friend_mood": 6.0,
+  "friend_work": 1.1,
+  "child_food": 0.5,
+  "starving_work": 0.6,
+  "sub_work": 0.5,
+  "v3": {
+    "work_near_bonus": 1.0,
+    "work_near_tiles": 3,
+    "quarrel_rel_hit": -18.0,
+    "wedding_rel_bonus": 40.0,
+    "gift_rel_bonus": 6.0,
+    "friend_threshold": 50.0,
+    "foe_threshold": -30.0,
+    "memory_slots": 3,
+    "memory_decay_days": 10.0,
+    "memory_min_factor": 0.2,
+    "mood_per_event": {
+      "wedding": 6.0,
+      "widow": -12.0,
+      "quarrel": -4.0,
+      "gift": 3.0,
+      "goal": 6.0
+    },
+    "goal_mood": 6.0,
+    "goal_food_days": 7,
+    "spite_lines": 4
+  },
+  "goals": [
+    {
+      "id": "become_master",
+      "loc": "goal.become_master",
+      "desc": "goal.desc.become_master"
+    },
+    {
+      "id": "build_garden",
+      "loc": "goal.build_garden",
+      "desc": "goal.desc.build_garden"
+    },
+    {
+      "id": "feast_tavern",
+      "loc": "goal.feast_tavern",
+      "desc": "goal.desc.feast_tavern"
+    },
+    {
+      "id": "store_food",
+      "loc": "goal.store_food",
+      "desc": "goal.desc.store_food"
+    }
+  ],
+  "traits": [
+    {
+      "id": "hardworking",
+      "weight": 10,
+      "work_mult": 1.15,
+      "skill_rate": 1.3
+    },
+    {
+      "id": "lazy",
+      "weight": 10,
+      "work_mult": 0.85,
+      "skill_rate": 0.85
+    },
+    {
+      "id": "cheerful",
+      "weight": 10,
+      "mood": 15.0
+    },
+    {
+      "id": "grumpy",
+      "weight": 10,
+      "mood": -12.0,
+      "instigator": true
+    },
+    {
+      "id": "brave",
+      "weight": 8,
+      "grief_mult": 0.5,
+      "fearless": true
+    },
+    {
+      "id": "coward",
+      "weight": 8,
+      "grief_mult": 1.5,
+      "flees": true
+    },
+    {
+      "id": "magephobe",
+      "weight": 8,
+      "pollution_mood": -0.15
+    },
+    {
+      "id": "magiclover",
+      "weight": 8,
+      "pollution_mood": 0.15
+    },
+    {
+      "id": "glutton",
+      "weight": 6,
+      "food_mult": 2.0
+    },
+    {
+      "id": "greedy",
+      "weight": 6,
+      "can_steal": true
+    },
+    {
+      "id": "kind",
+      "weight": 8,
+      "mood": 8.0
+    },
+    {
+      "id": "strong",
+      "weight": 6,
+      "work_mult": 1.1
+    },
+    {
+      "id": "sickly",
+      "weight": 5,
+      "frail": true
+    },
+    {
+      "id": "dreamer",
+      "weight": 6,
+      "mood": 5.0,
+      "work_mult": 0.95
+    },
+    {
+      "id": "stoic",
+      "weight": 6,
+      "grief_mult": 0.7,
+      "pollution_mood": -0.05
+    }
+  ],
+  "refugees": {
+    "chance_per_day": 0.45,
+    "wave_max": 2,
+    "mood_gate": 45.0,
+    "tower_bonus": 0.1,
+    "tower_bonus_max": 0.4,
+    "early_bonus": 0.3,
+    "early_below": 8
+  },
+  "births": {
+    "chance_per_day": 0.25,
+    "mood_gate": 60.0,
+    "child_days": 8.0,
+    "couple_boost": 1.5
+  },
+  "ailments": {
+    "sick_chance": 0.02,
+    "pollution_sick_extra": 0.1,
+    "frail_mult": 2.0,
+    "recover_chance": 0.25,
+    "healer_recover_chance": 0.7,
+    "death_chance": 0.04,
+    "death_risk_after_days": 3.0,
+    "death_risk_growth": 0.05,
+    "wounded_on_surge": 1
+  },
+  "couples": {
+    "chance_per_day": 0.25,
+    "mood_gate": 62.0,
+    "pair_mood": 4.0,
+    "widow_grief": 10.0
+  },
+  "stories": {
+    "chance_per_day": 0.5,
+    "weights": {
+      "quarrel": 5,
+      "friendship": 5,
+      "discovery": 5,
+      "betrayal": 4,
+      "mutation": 4,
+      "festival": 3,
+      "prodigy": 2,
+      "brave_deed": 3,
+      "meteor": 2,
+      "herbs": 3,
+      "night_terror": 3,
+      "wedding": 3,
+      "artifact": 2,
+      "good_harvest": 3,
+      "stranger": 2
+    },
+    "quarrel_mood": -15.0,
+    "friendship_mood": 10.0,
+    "discovery_food": 12,
+    "discovery_stone": 6,
+    "discovery_crystal": 1,
+    "betrayal_food": 10,
+    "betrayal_mood": -5.0,
+    "mutation_pollution": 30.0,
+    "mutation_work_bonus": 0.1,
+    "festival_food": 15,
+    "festival_mood": 10.0,
+    "prodigy_skill": 1.0,
+    "brave_deed_mood": 8.0,
+    "meteor_stone": 20,
+    "meteor_pollution": 8.0,
+    "terror_pollution": 20.0,
+    "terror_mood": -6.0,
+    "wedding_mood": 12.0,
+    "artifact_crystal": 1,
+    "artifact_skill": 0.5,
+    "harvest_food": 18,
+    "stranger_food": 10,
+    "stranger_crystal": 1
+  },
+  "races": {
+    "_note": "v1.64 (п.3, ответ №108: список рас, различение «силуэт + палитра» — на усмотрение агента): вес — доля среди беженцев; tint — палитра поверх спрайта профессии; scale — рост; stats — расовые модификаторы к _stat; halo — нимб ангела. Дети наследуют расу родителя.",
+    "human": {
+      "weight": 62.0,
+      "tint": "#ffffff",
+      "scale": 1.0,
+      "stats": {}
+    },
+    "orc": {
+      "weight": 10.0,
+      "tint": "#9dbf6e",
+      "scale": 1.05,
+      "stats": {
+        "str": 2,
+        "agi": -1
+      }
+    },
+    "dwarf": {
+      "weight": 6.0,
+      "tint": "#d99a6c",
+      "scale": 0.85,
+      "stats": {
+        "end": 2,
+        "agi": -1
+      }
+    },
+    "gnome": {
+      "weight": 5.0,
+      "tint": "#c9e08a",
+      "scale": 0.8,
+      "stats": {
+        "int": 2,
+        "str": -1
+      }
+    },
+    "goblin": {
+      "weight": 5.0,
+      "tint": "#a4c96b",
+      "scale": 0.8,
+      "stats": {
+        "agi": 2,
+        "wis": -1
+      }
+    },
+    "kobold": {
+      "weight": 4.0,
+      "tint": "#d0785a",
+      "scale": 0.8,
+      "stats": {
+        "agi": 1,
+        "int": 1
+      }
+    },
+    "undead": {
+      "weight": 4.0,
+      "tint": "#b8c4c8",
+      "scale": 1.0,
+      "stats": {
+        "end": 2,
+        "wis": -2
+      }
+    },
+    "angel": {
+      "weight": 2.0,
+      "tint": "#fff2c8",
+      "scale": 1.0,
+      "stats": {
+        "wis": 2,
+        "int": 1
+      },
+      "halo": true
+    },
+    "demon": {
+      "weight": 2.0,
+      "tint": "#e89090",
+      "scale": 1.0,
+      "stats": {
+        "str": 1,
+        "int": 1,
+        "wis": -1
+      }
+    }
+  }
 }

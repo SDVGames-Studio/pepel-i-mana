@@ -289,7 +289,7 @@ static var _villager_texs: Dictionary = {}   # base -> Texture2D (кэш)
 ## working — анимация работы (ряд 2). pos — ТОЧКА НОГ (якорь y-сортировки):
 ## видимый рост ~23px против 32 у рыцаря. False — листа нет (рисовать кружок).
 static func draw_villager(canvas: CanvasItem, prof: String, dir: String, moving: bool,
-		working: bool, pos: Vector2, t: float, tint := Color.WHITE) -> bool:
+		working: bool, pos: Vector2, t: float, tint := Color.WHITE, scale := 1.0) -> bool:
 	if not VILLAGER_PROF.has(prof) or not VILLAGER_ROWS.has(VILLAGER_PROF[prof]):
 		return false
 	var base: String = VILLAGER_PROF[prof]
@@ -313,7 +313,7 @@ static func draw_villager(canvas: CanvasItem, prof: String, dir: String, moving:
 	var f := int(t * fps) % maxi(1, frames)
 	var cs := VILLAGER_FRAME
 	var src := Rect2(float(f % 10) * cs, float(row) * cs, cs, cs)
-	var s := villager_size()
+	var s := villager_size() * scale   # v1.64: расовый рост (дворф/гном ниже)
 	# ноги персонажа (y=30 кадра) стоят в pos; кадр чуть больше видимого тела
 	var dst := Rect2(Vector2(pos.x - s * 0.5, pos.y - VILLAGER_FEET_Y / cs * s), Vector2(s, s))
 	if dir == "left":

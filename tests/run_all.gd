@@ -238,6 +238,10 @@ const BLOCKS := [
 	["res://tests/test_props.gd", [
 	"_test_props",
 ]],
+
+	["res://tests/test_races.gd", [
+	"_test_races",
+]],
 ]
 
 
