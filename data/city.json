@@ -1231,7 +1231,7 @@
 		{
 			"id": "market",
 			"w": 2,
-			"sprite": "e:tent",
+			"sprite": "pc:шатёр",
 			"short": "bld.short.market",
 			"loc": "bld.market",
 			"desc": "bld.desc.market",

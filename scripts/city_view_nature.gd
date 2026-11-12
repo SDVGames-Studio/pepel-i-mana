@@ -33,6 +33,10 @@ func _draw_world_sorted() -> void:
 			var bw: int = sim.bld_w(b)
 			_static_sorted.append([float(Vector2(b["tile"]).y + bw - 1) * ts + ts - 2.0
 					- _bld_lift(b), "bld", b])
+		# v1.63: пропсы города (фонари/скамейки/стоги/декор строений) —
+		# детерминированный статичный декор (city_view_props.gd)
+		for p in _props_static():
+			_static_sorted.append(p)
 		_static_sorted.sort_custom(func(a, b) -> bool: return float(a[0]) < float(b[0]))
 	# динамический набор — короткий: брёвна, останки, кучи, звери, скот, люди, герой
 	var dyn: Array = []
@@ -115,6 +119,8 @@ func _draw_world_sorted() -> void:
 				_draw_corpse(e[2])
 			"bld":
 				_draw_building(e[2])
+			"prop":
+				_draw_prop(e[2])
 			"pile":
 				_draw_pile(e[2])
 			"animal":
