@@ -10,6 +10,17 @@ func _unhandled_input(event: InputEvent) -> void:
 				or event.button_index == MOUSE_BUTTON_WHEEL_DOWN):
 		_wheel_zoom(1.12 if event.button_index == MOUSE_BUTTON_WHEEL_UP else 1.0 / 1.12)
 		return
+	# v1.66 (магия-просто): Z/X — быстрый каст первых двух изученных
+	# заклинаний (в данже 1–9 уже работают — спеллбук по порядку)
+	if event is InputEventKey and event.pressed and not event.echo \
+			and (event.physical_keycode == KEY_Z or event.physical_keycode == KEY_X):
+		var slot_idx := 0 if event.physical_keycode == KEY_Z else 1
+		if slot_idx < Game.spellbook.size():
+			cast_combat_spell(String(Game.spellbook[slot_idx]))
+		else:
+			hud.toast(Loc.t("magic.slot_empty"))
+		get_viewport().set_input_as_handled()
+		return
 	if event.is_action_pressed("interact"):
 		# в чужом городе герой — гость: аномалия, оружейка, храм и ручной
 		# труд — только дома («Мир v2», этап 3)

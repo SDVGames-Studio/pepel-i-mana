@@ -85,6 +85,7 @@ static func _game_block(game, city_tile: Vector2i, world_tile: Vector2i) -> Dict
 	return {
 		"inventory": game.inventory,
 		"spellbook": game.spellbook,
+		"spell_uses": game.spell_uses if "spell_uses" in game else {},
 		"coins": int(game.coins),
 		"last_run_death": bool(game.last_run_death),
 		"dungeon_clears": int(game.dungeon_clears),

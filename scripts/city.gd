@@ -29,6 +29,8 @@ func craft_spell(rune_a: String, rune_b: String) -> void:
 
 ## Городское заклинание из панели магии (расход — кристаллы из пула).
 func cast_city_spell(spell_id: String) -> void:
+	SfxLib.play("spell_" + String(Game.magic.spell(spell_id).get("school", "wild")))   # v1.65.3
+	Game.spell_cast(spell_id)   # v1.66: городские касты тоже качают
 	var def: Dictionary = Game.magic.spell(spell_id)
 	if def.is_empty():
 		return
@@ -97,7 +99,10 @@ func _cast_scroll(item_id: String) -> String:
 func cast_combat_spell(spell_id: String) -> void:
 	var err: String = _cast_combat_spell(spell_id)
 	if err == "":
-		hud.toast(Loc.t("magic.cast_done") % Loc.t("spell." + spell_id))
+		var lvl := Game.spell_cast(spell_id)   # v1.66: прокачка использованием
+		SfxLib.play("spell_" + String(Game.magic.spell(spell_id).get("school", "wild")))
+		hud.toast(Loc.t("magic.cast_done") % Loc.t("spell." + spell_id)
+				+ (" " + Loc.t("magic.level") % lvl if lvl > 0 else ""))
 	else:
 		hud.toast(Loc.t(err))
 
@@ -126,7 +131,8 @@ func _cast_combat_spell(spell_id: String, free_cast := false) -> String:
 				+ float(ha.get("train_mana_wis", 0.04)) * float(cost))
 	hero.set_spell_cd(spell_id, float(def.get("cooldown", 3.0)) * hero.skill_mult("spell_cd_mult", 1.0))
 	var p2: Dictionary = def.get("params", {}).duplicate(true)
-	p2["damage"] = int(round(float(p2.get("damage", 0)) * hero.spell_mult()))
+	p2["damage"] = int(round(float(p2.get("damage", 0)) * hero.spell_mult()
+			* Game.spell_power(spell_id)))   # v1.66: прокачка заклинания
 	p2["heal"] = int(round(float(p2.get("heal", 0)) * hero.spell_mult()))
 	var col: Color = Game.magic.school_color(String(def["school"]))
 	match spell_id:

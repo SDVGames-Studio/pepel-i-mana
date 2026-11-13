@@ -44,6 +44,8 @@ var _magic_panel: PanelContainer
 var _magic_scroll: ScrollContainer
 var _magic_box: VBoxContainer
 var _pollution_big: Label
+var _spell_craft_rows: Array = []
+var _slot_hint: Label = null
 var _rune_slot_a: OptionButton
 var _rune_slot_b: OptionButton
 var _craft_result: Label

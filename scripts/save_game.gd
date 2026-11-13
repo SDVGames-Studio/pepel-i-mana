@@ -106,6 +106,13 @@ static func _apply_game(game, gd: Variant, skd: Variant, hero_d: Variant) -> voi
 	game.spellbook = []
 	for s in g.get("spellbook", []):
 		game.spellbook.append(String(s))
+	game.set("spell_uses", {})
+	var su: Variant = g.spell_uses if "spell_uses" in g else {}
+	if su is Dictionary:
+		var su_out: Dictionary = {}
+		for k in (su as Dictionary):
+			su_out[String(k)] = int((su as Dictionary)[k])
+		game.set("spell_uses", su_out)
 	game.coins = int(g.get("coins", 0))
 	game.last_run_death = bool(g.get("last_run_death", false))
 	game.dungeon_clears = int(g.get("dungeon_clears", 0))

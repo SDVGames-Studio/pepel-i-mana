@@ -404,6 +404,17 @@ func _roll_equipment_boss(tier: int) -> String:
 ## Все враги мертвы — данж зачищен: 20 дней не работает (перезарядка данжа
 ## у города, 2026-10-21), следующая версия сильнее, атаки мутантов на город
 ## сдвигаются на время перезарядки.
+func _first_spell_teach() -> void:
+	# v1.66 (магия-просто): первый зачищенный данж гарантирует руны
+	# первого заклинания + подсказку (дизайн-док 15-ОЖИВЛЕНИЕ, аспект 2)
+	var gift: Array = Game.first_spell_gift()
+	if gift.is_empty():
+		return
+	for rune_id in gift:
+		Game.add_item(rune_id, 1)
+	hud.toast(Loc.t("tut.first_spell"))
+
+
 func _check_dungeon_cleared() -> void:
 	for e in get_tree().get_nodes_in_group("enemies"):
 		if is_instance_valid(e) and int(e["hp"]) > 0:

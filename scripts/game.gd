@@ -29,6 +29,8 @@ var skills = null                # skills.gd — XP, уровни, дерево 
 var world_map = null             # world_map.gd — карта мира (M8)
 var world_sim = null             # world_sim.gd — мир живёт программно (M8)
 var spellbook: Array = []        # изученные заклинания: [id: String]
+var spell_uses: Dictionary = {}  # v1.66: касты по заклинаниям — прокачка
+var spell_uses_saved: Dictionary = {}
 var coins := 0                   # монеты героя — валюта торговли (M8, ответ №40)
 var start_residents := 1         # правки v1.12.0: герой начинает один, поселенцы приходят сами
 var start_level := "normal"      # "low" | "normal" | "high"
@@ -517,7 +519,26 @@ func has_spell(spell_id: String) -> bool:
 func learn_spell(spell_id: String) -> void:
 	if not spellbook.has(spell_id):
 		spellbook.append(spell_id)
-		codex_seen("spells", spell_id)   # кодекс (M14-K)
+		codex_seen("spells", spell_id)
+
+
+## v1.66 (магия-просто): каст учитывается — уровень растёт на 10 кастов.
+func spell_cast(spell_id: String) -> int:
+	spell_uses[spell_id] = int(spell_uses.get(spell_id, 0)) + 1
+	return MagicLogic.level_from_uses(int(spell_uses[spell_id]))
+
+
+func spell_level(spell_id: String) -> int:
+	return MagicLogic.level_from_uses(int(spell_uses.get(spell_id, 0)))
+
+
+func spell_power(spell_id: String) -> float:
+	return MagicLogic.power_from_level(spell_level(spell_id))
+
+
+## Руны гарантии первого заклинания (данж зачищен — см. dungeon.gd).
+func first_spell_gift() -> Array:
+	return MagicLogic.first_gift_runes(spellbook, inventory)   # кодекс (M14-K)
 
 
 ## Добавляет предмет в рюкзак, при совпадении складывается в стак.
