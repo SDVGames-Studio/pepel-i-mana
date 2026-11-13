@@ -612,13 +612,9 @@ def wind_gust():
 
 
 def amb_day():
-    """Тёмное фэнтези, день: тишина с порывами ветра и далёким вороном."""
+    """День: почти тишина — один далёкий ворон. Только инструменты в музыке."""
     buf = silence(24.0)
-    at = 2.5
-    while at < 19.0:
-        mix(buf, wind_gust(), at, random.uniform(0.35, 0.6))
-        at += random.uniform(5.0, 8.0)
-    mix(buf, raven_caw(), random.uniform(9.0, 15.0), 0.3)
+    mix(buf, raven_caw(), random.uniform(9.0, 15.0), 0.25)
     return buf
 
 
