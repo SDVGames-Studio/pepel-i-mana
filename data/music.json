@@ -95,6 +95,34 @@
     "swing": {
       "file": "assets/audio/sfx/swing.wav",
       "vol": 0.6
+    },
+    "step_grass": {
+      "file": "assets/audio/sfx/step_grass.wav",
+      "vol": 0.5
+    },
+    "step_road": {
+      "file": "assets/audio/sfx/step_road.wav",
+      "vol": 0.5
+    },
+    "step_stone": {
+      "file": "assets/audio/sfx/step_stone.wav",
+      "vol": 0.5
+    },
+    "step_water": {
+      "file": "assets/audio/sfx/step_water.wav",
+      "vol": 0.5
+    },
+    "chop": {
+      "file": "assets/audio/sfx/chop.wav",
+      "vol": 0.9
+    },
+    "hammer": {
+      "file": "assets/audio/sfx/hammer.wav",
+      "vol": 0.8
+    },
+    "mine": {
+      "file": "assets/audio/sfx/mine.wav",
+      "vol": 0.85
     }
   },
   "layers": [

@@ -33,6 +33,10 @@ func _test_sfx() -> void:
 			"coin", "pickup", "ui_click", "alarm", "build_done", "quest_done",
 			"swing", "chest", "rune", "boss_roar"]) or true,
 			"ключевые эффекты описаны")
+	for sid in ["step_grass", "step_road", "step_stone", "step_water",
+			"chop", "hammer", "mine"]:
+		_check((cfg.get("sfx", {}) as Dictionary).has(sid),
+				"эффект v1.65.3 описан: %s" % sid)
 
 	# 2) амбиент и музыкальные стемы
 	for want in ["amb_day", "amb_night", "amb_dungeon", "amb_raid", "amb_storm"]:

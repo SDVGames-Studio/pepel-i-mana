@@ -87,22 +87,33 @@ def echo(buf, delay=0.16, gain=0.22, taps=2):
 
 # --- инструменты -------------------------------------------------------------
 
-def pluck(freq, dur, bright=0.5, vol=1.0, decay=0.9955):
-    """Karplus-Strong щипок: гусли/домра/балалайка/кифара/арфа."""
-    n = max(2, int(SR / freq))
-    ring = [random.uniform(-1.0, 1.0) for _ in range(n)]
-    for i in range(n):  # яркость щипка
-        ring[i] = ring[i] * (0.4 + 0.6 * bright) + (0.1 if i % 7 == 0 else 0.0)
+def pluck(freq, dur, bright=0.5, vol=1.0, decay=0.9955, tremolo=0.0):
+    """Струнный щипок v1.65.2: АДДИТИВНАЯ модель — 7 гармоник с разным
+    затуханием и мягкой атакой (тёплый «гусельный» тембр; KS звучал как
+    электрогитара — замечание заказчика). tremolo>0 — балалайковая дрожь."""
     total = int(dur * SR)
     out = [0.0] * total
-    damp = decay
-    for i in range(total):
-        j = i % n
-        v = ring[j]
-        nxt = ring[(j + 1) % n]
-        ring[j] = (v + nxt) * 0.5 * damp
-        out[i] = v * vol
-    return out
+    for h in range(1, 8):
+        amp = 1.0 / (h ** (1.2 + (1.0 - bright) * 0.8))
+        dec = 3.2 + h * (1.2 + bright * 1.4)
+        det = 1.0 + (h % 2) * 0.0012
+        ph = random.uniform(0.0, TAU)
+        f = freq * det * h
+        if f > SR / 2.0:
+            break
+        for i in range(total):
+            tt = i / SR
+            a = amp * math.exp(-dec * tt)
+            if a < 0.001:
+                break
+            atk = min(1.0, tt / 0.008)
+            tmod = 1.0 + tremolo * math.sin(TAU * 9.0 * tt)
+            out[i] += math.sin(TAU * f * tt + ph) * a * atk * tmod
+    peak = max(1e-6, max(abs(x) for x in out))
+    if peak > 1.0:
+        k = 1.0 / peak
+        return [x * k * vol for x in out]
+    return [x * vol for x in out]
 
 
 def flute(freq, dur, vol=1.0, breath=0.25, vib=5.0, vib_depth=0.006, rough=False):
@@ -254,7 +265,9 @@ def render_track(path, bpm, bars, scale, pattern, instr, vol=0.75, base_oct=4,
     total = bars * 16 * step
     buf = silence(total)
     if drone_note is not None:
-        mix(buf, drone(hz(drone_note[0], drone_note[1]), total, drone_vol), 0)
+        base = hz(drone_note[0], drone_note[1])
+        mix(buf, drone(base, total, drone_vol), 0)
+        mix(buf, drone(base * 1.4983, total, drone_vol * 0.55), 0)   # бурдон квинтой
     for bar_i, pat in enumerate(pattern):
         steps = pat.split()
         for s_i, tok in enumerate(steps):
@@ -280,25 +293,31 @@ def render_amb(path, sec, layers):
 
 
 def bird_chirp():
+    """Мягкий двухсложный низкий свист с вибрато (не «пи-пи»)."""
     out = []
-    for _ in range(random.randint(2, 4)):
-        f0 = random.uniform(2200, 3400)
-        d = random.uniform(0.05, 0.12)
+    f0 = random.uniform(900, 1400)
+    for k in range(2):
+        d = random.uniform(0.10, 0.16)
         n = int(d * SR)
         for i in range(n):
             tt = i / SR
-            f = f0 * (1.0 - 0.35 * tt / d)
-            out.append(math.sin(TAU * f * tt) * math.exp(-tt * 22.0) * 0.8)
-        out.extend([0.0] * int(random.uniform(0.02, 0.06) * SR))
+            f = f0 * (1.0 + 0.06 * math.sin(TAU * 22.0 * tt)) * (1.0 - 0.12 * tt / d)
+            e = env(n, a=0.02, d=d * 0.75)[i]
+            out.append(math.sin(TAU * f * tt) * e * 0.5)
+        out.extend([0.0] * int(random.uniform(0.06, 0.1) * SR))
     return out
 
 
-def cricket_burst(dur=0.8):
+def cricket_burst(dur=0.9):
+    """Сверчки: мягкая трель ~1400 Гц, приглушённая."""
     out = [0.0] * int(dur * SR)
-    for k in range(int(dur / 0.125)):
-        for i in range(int(0.03 * SR)):
+    for k in range(int(dur / 0.15)):
+        n = int(0.05 * SR)
+        for i in range(n):
             tt = i / SR
-            out[int(k * 0.125 * SR) + i] += math.sin(TAU * 4200 * tt) * math.exp(-tt * 60.0) * 0.5
+            f = 1400.0 * (1.0 + 0.04 * math.sin(TAU * 30.0 * tt))
+            out[int(k * 0.15 * SR) + i] += math.sin(TAU * f * tt) \
+                    * env(n, a=0.008, d=n / SR * 0.8)[i] * 0.28
     return out
 
 
@@ -325,6 +344,57 @@ def owl_hoot():
 
 
 # --- эффекты -----------------------------------------------------------------
+
+def step(dur=0.09, lp=0.18, vol=1.0, thud=0.0, thud_f=120.0):
+    """Шаг: короткий глухой шорох; thud — низкий тычок (пятка)."""
+    n = int(dur * SR)
+    out = [0.0] * n
+    last = 0.0
+    for i in range(n):
+        tt = i / SR
+        last = last * (1.0 - lp) + random.uniform(-1, 1) * lp
+        out[i] = last * math.exp(-tt * 55.0)
+        if thud > 0.0:
+            out[i] += math.sin(TAU * thud_f * tt) * math.exp(-tt * 60.0) * thud
+    return [x * vol for x in out]
+
+
+def sfx_chop():
+    """Удар топора по дереву: резкий треск + деревянный резонанс."""
+    buf = silence(0.35)
+    mix(buf, [random.uniform(-1, 1) * math.exp(-(i / SR) * 30.0) for i in range(int(0.08 * SR))], 0.0, 0.9)
+    n = int(0.3 * SR)
+    for i in range(n):
+        tt = i / SR
+        s = math.sin(TAU * 420.0 * tt) * 0.5 + math.sin(TAU * 780.0 * tt) * 0.3
+        mix(buf, [s * math.exp(-tt * 14.0)], 0.01, 1.0)
+    mix(buf, noise_bed(0.2, lp=0.15, vol=0.3), 0.02)
+    return buf
+
+
+def sfx_hammer():
+    """Удар молота в стройке: деревянный тычок + металлический звон."""
+    buf = silence(0.3)
+    mix(buf, hit_low(95, 0.18, 0.9), 0.0)
+    n = int(0.22 * SR)
+    for i in range(n):
+        tt = i / SR
+        s = math.sin(TAU * 1150.0 * tt) * 0.4 + math.sin(TAU * 1900.0 * tt) * 0.2
+        mix(buf, [s * math.exp(-tt * 26.0)], 0.012, 1.0)
+    return buf
+
+
+def sfx_mine():
+    """Удар киркой по камню: звон + щебень."""
+    buf = silence(0.3)
+    n = int(0.25 * SR)
+    for i in range(n):
+        tt = i / SR
+        s = math.sin(TAU * 900.0 * tt) * 0.4 + math.sin(TAU * 2400.0 * tt) * 0.3
+        mix(buf, [s * math.exp(-tt * 20.0)], 0.0, 1.0)
+    mix(buf, [random.uniform(-1, 1) * math.exp(-(i / SR) * 25.0) for i in range(int(0.12 * SR))], 0.01, 0.7)
+    return buf
+
 
 def sfx_hit():
     return echo(mix(mix(silence(0.3), hit_low(90, 0.3, 0.9), 0),
@@ -426,19 +496,20 @@ def sfx_birth():
     return buf
 
 
-def sfx_tree_fall():
-    buf = silence(0.9)
-    mix(buf, wood_click(300, 0.15, 0.9), 0.0)
-    n = int(0.6 * SR)
-    fall = []
-    for i in range(n):
-        tt = i / SR
-        f = 120.0 * (1.0 - 0.5 * tt / 0.6)
-        fall.append(math.sin(TAU * f * tt) * math.exp(-tt * 4.0) * 0.7
-                    + random.uniform(-1, 1) * math.exp(-tt * 3.0) * 0.25)
-    mix(buf, fall, 0.15)
-    mix(buf, hit_low(60, 0.3, 0.9), 0.6)
+def sfx_tree_fall_dark():
+    """Тёмный вал: треск кроны, тяжёлый удар, гул почвы, шелест листвы."""
+    buf = silence(2.0)
+    for k, at in enumerate([0.0, 0.07, 0.13, 0.22]):
+        g = 0.9 - k * 0.15
+        mix(buf, [random.uniform(-1, 1) * math.exp(-(i / SR) * 45.0) for i in range(int(0.1 * SR))], at, g)
+    mix(buf, hit_low(52, 0.8, 1.0), 0.62)
+    mix(buf, noise_bed(1.2, lp=0.1, vol=0.3), 0.62)
+    mix(buf, noise_bed(1.1, lp=0.3, vol=0.22), 0.75)
     return buf
+
+
+def sfx_tree_fall():
+    return sfx_tree_fall_dark()
 
 
 def sfx_spell(school):
@@ -501,22 +572,86 @@ def sfx_fanfare():
 
 # --- амбиент -----------------------------------------------------------------
 
+def lowpass(buf, lp):
+    out = [0.0] * len(buf)
+    last = 0.0
+    for i, v in enumerate(buf):
+        last = last * (1.0 - lp) + v * lp
+        out[i] = last
+    return out
+
+
+def raven_caw():
+    """Далёкий ворон: 2-3 каркающих импульса с падением высоты."""
+    out = silence(1.2)
+    for k, at in enumerate([0.0, 0.32, 0.55]):
+        n = int(0.14 * SR)
+        caw = []
+        for i in range(n):
+            tt = i / SR
+            f = (260.0 - 60.0 * tt / 0.14) * (1.0 - k * 0.06)
+            ph = TAU * f * tt
+            s = math.sin(ph) * 0.5 + math.sin(ph * 2.2) * 0.3 + math.sin(ph * 0.5) * 0.3
+            s += random.uniform(-1, 1) * 0.25
+            caw.append(s * env(n, a=0.015, d=n / SR * 0.6)[i])
+        mix(out, caw, at, 0.9)
+    return echo(out, 0.14, 0.3, 2)
+
+
+def wind_gust():
+    """Порыв ветра: нарастающе-спадающий шум (2.6 с) — не постоянный фон."""
+    total = int(2.6 * SR)
+    out = [0.0] * total
+    last = 0.0
+    for i in range(total):
+        tt = i / total
+        lp = 0.03 + 0.14 * math.sin(tt * math.pi)
+        last = last * (1.0 - lp) + random.uniform(-1, 1) * lp
+        out[i] = last * math.sin(tt * math.pi) ** 1.2
+    return out
+
+
 def amb_day():
-    buf = noise_bed(24.0, lp=0.06, vol=0.16, lfo=0.05, lfo_depth=0.7)
-    at = 0.5
-    while at < 22.0:
-        mix(buf, bird_chirp(), at, random.uniform(0.4, 0.8))
-        at += random.uniform(1.6, 3.2)
+    """Тёмное фэнтези, день: тишина с порывами ветра и далёким вороном."""
+    buf = silence(24.0)
+    at = 2.5
+    while at < 19.0:
+        mix(buf, wind_gust(), at, random.uniform(0.35, 0.6))
+        at += random.uniform(5.0, 8.0)
+    mix(buf, raven_caw(), random.uniform(9.0, 15.0), 0.3)
+    return buf
+
+
+def wolf_howl():
+    """Далёкий вой волка: подъём и спад тона с вибрато."""
+    n = int(1.9 * SR)
+    out = []
+    ph = 0.0
+    for i in range(n):
+        tt = i / n
+        f = 300.0 + 190.0 * math.sin(tt * math.pi) + math.sin(tt * 26.0) * 9.0
+        ph += TAU * f / SR
+        s = math.sin(ph) * 0.7 + math.sin(ph * 2.0) * 0.15 + random.uniform(-1, 1) * 0.06
+        e = math.sin(tt * math.pi) ** 0.7
+        out.append(s * e * 0.8)
+    return echo(lowpass(out, 0.25), 0.25, 0.3, 2)
+
+
+def crack_branch():
+    buf = silence(0.25)
+    for at in [0.0, 0.09]:
+        mix(buf, [random.uniform(-1, 1) * math.exp(-(i / SR) * 38.0) for i in range(int(0.08 * SR))], at, 0.7)
     return buf
 
 
 def amb_night():
-    buf = noise_bed(24.0, lp=0.05, vol=0.1, lfo=0.04, lfo_depth=0.6)
-    at = 1.0
-    while at < 21.0:
-        mix(buf, cricket_burst(random.uniform(0.6, 1.0)), at, random.uniform(0.5, 0.9))
-        at += random.uniform(1.4, 2.6)
-    mix(buf, owl_hoot(), random.uniform(6, 14), 0.5)
+    """Тёмное фэнтези, ночь: почти тишина — далёкий волк, глухая сова,
+    хруст ветки."""
+    buf = silence(24.0)
+    mix(buf, wolf_howl(), random.uniform(2.0, 6.0), 0.35)
+    mix(buf, owl_hoot(), random.uniform(10.0, 16.0), 0.35)
+    mix(buf, crack_branch(), random.uniform(4.0, 9.0), 0.5)
+    mix(buf, crack_branch(), random.uniform(14.0, 20.0), 0.4)
     return buf
 
 
@@ -733,6 +868,13 @@ def main():
     wp("sfx/rune.wav", sfx_rune(), 0.8)
     wp("sfx/boss_roar.wav", sfx_boss_roar(), 0.9)
     wp("sfx/fanfare.wav", sfx_fanfare(), 0.85)
+    wp("sfx/step_grass.wav", step(0.09, 0.18, 0.55), 0.55)
+    wp("sfx/step_road.wav", step(0.08, 0.28, 0.6, thud=0.5, thud_f=110.0), 0.6)
+    wp("sfx/step_stone.wav", step(0.07, 0.35, 0.6, thud=0.4, thud_f=200.0), 0.6)
+    wp("sfx/step_water.wav", echo([random.uniform(-1, 1) * math.exp(-(i / SR) * 18.0) for i in range(int(0.16 * SR))], 0.05, 0.4, 1), 0.5)
+    wp("sfx/chop.wav", sfx_chop(), 0.9)
+    wp("sfx/hammer.wav", sfx_hammer(), 0.8)
+    wp("sfx/mine.wav", sfx_mine(), 0.85)
     wp("sfx/swing.wav", swing(), 0.6)
 
     print("[AMB]")

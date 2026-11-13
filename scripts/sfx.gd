@@ -105,12 +105,11 @@ static func play(id: String, vol := 1.0) -> void:
 		return
 	var p: AudioStreamPlayer = null
 	for cand in _sfx_pool:
-		if not (cand as AudioStreamPlayer).playing:
+		if not (cand as AudioStreamPlayer).playing and (cand as AudioStreamPlayer).is_inside_tree():
 			p = cand
 			break
-	if p == null:
-		p = _sfx_pool[0]
-	p.stream = stream
+	if p == null or not p.is_inside_tree():
+		return   # v1.65.3: headless/deferred — молча пропускаем
 	p.volume_db = linear_to_db(clampf(float(def.get("vol", 1.0)) * vol * _vol.get("SFX", 0.9), 0.0, 1.0))
 	p.pitch_scale = float(def.get("pitch", 1.0)) * (1.0 + randf_range(-0.04, 0.04))
 	p.play()

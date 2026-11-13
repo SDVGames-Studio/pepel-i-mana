@@ -221,6 +221,8 @@ func _hero_act() -> bool:
 		return false   # кулдаун: молча, тосты не спамим
 	var hw: Dictionary = cfg.get("hero_work", {})
 	var res: String = sim.hero_build(hero.position)
+	if res != "" and res != "done":
+		SfxLib.play("hammer")   # v1.65.3
 	if res == "" and not _hero_repair_bld.is_empty():
 		var err: String = sim.repair_building(_hero_repair_bld)
 		if err == "":
@@ -235,8 +237,12 @@ func _hero_act() -> bool:
 		res = sim.hero_haul(hero.position)
 	if res == "":
 		res = sim.hero_chop(hero.position)
+		if res != "":
+			SfxLib.play("chop")   # v1.65.3: удар топора (вал — событием tree_felled)
 	if res == "":
 		res = sim.hero_mine(hero.position)
+		if res != "":
+			SfxLib.play("mine")   # v1.65.3: удар кирки
 	if res == "":
 		res = sim.hero_harvest(hero.position)
 	if res == "":

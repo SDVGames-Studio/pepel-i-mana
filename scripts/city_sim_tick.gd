@@ -616,6 +616,11 @@ func _do_build(r: Dictionary, site: Dictionary, dt: float) -> void:
 		return
 	if bld_has_cell(site, map.tile_of_px(r["pos"])):
 		r["state"] = "build"
+		# v1.65.3: стук молота строителя (таймер на здании)
+		site["knock_t"] = float(site.get("knock_t", 0.0)) - dt
+		if float(site["knock_t"]) <= 0.0:
+			site["knock_t"] = 0.9
+			SfxLib.play("hammer")
 		# v1.56: медные инструменты ускоряют стройку на 10%
 		var copper_mult := 1.1 if float(res.get("copper", 0.0)) >= 5.0 else 1.0
 		site["progress"] = float(site["progress"]) + dt * work_mult(r) * copper_mult
