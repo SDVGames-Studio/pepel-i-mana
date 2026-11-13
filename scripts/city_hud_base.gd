@@ -133,6 +133,7 @@ func toast(msg: String) -> void:
 		return
 	_toast_label.text = msg
 	_toast_time = 3.0
+	SfxLib.play("toast")   # v1.65
 
 
 ## Подсказка под панелью зданий. Правка v1.21: одинаковый текст не перезаписываем —

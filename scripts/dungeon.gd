@@ -218,6 +218,7 @@ func _activate_rune(rune) -> void:
 	var res: Dictionary = rune.activate(hero, params.get("v2", {}).get("rune", {}))
 	if res.is_empty():
 		return
+	SfxLib.play("rune")   # v1.65
 	var col: Color = rune.color
 	_add_fx("ring", col, 40.0, 0.8, rune.global_position)
 	if int(res.get("mana", 0)) > 0:
@@ -241,6 +242,7 @@ func _nearest_trap(radius: float):
 
 
 func _open_chest(chest: Node) -> void:
+	SfxLib.play("chest")   # v1.65
 	chest.open = true
 	chest.queue_redraw()
 	var test_cfg: Dictionary = params.get("test_mode", {})
@@ -334,6 +336,7 @@ func _rarity_weight(rarity_id: String) -> int:
 
 
 func _on_pickup_collected(pickup) -> void:
+	SfxLib.play("pickup")   # v1.65
 	if pickup.kind == "mana":
 		hero.add_mana(int(params["crystal_mana"]))
 		hud.toast(Loc.t("dungeon.got_mana") % int(params["crystal_mana"]))
