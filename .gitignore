@@ -15,3 +15,4 @@ tools/shot_*.png.import
 
 # референсы заказчика «для Z.ai» — не в git и не в экспорте (.gdignore)
 для Z.ai/
+__pycache__/

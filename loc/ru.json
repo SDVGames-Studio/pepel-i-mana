@@ -1357,5 +1357,8 @@
   "race.kobold": "кобольд",
   "race.undead": "неупокоенный",
   "race.angel": "ангел",
-  "race.demon": "демон"
+  "race.demon": "демон",
+  "menu.vol_music": "Музыка",
+  "menu.vol_sfx": "Звуки",
+  "menu.vol_ui": "Интерфейс"
 }

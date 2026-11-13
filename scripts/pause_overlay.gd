@@ -52,6 +52,23 @@ func _ready() -> void:
 		hint_label.add_theme_font_size_override("font_size", 15)
 		hint_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		box.add_child(hint_label)
+	# v1.65: громкость (Музыка/Звуки/Интерфейс) — пишет в шины SfxLib
+	for row in [["menu.vol_music", "Music"], ["menu.vol_sfx", "SFX"], ["menu.vol_ui", "UI"]]:
+		var vol_label := Label.new()
+		vol_label.text = Loc.t(String(row[0]))
+		vol_label.add_theme_font_size_override("font_size", 14)
+		vol_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		box.add_child(vol_label)
+		var slider := HSlider.new()
+		slider.min_value = 0.0
+		slider.max_value = 1.0
+		slider.step = 0.05
+		slider.value = SfxLib.get_bus_vol(String(row[1]))
+		slider.custom_minimum_size = Vector2(220, 16)
+		slider.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+		slider.value_changed.connect(func(v: float) -> void:
+			SfxLib.set_bus_vol(String(row[1]), float(v)))
+		box.add_child(slider)
 	_status = Label.new()
 	_status.text = ""
 	_status.add_theme_font_size_override("font_size", 17)

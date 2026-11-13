@@ -1,0 +1,177 @@
+{
+  "_note": "Музыкальный манифест v1.65 (программа «Оживление», аспект 1). Все файлы генерирует tools/make_sounds.py (детерминирован). Инструменты — славянские (гусли/домра/балалайка/свирель/кугиклы/рожок/жалейка/било/трещотки/ложки/бубен) и греческие (кифара/арфа/авлос/сиринга/тимпан/кимвалы). Правки: скажите агенту «трек X — медленнее/ниже/громче» — правится здесь + перегенерация.",
+  "crossfade": 1.5,
+  "sfx": {
+    "hit": {
+      "file": "assets/audio/sfx/hit.wav",
+      "vol": 1.0
+    },
+    "hero_hurt": {
+      "file": "assets/audio/sfx/hero_hurt.wav",
+      "vol": 0.9
+    },
+    "enemy_die": {
+      "file": "assets/audio/sfx/enemy_die.wav",
+      "vol": 0.8
+    },
+    "coin": {
+      "file": "assets/audio/sfx/coin.wav",
+      "vol": 0.9
+    },
+    "pickup": {
+      "file": "assets/audio/sfx/pickup.wav",
+      "vol": 0.9
+    },
+    "ui_click": {
+      "file": "assets/audio/sfx/ui_click.wav",
+      "vol": 0.7,
+      "bus": "UI"
+    },
+    "toast": {
+      "file": "assets/audio/sfx/toast.wav",
+      "vol": 0.6,
+      "bus": "UI"
+    },
+    "alarm": {
+      "file": "assets/audio/sfx/alarm.wav",
+      "vol": 1.0
+    },
+    "bell_day": {
+      "file": "assets/audio/sfx/bell_day.wav",
+      "vol": 0.7
+    },
+    "build_done": {
+      "file": "assets/audio/sfx/build_done.wav",
+      "vol": 0.9
+    },
+    "quest_done": {
+      "file": "assets/audio/sfx/quest_done.wav",
+      "vol": 0.9
+    },
+    "wedding": {
+      "file": "assets/audio/sfx/wedding.wav",
+      "vol": 0.8
+    },
+    "birth": {
+      "file": "assets/audio/sfx/birth.wav",
+      "vol": 0.7
+    },
+    "tree_fall": {
+      "file": "assets/audio/sfx/tree_fall.wav",
+      "vol": 0.9
+    },
+    "spell_wild": {
+      "file": "assets/audio/sfx/spell_wild.wav",
+      "vol": 0.9
+    },
+    "spell_light": {
+      "file": "assets/audio/sfx/spell_light.wav",
+      "vol": 0.9
+    },
+    "spell_nature": {
+      "file": "assets/audio/sfx/spell_nature.wav",
+      "vol": 0.9
+    },
+    "spell_forbidden": {
+      "file": "assets/audio/sfx/spell_forbidden.wav",
+      "vol": 0.9
+    },
+    "chest": {
+      "file": "assets/audio/sfx/chest.wav",
+      "vol": 0.9
+    },
+    "rune": {
+      "file": "assets/audio/sfx/rune.wav",
+      "vol": 0.9
+    },
+    "boss_roar": {
+      "file": "assets/audio/sfx/boss_roar.wav",
+      "vol": 1.0
+    },
+    "fanfare": {
+      "file": "assets/audio/sfx/fanfare.wav",
+      "vol": 0.9
+    },
+    "swing": {
+      "file": "assets/audio/sfx/swing.wav",
+      "vol": 0.6
+    }
+  },
+  "layers": [
+    "mus_city_layer",
+    "mus_festival",
+    "mus_festival_layer",
+    "mus_world_layer",
+    "mus_raid_drums",
+    "mus_boss_layer",
+    "mus_dungeon_magic"
+  ],
+  "ambience": {
+    "day": "amb_day.wav",
+    "night": "amb_night.wav",
+    "dungeon": "amb_dungeon.wav",
+    "storm": "amb_storm.wav"
+  },
+  "states": {
+    "menu": {
+      "music": "mus_menu",
+      "layers": {}
+    },
+    "city_day": {
+      "music": "mus_city_day",
+      "layers": {
+        "busy": "mus_city_layer"
+      }
+    },
+    "city_night": {
+      "music": "mus_city_night",
+      "layers": {}
+    },
+    "city_festival": {
+      "music": "mus_city_day",
+      "layers": {
+        "festival": "mus_festival",
+        "festival_layer": "mus_festival_layer"
+      }
+    },
+    "raid": {
+      "music": "mus_city_day",
+      "layers": {
+        "raid": "mus_raid_drums"
+      }
+    },
+    "world": {
+      "music": "mus_world",
+      "layers": {
+        "world_layer": "mus_world_layer"
+      }
+    },
+    "dungeon": {
+      "music": "mus_dungeon_base",
+      "layers": {
+        "dungeon_magic": "mus_dungeon_magic"
+      }
+    },
+    "dungeon_dark": {
+      "music": "mus_dungeon_dark",
+      "layers": {}
+    },
+    "boss": {
+      "music": "mus_dungeon_base",
+      "layers": {
+        "boss": "mus_boss_layer"
+      }
+    }
+  },
+  "priority": {
+    "menu": 0,
+    "world": 1,
+    "city_day": 2,
+    "city_festival": 2,
+    "city_night": 3,
+    "raid": 5,
+    "dungeon": 6,
+    "dungeon_dark": 6,
+    "boss": 8
+  }
+}

@@ -188,6 +188,7 @@ func _letter(ev_type: String, msg: String) -> void:
 
 func _process_events() -> void:
 	for ev in sim.events:
+		SfxLib.event(String(ev["type"]))   # v1.65: звук события (маппинг в SfxLib)
 		var bld_name := _bld_name(String(ev.get("bld", "")))
 		match String(ev["type"]):
 			"site":

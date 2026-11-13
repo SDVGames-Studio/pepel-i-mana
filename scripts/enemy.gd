@@ -542,6 +542,7 @@ func take_damage(dmg: int, school := "") -> void:
 	queue_redraw()
 	note_player_hit()
 	if hp <= 0:
+		SfxLib.play("enemy_die")   # v1.65
 		died.emit(self)
 		queue_free()
 

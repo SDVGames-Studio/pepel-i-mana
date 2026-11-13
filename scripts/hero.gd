@@ -411,9 +411,11 @@ func try_attack() -> void:
 	var reach := float(wpn.get("range", p["attack_range"])) * skill_mult("range_mult", 1.0)
 	if String(wpn.get("pattern", "")) == "projectile":
 		_fire_projectile(wpn, reach)
+		SfxLib.play("swing")   # v1.65: выстрел
 		queue_redraw()
 		get_tree().create_timer(0.15).timeout.connect(queue_redraw)
 		return
+	SfxLib.play("swing")   # v1.65: взмах оружия
 	var arc := float(wpn.get("arc", p["attack_arc"]))
 	var hits := 0
 	for enemy in get_tree().get_nodes_in_group("enemies"):
@@ -531,6 +533,7 @@ func take_damage(dmg: int) -> void:
 		return
 	hp = maxi(0, hp - maxi(0, dmg - eff_armor()))
 	_invuln = 0.5
+	SfxLib.play("hero_hurt")   # v1.65
 	# раны закаляют (v1.24): полученный урон качает выносливость
 	if dmg > 0:
 		Game.hero_train("end", float(attrs_cfg().get("train_hurt_end", 0.1)))

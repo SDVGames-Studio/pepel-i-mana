@@ -116,6 +116,7 @@ func _quest_row(q: Dictionary) -> Control:
 			var err: String = Game.city_sim.quest_deliver(int(q["id"]), Game.inventory)
 			if err == "":
 				Game.stat("quests")
+				SfxLib.play("coin")   # v1.65: награда
 			_rebuild())
 		line2.add_child(btn)
 	row.add_child(line2)
