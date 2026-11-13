@@ -39,7 +39,6 @@ const EVENT_SFX := {
 static func ensure() -> void:
 	if _ready:
 		return
-	_ready = true
 	# шины
 	for bus in ["Music", "SFX", "UI", "Ambient"]:
 		if AudioServer.get_bus_index(bus) == -1:
@@ -57,27 +56,33 @@ static func ensure() -> void:
 	# игроки лениво под текущий root (headless: dummy-драйвер молчит)
 	var root := _root()
 	if root == null:
-		return
+		return   # _ready остаётся false — ensure() повторится на следующем вызове
+	# v1.65.1 фикс: во время _ready автозагрузки root занят setup детей —
+	# прямой add_child ПРОВАЛИВАЕТСЯ ("Parent node is busy"), игроки
+	# оставались вне дерева и всё молчало. Только call_deferred.
 	for i in 10:
 		var p := AudioStreamPlayer.new()
 		p.bus = "SFX"
-		root.add_child(p)
+		root.call_deferred("add_child", p)
 		_sfx_pool.append(p)
 	_music_a = _mk_player(root, "Music")
 	_music_b = _mk_player(root, "Music")
 	_music_active = _music_a
 	_amb = _mk_player(root, "Ambient")
-	for layer_id in _cfg.get("layers", {}).keys():
+	# v1.65.1 фикс: «layers» в манифесте — МАССИВ id (было .keys() на массиве —
+	# крэш ensure() посреди инициализации = полная тишина в игре)
+	for layer_id in _cfg.get("layers", []):
 		var lp := _mk_player(root, "Music")
 		lp.volume_db = -60.0
 		_layers[String(layer_id)] = lp
 		_layer_target[String(layer_id)] = 0.0
+	_ready = true
 
 
 static func _mk_player(root: Node, bus: String) -> AudioStreamPlayer:
 	var p := AudioStreamPlayer.new()
 	p.bus = bus
-	root.add_child(p)
+	root.call_deferred("add_child", p)   # v1.65.1: deferred (root busy при старте)
 	return p
 
 
@@ -157,9 +162,9 @@ static func track_for(state: Dictionary) -> String:
 static func _switch_music(track: String) -> void:
 	if track == _music_track:
 		return
+	if _music_active == null or not _music_active.is_inside_tree():
+		return   # v1.65.1: игроки добавляются deferred — вернёмся на след. тик
 	_music_track = track
-	if _music_active == null:
-		return
 	var stream := _stream("assets/audio/music/%s.wav" % track, true)
 	if stream == null:
 		return
@@ -202,6 +207,8 @@ static func _amb_tick(state: Dictionary) -> void:
 	if file == "":
 		return
 	if _amb_id != want:
+		if _amb == null or not _amb.is_inside_tree():
+			return   # v1.65.1: deferred — вернёмся на следующем тике
 		_amb_id = want
 		var stream := _stream("assets/audio/amb/%s" % file, true)
 		if stream != null and _amb != null:
@@ -227,6 +234,8 @@ static func _layers_tick(state: Dictionary, delta: float) -> void:
 		if want.has(id):
 			target = maxf(target, 0.85)
 		var p: AudioStreamPlayer = _layers[id]
+		if not p.is_inside_tree():
+			continue   # v1.65.1: deferred ещё не отработал
 		if not p.playing:
 			var stream := _stream("assets/audio/music/%s.wav" % id, true)
 			if stream == null:
@@ -301,19 +310,26 @@ static func get_bus_vol(bus: String) -> float:
 static func save_settings() -> void:
 	var f := FileAccess.open(SETTINGS, FileAccess.WRITE)
 	if f != null:
-		f.write_string(JSON.stringify(_vol))
+		f.store_string(JSON.stringify(_vol))
+		f.flush()
 		f = null
 
 
 static func _load_settings() -> void:
-	if FileAccess.file_exists(SETTINGS):
-		var f := FileAccess.open(SETTINGS, FileAccess.READ)
-		if f != null:
-			var parsed: Variant = JSON.parse_string(f.get_as_text())
-			if parsed is Dictionary:
-				for k in (parsed as Dictionary):
-					_vol[String(k)] = float(parsed[k])
-			f = null
+	# v1.65.1 фикс: пустой/битый файл (прерывание записи) — молча дефолты
+	if not FileAccess.file_exists(SETTINGS):
+		return
+	var f := FileAccess.open(SETTINGS, FileAccess.READ)
+	if f == null:
+		return
+	var txt := f.get_as_text()
+	f = null
+	if txt.strip_edges() == "":
+		return
+	var parsed: Variant = JSON.parse_string(txt)
+	if parsed is Dictionary:
+		for k in (parsed as Dictionary):
+			_vol[String(k)] = float(parsed[k])
 
 
 static func _apply_volumes() -> void:

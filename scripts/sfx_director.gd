@@ -10,6 +10,13 @@ func _ready() -> void:
 	SfxLib.ensure()
 
 
+## Диагностика звука (v1.65.1): вызывается из godot-mcp/runtime.
+func debug_music() -> Dictionary:
+	return {"ready": SfxLib._ready, "pool": SfxLib._sfx_pool.size(),
+			"layers": SfxLib._layers.size(), "track": SfxLib._music_track,
+			"playing": SfxLib._music_active != null and SfxLib._music_active.playing}
+
+
 func _process(delta: float) -> void:
 	_t += delta
 	if _t < 0.4:
