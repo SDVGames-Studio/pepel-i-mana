@@ -1214,7 +1214,7 @@
 		{
 			"id": "orchard",
 			"w": 2,
-			"sprite": "e:tree_fruit2",
+			"sprite": "b:tree_red",
 			"short": "bld.short.orchard",
 			"loc": "bld.orchard",
 			"desc": "bld.desc.orchard",
@@ -1249,7 +1249,7 @@
 		{
 			"id": "cemetery",
 			"w": 2,
-			"sprite": "e:cemetery",
+			"sprite": "b:cemetery",
 			"short": "bld.short.cemetery",
 			"loc": "bld.cemetery",
 			"desc": "bld.desc.cemetery",
@@ -1301,7 +1301,7 @@
 		{
 			"id": "tent",
 			"w": 1,
-			"sprite": "e:tent",
+			"sprite": "b:tent",
 			"short": "bld.short.tent",
 			"loc": "bld.tent",
 			"desc": "bld.desc.tent",
@@ -1339,7 +1339,7 @@
 		{
 			"id": "brewery",
 			"w": 2,
-			"sprite": "b:tavern",
+			"sprite": "b:vinokur",
 			"short": "bld.short.brewery",
 			"loc": "bld.brewery",
 			"desc": "bld.desc.brewery",
