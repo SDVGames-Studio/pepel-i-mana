@@ -100,29 +100,85 @@
       "file": "assets/audio/sfx/step_grass.wav",
       "vol": 0.5
     },
+    "step_grass_2": {
+      "file": "assets/audio/sfx/step_grass_2.wav",
+      "vol": 0.45
+    },
+    "step_grass_3": {
+      "file": "assets/audio/sfx/step_grass_3.wav",
+      "vol": 0.55
+    },
     "step_road": {
       "file": "assets/audio/sfx/step_road.wav",
       "vol": 0.5
+    },
+    "step_road_2": {
+      "file": "assets/audio/sfx/step_road_2.wav",
+      "vol": 0.45
     },
     "step_stone": {
       "file": "assets/audio/sfx/step_stone.wav",
       "vol": 0.5
     },
+    "step_stone_2": {
+      "file": "assets/audio/sfx/step_stone_2.wav",
+      "vol": 0.45
+    },
     "step_water": {
       "file": "assets/audio/sfx/step_water.wav",
       "vol": 0.5
+    },
+    "step_water_2": {
+      "file": "assets/audio/sfx/step_water_2.wav",
+      "vol": 0.45
+    },
+    "rustle_soft": {
+      "file": "assets/audio/sfx/rustle_soft.wav",
+      "vol": 0.4
+    },
+    "rustle_med": {
+      "file": "assets/audio/sfx/rustle_med.wav",
+      "vol": 0.6
+    },
+    "rustle_hard": {
+      "file": "assets/audio/sfx/rustle_hard.wav",
+      "vol": 0.85
     },
     "chop": {
       "file": "assets/audio/sfx/chop.wav",
       "vol": 0.9
     },
+    "chop_2": {
+      "file": "assets/audio/sfx/chop_2.wav",
+      "vol": 0.9
+    },
+    "chop_3": {
+      "file": "assets/audio/sfx/chop_3.wav",
+      "vol": 0.85
+    },
     "hammer": {
       "file": "assets/audio/sfx/hammer.wav",
       "vol": 0.8
     },
+    "hammer_2": {
+      "file": "assets/audio/sfx/hammer_2.wav",
+      "vol": 0.8
+    },
+    "hammer_3": {
+      "file": "assets/audio/sfx/hammer_3.wav",
+      "vol": 0.75
+    },
     "mine": {
       "file": "assets/audio/sfx/mine.wav",
       "vol": 0.85
+    },
+    "mine_2": {
+      "file": "assets/audio/sfx/mine_2.wav",
+      "vol": 0.85
+    },
+    "mine_3": {
+      "file": "assets/audio/sfx/mine_3.wav",
+      "vol": 0.8
     }
   },
   "layers": [
@@ -156,9 +212,8 @@
       "layers": {}
     },
     "city_festival": {
-      "music": "mus_city_day",
+      "music": "mus_festival",
       "layers": {
-        "festival": "mus_festival",
         "festival_layer": "mus_festival_layer"
       }
     },

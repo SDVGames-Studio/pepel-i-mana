@@ -219,16 +219,28 @@ func go_autonomous() -> void:
 	hud.refresh()
 
 
+## Варианты звуков работы (v1.68): случайный тембр на каждый удар.
+const WORK_POOLS := {
+	"hammer": ["hammer", "hammer_2", "hammer_3"],
+	"chop": ["chop", "chop_2", "chop_3"],
+	"mine": ["mine", "mine_2", "mine_3"],
+}
+
+func _play_work(kind: String) -> void:
+	var pool: Array = WORK_POOLS.get(kind, [kind])
+	SfxLib.play(String(pool[randi() % pool.size()]))
+
 ## E у природы или стройки: герой работает сам (правки v1.12.2).
 ## Порядок: стройка → ремонт (этап 2, аспект 5) → дерево → скала/руда → сбор →
 ## посев → вспашка (2026-10-21: герой сам сеет и пашет поля).
+## Звуки работы (v1.68): случайный вариант тембра на удар.
 func _hero_act() -> bool:
 	if _hero_work_cd > 0.0:
 		return false   # кулдаун: молча, тосты не спамим
 	var hw: Dictionary = cfg.get("hero_work", {})
 	var res: String = sim.hero_build(hero.position)
 	if res != "" and res != "done":
-		SfxLib.play("hammer")   # v1.65.3
+		_play_work("hammer")
 	if res == "" and not _hero_repair_bld.is_empty():
 		var err: String = sim.repair_building(_hero_repair_bld)
 		if err == "":
@@ -244,11 +256,11 @@ func _hero_act() -> bool:
 	if res == "":
 		res = sim.hero_chop(hero.position)
 		if res != "":
-			SfxLib.play("chop")   # v1.65.3: удар топора (вал — событием tree_felled)
+			_play_work("chop")   # удар топора (вал — событием tree_felled)
 	if res == "":
 		res = sim.hero_mine(hero.position)
 		if res != "":
-			SfxLib.play("mine")   # v1.65.3: удар кирки
+			_play_work("mine")   # удар кирки
 	if res == "":
 		res = sim.hero_harvest(hero.position)
 	if res == "":

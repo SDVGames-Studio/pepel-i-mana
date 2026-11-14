@@ -37,6 +37,15 @@ func _test_sfx() -> void:
 			"chop", "hammer", "mine"]:
 		_check((cfg.get("sfx", {}) as Dictionary).has(sid),
 				"эффект v1.65.3 описан: %s" % sid)
+	# v1.68 «Живой звук»: варианты шагов/работы, уровни шелеста
+	for sid in ["step_grass_2", "step_grass_3", "step_road_2", "step_stone_2",
+			"step_water_2", "chop_2", "chop_3", "hammer_2", "hammer_3",
+			"mine_2", "mine_3", "rustle_soft", "rustle_med", "rustle_hard"]:
+		_check((cfg.get("sfx", {}) as Dictionary).has(sid)
+				and _wav_ok("res://assets/audio/sfx/%s.wav" % sid),
+				"вариант v1.68 описан и на месте: %s" % sid)
+	_check(SfxLib.track_for({"scene": "city", "festival": true}) == "mus_festival",
+			"праздник — своя пьеса (не поверх дневной, BPM совпадает)")
 
 	# 2) амбиент и музыкальные стемы
 	for want in ["amb_day", "amb_night", "amb_dungeon", "amb_raid", "amb_storm"]:

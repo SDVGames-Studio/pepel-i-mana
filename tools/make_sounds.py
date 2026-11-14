@@ -359,6 +359,44 @@ def step(dur=0.09, lp=0.18, vol=1.0, thud=0.0, thud_f=120.0):
     return [x * vol for x in out]
 
 
+def rustle(level=1.0, dur=0.35, bumps=8):
+    """Шелест травы (v1.68): полосовой шум (~1.2–2.5 кГц) с «листовыми»
+    неровностями — короткие случайные бампы амплитуды. НЕ ровный белый шип.
+    level 1..3 — мягкий/средний/плотный."""
+    n = int(dur * SR)
+    raw = [random.uniform(-1, 1) for _ in range(n)]
+    y1 = y2 = 0.0
+    band = []
+    for i in range(n):
+        y1 += 0.35 * (raw[i] - y1)
+        y2 += 0.75 * (raw[i] - y2)
+        band.append(y2 - y1)
+    env_l = [0.0] * n
+    for _ in range(max(4, bumps)):
+        at = random.uniform(0.0, dur * 0.75)
+        bl = random.uniform(0.02, 0.07)
+        bv = random.uniform(0.4, 1.0)
+        i0, i1 = int(at * SR), min(n, int((at + bl) * SR))
+        for i in range(i0, i1):
+            t = (i / SR - at) / bl
+            env_l[i] += bv * math.sin(math.pi * t) ** 2
+    out = [band[i] * env_l[i] for i in range(n)]
+    fade = int(0.02 * SR)
+    for i in range(fade):
+        k = i / fade
+        out[i] *= k
+        out[n - 1 - i] *= k
+    return [x * level for x in out]
+
+
+def step_grass(level):
+    """Шаг по траве: пятка + шелест (3 уровня — уровни шелеста травы)."""
+    buf = silence(0.34)
+    mix(buf, step(0.09, 0.18, 0.55, thud=0.15, thud_f=95.0), 0)
+    mix(buf, rustle(1.0, 0.26, bumps=5 + level * 3), 0.012, 0.35 + level * 0.15)
+    return buf
+
+
 def sfx_chop():
     """Удар топора по дереву: резкий треск + деревянный резонанс."""
     buf = silence(0.35)
@@ -612,9 +650,13 @@ def wind_gust():
 
 
 def amb_day():
-    """День: почти тишина — один далёкий ворон. Только инструменты в музыке."""
+    """День: почти тишина — далёкий ворон + редкий мягкий шелест травы
+    (2–3 раза за луп, короткие бампы — не белый шум)."""
     buf = silence(24.0)
     mix(buf, raven_caw(), random.uniform(9.0, 15.0), 0.25)
+    mix(buf, rustle(1.0, 0.5, bumps=6), random.uniform(4.0, 6.0), 0.5)
+    mix(buf, rustle(1.0, 0.45, bumps=5), random.uniform(13.0, 16.0), 0.4)
+    mix(buf, rustle(1.0, 0.4, bumps=4), random.uniform(20.0, 22.5), 0.3)
     return buf
 
 
@@ -673,7 +715,14 @@ def amb_raid():
         mix(buf, wood_click(900, 0.06, 0.5), t0 + 2.0)
         mix(buf, wood_click(900, 0.06, 0.5), t0 + 2.75)
     mix(buf, drone(hz("E", 2), 12.0, 0.3), 0)
-    return echo(buf, 0.2, 0.2, 1)
+    buf = echo(buf, 0.2, 0.2, 1)
+    # бесшовный луп: хвост ударов за 12 с — в начало
+    L = int(12.0 * SR)
+    if len(buf) > L:
+        for i in range(L, len(buf)):
+            buf[i - L] += buf[i]
+        del buf[L:]
+    return buf
 
 
 def amb_storm():
@@ -694,128 +743,315 @@ DARK = [("A", 2), ("B", 2), ("C", 3), ("D", 3), ("E", 3), ("F", 3), ("A", 3), ("
 MAGIC = [("D", 4), ("E", 4), ("F", 4), ("A", 4), ("B", 4), ("C", 5), ("D", 5), ("F", 5)]
 
 
-def mus_city_day():
-    pat = [
-        "0 . 2 . 4 . 2 . 5 . 4 . 2 . 1 .",
-        "0 . 2 . 4 . 5 . 6 . 4 . 2 . 1 .",
-        "4 . 5 . 6 . 4 . 2 . 4 . 2 . 1 .",
-        "0 . 2 . 1 . 0 . 5 . 4 . 2 . 0 .",
-    ]
-    render_track("mus_city_day", 92, 4, PENTA, pat,
-                 lambda f, d: pluck(f, d, 0.55, 0.9), 0.72, 4,
-                 drone_note=("A", 2), drone_vol=0.12)
+# --- музыкальные пьесы (v1.68 «Живой звук») ----------------------------------
+# Вместо монотонного 4-тактного лупа с одной нотой-бурдоном: аккордовое
+# движение баса (гармония меняется каждый такт), мелодия + контрголос +
+# перкуссия, формы 8 тактов с подъёмом/кадансом. Слои, играющие поверх базы,
+# выровнены по BPM с ней (city 96, world 76, dungeon 64) — раньше festival
+# 132 шёл поверх day 92, boss 76 поверх базы 64: полиритм-каша.
+
+AMIN_NAT = [("A", 3), ("B", 3), ("C", 4), ("D", 4), ("E", 4), ("F", 4),
+            ("G", 4), ("A", 4), ("C", 5), ("E", 5)]
+DMIN_NAT = [("D", 3), ("E", 3), ("F", 3), ("G", 3), ("A", 3), ("A#", 3),
+            ("C", 4), ("D", 4), ("F", 4), ("A", 4)]
+DDOR_NAT = [("D", 3), ("E", 3), ("F", 3), ("G", 3), ("A", 3), ("B", 3),
+            ("C", 4), ("D", 4), ("F", 4), ("A", 4)]
+DARK_EXT = [("A", 2), ("B", 2), ("C", 3), ("D", 3), ("E", 3), ("F", 3),
+            ("G", 3), ("A", 3), ("C", 4), ("E", 4)]
+DMAG_EXT = [("D", 3), ("E", 3), ("F", 3), ("G", 3), ("A", 3), ("B", 3),
+            ("C", 4), ("D", 4), ("F", 4), ("A", 4)]
 
 
-def mus_city_layer():
-    pat = [
-        ". . 2 . . 4 . . 5 . . 4 . . 2 .",
-        ". . 2 . . 5 . . 6 . . 4 . . 5 .",
-        ". . 4 . . 6 . . 4 . . 2 . . 4 .",
-        ". . 2 . . 1 . . 0 . . 2 . . 4 .",
-    ]
-    render_track("mus_city_layer", 92, 4, PENTA, pat,
-                 lambda f, d: pluck(f, d * 0.7, 0.35, 0.7), 0.5, 4, echo_on=False)
+def render_song(path, bpm, mel, chords, scale, instr, vol=0.75,
+                counter=None, counter_instr=None, counter_vol=0.5,
+                perc=None, bass_gain=0.12, swing=0.0, echo_on=True):
+    """Пьеса из len(mel) тактов (такт = 16 шагов 1/16).
+      mel     — такты мелодии: '0 3 . 2' (индексы в scale, '.' пауза)
+      chords  — [(нота, октава)] корень баса на такт (движение гармонии)
+      counter — контрголос (другой инструмент, обычно октавой ниже)
+      perc    — такты: 'k' тимпан/кик, 's' щепоть/трещотка, 'c' кимвал,
+                'B' било по корню такта, '.' пауза
+      swing   — раскачка долей (доля 1/16, 0..0.3)
+    """
+    step = (60.0 / bpm) / 4.0
+    bar_len = 16 * step
+    buf = silence(len(mel) * bar_len)
+    for bar_i, ch in enumerate(chords):   # бас: корень + квинта, на такт
+        base = hz(ch[0], ch[1])
+        mix(buf, drone(base, bar_len, bass_gain), bar_i * bar_len)
+        mix(buf, drone(base * 1.4983, bar_len, bass_gain * 0.5), bar_i * bar_len)
+
+    def put(pat, sc, bar_i, fn):
+        steps = pat.split()
+        for s_i, tok in enumerate(steps):
+            if tok == ".":
+                continue
+            ni = int(tok) % len(sc)
+            name, octv = sc[ni]
+            at = (bar_i * 16 + s_i) * step
+            sw = swing * step * (0.5 if s_i % 2 else -0.5)
+            dur = step * (3.0 if s_i % 4 == 0 else 2.0)
+            mix(buf, fn(hz(name, octv), dur), max(0.0, at + sw))
+
+    for bar_i, pat in enumerate(mel):
+        put(pat, scale, bar_i, instr)
+    if counter is not None:
+        for bar_i, pat in enumerate(counter):
+            put(pat, scale, bar_i, counter_instr)
+    if perc is not None:
+        for bar_i, pat in enumerate(perc):
+            steps = pat.split()
+            for s_i, tok in enumerate(steps):
+                if tok == ".":
+                    continue
+                at = (bar_i * 16 + s_i) * step
+                if tok == "k":
+                    mix(buf, hit_low(62 if s_i % 8 == 0 else 80, 0.28, 0.8), at)
+                elif tok == "s":
+                    mix(buf, wood_click(1000 if s_i % 2 else 1350, 0.05, 0.55), at)
+                elif tok == "c":
+                    mix(buf, cymbal(0.45, 0.5), at)
+                elif tok == "B":
+                    mix(buf, bell(hz(chords[bar_i][0], 5), 1.4, 0.3), at)
+    if echo_on:
+        buf = echo(buf, 0.18, 0.2, 2)
+    # бесшовный луп: хвост (эхо/затухания за краем) заворачиваем в начало
+    L = int(len(mel) * bar_len * SR)
+    if len(buf) > L:
+        for i in range(L, len(buf)):
+            buf[i - L] += buf[i]
+        del buf[L:]
+    write_wav(path, buf, vol)
 
 
-def mus_city_night():
-    pat = [
-        "5 . . . . . 4 . . . . . 2 . . .",
-        ". . . . 4 . . . . . 2 . . . . .",
-        "5 . . . . . 6 . . . 4 . . . . .",
-        ". . 2 . . . . . 1 . . . . . . .",
-    ]
-    render_track("mus_city_night", 62, 4, PENTA, pat,
-                 lambda f, d: flute(f, d * 1.6, 0.8, breath=0.2, vib=4.5), 0.62, 4,
-                 drone_note=("A", 2), drone_vol=0.14)
+def _mus_menu(out):
+    render_song(out, 60,
+        ["0 . 2 . 4 . . 3 4 . . 2 . . . .",
+         "5 . . 4 . . 3 . 2 . . . . . . .",
+         "6 . 5 . 4 . . 2 1 . . . . . . .",
+         "0 . 2 . 1 . . . . . . . . . . .",
+         "0 . 2 . 4 . . 5 6 . . 7 . . . .",
+         "8 . . 7 . . 6 . 5 . . . 4 . . .",
+         "6 . 5 . 4 . . 3 2 . . 1 . . . .",
+         "0 . . . 4 . 2 . 0 . . . . . . ."],
+        [("A", 2), ("A", 2), ("G", 2), ("G", 2),
+         ("F", 2), ("F", 2), ("E", 2), ("A", 2)],
+        AMIN_NAT,
+        lambda f, d: pluck(f, d * 1.8, 0.5, 0.8, decay=0.9965), 0.7,
+        counter=["0 . . . . . . . 4 . . . . . . .",
+                 "0 . . . . . . . . . . . . . . ."] * 4,
+        counter_instr=lambda f, d: pluck(f * 0.5, d * 2.4, 0.35, 0.55, decay=0.996),
+        counter_vol=0.45,
+        perc=["B . . . . . . . . . . . . . . .",
+              ". . . . . . . . . . . . . . . ."] * 4)
 
 
-def mus_festival():
-    fast = "0 0 2 0 4 0 2 0 5 0 4 0 2 0 4 0"
-    pat = [fast, "0 0 2 0 4 0 5 0 6 0 5 0 4 0 2 0", fast,
-           "6 0 5 0 4 0 5 0 2 0 4 0 2 0 1 0"]
-    render_track("mus_festival", 132, 4, PENTA, pat,
-                 lambda f, d: pluck(f, d * 0.5, 0.8, 0.85), 0.7, 4, echo_on=False)
-    # ложки/трещотки поверх — отдельный файл-слой
-    buf = silence(4 * 16 * (60.0 / 132) / 4)
-    step = (60.0 / 132) / 4
+def _mus_city_day(out, layer_out):
+    render_song(out, 96,
+        ["0 . 2 . 4 . 2 . 5 . 4 . 2 . 1 .",
+         "0 . 2 . 4 . 5 . 7 . 6 . 5 . 4 .",
+         "7 . 6 . 5 . 4 . 5 . 6 . 4 . 2 .",
+         "4 . 2 . 1 . 0 . . . . . . . . .",
+         "0 . 2 . 4 . 2 . 5 . 4 . 2 . 0 .",
+         "5 . . 6 . 5 . 4 . 5 . . 7 . . .",
+         "9 . 8 . 7 . 6 . 7 . 5 . 4 . 2 .",
+         "4 . 5 . 4 . 2 . 0 . . . . . . ."],
+        [("A", 2), ("A", 2), ("G", 2), ("G", 2),
+         ("F", 2), ("G", 2), ("E", 2), ("A", 2)],
+        AMIN_NAT,
+        lambda f, d: pluck(f, d, 0.55, 0.9), 0.72,
+        counter=[". . 4 . . . 2 . . . 4 . . . 2 .",
+                 ". . 4 . . . 2 . . . 4 . . . 2 .",
+                 ". . 2 . . . 0 . . . 2 . . . 0 .",
+                 ". . 4 . . . 2 . . . 4 . . . 2 ."] * 2,
+        counter_instr=lambda f, d: pluck(f * 0.5, d * 1.5, 0.4, 0.6),
+        counter_vol=0.4,
+        perc=["k . . s . . s . k . . s . . s .",
+              "k . . s . . s . k . . s . s s .",
+              "k . . s . . s . k . . s . . s .",
+              "k . . s . . s . k s s s . s s ."] * 2,
+        bass_gain=0.11)
+    # слой-ответ (поверх, тот же BPM 96)
+    render_song(layer_out, 96,
+        [". . 2 . . 4 . . 5 . . 4 . . 2 .",
+         ". . 2 . . 5 . . 7 . . 6 . . 5 .",
+         ". . 7 . . 6 . . 4 . . 2 . . 4 .",
+         ". . 2 . . 1 . . 0 . . 2 . . 4 .",
+         ". . 4 . . 5 . . 7 . . 5 . . 4 .",
+         ". . 6 . . 7 . . 9 . . 8 . . 7 .",
+         ". . 5 . . 4 . . 2 . . 1 . . 2 .",
+         ". . 1 . . 0 . . 2 . . 4 . . . ."],
+        [("A", 2)] * 8, AMIN_NAT,
+        lambda f, d: pluck(f, d * 0.7, 0.35, 0.7), 0.5, echo_on=False)
+
+
+def _mus_city_night(out):
+    render_song(out, 60,
+        ["5 . . . . . . . 4 . . . . . . .",
+         ". . . . 6 . . . 5 . . . . . . .",
+         "7 . . . . . . . 6 . . . . . . .",
+         ". . . . 4 . . . 2 . . . . . . .",
+         "5 . . . . . . . 6 . . . 7 . . .",
+         "9 . . . . . . . 8 . . . . . . .",
+         "7 . . 6 . . 5 . 4 . . . . . . .",
+         "4 . . . 2 . . . 0 . . . . . . ."],
+        [("A", 2), ("A", 2), ("F", 2), ("F", 2),
+         ("G", 2), ("G", 2), ("E", 2), ("A", 2)],
+        AMIN_NAT,
+        lambda f, d: flute(f, d * 1.6, 0.8, breath=0.2, vib=4.5), 0.62,
+        counter=["0 . . . . . . . . . . . . . . .",
+                 ". . . . . . . . . . . . . . . .",
+                 "4 . . . . . . . . . . . . . . .",
+                 ". . . . . . . . . . . . . . . ."] * 2,
+        counter_instr=lambda f, d: pluck(f * 0.5, d * 2.4, 0.3, 0.5, decay=0.996),
+        counter_vol=0.4, bass_gain=0.10)
+
+
+def _mus_festival(out, layer_out):
+    render_song(out, 144,
+        ["0 0 2 0 4 0 2 0 5 0 4 0 2 0 4 0",
+         "0 0 2 0 4 0 5 0 7 0 6 0 5 0 4 0",
+         "7 0 7 0 9 0 7 0 6 0 5 0 4 0 2 0",
+         "4 0 5 0 4 0 2 0 1 0 0 0 . . . .",
+         "0 0 4 0 5 0 4 0 7 0 6 0 5 0 4 0",
+         "5 0 6 0 7 0 6 0 9 . 9 . 8 . 7 .",
+         "9 . 8 . 7 . 6 . 7 . 5 . 4 . 2 .",
+         "4 . 5 . 4 . 2 . 0 . 0 . 0 . . ."],
+        [("A", 2), ("A", 2), ("D", 2), ("D", 2),
+         ("E", 2), ("E", 2), ("A", 2), ("A", 2)],
+        AMIN_NAT,
+        lambda f, d: pluck(f, d * 0.5, 0.8, 0.85, tremolo=0.25), 0.7,
+        perc=["k . s . k . s s k . s . k s . .",
+              "k . s . k . s s k . s . k s . c",
+              "k . s . k . s s k . s . k s s s",
+              "k s s s k s s s k s . s s s s s"] * 2,
+        swing=0.12, echo_on=False, bass_gain=0.14)
+    # ложки/трещотки поверх — слой (тот же BPM 144)
+    step = (60.0 / 144) / 4
+    buf = silence(4 * 16 * step)
     for bar in range(4):
         for s_i in range(16):
             if s_i % 4 == 2:
                 mix(buf, wood_click(900, 0.05, 0.6), (bar * 16 + s_i) * step)
             if s_i % 8 == 6:
                 mix(buf, wood_click(1400, 0.04, 0.5), (bar * 16 + s_i) * step)
-    write_wav("mus_festival_layer", buf, 0.5)
+            if bar == 3 and s_i >= 12:
+                mix(buf, wood_click(900 + s_i * 40, 0.04, 0.6), (bar * 16 + s_i) * step)
+    write_wav(layer_out, buf, 0.5)
 
 
-def mus_world():
-    pat = [
-        "0 . . 2 . . 4 . . . 5 . . . 4 .",
-        ". . 6 . . . 4 . . 2 . . . . . .",
-        "5 . . 4 . . 2 . . . 1 . . . 0 .",
-        ". . . . 2 . . . 4 . . . 2 . . .",
-    ]
-    render_track("mus_world", 78, 4, PENTA, pat,
-                 lambda f, d: flute(f, d * 1.3, 0.75, breath=0.3, vib=4.0), 0.66, 4,
-                 drone_note=("D", 3), drone_vol=0.12)
-    # рожок-зов поверх — слой
-    buf = silence(16 * (60.0 / 78) / 4 * 4)
+def _mus_world(out, layer_out):
+    render_song(out, 76,
+        ["0 . . 2 . . 4 . . . 5 . . . 4 .",
+         ". . 6 . . . 4 . . 2 . . . . . .",
+         "5 . . 4 . . 2 . . . 1 . . . 0 .",
+         ". . . . 2 . . . 4 . . . 2 . . .",
+         "0 . . 2 . . 4 . . . 6 . . . 5 .",
+         "7 . . 6 . . 5 . . . 4 . . . . .",
+         "6 . . 4 . . 5 . . . 2 . . . 1 .",
+         "0 . . . 2 . . . 1 . . . 0 . . ."],
+        [("D", 2), ("D", 2), ("F", 2), ("C", 3),
+         ("D", 2), ("D", 2), ("G", 2), ("D", 2)],
+        DDOR_NAT,
+        lambda f, d: flute(f, d * 1.3, 0.75, breath=0.3, vib=4.0), 0.66,
+        counter=["0 . . . . . . . . . . . . . . .",
+                 "0 . . . . . . . . . . . . . . .",
+                 "2 . . . . . . . . . . . . . . .",
+                 "0 . . . . . . . . . . . . . . ."] * 2,
+        counter_instr=lambda f, d: pluck(f * 0.5, d * 2.4, 0.3, 0.5, decay=0.996),
+        counter_vol=0.4, bass_gain=0.10)
+    # рожок-зов поверх — слой (тот же BPM 76)
+    buf = silence(16 * (60.0 / 76) / 4 * 4)
     for bar, at in [(0, 0.5), (2, 4.5)]:
         mix(buf, horn(hz("D", 4), 0.5, 0.6), at)
         mix(buf, horn(hz("A", 4), 0.7, 0.65), at + 0.6)
-    write_wav("mus_world_layer", buf, 0.45)
+    write_wav(layer_out, buf, 0.45)
 
 
-def mus_dungeon_base():
-    pat = [
-        "0 . . 2 . . 3 . . 4 . . 2 . . .",
-        "0 . . 2 . . 3 . . 5 . . 4 . . .",
-        "4 . . 5 . . 3 . . 2 . . 0 . . .",
-        "0 . . 3 . . 2 . . 1 . . 0 . . .",
-    ]
-    render_track("mus_dungeon_base", 66, 4, MAGIC, pat,
-                 lambda f, d: pluck(f, d * 1.4, 0.45, 0.85, decay=0.997), 0.62, 4,
-                 drone_note=("D", 2), drone_vol=0.2)
+def _mus_dungeon(out, magic_out):
+    render_song(out, 64,
+        ["0 . . 2 . . 3 . . 4 . . 2 . . .",
+         "0 . . 2 . . 3 . . 5 . . 4 . . .",
+         "4 . . 5 . . 3 . . 2 . . 0 . . .",
+         "0 . . 3 . . 2 . . 1 . . . . . .",
+         "0 . . 2 . . 4 . . 5 . . 6 . . .",
+         "7 . . 6 . . 5 . . 4 . . 3 . . .",
+         "4 . . 3 . . 2 . . 5 . . 1 . . .",
+         "0 . . . 2 . . . 0 . . . . . . ."],
+        [("D", 2), ("D", 2), ("C", 2), ("D", 2),
+         ("D", 2), ("F", 2), ("G", 2), ("D", 2)],
+        DMAG_EXT,
+        lambda f, d: pluck(f, d * 1.4, 0.45, 0.85, decay=0.997), 0.62,
+        perc=["B . . . . . . . . . . . . . . .",
+              ". . . . . . . . . . . . . . . .",
+              ". . . . . . . . . . . . . . . .",
+              ". . . . . . . . . . . . . . . ."] * 2,
+        bass_gain=0.16)
+    render_song(magic_out, 64,
+        [". . 3 . . 4 . . 5 . . 3 . . 1 .",
+         ". . 3 . . 5 . . 4 . . 2 . . 3 .",
+         ". . 4 . . 5 . . 3 . . 1 . . . .",
+         ". . 3 . . 4 . . 2 . . 1 . . . .",
+         ". . 5 . . 6 . . 7 . . 5 . . 4 .",
+         ". . 7 . . 8 . . 9 . . 7 . . 6 .",
+         ". . 5 . . 4 . . 3 . . 1 . . 2 .",
+         ". . 3 . . 2 . . 1 . . 0 . . . ."],
+        [("D", 2)] * 8, DMAG_EXT,
+        lambda f, d: pluck(f, d * 1.2, 0.5, 0.6, decay=0.997), 0.4, echo_on=False)
 
 
-def mus_dungeon_dark():
-    pat = [
-        "0 . . . 1 . . . 0 . . . 2 . . .",
-        "0 . . . 1 . . . 3 . . . 2 . . .",
-        "4 . . . 3 . . . 1 . . . 0 . . .",
-        "0 . . . 2 . . . 1 . . . 0 . . .",
-    ]
-    render_track("mus_dungeon_dark", 58, 4, DARK, pat,
-                 lambda f, d: flute(f, d * 1.8, 0.8, breath=0.45, vib=3.5, rough=True),
-                 0.62, 3, drone_note=("A", 1), drone_vol=0.26)
-    # арфа-псалтерий поверх (магия данжа) — слой
-    render_track("mus_dungeon_magic", 58, 4, MAGIC,
-                 [". . 3 . . 4 . . 5 . . 3 . . 1 .",
-                  ". . 3 . . 5 . . 4 . . 2 . . 3 ."],
-                 lambda f, d: pluck(f, d * 1.2, 0.5, 0.6, decay=0.997), 0.4, 4)
+def _mus_dungeon_dark(out):
+    render_song(out, 56,
+        ["0 . . . 1 . . . 0 . . . 2 . . .",
+         "0 . . . 1 . . . 3 . . . 2 . . .",
+         "4 . . . 3 . . . 1 . . . 0 . . .",
+         "0 . . . 2 . . . 1 . . . . . . .",
+         "0 . . . 1 . . . 3 . . . 4 . . .",
+         "5 . . . 4 . . . 3 . . . 1 . . .",
+         "4 . . 2 . . 1 . 0 . . . . . . .",
+         "0 . . . . . . . . . . . . . . ."],
+        [("A", 1), ("A", 1), ("F", 1), ("F", 1),
+         ("G", 1), ("G", 1), ("E", 1), ("A", 1)],
+        DARK_EXT,
+        lambda f, d: flute(f, d * 1.8, 0.8, breath=0.45, vib=3.5, rough=True),
+        0.62,
+        perc=["B . . . . . . . . . . . . . . .",
+              ". . . . . . . . . . . . . . . .",
+              ". . . . . . . . . . . . . . . .",
+              ". . . . . . . . . . . . . . . ."] * 2,
+        bass_gain=0.2)
 
 
-def mus_boss_layer():
-    step = 60.0 / 76 / 4
-    buf = silence(4 * 16 * step)
+def _mus_boss_layer(out, bpm):
+    """Слой поверх данж-базы: BPM совпадает с базой (64). Тимпаны с вариацией
+    по тактам + дробь перед кругом + рог-зовы, чтобы босс был не только
+    барабанами."""
+    step = 60.0 / bpm / 4
+    total = 4 * 16 * step
+    buf = silence(total)
+    base_hits = [(0, 1.0, 60), (6, 0.7, 78), (8, 0.9, 60), (14, 0.7, 78)]
     for bar in range(4):
-        for s_i, hitv in [(0, 1.0), (6, 0.7), (8, 0.9), (14, 0.7)]:
-            mix(buf, hit_low(60 if s_i % 8 == 0 else 78, 0.3, hitv), (bar * 16 + s_i) * step)
+        hits = list(base_hits)
+        if bar % 2 == 1:
+            hits.append((12, 0.8, 60))
+        if bar == 3:
+            hits += [(10, 0.75, 78), (12, 0.9, 60), (13, 0.7, 60),
+                     (14, 0.8, 78), (15, 0.9, 60)]   # дробь перед кругом
+        for s_i, v, f in hits:
+            mix(buf, hit_low(f, 0.3, v), (bar * 16 + s_i) * step)
         if bar % 2 == 1:
             mix(buf, cymbal(0.6, 0.8), bar * 16 * step + 12 * step)
-    mix(buf, drone(hz("A", 1), 4 * 16 * step, 0.4), 0)
-    write_wav("mus_boss_layer", buf, 0.8)
-
-
-def mus_menu():
-    pat = [
-        "0 . . 2 . . 4 . . . 2 . . 1 . .",
-        "0 . . 2 . . 4 . . . 5 . . . . .",
-        "6 . . 5 . . 4 . . . 2 . . . . .",
-        "4 . . 2 . . 1 . . . 0 . . . . .",
-    ]
-    render_track("mus_menu", 56, 4, PENTA, pat,
-                 lambda f, d: pluck(f, d * 1.8, 0.5, 0.8, decay=0.9965), 0.7, 4,
-                 drone_note=("A", 2), drone_vol=0.14)
+        if bar in (0, 2):
+            mix(buf, horn(hz("A", 2), 0.6, 0.5), bar * 16 * step)
+            mix(buf, horn(hz("A", 3), 0.45, 0.4), bar * 16 * step + 6 * step)
+    mix(buf, drone(hz("A", 1), total, 0.3), 0)
+    # бесшовный луп: хвост ударов за краем — в начало
+    L = int(total * SR)
+    if len(buf) > L:
+        for i in range(L, len(buf)):
+            buf[i - L] += buf[i]
+        del buf[L:]
+    write_wav(out, buf, 0.8)
 
 
 def mus_victory():
@@ -864,13 +1100,53 @@ def main():
     wp("sfx/rune.wav", sfx_rune(), 0.8)
     wp("sfx/boss_roar.wav", sfx_boss_roar(), 0.9)
     wp("sfx/fanfare.wav", sfx_fanfare(), 0.85)
-    wp("sfx/step_grass.wav", step(0.09, 0.18, 0.55), 0.55)
+    # шаги: варианты по поверхности + уровни шелеста травы (v1.68)
+    wp("sfx/step_grass.wav", step_grass(2), 0.55)
+    wp("sfx/step_grass_2.wav", step_grass(1), 0.5)
+    wp("sfx/step_grass_3.wav", step_grass(3), 0.6)
     wp("sfx/step_road.wav", step(0.08, 0.28, 0.6, thud=0.5, thud_f=110.0), 0.6)
+    road2 = silence(0.3)
+    mix(road2, step(0.08, 0.4, 0.6, thud=0.4, thud_f=140.0), 0)
+    mix(road2, rustle(1.0, 0.2, bumps=6), 0.01, 0.3)   # пыль/гравий
+    wp("sfx/step_road_2.wav", road2, 0.55)
     wp("sfx/step_stone.wav", step(0.07, 0.35, 0.6, thud=0.4, thud_f=200.0), 0.6)
+    wp("sfx/step_stone_2.wav", echo(step(0.07, 0.5, 0.6, thud=0.5, thud_f=180.0), 0.07, 0.35, 1), 0.55)
     wp("sfx/step_water.wav", echo([random.uniform(-1, 1) * math.exp(-(i / SR) * 18.0) for i in range(int(0.16 * SR))], 0.05, 0.4, 1), 0.5)
+    wp("sfx/step_water_2.wav", echo([random.uniform(-1, 1) * math.exp(-(i / SR) * 9.0) for i in range(int(0.24 * SR))], 0.08, 0.4, 2), 0.55)
+    # шелест травы standalone — 3 уровня (не белый шум: листовые бампы)
+    wp("sfx/rustle_soft.wav", rustle(1.0, 0.5, bumps=6), 0.4)
+    wp("sfx/rustle_med.wav", rustle(1.0, 0.6, bumps=9), 0.6)
+    wp("sfx/rustle_hard.wav", rustle(1.0, 0.7, bumps=13), 0.85)
+    # работа: варианты тембра/удара (v1.68)
     wp("sfx/chop.wav", sfx_chop(), 0.9)
+    chop2 = silence(0.4)
+    mix(chop2, sfx_chop(), 0)
+    mix(chop2, wood_click(700, 0.07, 0.8), 0.005)
+    wp("sfx/chop_2.wav", chop2, 0.9)
+    chop3 = silence(0.5)
+    mix(chop3, sfx_chop(), 0)
+    mix(chop3, hit_low(95, 0.18, 0.5), 0.01)
+    mix(chop3, wood_click(500, 0.09, 0.6), 0.03)
+    wp("sfx/chop_3.wav", chop3, 0.85)
     wp("sfx/hammer.wav", sfx_hammer(), 0.8)
+    ham2 = silence(0.4)
+    mix(ham2, sfx_hammer(), 0)
+    mix(ham2, bell(1150.0, 0.16, 0.3), 0.01)   # металлический отзвук
+    wp("sfx/hammer_2.wav", ham2, 0.8)
+    ham3 = silence(0.5)
+    mix(ham3, sfx_hammer(), 0)
+    mix(ham3, sfx_hammer(), 0.11)              # двойной удар
+    wp("sfx/hammer_3.wav", ham3, 0.75)
     wp("sfx/mine.wav", sfx_mine(), 0.85)
+    mine2 = silence(0.5)
+    mix(mine2, sfx_mine(), 0)
+    for at in [0.03, 0.06, 0.1]:
+        mix(mine2, wood_click(500 + at * 2000, 0.05, 0.5), at)   # трещины камня
+    wp("sfx/mine_2.wav", mine2, 0.85)
+    mine3 = silence(0.5)
+    mix(mine3, sfx_mine(), 0)
+    mix(mine3, bell(1750.0, 0.14, 0.35), 0.01)   # высокий звон (кремний)
+    wp("sfx/mine_3.wav", mine3, 0.8)
     wp("sfx/swing.wav", swing(), 0.6)
 
     print("[AMB]")
@@ -883,89 +1159,18 @@ def main():
 
     print("[MUSIC]")
     mroot = os.path.join(ROOT, "music")
-    render_track(os.path.join(mroot, "mus_city_day.wav"), 92, 4, PENTA,
-                 ["0 . 2 . 4 . 2 . 5 . 4 . 2 . 1 .",
-                  "0 . 2 . 4 . 5 . 6 . 4 . 2 . 1 .",
-                  "4 . 5 . 6 . 4 . 2 . 4 . 2 . 1 .",
-                  "0 . 2 . 1 . 0 . 5 . 4 . 2 . 0 ."],
-                 lambda f, d: pluck(f, d, 0.55, 0.9), 0.72, 4,
-                 drone_note=("A", 2), drone_vol=0.12)
-    render_track(os.path.join(mroot, "mus_city_layer.wav"), 92, 4, PENTA,
-                 [". . 2 . . 4 . . 5 . . 4 . . 2 .",
-                  ". . 2 . . 5 . . 6 . . 4 . . 5 .",
-                  ". . 4 . . 6 . . 4 . . 2 . . 4 .",
-                  ". . 2 . . 1 . . 0 . . 2 . . 4 ."],
-                 lambda f, d: pluck(f, d * 0.7, 0.35, 0.7), 0.5, 4, echo_on=False)
-    render_track(os.path.join(mroot, "mus_city_night.wav"), 62, 4, PENTA,
-                 ["5 . . . . . 4 . . . . . 2 . . .",
-                  ". . . . 4 . . . . . 2 . . . . .",
-                  "5 . . . . . 6 . . . 4 . . . . .",
-                  ". . 2 . . . . . 1 . . . . . . ."],
-                 lambda f, d: flute(f, d * 1.6, 0.8, breath=0.2, vib=4.5), 0.62, 4,
-                 drone_note=("A", 2), drone_vol=0.14)
-    render_track(os.path.join(mroot, "mus_festival.wav"), 132, 4, PENTA,
-                 ["0 0 2 0 4 0 2 0 5 0 4 0 2 0 4 0",
-                  "0 0 2 0 4 0 5 0 6 0 5 0 4 0 2 0",
-                  "0 0 2 0 4 0 2 0 5 0 4 0 2 0 4 0",
-                  "6 0 5 0 4 0 5 0 2 0 4 0 2 0 1 0"],
-                 lambda f, d: pluck(f, d * 0.5, 0.8, 0.85), 0.7, 4, echo_on=False)
-    step_f = (60.0 / 132) / 4
-    fbuf = silence(4 * 16 * step_f)
-    for bar in range(4):
-        for s_i in range(16):
-            if s_i % 4 == 2:
-                mix(fbuf, wood_click(900, 0.05, 0.6), (bar * 16 + s_i) * step_f)
-            if s_i % 8 == 6:
-                mix(fbuf, wood_click(1400, 0.04, 0.5), (bar * 16 + s_i) * step_f)
-    write_wav(os.path.join(mroot, "mus_festival_layer.wav"), fbuf, 0.5)
-    render_track(os.path.join(mroot, "mus_world.wav"), 78, 4, PENTA,
-                 ["0 . . 2 . . 4 . . . 5 . . . 4 .",
-                  ". . 6 . . . 4 . . 2 . . . . . .",
-                  "5 . . 4 . . 2 . . . 1 . . . 0 .",
-                  ". . . . 2 . . . 4 . . . 2 . . ."],
-                 lambda f, d: flute(f, d * 1.3, 0.75, breath=0.3, vib=4.0), 0.66, 4,
-                 drone_note=("D", 3), drone_vol=0.12)
-    wbuf = silence(16 * (60.0 / 78) / 4 * 4)
-    for at in [0.5, 4.5]:
-        mix(wbuf, horn(hz("D", 4), 0.5, 0.6), at)
-        mix(wbuf, horn(hz("A", 4), 0.7, 0.65), at + 0.6)
-    write_wav(os.path.join(mroot, "mus_world_layer.wav"), wbuf, 0.45)
-    render_track(os.path.join(mroot, "mus_dungeon_base.wav"), 66, 4, MAGIC,
-                 ["0 . . 2 . . 3 . . 4 . . 2 . . .",
-                  "0 . . 2 . . 3 . . 5 . . 4 . . .",
-                  "4 . . 5 . . 3 . . 2 . . 0 . . .",
-                  "0 . . 3 . . 2 . . 1 . . 0 . . ."],
-                 lambda f, d: pluck(f, d * 1.4, 0.45, 0.85, decay=0.997), 0.62, 4,
-                 drone_note=("D", 2), drone_vol=0.2)
-    render_track(os.path.join(mroot, "mus_dungeon_dark.wav"), 58, 4, DARK,
-                 ["0 . . . 1 . . . 0 . . . 2 . . .",
-                  "0 . . . 1 . . . 3 . . . 2 . . .",
-                  "4 . . . 3 . . . 1 . . . 0 . . .",
-                  "0 . . . 2 . . . 1 . . . 0 . . ."],
-                 lambda f, d: flute(f, d * 1.8, 0.8, breath=0.45, vib=3.5, rough=True),
-                 0.62, 3, drone_note=("A", 1), drone_vol=0.26)
-    render_track(os.path.join(mroot, "mus_dungeon_magic.wav"), 58, 4, MAGIC,
-                 [". . 3 . . 4 . . 5 . . 3 . . 1 .",
-                  ". . 3 . . 5 . . 4 . . 2 . . 3 .",
-                  ". . 4 . . 5 . . 3 . . 1 . . . .",
-                  ". . 3 . . 4 . . 2 . . 1 . . . ."],
-                 lambda f, d: pluck(f, d * 1.2, 0.5, 0.6, decay=0.997), 0.4, 4)
-    step_b = 60.0 / 76 / 4
-    bbuf = silence(4 * 16 * step_b)
-    for bar in range(4):
-        for s_i, hitv in [(0, 1.0), (6, 0.7), (8, 0.9), (14, 0.7)]:
-            mix(bbuf, hit_low(60 if s_i % 8 == 0 else 78, 0.3, hitv), (bar * 16 + s_i) * step_b)
-        if bar % 2 == 1:
-            mix(bbuf, cymbal(0.6, 0.8), bar * 16 * step_b + 12 * step_b)
-    mix(bbuf, drone(hz("A", 1), 4 * 16 * step_b, 0.4), 0)
-    write_wav(os.path.join(mroot, "mus_boss_layer.wav"), bbuf, 0.8)
-    render_track(os.path.join(mroot, "mus_menu.wav"), 56, 4, PENTA,
-                 ["0 . . 2 . . 4 . . . 2 . . 1 . .",
-                  "0 . . 2 . . 4 . . . 5 . . . . .",
-                  "6 . . 5 . . 4 . . . 2 . . . . .",
-                  "4 . . 2 . . 1 . . . 0 . . . . ."],
-                 lambda f, d: pluck(f, d * 1.8, 0.5, 0.8, decay=0.9965), 0.7, 4,
-                 drone_note=("A", 2), drone_vol=0.14)
+    _mus_menu(os.path.join(mroot, "mus_menu.wav"))
+    _mus_city_day(os.path.join(mroot, "mus_city_day.wav"),
+                  os.path.join(mroot, "mus_city_layer.wav"))
+    _mus_city_night(os.path.join(mroot, "mus_city_night.wav"))
+    _mus_festival(os.path.join(mroot, "mus_festival.wav"),
+                  os.path.join(mroot, "mus_festival_layer.wav"))
+    _mus_world(os.path.join(mroot, "mus_world.wav"),
+               os.path.join(mroot, "mus_world_layer.wav"))
+    _mus_dungeon(os.path.join(mroot, "mus_dungeon_base.wav"),
+                 os.path.join(mroot, "mus_dungeon_magic.wav"))
+    _mus_dungeon_dark(os.path.join(mroot, "mus_dungeon_dark.wav"))
+    _mus_boss_layer(os.path.join(mroot, "mus_boss_layer.wav"), 64)
     vbuf = silence(5.0)
     mel = [(523.25, 0.0, 0.3), (659.25, 0.18, 0.3), (783.99, 0.36, 0.3),
            (1046.5, 0.54, 0.5), (880.0, 0.9, 0.3), (1046.5, 1.1, 0.3),
@@ -976,7 +1181,7 @@ def main():
     for at in [0.0, 0.36, 0.54, 1.35, 1.8]:
         mix(vbuf, wood_click(1600, 0.06, 0.5), at)
     write_wav(os.path.join(mroot, "mus_victory.wav"), echo(vbuf, 0.18, 0.25, 2), 0.85)
-    print("Готово: sfx 22, amb 5, music 11")
+    print("Готово: sfx 44, amb 5, music 14")
 
 
 if __name__ == "__main__":
