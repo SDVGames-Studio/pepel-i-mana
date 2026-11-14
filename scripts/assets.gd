@@ -243,14 +243,14 @@ static func draw_animal(canvas: CanvasItem, kind: String, dir: String, moving: b
 # Листы смотрят вправо — влево отражаем. Профессии без листа -> false (кружок).
 
 const VILLAGER_PROF := {
-	"lumberjack": "MiniLumberjack",
+	"lumberjack": "KitLumberjack",  # v1.71: рубка топором из атласа строителя
 	"miner": "MiniMiner",
 	"smith": "MiniBlacksmithB",
 	"smelter": "MiniBlacksmithB",
 	"armorer": "MiniBlacksmithB",
 	"hunter": "MiniHunter",
-	"farmer": "MiniGatherer",
-	"builder": "MiniGatherer",
+	"farmer": "KitFarmer",          # v1.71: землёй в присяде (атлас фермера)
+	"builder": "KitBuilder",        # v1.71: атлас заказчика «строитель-воин»
 	"porter": "MiniMerchantB",
 	"bartender": "MiniMerchantB",
 	"trader": "MiniMerchantB",
@@ -277,6 +277,10 @@ const VILLAGER_ROWS := {
 	"MiniNun": [2, 6, 1, 3],
 	"MiniSuspiciousMerchantB": [1, 7, 2, 6],
 	"MiniThief": [1, 10, 2, 6],
+	# v1.71: листы кита заказчика (10 колонок): [walk_row, walk_n, work_row, work_n]
+	"KitBuilder": [1, 6, 2, 4],
+	"KitLumberjack": [1, 6, 2, 4],
+	"KitFarmer": [1, 6, 2, 4],
 }
 
 ## Размер кадра при отрисовке: из целевого видимого роста.
