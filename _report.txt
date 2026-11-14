@@ -1,0 +1,2 @@
+APPLIED: magic-class, magic-static, game-vars, game-funcs, save-uses, load-uses, panel-rows, panel-vars, rows-refresh, on-craft-gone, refresh-craft, city-zx, city-combat-xp, city-power, city-cast-city, dungeon-cast, dungeon-power, check-hook, first-gift, loc, noop, keybar
+MISSED: 

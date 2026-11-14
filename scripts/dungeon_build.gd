@@ -327,6 +327,8 @@ func _cast_spell(spell_id: String, free_cast := false) -> void:
 		hud.toast(Loc.t("magic.no_mana"))
 		return
 	hero.mana -= cost
+	SfxLib.play("spell_" + String(Game.magic.spell(spell_id).get("school", "wild")))   # v1.65.3
+	Game.spell_cast(spell_id)   # v1.66: прокачка использованием
 	# магия качает стату (v1.24): заклинания — интеллект, трата маны — мудрость
 	var ha2: Dictionary = hero.attrs_cfg()
 	Game.hero_train("int", float(ha2.get("train_cast_int", 0.15)))
@@ -337,8 +339,10 @@ func _cast_spell(spell_id: String, free_cast := false) -> void:
 	hero.set_spell_cd(spell_id, float(def.get("cooldown", 3.0)) * hero.skill_mult("spell_cd_mult", 1.0))
 	# интеллект усиливает урон и лечение заклинания (v1.24)
 	var params2: Dictionary = def.get("params", {}).duplicate(true)
-	params2["damage"] = int(round(float(params2.get("damage", 0)) * hero.spell_mult()))
-	params2["heal"] = int(round(float(params2.get("heal", 0)) * hero.spell_mult()))
+	params2["damage"] = int(round(float(params2.get("damage", 0)) * hero.spell_mult()
+			* Game.spell_power(spell_id)))   # v1.66
+	params2["heal"] = int(round(float(params2.get("heal", 0)) * hero.spell_mult()
+			* Game.spell_power(spell_id)))
 	var school := String(def["school"])
 	var col: Color = Game.magic.school_color(school)
 	match spell_id:

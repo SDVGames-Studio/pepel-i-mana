@@ -246,6 +246,10 @@ const BLOCKS := [
 	["res://tests/test_sfx.gd", [
 	"_test_sfx",
 ]],
+
+	["res://tests/test_magic_simple.gd", [
+	"_test_magic_simple",
+]],
 ]
 
 

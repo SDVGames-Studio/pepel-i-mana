@@ -59,28 +59,50 @@ func _build_magic_panel(root: Control) -> void:
 		_magic_box.add_child(hbtn)
 		_hero_spell_btns.append({"btn": hbtn, "spell_id": sid})
 
-	# крафт: две руны -> заклинание (таблица рецептов, ответ №58)
+	# v1.66 (магия-просто): список ВСЕХ рецептов с наличием рун —
+	# никакой «угадайки» парами; кнопка Крафт у каждой строки
 	var craft_title := _label(20)
 	craft_title.text = Loc.t("magic.craft")
 	_magic_box.add_child(craft_title)
-	var slots := HBoxContainer.new()
-	slots.add_theme_constant_override("separation", 8)
-	_magic_box.add_child(slots)
-	_rune_slot_a = OptionButton.new()
-	_rune_slot_b = OptionButton.new()
-	for slot in [_rune_slot_a, _rune_slot_b]:
-		slot.custom_minimum_size = Vector2(240, 36)
-		slot.focus_mode = Control.FOCUS_NONE
-		slot.item_selected.connect(func(_idx: int) -> void: _update_craft_preview())
-		slots.add_child(slot)
-	_craft_result = _label(18)
-	_magic_box.add_child(_craft_result)
-	_craft_btn = Button.new()
-	_craft_btn.text = Loc.t("magic.craft_make")
-	_craft_btn.custom_minimum_size = Vector2(0, 40)
-	_craft_btn.focus_mode = Control.FOCUS_NONE
-	_craft_btn.pressed.connect(_on_craft_pressed)
-	_magic_box.add_child(_craft_btn)
+	var craft_scroll := ScrollContainer.new()
+	craft_scroll.custom_minimum_size = Vector2(0, 240)
+	_magic_box.add_child(craft_scroll)
+	var craft_box := VBoxContainer.new()
+	craft_box.add_theme_constant_override("separation", 6)
+	craft_scroll.add_child(craft_box)
+	_spell_craft_rows = []
+	for r in Game.magic.cfg.get("recipes", []):
+		var spell_id := String(r["spell"])
+		var cdef: Dictionary = Game.magic.spell(spell_id)
+		if cdef.is_empty():
+			continue
+		var row := PanelContainer.new()
+		row.add_theme_stylebox_override("panel", _panel_style(true))
+		var vbox := VBoxContainer.new()
+		row.add_child(vbox)
+		var name_label := _label(15)
+		name_label.text = Loc.t(String(cdef["loc"]))
+		vbox.add_child(name_label)
+		var need_label := _label(13)
+		need_label.modulate = Color(1, 1, 1, 0.72)
+		vbox.add_child(need_label)
+		var btn := Button.new()
+		btn.text = Loc.t("magic.craft_make")
+		btn.custom_minimum_size = Vector2(0, 30)
+		btn.focus_mode = Control.FOCUS_NONE
+		var ra := String(r["a"])
+		var rb := String(r["b"])
+		btn.pressed.connect(func() -> void:
+			city.craft_spell(ra, rb)
+			_rebuild_craft_rows())
+		vbox.add_child(btn)
+		craft_box.add_child(row)
+		_spell_craft_rows.append({"spell_id": spell_id, "a": ra, "b": rb,
+				"need": need_label, "btn": btn})
+	# v1.66: подсказка быстрого каста Z/X — первые два изученных
+	_slot_hint = _label(14)
+	_slot_hint.modulate = Color(1, 1, 1, 0.7)
+	_magic_box.add_child(_slot_hint)
 
 	# зачарование зданий: руна + кристалл, затем клик по зданию
 	var ench_title := _label(20)
@@ -102,17 +124,50 @@ func _build_magic_panel(root: Control) -> void:
 
 
 ## Выпадающие списки рун из рюкзака (перестраиваются при каждом открытии).
-func _rebuild_rune_slots() -> void:
-	for slot in [_rune_slot_a, _rune_slot_b]:
-		slot.clear()
-		for stack in Game.inventory:
-			var item_id := String(stack["id"])
-			if not item_id.begins_with("rune_"):
-				continue
-			var text := "%s ×%d" % [Loc.t(_rune_loc(item_id)), int(stack["count"])]
-			slot.add_item(text)
-			slot.set_item_metadata(slot.item_count - 1, item_id)
+func _rebuild_craft_rows() -> void:
 	_update_craft_preview()
+
+
+## v1.66: статусы строк крафта — руны рюкзака против каждого рецепта.
+func _update_craft_preview() -> void:
+	var known_lines: Array = []
+	for row in _spell_craft_rows:
+		var spell_id := String(row["spell_id"])
+		var ra := int(Game.count_item(String(row["a"])))
+		var rb := int(Game.count_item(String(row["b"])))
+		var need_pair := 2 if String(row["a"]) == String(row["b"]) else 1
+		var need_label: Label = row["need"]
+		var btn: Button = row["btn"]
+		if Game.has_spell(spell_id):
+			var lvl := Game.spell_level(spell_id)
+			need_label.text = "%s — %s" % [Loc.t("magic.craft_known"),
+					Loc.t("magic.level") % lvl]
+			btn.visible = false
+			known_lines.append("%s (ур. %d)" % [Loc.t("spell." + spell_id), lvl])
+			continue
+		btn.visible = true
+		var have_a := ra >= (2 if String(row["a"]) == String(row["b"]) else 1)
+		var have_b := rb >= (2 if String(row["b"]) == String(row["a"]) else 1)
+		var names := "%s + %s" % [Loc.t(_rune_loc(String(row["a"]))),
+				Loc.t(_rune_loc(String(row["b"])))]
+		if have_a and have_b:
+			need_label.text = "%s — %s" % [names, Loc.t("magic.craft_ready")]
+			btn.disabled = false
+		else:
+			var miss_arr: Array = []
+			if not have_a:
+				miss_arr.append(Loc.t(_rune_loc(String(row["a"]))))
+			if not have_b:
+				miss_arr.append(Loc.t(_rune_loc(String(row["b"]))))
+			need_label.text = "%s — %s %s" % [names, Loc.t("magic.craft_need"),
+					" + ".join(miss_arr)]
+			btn.disabled = true
+	# подсказка быстрого каста: первые два изученных (Z/X в городе)
+	if _slot_hint != null:
+		var parts: Array = []
+		for i in mini(2, Game.spellbook.size()):
+			parts.append("%s — %s" % ["ZX"[i], Loc.t("spell." + String(Game.spellbook[i]))])
+		_slot_hint.text = Loc.t("magic.slots_hint") % (" + ".join(parts) if not parts.is_empty() else Loc.t("magic.slots_none"))
 
 
 func _rune_loc(item_id: String) -> String:
@@ -134,40 +189,14 @@ func _read_loot_json() -> Dictionary:
 	return parsed if parsed is Dictionary else {}
 
 
-func _selected_rune(slot: OptionButton) -> String:
-	if slot.selected < 0:
-		return ""
-	return String(slot.get_item_metadata(slot.selected))
 
-
-func _update_craft_preview() -> void:
-	var a := _selected_rune(_rune_slot_a)
-	var b := _selected_rune(_rune_slot_b)
-	if a == "" or b == "":
-		_craft_result.text = Loc.t("magic.craft_pick")
-		_craft_btn.disabled = true
-		return
-	var spell_id: String = Game.magic.recipe_result(a, b)
-	if spell_id == "":
-		_craft_result.text = Loc.t("magic.craft_none")
-		_craft_btn.disabled = true
-		return
-	var def: Dictionary = Game.magic.spell(spell_id)
-	_craft_result.text = "%s — %s" % [Loc.t(String(def["loc"])), Loc.t(String(def["desc"]))]
-	if Game.has_spell(spell_id):
-		_craft_result.text += " " + Loc.t("magic.craft_known")
-		_craft_btn.disabled = true
-	else:
-		_craft_btn.disabled = false
-
-
-func _on_craft_pressed() -> void:
-	city.craft_spell(_selected_rune(_rune_slot_a), _selected_rune(_rune_slot_b))
-	_rebuild_rune_slots()
+func _selected_rune(_slot: OptionButton) -> String:
+	return ""   # v1.66: дропдауны рун заменены списком рецептов
 
 
 ## Обновление панели: шкала, кнопки (активны только у работающего алтаря).
 func _refresh_magic() -> void:
+	_update_craft_preview()   # v1.66: статусы крафта всегда свежие
 	_pollution_big.text = _pollution_text()
 	var altar_ok: bool = sim.altar_ready()
 	for entry in _city_spell_btns:

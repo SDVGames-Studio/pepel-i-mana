@@ -356,7 +356,14 @@ func _physics_process(delta: float) -> void:
 	if bool(p.get("nocturnal", false)) and get_parent() != null \
 			and get_parent().has_method("night_boost"):
 		_boost = get_parent().night_boost()
+	_boost *= _rage_mult   # v1.67: ярость фазы
 	_tick_anti_kite(delta, dist)
+	_tick_phases(delta)   # v1.67: фазы босса
+	if _vuln_left > 0.0:
+		# окно уязвимости: босс рычит и замирает — свободные удары героя
+		velocity = Vector2.ZERO
+		move_and_slide()
+		return
 	# волколак: сам идёт в рывок, если герой в средней дистанции
 	if perk == "dash_run" and _dash_cd <= 0.0 and _telegraph_left <= 0.0 \
 			and dist > float(p["attack_range"]) + 10.0 and dist < 260.0:
@@ -528,7 +535,11 @@ func take_damage(dmg: int, school := "") -> void:
 			_hit_flash = 0.25
 			queue_redraw()
 			return
+	# v1.67: фронтальный щит (фаза босса) — урон в лицо ×0.2
+	if _front_shield_left > 0.0 and hero != null and is_instance_valid(hero):
+		dmg = maxi(1, int(round(float(dmg) * 0.2)))
 	hp -= dmg
+	_check_phases()   # порог фазы мог быть пройден
 	# Кощей: смерть на конце иглы — пока игла цела, hp не опускается ниже 1
 	var perk := String(p.get("perk", ""))
 	if koshchei_holds(perk, get_tree() != null
@@ -642,6 +653,20 @@ func _draw() -> void:
 		var bar_y := -float(p["radius"]) - 8.0
 		draw_rect(Rect2(-12, bar_y, 24, 4), Color(0.15, 0.1, 0.1))
 		draw_rect(Rect2(-12, bar_y, 24.0 * frac, 4), Color(0.9, 0.25, 0.25))
+		# v1.67: деления фаз на баре босса
+		for ph2 in p.get("phases", []):
+			var pf := float(ph2.get("hp", 0.0))
+			if pf <= 0.0 or pf >= 1.0:
+				continue
+			draw_line(Vector2(-12 + 24.0 * pf, bar_y - 1), Vector2(-12 + 24.0 * pf, bar_y + 5),
+					Color(1.0, 0.9, 0.5, 0.9), 1.0)
+	if _ring_telegraph > 0.0:
+		var k := 1.0 - _ring_telegraph / 0.8
+		draw_arc(Vector2.ZERO, _ring_radius * k, 0.0, TAU, 40,
+				Color(0.8, 0.15, 0.1, 0.5 + 0.3 * k), 3.0)
+	if _front_shield_left > 0.0:
+		draw_arc(Vector2.ZERO, float(p["radius"]) + 6.0, -1.2, 1.2, 16,
+				Color(0.6, 0.8, 1.0, 0.8), 3.0)
 	if stun_left > 0.0:
 		draw_arc(Vector2.ZERO, float(p["radius"]) + 4.0, 0.0, TAU, 20, Color(0.4, 0.85, 0.4, 0.8), 2.0)
 	elif _slow_left > 0.0:
@@ -791,3 +816,156 @@ func _follow_corridor_path(to_hero: Vector2, dist: float, delta: float) -> bool:
 		velocity = (goal - global_position).normalized() * float(p["speed"]) * _boost
 		return true
 	return false
+
+
+# --- фазы боссов (v1.67, программа «Оживление» аспект 3) ---------------------
+
+var _phase_idx := 0            # сколько фаз уже началось
+var _vuln_left := 0.0          # окно уязвимости после рыка (босс замер)
+var _rage_mult := 1.0          # ярость: множитель скорости/урона
+var _front_shield_left := 0.0  # щит: фронтальный урон ×0.2
+var _ring_telegraph := 0.0     # телеграф кольца (рисуется в _draw)
+var _ring_radius := 0.0
+var _ring_dmg := 0
+var _ring_done := false
+var _zone_cd := 0.0
+
+## Порог пройден — новая фаза: рык, окно уязвимости, способность.
+## Абстрактно и headless-безопасно: всё через guards.
+func _check_phases() -> void:
+	var phases: Array = p.get("phases", [])
+	if phases.is_empty() or _phase_idx >= phases.size():
+		return
+	var frac := float(hp) / maxf(1.0, float(p["hp"]))
+	while _phase_idx < phases.size():
+		var ph: Dictionary = phases[_phase_idx]
+		if frac > float(ph.get("hp", 0.0)):
+			break
+		_phase_idx += 1
+		_start_phase(ph)
+
+
+func _start_phase(ph: Dictionary) -> void:
+	# рык + вспышка: телеграф состояния и окно уязвимости для героя
+	_vuln_left = 0.6
+	_hit_flash = 0.6
+	SfxLib.play("boss_roar")
+	if get_tree() != null:
+		queue_redraw()
+	_dispatch_ability(String(ph.get("ability", "")), ph.get("args", {}))
+
+
+func _dispatch_ability(name: String, args: Variant) -> void:
+	var a: Dictionary = args if args is Dictionary else {}
+	match name:
+		"summon":
+			_ab_summon(int(a.get("count", 2)), String(a.get("enemy", "")))
+		"rage":
+			_ab_rage()
+		"ring_aoe":
+			_ab_ring_aoe(int(a.get("damage", 6)), float(a.get("radius", 110.0)))
+		"floor_pool":
+			_ab_floor_pool(int(a.get("damage", 5)), float(a.get("radius", 64.0)),
+					float(a.get("duration", 5.0)))
+		"shield":
+			_front_shield_left = float(a.get("duration", 4.0))
+			queue_redraw()
+		"heal":
+			_ab_heal(float(a.get("frac", 0.15)))
+
+
+## Призыв свиты: N слабых копий врага вокруг босса (группа enemies —
+## зачистка их тоже считает).
+func _ab_summon(count: int, enemy_id: String) -> void:
+	if enemy_id == "" or get_tree() == null:
+		return
+	var parent := get_parent()
+	if parent == null:
+		return
+	var row: Dictionary = {}
+	# данные призываемого — из enemies.json по id
+	var f := FileAccess.open("res://data/enemies.json", FileAccess.READ)
+	if f == null:
+		return
+	var parsed: Variant = JSON.parse_string(f.get_as_text())
+	f = null
+	if not (parsed is Array):
+		return
+	for d in parsed:
+		if String((d as Dictionary).get("id", "")) == enemy_id:
+			row = d
+			break
+	if row.is_empty():
+		return
+	for i in count:
+		var minion = load("res://scripts/enemy.gd").new()
+		var weak: Dictionary = row.duplicate()
+		weak["hp"] = maxi(1, int(round(float(row["hp"]) * 0.45)))
+		minion.setup(weak)
+		minion.hp = int(weak["hp"])
+		var ang := TAU * float(i) / maxf(1.0, float(count))
+		minion.position = global_position + Vector2(cos(ang), sin(ang)) * 64.0
+		minion.hero = hero
+		minion.died.connect(func(_e): pass)   # группа enemies учтёт смерть
+		parent.call_deferred("add_child", minion)
+
+
+## Ярость: скорость/урон ×1.3, красный оттенок — на остаток боя.
+func _ab_rage() -> void:
+	_rage_mult = 1.3
+	_hit_flash = 0.5
+
+
+## Кольцо AoE: телеграф-кольцо (рисуется 0.8 с), затем урон герою в радиусе.
+func _ab_ring_aoe(dmg: int, radius: float) -> void:
+	_ring_telegraph = 0.8
+	_ring_radius = radius
+	_ring_dmg = dmg
+	_ring_done = false
+
+
+func _tick_ring(delta: float) -> void:
+	if _ring_telegraph <= 0.0 or _ring_done:
+		return
+	_ring_telegraph -= delta
+	queue_redraw()
+	if _ring_telegraph <= 0.0 and not _ring_done:
+		_ring_done = true
+		if hero != null and is_instance_valid(hero) and not hero.dead 				and hero.global_position.distance_to(global_position) <= _ring_radius:
+			hero.take_damage(_ring_dmg)
+		if get_tree() != null:
+			queue_redraw()
+
+
+## Фаза лечения: босс восстанавливает часть здоровья (прервать уроном).
+func _ab_heal(frac: float) -> void:
+	hp = mini(int(p["hp"]), hp + int(round(float(p["hp"]) * frac)))
+	_heal_flash = 0.5
+	queue_redraw()
+
+
+## Лужа урона (фаза босса): телеграф 0.8 с, затем урон герою в радиусе;
+## визуал — fx-кольцо через сцену данжа, если доступно.
+func _ab_floor_pool(dmg: int, radius: float, duration: float) -> void:
+	if get_tree() == null:
+		return
+	_ring_telegraph = 0.8
+	_ring_radius = radius
+	_ring_dmg = dmg
+	_ring_done = false
+	var t := get_tree().create_timer(0.8)
+	t.timeout.connect(func():
+		if not is_instance_valid(self) or hero == null or not is_instance_valid(hero):
+			return
+		if hero.global_position.distance_to(global_position) <= radius:
+			hero.take_damage(dmg)
+		var par := get_parent()
+		if par != null and par.has_method("_add_fx"):
+			par._add_fx("burst", Color(0.7, 0.2, 0.1), radius, duration,
+					global_position))
+
+
+func _tick_phases(delta: float) -> void:
+	_vuln_left = maxf(0.0, _vuln_left - delta)
+	_front_shield_left = maxf(0.0, _front_shield_left - delta)
+	_tick_ring(delta)

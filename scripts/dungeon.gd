@@ -337,6 +337,18 @@ func _rarity_weight(rarity_id: String) -> int:
 
 func _on_pickup_collected(pickup) -> void:
 	SfxLib.play("pickup")   # v1.65
+	# v1.67: реликвия архибосса — постоянный +1 стат (hero_stats)
+	var picked_id := String(pickup.get("item_id", ""))
+	if picked_id.begins_with("relic_"):
+		var relic: Dictionary = {}
+		for it in loot_data.get("items", []):
+			if String(it["id"]) == picked_id:
+				relic = it
+				break
+		var stat_id := String(relic.get("stat", ""))
+		if stat_id != "":
+			Game.hero_stats[stat_id] = float(Game.hero_stats.get(stat_id, 0.0)) + 1.0
+			hud.toast(Loc.t("relic.gained") % Loc.t(String(relic.get("loc", ""))))
 	if pickup.kind == "mana":
 		hero.add_mana(int(params["crystal_mana"]))
 		hud.toast(Loc.t("dungeon.got_mana") % int(params["crystal_mana"]))
@@ -374,6 +386,14 @@ func _on_enemy_died(enemy) -> void:
 ## M14-B: плюс гарантированный предмет экипировки по ярусу биома (T04).
 func _on_boss_died(enemy) -> void:
 	Game.stat("bosses")   # статистика (M14-K)
+	# v1.67 (боссы-фазы): «вау»-смерть — слоу-мо, вспышка, фанфара
+	Engine.time_scale = 0.35
+	var t := get_tree().create_timer(0.5, true, false, true)
+	t.timeout.connect(func():
+		Engine.time_scale = 1.0)
+	_add_fx("burst", Color(1.0, 0.95, 0.8), 140.0, 0.6, enemy.position)
+	SfxLib.play("fanfare")
+	hud.toast(Loc.t("dungeon.boss_slain"))
 	for item_id: String in loot_data.get("boss_guaranteed", []):
 		_spawn_pickup("item", item_id, enemy.position + Vector2(_loot_rng.randf_range(-14, 14), _loot_rng.randf_range(-10, 10)))
 	_spawn_pickup("item", _random_rune_id(), enemy.position + Vector2(0, 16))
@@ -383,6 +403,15 @@ func _on_boss_died(enemy) -> void:
 	var boss_drop := _roll_equipment_boss(int(biome.get("loot_bonus", 0)) + 1)
 	if boss_drop != "":
 		_spawn_pickup("item", boss_drop, enemy.position + Vector2(0, -18))
+	# v1.67: реликвия архибоссов — permanent +1 стат (герой подберёт сам)
+	var boss_id := String(enemy.p.get("id", ""))
+	var relic_stat := String(Game.magic.cfg.get("relic_stats", {}).get(boss_id, ""))
+	if relic_stat == "":
+		relic_stat = {"archvampire": "str", "archlich": "int",
+				"seraph_of_ash": "wis", "ancient_dragon": "end"}.get(boss_id, "")
+	if relic_stat != "":
+		var relic_id := "relic_" + boss_id
+		_spawn_pickup("item", relic_id, enemy.position + Vector2(0, -34))
 	hud.toast(Loc.t("dungeon.boss_down"))
 
 
@@ -404,6 +433,17 @@ func _roll_equipment_boss(tier: int) -> String:
 ## Все враги мертвы — данж зачищен: 20 дней не работает (перезарядка данжа
 ## у города, 2026-10-21), следующая версия сильнее, атаки мутантов на город
 ## сдвигаются на время перезарядки.
+func _first_spell_teach() -> void:
+	# v1.66 (магия-просто): первый зачищенный данж гарантирует руны
+	# первого заклинания + подсказку (дизайн-док 15-ОЖИВЛЕНИЕ, аспект 2)
+	var gift: Array = Game.first_spell_gift()
+	if gift.is_empty():
+		return
+	for rune_id in gift:
+		Game.add_item(rune_id, 1)
+	hud.toast(Loc.t("tut.first_spell"))
+
+
 func _check_dungeon_cleared() -> void:
 	for e in get_tree().get_nodes_in_group("enemies"):
 		if is_instance_valid(e) and int(e["hp"]) > 0:
