@@ -380,9 +380,13 @@ func _draw_fauna_animal(a: Dictionary, kind: String, pos: Vector2, vel: Vector2)
 			draw_circle(pos + Vector2(6.2 * size, -3.6 * size), 1.1 * size, Color("#e8b0a0"))
 			draw_line(pos + Vector2(-4.5 * size, -2.0 * size), pos + Vector2(-6.5 * size, -2.8 * size), col.darkened(0.3), 1.5)
 		"wolf":
+			# v1.67.2: уши — локальные точки с трансформом (на больших
+			# координатах float32-триангуляция схлопывает мелкие треугольники)
+			draw_set_transform(pos, 0.0, Vector2.ONE)
 			draw_colored_polygon(PackedVector2Array([
-				pos + Vector2(3.0 * size, -6.2 * size), pos + Vector2(3.8 * size, -8.8 * size),
-				pos + Vector2(4.9 * size, -6.4 * size)]), col.darkened(0.15))
+				Vector2(3.0 * size, -6.2 * size), Vector2(3.8 * size, -8.8 * size),
+				Vector2(4.9 * size, -6.4 * size)]), col.darkened(0.15))
+			draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 			draw_line(pos + Vector2(-4.5 * size, -3.0 * size), pos + Vector2(-7.2 * size, -4.6 * size), col.darkened(0.25), 1.6)
 		"bird":
 			draw_circle(pos + Vector2(4.2 * size, -5.2 * size), 1.7 * size, Color("#3a3a3a"))
@@ -394,12 +398,15 @@ func _draw_fauna_animal(a: Dictionary, kind: String, pos: Vector2, vel: Vector2)
 			draw_circle(pos + Vector2(5.8 * size, -4.2 * size - bob * 0.4), 0.8 * size, Color.WHITE)
 		"fox":
 			# v1.50: лиса — рыжая, острая морда и пушистый хвост
+			# v1.67.2: морда/хвост — локальные точки с трансформом (точность)
+			draw_set_transform(pos, 0.0, Vector2.ONE)
 			draw_colored_polygon(PackedVector2Array([
-				pos + Vector2(-4.0 * size, -3.0 * size), pos + Vector2(-8.5 * size, -5.0 * size),
-				pos + Vector2(-7.5 * size, -1.5 * size)]), col.lightened(0.15))
+				Vector2(-4.0 * size, -3.0 * size), Vector2(-8.5 * size, -5.0 * size),
+				Vector2(-7.5 * size, -1.5 * size)]), col.lightened(0.15))
 			draw_colored_polygon(PackedVector2Array([
-				pos + Vector2(4.6 * size, -6.0 * size), pos + Vector2(5.8 * size, -9.0 * size),
-				pos + Vector2(6.8 * size, -5.8 * size)]), col.darkened(0.1))
+				Vector2(4.6 * size, -6.0 * size), Vector2(5.8 * size, -9.0 * size),
+				Vector2(6.8 * size, -5.8 * size)]), col.darkened(0.1))
+			draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 			draw_circle(pos + Vector2(6.4 * size, -4.2 * size), 0.8 * size, Color("#e8e2d0"))
 
 
@@ -507,14 +514,16 @@ func _draw_world_exit() -> void:
 	# зелёное свечение в проёме
 	draw_rect(Rect2(center + Vector2(-ts * 0.18, -ts * 0.36), Vector2(ts * 0.36, ts * 0.78)),
 			Color(glow.r, glow.g, glow.b, 0.3 + 0.2 * pulse))
-	# стрелка влево — «мир там»
+	# стрелка влево — «мир там» (v1.67.2: локальные точки, точность триангуляции)
 	var y := center.y - ts * 0.08
 	draw_line(center + Vector2(ts * 0.05, y), center + Vector2(-ts * 0.2, y),
 			Color(glow.r, glow.g, glow.b, 0.6 + 0.3 * pulse), 2.5)
+	draw_set_transform(center, 0.0, Vector2.ONE)
 	draw_colored_polygon(PackedVector2Array([
-		center + Vector2(-ts * 0.2, y), center + Vector2(-ts * 0.1, y - 4.5),
-		center + Vector2(-ts * 0.1, y + 4.5)]),
+		Vector2(-ts * 0.2, -ts * 0.08), Vector2(-ts * 0.1, -ts * 0.08 - 4.5),
+		Vector2(-ts * 0.1, -ts * 0.08 + 4.5)]),
 		Color(glow.r, glow.g, glow.b, 0.6 + 0.3 * pulse))
+	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
 
 ## Здание в общем сортированном слое (M12). Схематичный режим (этап 2,

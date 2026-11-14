@@ -239,12 +239,15 @@ func _draw() -> void:
 				pos + Vector2(0, -6), 34.0, _t + float(tr["variant"]), Color.WHITE)
 	# герой
 	draw_circle(hero_px + Vector2(0, 4), 8.0, Color(0, 0, 0, 0.25))
-	Assets.draw_ref(self, "img:knight", hero_px - Vector2(0, 8), 30.0, hero_dir == "left")
+	# v1.67.2: кадр 36 = персонаж ~16.6px — чуть выше жителей (~14px), как в городе
+	Assets.draw_ref(self, "img:knight", hero_px - Vector2(0, 8), 36.0, hero_dir == "left")
 	# зона выхода вниз
 	draw_rect(Rect2(0, H - 18, W, 18), Color(0.45, 0.9, 0.5, 0.18))
 	var arr := Color(0.45, 0.9, 0.5, 0.55 + 0.25 * sin(_t * 3.0))
+	draw_set_transform(Vector2(W / 2.0, H - 16), 0.0, Vector2.ONE)
 	draw_colored_polygon(PackedVector2Array([
-		Vector2(W / 2.0 - 10, H - 16), Vector2(W / 2.0 + 10, H - 16), Vector2(W / 2.0, H - 4)]), arr)
+		Vector2(-10, 0), Vector2(10, 0), Vector2(0, 12)]), arr)
+	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
 
 # --- UI ------------------------------------------------------------------------

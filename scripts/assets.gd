@@ -261,7 +261,7 @@ const VILLAGER_PROF := {
 const VILLAGER_FRAME := 32.0     # кадр листа
 const VILLAGER_CHAR_H := 13.5    # видимый рост персонажа в кадре (альфа-бокс)
 const VILLAGER_FEET_Y := 30.0    # ноги от верха кадра
-const VILLAGER_VISIBLE_H := 23.0 # целевой видимый рост жителя (рыцарь — 32)
+const VILLAGER_VISIBLE_H := 27.0 # целевой видимый рост жителя (рыцарь — 31, v1.67.2)
 
 ## Раскладка рядов ИЗМЕРЕНА по каждому листу (у Minifolks она разная):
 ## idle всегда ряд 0 (4 кадра); walk — ряд с максимумом кадров; work —
