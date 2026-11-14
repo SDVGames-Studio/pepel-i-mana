@@ -3,6 +3,7 @@
 # Корень цепочки: city.gd создаёт HUD через этот файл.
 extends "res://scripts/city_hud_build.gd"
 
+
 func toggle_research() -> void:
 	_research_panel.visible = not _research_panel.visible
 	if _research_panel.visible:
@@ -260,18 +261,8 @@ func _toggle_btn(text: String, on_press: Callable) -> Button:
 
 ## Рамочный стиль панелей (M11): тёмный фон, светлая окантовка, скругления.
 func _panel_style(compact := false) -> StyleBoxFlat:
-	var style := StyleBoxFlat.new()
-	style.bg_color = Color(0.07, 0.06, 0.05, 0.9)
-	style.set_corner_radius_all(8)
-	style.set_border_width_all(2)
-	style.border_color = Color(0.42, 0.36, 0.24, 0.9)
-	if compact:
-		style.content_margin_left = 10.0
-		style.content_margin_right = 10.0
-		style.content_margin_top = 4.0
-		style.content_margin_bottom = 4.0
-	else:
-		style.set_content_margin_all(12)
+	# v1.68: единая тема (UITheme) — зола/дерево с охристой каймой
+	var style := UITheme.panel(compact)
 	return style
 
 

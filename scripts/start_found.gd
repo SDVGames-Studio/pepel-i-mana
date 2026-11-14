@@ -38,9 +38,6 @@ var _font: Font = null
 
 func _ready() -> void:
 	set_anchors_preset(Control.PRESET_FULL_RECT)
-	if Game.pending_city_map == null:
-		Game.prepare_city_map()
-	map = Game.pending_city_map
 	_font = ThemeDB.fallback_font
 	var bg := ColorRect.new()
 	bg.color = Color(0.07, 0.08, 0.1)
@@ -101,6 +98,32 @@ func _ready() -> void:
 	back.pressed.connect(_back)
 	back.add_theme_font_size_override("font_size", 18)
 	row.add_child(back)
+	# v1.68: генерация по шагам между кадрами — прогресс виден, меню живое
+	_prepare_async()
+
+
+## Генерация мира/карты по шагам (v1.68): между шагами отдаём кадр —
+## надпись этапа успевает отрисоваться, интерфейс не выглядит зависшим.
+func _prepare_async() -> void:
+	if Game.pending_city_map != null:
+		map = Game.pending_city_map
+		_map_ready()
+		return
+	var steps: Array = [
+		[Loc.t("pick.gen_world"), func() -> void: Game.prepare_world()],
+		[Loc.t("pick.gen_city"), func() -> void: Game.prepare_city_map_only()],
+	]
+	for i in steps.size():
+		_status.text = String(steps[i][0])
+		_status.add_theme_color_override("font_color", Color(0.85, 0.85, 0.8))
+		await get_tree().process_frame
+		await get_tree().process_frame
+		Callable(steps[i][1]).call()
+	map = Game.pending_city_map
+	_map_ready()
+
+
+func _map_ready() -> void:
 	# стартовый выбор — ванильный центр карты (всегда годный: ядро чистилось)
 	_picked = map.spawn_tile
 	_update_status()
@@ -140,6 +163,8 @@ func _tile_color(t: Vector2i) -> Color:
 
 
 func _cell_from_mouse() -> Vector2i:
+	if map == null:
+		return Vector2i(-1, -1)
 	var size := _map_rect.size
 	var s := maxf(1.0, minf(size.x / float(map.w), size.y / float(map.h)))
 	var origin := (size - Vector2(map.w, map.h) * s) * 0.5
@@ -171,6 +196,8 @@ func _unhandled_input(event: InputEvent) -> void:
 
 
 func _update_status() -> void:
+	if map == null:
+		return
 	if _picked.x < 0:
 		_status.text = Loc.t("pick.hint")
 		_confirm.disabled = true

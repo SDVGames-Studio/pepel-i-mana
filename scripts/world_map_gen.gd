@@ -23,8 +23,8 @@ func generate(seed_value: int, params: Dictionary) -> void:
 		if _pois_ok():
 			break
 	_place_epicenter()
-	_setup_astar()
 	_setup_fog()
+	astar_ready = false   # v1.68: A* лениво, первым tile_path (генерация -0.9 с)
 
 
 func _generate_once(seed_value: int, params: Dictionary) -> void:

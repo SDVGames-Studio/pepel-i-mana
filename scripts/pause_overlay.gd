@@ -1,4 +1,7 @@
 extends Control
+
+## v1.68: единая тема интерфейса (панели/кнопки/тосты)
+const UITheme := preload("res://scripts/ui_theme.gd")
 ## Оверлей паузы (M9): тёмная вуаль + «Пауза» + продолжить/сохранить/в меню.
 ## process_mode ALWAYS — работает, пока дерево сцены на паузе.
 ## M14-A: кнопка «Сохранить» (allow_save) — только там, где сейв разрешён
@@ -33,15 +36,18 @@ func _ready() -> void:
 	var resume := Button.new()
 	resume.text = Loc.t("menu.resume")
 	resume.add_theme_font_size_override("font_size", 24)
+	UITheme.apply_button(resume, true)
 	resume.pressed.connect(close)
 	box.add_child(resume)
 	if allow_save:
 		var save := Button.new()
+		UITheme.apply_button(save)
 		save.text = Loc.t("menu.save_game")
 		save.add_theme_font_size_override("font_size", 20)
 		save.pressed.connect(_on_save_pressed)
 		box.add_child(save)
 	var quit := Button.new()
+	UITheme.apply_button(quit)
 	quit.text = Loc.t("menu.quit_to_menu")
 	quit.add_theme_font_size_override("font_size", 20)
 	quit.pressed.connect(_to_menu)

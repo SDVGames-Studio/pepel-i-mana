@@ -5,6 +5,9 @@
 # это один класс, city.gd создаёт его по-прежнему через city_hud.gd.
 extends CanvasLayer
 
+## v1.68: единая тема интерфейса (панели/кнопки/тосты)
+const UITheme := preload("res://scripts/ui_theme.gd")
+
 ## HUD города (M2): пул ресурсов, жители, день/ночь, скорость/пауза,
 ## панель зданий, список жителей (Tab). Узлы собираются из кода.
 
@@ -26,6 +29,9 @@ var _threat_label: Label
 var _hint_label: Label
 var _toast_label: Label
 var _toast_time := 0.0
+var _toast_stack: VBoxContainer = null   # v1.68: стек тостов
+var _toast_slots: Array = []             # PanelContainer x3
+var _toast_times: Array = [0.0, 0.0, 0.0]
 var _pause_btn: Button
 var _speed_btns: Array = []
 var _autonomy_btn: Button = null   # автономная деревня (правки v1.12.0)
@@ -69,9 +75,20 @@ func init(sim_ref, city_ref, city_cfg: Dictionary, guest_mode := false) -> void:
 
 func _ready() -> void:
 	_build()
+	# v1.68: единая тема кнопок HUD после сборки дерева
+	UITheme.apply_tree(self)
 
 
 func _process(delta: float) -> void:
+	# v1.68: тик стека тостов — плавное затухание каждой плашки
+	for i in _toast_slots.size():
+		if not _toast_slots[i].visible:
+			continue
+		_toast_times[i] -= delta
+		if float(_toast_times[i]) < 0.5:
+			_toast_slots[i].modulate.a = maxf(0.0, float(_toast_times[i]) / 0.5)
+		if float(_toast_times[i]) <= 0.0:
+			_toast_slots[i].visible = false
 	if _toast_time > 0.0:
 		_toast_time -= delta
 		if _toast_time <= 0.0:
@@ -129,13 +146,35 @@ func refresh() -> void:
 		_rebuild_market()
 
 
+## Тосты (v1.68): стек до 3 плашек — события города больше не затирают
+## друг друга; повтор того же текста продлевает свою плашку.
 func toast(msg: String) -> void:
-	if _toast_label.text == msg and _toast_time > 0.0:
-		_toast_time = 3.0
-		return
-	_toast_label.text = msg
-	_toast_time = 3.0
+	for i in _toast_slots.size():
+		var slot: PanelContainer = _toast_slots[i]
+		if slot.visible and (slot.get_child(0) as Label).text == msg:
+			_toast_times[i] = 3.0
+			slot.modulate.a = 1.0
+			return
+	var idx := -1
+	for i in _toast_slots.size():
+		if not _toast_slots[i].visible:
+			idx = i
+			break
+	if idx < 0:
+		idx = _oldest_toast()
+	var slot: PanelContainer = _toast_slots[idx]
+	(slot.get_child(0) as Label).text = msg
+	slot.visible = true
+	slot.modulate = Color.WHITE
+	_toast_times[idx] = 3.0
 	SfxLib.play("toast")   # v1.65
+
+func _oldest_toast() -> int:
+	var best := 0
+	for i in _toast_times.size():
+		if float(_toast_times[i]) < float(_toast_times[best]):
+			best = i
+	return best
 
 
 ## Подсказка под панелью зданий. Правка v1.21: одинаковый текст не перезаписываем —
