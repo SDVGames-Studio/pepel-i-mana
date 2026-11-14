@@ -67,7 +67,22 @@ func _assign_jobs() -> void:
 	# необязательные — ферма/пристань/добыча отбирают работника у рынка,
 	# алтаря, мастерской. Без этого спелые грядки гнили: работник фермы
 	# умирал, свободных не оставалось, подмены брать было не откуда.
-	for vt in ["farm", "pier", "sawmill", "quarry", "mine"]:
+	# 3.6.1 v1.70 «ИИ глубже»: контекстные приоритеты — дефицит ресурсов и
+	# осада динамически расширяют список жизненно важных (сначала дерево при
+	# нехватке, камень при нехватке, кузня/оружейная при осаде).
+	var vital: Array = ["farm", "pier", "sawmill", "quarry", "mine"]
+	if float(res.get("wood", 0.0)) < 25.0:
+		vital.insert(0, "sawmill")   # дефицит дерева — лесопилка первой
+	if float(res.get("stone", 0.0)) < 25.0:
+		vital.insert(0, "quarry")
+	if raid_active:
+		vital.insert(0, "armory")   # осада — снаряжение важнее всего
+		vital.insert(1, "forge")
+	var vital_set := {}
+	for vt2 in vital:
+		vital_set[vt2] = true
+	vital_set["well"] = true
+	for vt in vital:
 		for b in buildings:
 			if String(b["type"]) != vt or not _active(b) or not bool(b["done"]) \
 					or int(b["worker"]) > 0:
@@ -77,7 +92,7 @@ func _assign_jobs() -> void:
 				if rb == null or String(r.get("ail", "")) != "" or _is_golem(r):
 					continue
 				var ot := String((rb as Dictionary).get("type", ""))
-				if ot in ["farm", "pier", "sawmill", "quarry", "mine", "well"]:
+				if vital_set.has(ot):
 					continue   # не отнимаем у такого же жизненно важного
 				(rb as Dictionary)["worker"] = -1
 				r["bld"] = null

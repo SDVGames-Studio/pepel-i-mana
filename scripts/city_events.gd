@@ -467,6 +467,10 @@ func _process_events() -> void:
 				hud.toast(Loc.t("god.prayed"))
 			"bridge":
 				hud.toast(Loc.t("city.bridge_done"))
+			"monster_bridge":
+				# v1.70: тревога — волна наводит мост через реку
+				hud.toast(Loc.t("city.monster_bridge"))
+				SfxLib.play("alarm")
 			"quest_done":
 				Game.stat("quests")
 				hud.toast(Loc.t("city.quest_done") % [String(ev["customer"]), int(ev["reward"])])

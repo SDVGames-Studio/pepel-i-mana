@@ -335,15 +335,88 @@ func _raider_update(r: Dictionary, dt: float, tcfg: Dictionary) -> bool:
 		return true
 	# путь к центру открыт — идём (проверка не каждый тик: A* по обнесённой
 	# стенами карте дорог — так держим FPS и в осаду, правки приёмки v1.26)
+	# v1.70: если сухопутный обход ВОДЫ длиннее прямой линии в 2.5 раза —
+	# волна предпочитает навести мост (приёмка: «мутанты должны уметь
+	# строить мосты», «проход через воду только по мостам»)
 	r["_center_cd"] = float(r.get("_center_cd", 0.0)) - dt
 	if float(r["_center_cd"]) <= 0.0:
 		r["_center_cd"] = 0.4
-		r["_center_open"] = map.path_px(r["pos"], map.spawn_tile, true).size() > 1
+		var path: PackedVector2Array = map.path_px(r["pos"], map.spawn_tile, true)
+		r["_center_open"] = path.size() > 1
+		var line_tiles: float = Vector2(map.spawn_tile - map.tile_of_px(r["pos"])).length()
+		r["_center_detour"] = float(path.size()) > line_tiles * 1.8
 	if bool(r.get("_center_open", false)) \
+			and not bool(r.get("_center_detour", false)) \
 			and _raider_move_to(r, map.spawn_tile, float(p["speed"]) * mv):
+		return true
+	# путь перегорожен водой (или обход слишком долог) — волна наводит мост
+	if _raider_try_bridge(r, mv, p):
 		return true
 	# заперты в кольце: идём ломать ближайшую стену или ворота
 	return _raider_break_obstacle(r, mv, p, near)
+
+
+## v1.70 «Мосты мутантов»: путь к городу перегорожен водой — волна наводит
+## мост через ближайший водный тайл на линии к городу. Стройка занимает
+## threat.bridge_build_time (по умолчанию 3 с); мост = map.bridges, как у
+## жителей (M14-I), и сразу открывает путь (refresh_tile_solid).
+func _raider_try_bridge(r: Dictionary, dt: float, p: Dictionary) -> bool:
+	var w := _first_water_on_line(map.tile_of_px(r["pos"]), map.spawn_tile)
+	if w == Vector2i(-1, -1):
+		r.erase("bridge_p")
+		r["mode"] = "advance"
+		return false   # воды на линии нет — не наш случай
+	var here: Vector2i = map.tile_of_px(r["pos"])
+	var shore := _walkable_shore_next_to(w)
+	if shore != here and shore != Vector2i(-1, -1):
+		r["mode"] = "advance"
+		_raider_move_to(r, shore, float(p["speed"]) * dt)
+		return true
+	# на берегу — строим (несколько мутантов строят параллельно свои тайлы)
+	r["mode"] = "bridge"
+	r["bridge_p"] = float(r.get("bridge_p", 0.0)) + dt
+	if float(r["bridge_p"]) < float(cfg.get("threat", {}).get("bridge_build_time", 3.0)):
+		return true
+	r["bridge_p"] = 0.0
+	r["mode"] = "advance"
+	r["target"] = Vector2i(-1, -1)
+	map.bridges[w] = true
+	map.note_edit(w)
+	map.refresh_tile_solid(w)
+	events.append({"type": "monster_bridge"})
+	_chron("chron.monster_bridge")
+	return true
+
+
+## Первый водный (без моста/брода) тайл на прямой от мутанта к цели.
+func _first_water_on_line(from_tile: Vector2i, to_tile: Vector2i) -> Vector2i:
+	var a := Vector2(from_tile) + Vector2(0.5, 0.5)
+	var b := Vector2(to_tile) + Vector2(0.5, 0.5)
+	var dir := (b - a)
+	var dist := dir.length()
+	if dist < 0.5:
+		return Vector2i(-1, -1)
+	dir /= dist
+	var steps := int(dist / 0.5)
+	for i in steps:
+		var t := Vector2i(((a + dir * (float(i) * 0.5)) - Vector2(0.5, 0.5)).round())
+		if not map.in_bounds(t):
+			return Vector2i(-1, -1)
+		if map.grid[t.y][t.x] == map.TILE_WATER and not map.bridges.has(t) \
+				and not map.fords.has(t):
+			return t
+	return Vector2i(-1, -1)
+
+
+## Сухой проходимый берег рядом с водным тайлом (ближе к мутанту).
+func _walkable_shore_next_to(w: Vector2i) -> Vector2i:
+	for d: Vector2i in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1),
+			Vector2i(1, 1), Vector2i(-1, -1), Vector2i(1, -1), Vector2i(-1, 1)]:
+		var t: Vector2i = w + d
+		if map.in_bounds(t) and map.is_walkable(t) \
+				and map.grid[t.y][t.x] != map.TILE_WATER:
+			return t
+	return Vector2i(-1, -1)
 
 
 ## Ближайшее к мутанту действующее здание (кэш на _near_gap секунд: скан всех

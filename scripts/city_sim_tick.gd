@@ -7,6 +7,27 @@ extends "res://scripts/city_sim_people.gd"
 
 # --- главный тик ---------------------------------------------------------
 
+var _prof_acc := {}    # v1.70: фазовые таймеры тика (SIM_PROF=1)
+var _prof_n := 0
+
+func _prof(phase: String, usec: int) -> void:
+	if OS.get_environment("SIM_PROF") == "":
+		return
+	_prof_acc[phase] = float(_prof_acc.get(phase, 0.0)) + float(usec)
+	_prof_n += 1
+	if _prof_n < 300:
+		return
+	var total := 0.0
+	for k in _prof_acc:
+		total += float(_prof_acc[k])
+	var parts := []
+	for k in _prof_acc:
+		parts.append("%s=%.0f%%" % [k, float(_prof_acc[k]) / maxf(1.0, total) * 100.0])
+	print("[SIM_PROF] тик %.2f мс | " % (total / 300.0 / 1000.0), ", ".join(parts))
+	_prof_acc.clear()
+	_prof_n = 0
+
+
 func tick(dt_raw: float) -> void:
 	if paused or map == null:
 		return
@@ -57,15 +78,29 @@ func tick(dt_raw: float) -> void:
 			b["stun_left"] = maxf(0.0, float(b["stun_left"]) - dt)
 	_update_wild_events(pol_cfg, day_len)
 	_update_storm(dt_combat, day_len)
+	var _p0_threat := Time.get_ticks_usec()
 	_update_threat(dt_combat, day_len)
+	_prof("threat", Time.get_ticks_usec() - _p0_threat)
+	var _p0_animals := Time.get_ticks_usec()
 	_update_animals(dt_combat)
+	_prof("animals", Time.get_ticks_usec() - _p0_animals)
+	var _p0_livestock := Time.get_ticks_usec()
 	_update_livestock(dt)
+	_prof("livestock", Time.get_ticks_usec() - _p0_livestock)
 	_update_wanderers(dt)
+	var _p0_zones := Time.get_ticks_usec()
 	_update_zones(dt, day_len)
+	_prof("zones", Time.get_ticks_usec() - _p0_zones)
+	var _p0_forest := Time.get_ticks_usec()
 	_update_forest(dt, day_len)
+	_prof("forest", Time.get_ticks_usec() - _p0_forest)
+	var _p0_cemetery := Time.get_ticks_usec()
 	_update_cemetery(dt, day_len)   # костры догорают, останки истлевают (v1.23)
+	_prof("cemetery", Time.get_ticks_usec() - _p0_cemetery)
+	var _p0_res := Time.get_ticks_usec()
 	for r in residents:
 		_update_resident(r, dt)
+	_prof("residents", Time.get_ticks_usec() - _p0_res)
 	# люди (M4): раз в игровой день — преемник старосты, болезни, беженцы, рождения, стройка, истории.
 	# v1.28: дневной блок РАЗБИТ на 3 фазы по тикам — раньше всё (~30 роллов,
 	# включая morning_plan с переназначением всех жителей = пакет A*) шло в
