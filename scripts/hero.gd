@@ -709,7 +709,14 @@ func _draw_held_weapon(canvas: CanvasItem, pos: Vector2, flip := false) -> void:
 			canvas.draw_circle(Vector2(0, -hl * 0.98), r * 0.16, Color("#cfe8ff"))
 			canvas.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
-## Шаги (v1.65.3): таймер в движении; поверхность — дорога/вода/камень/трава.
+## Шаги (v1.65.3, варианты v1.68): таймер в движении; поверхность —
+## дорога/вода/камень/трава; внутри поверхности — случайный вариант тембра.
+const STEP_POOLS := {
+	"stone": ["step_stone", "step_stone_2"],
+	"water": ["step_water", "step_water_2"],
+	"road": ["step_road", "step_road_2"],
+	"grass": ["step_grass", "step_grass_2", "step_grass_3"],
+}
 var _step_t := 0.0
 
 func _play_step(delta: float, moving: bool) -> void:
@@ -724,16 +731,20 @@ func _play_step(delta: float, moving: bool) -> void:
 	if par == null:
 		return
 	if par.has_method("night_boost"):
-		SfxLib.play("step_stone")   # данж: камень
+		_play_step_kind("stone")   # данж: камень
 		return
 	var m: Variant = par.get("map") if par != null else null
 	if m == null:
-		SfxLib.play("step_grass")
+		_play_step_kind("grass")
 		return
 	var tile: Vector2i = m.tile_of_px(global_position)
 	if m.grid[tile.y][tile.x] == m.TILE_WATER:
-		SfxLib.play("step_water")
+		_play_step_kind("water")
 	elif m.has_road(tile):
-		SfxLib.play("step_road")
+		_play_step_kind("road")
 	else:
-		SfxLib.play("step_grass")
+		_play_step_kind("grass")
+
+func _play_step_kind(kind: String) -> void:
+	var pool: Array = STEP_POOLS.get(kind, ["step_grass"])
+	SfxLib.play(String(pool[randi() % pool.size()]))
