@@ -635,9 +635,10 @@ func _draw_meadow_decor(x: int, y: int, rect: Rect2) -> void:
 	if _hash(x * 13, y * 3, 120) == 0:
 		_drawer.draw_rect(Rect2(rect.position + Vector2(8.0 + float(_hash(x, y, 40) % 14), 9.0),
 				Vector2(dot, dot)), Color("#9a958a"))
-	# кусты/валуны ForgottenMemories: у воды 12%, на лугу 6%
+	# кусты-спрайты + валуны (v1.68): валун процедурный — плоский серый
+	# спрайт читался «пятном» (замечание приёмки); частоту валунов снизили
 	if _prop_texs.is_empty():
-		for n in ["bush2_a", "bush2_b", "bush2_c", "bush2_d", "stone2_a", "stone2_b"]:
+		for n in ["bush2_a", "bush2_b", "bush2_c", "bush2_d"]:
 			_prop_texs.append(Assets.tex("res://assets/sprites/props/%s.png" % n))
 	var near_water := false
 	for d: Vector2i in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
@@ -645,7 +646,13 @@ func _draw_meadow_decor(x: int, y: int, rect: Rect2) -> void:
 		if map.in_bounds(p) and map.grid[p.y][p.x] == map.TILE_WATER:
 			near_water = true
 			break
-	if _hash(x * 17, y * 11, 1000) >= (120 if near_water else 60):
+	var decor_roll := _hash(x * 17, y * 11, 1000)
+	if decor_roll < (55 if near_water else 26):
+		_draw_boulder(x, y, rect)
+		return
+	if decor_roll >= 1000 - (80 if near_water else 40):
+		pass   # куст ниже
+	else:
 		return
 	var tex: Texture2D = _prop_texs[_hash(x * 3, y * 5, _prop_texs.size())]
 	if tex == null:
@@ -659,6 +666,26 @@ func _draw_meadow_decor(x: int, y: int, rect: Rect2) -> void:
 			float(_hash(x, y * 5, 9) - 4) * ts * 0.02)
 	_drawer.draw_texture_rect(tex, Rect2(
 			Vector2(pos.x - w * 0.5, pos.y - scale * 0.62), Vector2(w, scale)), false)
+
+
+## Процедурный валун (v1.68): тело с гранями, блик, мох и контактная тень —
+## вместо плоского серого спрайта-кляксы («серые пятна на карте»).
+func _draw_boulder(x: int, y: int, rect: Rect2) -> void:
+	var ts := float(map.ts)
+	var rr := ts * (0.14 + 0.05 * float(_hash(x, y, 7)))
+	var cpos: Vector2 = rect.get_center() + Vector2(
+			float(_hash(x * 5, y, 9) - 4) * ts * 0.02,
+			float(_hash(x, y * 5, 9) - 4) * ts * 0.02)
+	_drawer.draw_circle(cpos + Vector2(0, rr * 0.55), rr * 1.02, Color(0, 0, 0, 0.16))
+	_drawer.draw_circle(cpos, rr, Color("#77726a"))
+	_drawer.draw_circle(cpos + Vector2(-rr * 0.16, -rr * 0.2), rr * 0.76, Color("#8d897c"))
+	_drawer.draw_circle(cpos + Vector2(-rr * 0.26, -rr * 0.32), rr * 0.4, Color("#a09a8e"))
+	var moss := 1 + _hash(x, y, 31) % 2
+	for i in moss:
+		var mh := _hash(x * 7 + i, y * 9 + i, 100)
+		var mo := Vector2((float(mh % 20) - 10.0) * rr * 0.06,
+				(float((mh / 7) % 12) - 6.0) * rr * 0.05)
+		_drawer.draw_circle(cpos + mo, maxf(1.0, rr * 0.16), Color("#6f7d4f"))
 
 
 ## ---------- земляные проплешины (v1.50 «Живая земля») -----------------------

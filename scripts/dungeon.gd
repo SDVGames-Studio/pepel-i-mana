@@ -142,9 +142,15 @@ func _update_mana_hunger(delta: float) -> void:
 		hero.take_damage(1)
 
 
+## v1.68: подтверждение выхода из данжа (двойное E) — случайный пресс E при
+## сборе лута рядом с лестницей молча выбрасывал героя в город.
+var _exit_arm := 0.0
+
 func _update_hint() -> void:
+	_exit_arm = maxf(0.0, _exit_arm - get_process_delta_time())
 	if _near_ladder():
-		hud.set_hint(Loc.t("dungeon.hint_exit"))
+		hud.set_hint(Loc.t("dungeon.hint_exit_now") if _exit_arm > 0.0
+				else Loc.t("dungeon.hint_exit"))
 		return
 	var rune = _nearest_rune()
 	if rune != null:
@@ -197,7 +203,11 @@ func _nearest_chest(radius: float):
 
 func _try_interact() -> void:
 	if _near_ladder():
-		_leave_dungeon()
+		if _exit_arm > 0.0:
+			_leave_dungeon()
+			return
+		_exit_arm = 1.6
+		hud.toast(Loc.t("dungeon.exit_confirm"))
 		return
 	var rune = _nearest_rune()
 	if rune != null:
