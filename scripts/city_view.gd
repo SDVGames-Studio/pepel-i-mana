@@ -423,9 +423,12 @@ func _draw_speech_bubble(pos: Vector2, text: String) -> void:
 	var rect := Rect2(top, Vector2(width, 16.0))
 	draw_rect(rect, Color(1, 1, 0.96, 0.92))
 	draw_rect(rect, Color(0.35, 0.3, 0.25, 0.8), false, 1.0)
+	# v1.67.2: локальные точки с трансформом — точность триангуляции
+	draw_set_transform(pos, 0.0, Vector2.ONE)
 	draw_colored_polygon(PackedVector2Array([
-		pos + Vector2(-3, -42), pos + Vector2(3, -42), pos + Vector2(0, -36)]),
+		Vector2(-3, -42), Vector2(3, -42), Vector2(0, -36)]),
 		Color(1, 1, 0.96, 0.92))
+	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 	draw_string(font, top + Vector2(5, 12), text, HORIZONTAL_ALIGNMENT_LEFT, -1, fsize,
 			Color(0.2, 0.16, 0.12))
 

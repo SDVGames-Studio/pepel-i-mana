@@ -316,12 +316,15 @@ func _round_corner(canvas: Object, t: Vector2i, s1: Vector2i, s2: Vector2i,
 	var c := p + Vector2(ts * 0.5, ts * 0.5) + Vector2(corner) * (ts * 0.5)
 	var shade := 0.04 * float(terrain._hash(t.x + corner.x, t.y + corner.y, 3) - 1)
 	var bis := atan2(float(-corner.y), float(-corner.x))
-	var pts := PackedVector2Array([c])
+	# v1.67.2: локальные точки с трансформом — точность триангуляции
 	var r := ts * 0.34
+	var pts := PackedVector2Array([Vector2.ZERO])
 	for i in 9:
 		var a := bis + deg_to_rad(-45.0 + 90.0 * float(i) / 8.0)
-		pts.append(c + Vector2(cos(a), sin(a)) * r)
+		pts.append(Vector2(cos(a), sin(a)) * r)
+	canvas.draw_set_transform(c, 0.0, Vector2.ONE)
 	canvas.draw_colored_polygon(pts, grass.lightened(shade))
+	canvas.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
 
 func _static_lake_coast(t: Vector2i, sides: Array, ts: float) -> void:

@@ -678,10 +678,14 @@ func _draw_meadow_decor(x: int, y: int, rect: Rect2) -> void:
 
 
 ## Ромб-кристалл (руда) с центром center и полудиагональю r.
+## v1.67.2: рисуем в ЛОКАЛЬНЫХ точках с трансформом — на больших мировых
+## координатах float32-триангуляция Godot теряет точность и маленькие
+## ромбы схлопывались («Invalid polygon data» спамом в консоли Linux).
 func _draw_diamond(center: Vector2, r: float, col: Color) -> void:
 	if r < 0.8:
 		return
+	_drawer.draw_set_transform(center, 0.0, Vector2.ONE)
 	_drawer.draw_colored_polygon(PackedVector2Array([
-		center + Vector2(0, -r), center + Vector2(r * 0.7, 0),
-		center + Vector2(0, r), center + Vector2(-r * 0.7, 0),
+		Vector2(0, -r), Vector2(r * 0.7, 0), Vector2(0, r), Vector2(-r * 0.7, 0),
 	]), col)
+	_drawer.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)

@@ -50,6 +50,10 @@ const KNIGHT_FRAME := 120       # ширина кадра листа
 const KNIGHT_FRAME_H := 80.0    # высота кадра
 const KNIGHT_CHAR_H := 37.0     # высота персонажа в кадре (альфа-бокс)
 const KNIGHT_FEET_Y := 79.5     # ноги персонажа от верха кадра
+## v1.67.2: целевой ВИДИМЫЙ рост героя на экране. Единообразие персонажей
+## (замечание приёмки): жители 27px, герой чуть выше — 31px (было ~32-45
+## в зависимости от радиуса; фактически 1.4-2x крупнее жителей).
+const KNIGHT_TARGET_H := 31.0
 
 
 ## SpriteFrames из горизонтальных полос assets/sprites/hero/knight_*.png
@@ -86,7 +90,7 @@ static func build_knight_frames() -> SpriteFrames:
 
 ## Масштаб спрайта: высота персонажа в кадре → целевая (3.2 радиуса).
 func knight_scale() -> float:
-	return float(p["radius"]) * 3.2 / KNIGHT_CHAR_H
+	return KNIGHT_TARGET_H / KNIGHT_CHAR_H
 
 
 ## Конфиг статов героя (balance.json -> hero_attributes); читается один раз.

@@ -597,8 +597,11 @@ func _draw_poi_fallback(poi: Dictionary, pos: Vector2, color: Color) -> void:
 
 
 func _draw_diamond(pos: Vector2, r: float, color: Color) -> void:
+	# v1.67.2: локальные точки с трансформом — точность триангуляции
+	draw_set_transform(pos, 0.0, Vector2.ONE)
 	draw_colored_polygon(PackedVector2Array(
-			[pos + Vector2(0, -r), pos + Vector2(r, 0), pos + Vector2(0, r), pos + Vector2(-r, 0)]), color)
+			[Vector2(0, -r), Vector2(r, 0), Vector2(0, r), Vector2(-r, 0)]), color)
+	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
 
 ## Легендарный странник (v1.22): четырёхлучевая звезда своего цвета с белой
