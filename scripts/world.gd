@@ -42,7 +42,7 @@ func _ready() -> void:
 		var city_cfg: Dictionary = _read_json("res://data/city.json")
 		Game.npc_cities = load("res://scripts/npc_cities.gd").new()
 		Game.npc_cities.setup(map, cfg, city_cfg)
-		Game.npc_cities.ensure(sim.day)
+		Game.npc_cities.ensure(sim.day, 3)   # v1.68: порциями, без фриза
 	sim.settlement_defense_cb = func(settlement_id: int) -> float:
 		return Game.npc_cities.defense_of(settlement_id) if Game.npc_cities != null else 0.0
 	Game.world_active = true   # «Продолжить» из меню вернёт на карту мира

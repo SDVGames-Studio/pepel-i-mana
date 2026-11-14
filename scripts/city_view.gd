@@ -145,7 +145,11 @@ var _bld_ref_cache: Dictionary = {}
 
 func _bld_sprite_ref(type_id: String, b: Dictionary) -> String:
 	if type_id == "house":
-		return "b:дом_жителей_ур%d" % (1 + int(b["id"]) % 3)
+		# v1.68: уровень дома растёт с городом (ассеты заказчика L1-3):
+		# деревня до 12 жителей — L1, посёлок до 24 — L2, город — L3
+		var pop: int = sim.residents.size()
+		var tier := 3 if pop >= 24 else (2 if pop >= 12 else 1)
+		return "b:дом_жителей_ур%d" % tier
 	if type_id == "statue":
 		# v1.63: статуя — вариации из пака (по хэшу id здания)
 		return STATUE_REFS[_hash(int(b["id"]), 7, STATUE_REFS.size())]

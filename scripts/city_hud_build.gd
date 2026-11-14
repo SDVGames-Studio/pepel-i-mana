@@ -3,6 +3,7 @@
 # Один класс, поведение не меняется.
 extends "res://scripts/city_hud_base.gd"
 
+
 func _build_magic_panel(root: Control) -> void:
 	_magic_panel = PanelContainer.new()
 	_magic_panel.add_theme_stylebox_override("panel", _panel_style())
@@ -414,12 +415,28 @@ func _build() -> void:
 		_add_autonomy_btn(tr_box)
 
 	# --- тост по центру сверху
-	_toast_label = _label(24)
-	_toast_label.set_anchors_preset(Control.PRESET_CENTER_TOP)
-	_toast_label.position = Vector2(0, 70)
-	_toast_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_toast_label.grow_horizontal = Control.GROW_DIRECTION_BOTH
-	root.add_child(_toast_label)
+	# v1.68: стек тостов — до 3 событий видны одновременно, каждое в
+	# тематической плашке (раньше сообщения затирали друг друга)
+	_toast_stack = VBoxContainer.new()
+	_toast_stack.set_anchors_preset(Control.PRESET_CENTER_TOP)
+	_toast_stack.position = Vector2(0, 64)
+	_toast_stack.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	_toast_stack.add_theme_constant_override("separation", 4)
+	_toast_stack.alignment = BoxContainer.ALIGNMENT_BEGIN
+	root.add_child(_toast_stack)
+	for i in 3:
+		var slot := PanelContainer.new()
+		var sb := UITheme.toast_panel()
+		sb.content_margin_left = 16.0
+		sb.content_margin_right = 16.0
+		slot.add_theme_stylebox_override("panel", sb)
+		var lb := _label(22)
+		lb.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		slot.add_child(lb)
+		slot.visible = false
+		_toast_stack.add_child(slot)
+		_toast_slots.append(slot)
+	_toast_label = (_toast_slots[0].get_child(0) as Label)
 
 	# --- тултип у курсора: название здания под мышью
 	_hover_panel = PanelContainer.new()

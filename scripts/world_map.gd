@@ -319,10 +319,14 @@ func set_boats(on: bool) -> void:
 		return
 	boats_enabled = on
 	_setup_astar()
+	astar_ready = true
 
 
 ## Тайлы пути от тайла к тайлу (по воде не пройти). Пустой — пути нет.
 func tile_path(from: Vector2i, to: Vector2i) -> Array:
+	if not astar_ready:
+		_setup_astar()
+		astar_ready = true
 	if not in_bounds(from) or not in_bounds(to) or not is_walkable(to):
 		return []
 	return astar.get_id_path(from, to)

@@ -395,9 +395,14 @@ func new_city() -> void:
 ## у spawn_tile, поэтому основание должно случиться ДО него). Мир создаётся
 ## один раз — гидро-контекст клетки (река на глобале = река в городе,
 ## ответ №117) читается из него.
-func prepare_city_map() -> void:
+## Поэтапная подготовка (v1.68): экран выбора места города рисует прогресс
+## между шагами — генерация мира больше не фризит интерфейс на ~8 с.
+func prepare_world() -> void:
 	if world_map == null:
 		new_world()
+
+func prepare_city_map_only() -> void:
+	prepare_world()
 	var cfg: Variant = _read_json(CITY_CFG_PATH)
 	if not (cfg is Dictionary):
 		push_error("Не читается data/city.json")
@@ -405,6 +410,9 @@ func prepare_city_map() -> void:
 	var map_script: Script = load(CITY_MAP_SCRIPT)
 	pending_city_map = map_script.new()
 	pending_city_map.generate(randi(), cfg, world_map.city_hydro())
+
+func prepare_city_map() -> void:
+	prepare_city_map_only()
 
 
 ## Основать город в выбранной на карте города клетке: чистим площадку,
@@ -454,9 +462,8 @@ func new_world() -> void:
 	var city_cfg_v: Variant = _read_json(CITY_CFG_PATH)
 	npc_cities = load("res://scripts/npc_cities.gd").new()
 	npc_cities.setup(world_map, cfg, city_cfg_v if city_cfg_v is Dictionary else {})
-	# v1.54 (долгий старт): все 20 городов НПС генерились на старте одним
-	# куском; теперь 3 ближайших, остальные — при входе на карту мира
-	npc_cities.ensure(0, 3)
+	# v1.68: генерацию городов НПС (3.7 с на 3) убрали со старта — они
+	# создаются при входе на карту мира по 3 за визит (world.gd)
 	visiting_city_id = -1
 
 

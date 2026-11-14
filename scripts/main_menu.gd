@@ -1,4 +1,7 @@
 extends Control
+
+## v1.68: единая тема интерфейса (панели/кнопки/тосты)
+const UITheme := preload("res://scripts/ui_theme.gd")
 ## Главное меню: новая игра с настройками старта (вопрос 11: жители всегда
 ## с одного — правки v1.12.0; ресурсы настраиваются до старта), продолжить, выход.
 
@@ -21,6 +24,8 @@ func _ready() -> void:
 	exit_button.text = Loc.t("menu.exit")
 	# «Продолжить» виден, если игра идёт ИЛИ есть файл сейва (M14-A)
 	continue_button.visible = Game.city_sim != null or Game.has_save()
+	for b in [new_game_button, continue_button, exit_button]:
+		UITheme.apply_button(b)   # v1.68: единая тема
 	new_game_button.pressed.connect(_on_new_game_pressed)
 	continue_button.pressed.connect(_on_continue_pressed)
 	exit_button.pressed.connect(_on_exit_pressed)

@@ -18,8 +18,13 @@ func _test_v154_letters_tabs() -> void:
 func _test_v154_start_and_menu() -> void:
 	print("[v1.54: быстрый старт и Esc-оверлей]")
 	var game: Script = load("res://scripts/game.gd")
-	_check(game.source_code.find("npc_cities.ensure(0, 3)") >= 0,
-			"старт создаёт только 3 ближайших города НПС")
+	# v1.68: старт больше НЕ генерит города НПС (3.7 с фриза) — они по 3
+	# за визит на карту мира (world.gd), стартовый prepare быстрее
+	var wsrc: String = (load("res://scripts/world.gd") as Script).source_code
+	_check(wsrc.find("npc_cities.ensure(sim.day, 3)") >= 0,
+			"карта мира достраивает города НПС порциями по 3 за визит")
+	_check(game.source_code.find("npc_cities.ensure(0, 3)") < 0,
+			"старт не фризит на генерации городов НПС")
 	var npc: Script = load("res://scripts/npc_cities.gd")
 	var nsrc: String = npc.source_code
 	_check(nsrc.find("func ensure(mature_days := 0, limit := 0)") >= 0,
