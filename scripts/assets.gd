@@ -244,18 +244,21 @@ static func draw_animal(canvas: CanvasItem, kind: String, dir: String, moving: b
 
 const VILLAGER_PROF := {
 	"lumberjack": "KitLumberjack",  # v1.71: рубка топором из атласа строителя
-	"miner": "MiniMiner",
-	"smith": "MiniBlacksmithB",
-	"smelter": "MiniBlacksmithB",
-	"armorer": "MiniBlacksmithB",
-	"hunter": "MiniHunter",
+	"miner": "KitMiner",            # v1.72: шахтёр-гном (атлас заказчика)
+	"smith": "KitSmith",            # v1.72: средневековый кузнец
+	"smelter": "KitSmelter",        # v1.72: гном-плавильщик (тигель с жаром)
+	"armorer": "KitArmorer",        # v1.72: кузнец-дварф (оружейная)
+	"hunter": "KitHunter",          # v1.72: лучник (стрельба из лука)
 	"farmer": "KitFarmer",          # v1.71: землёй в присяде (атлас фермера)
 	"builder": "KitBuilder",        # v1.71: атлас заказчика «строитель-воин»
-	"porter": "MiniMerchantB",
-	"bartender": "MiniMerchantB",
-	"trader": "MiniMerchantB",
-	"healer": "MiniNun",
-	"acolyte": "MiniNun",
+	"porter": "KitPorter",          # v1.72: носильщик (бочки/ящики)
+	"bartender": "KitBartender",    # v1.72: тавернщик (кружки)
+	"trader": "KitTrader",          # v1.72: купец (товар/мешок)
+	"healer": "KitHealer",          # v1.72: травница-лекарь (снадобье)
+	"acolyte": "KitAcolyte",        # v1.72: маг-ученик (заклинание)
+	"guard": "KitGuard",            # v1.72: стражник (выпад копьём)
+	"crafter": "KitMaster",         # v1.72: мастер (ремесленный двор, молот)
+	"fisher": "KitFisher",          # v1.72: рыбак (улов на руках)
 }
 
 const VILLAGER_FRAME := 32.0     # кадр листа
@@ -281,6 +284,21 @@ const VILLAGER_ROWS := {
 	"KitBuilder": [1, 6, 2, 4],
 	"KitLumberjack": [1, 6, 2, 4],
 	"KitFarmer": [1, 6, 2, 4],
+	# v1.72: волна 2 «Жители кита» — 14 листов (walk_n по факту фигур в ряду)
+	"KitSmith": [1, 6, 2, 4],
+	"KitPorter": [1, 5, 2, 4],
+	"KitHealer": [1, 6, 2, 4],
+	"KitFisher": [1, 6, 2, 4],
+	"KitHunter": [1, 5, 2, 4],
+	"KitMaster": [1, 6, 2, 4],
+	"KitElder": [1, 6, 2, 4],       # задел: староста в игре — голем (v1.20)
+	"KitBartender": [1, 6, 2, 4],
+	"KitAcolyte": [1, 6, 2, 4],
+	"KitArmorer": [1, 6, 2, 4],
+	"KitSmelter": [1, 6, 2, 4],
+	"KitTrader": [1, 5, 2, 4],
+	"KitGuard": [1, 6, 2, 4],
+	"KitMiner": [1, 6, 2, 4],
 }
 
 ## Размер кадра при отрисовке: из целевого видимого роста.

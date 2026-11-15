@@ -73,7 +73,10 @@ func _test_v149_assets() -> void:
 	# жители: маппинг профессий на листы Minifolks
 	var AssetsSc = load("res://scripts/assets.gd")
 	_check(AssetsSc.VILLAGER_PROF.has("lumberjack"), "лесоруб имеет лист Minifolks")
-	_check(not AssetsSc.VILLAGER_PROF.has("guard"), "страж без листа — кружок (листа нет)")
+	_check(AssetsSc.VILLAGER_PROF.has("guard"), "страж имеет лист кита (v1.72: KitGuard)")
+	for kit in ["KitSmith", "KitGuard", "KitHealer", "KitFisher"]:
+		_check(AssetsSc.VILLAGER_ROWS.has(kit) and AssetsSc.tex("res://assets/sprites/villagers/%s.png" % kit) != null,
+				"лист кита %s на месте и в VILLAGER_ROWS" % kit)
 	_check(AssetsSc.tex("res://assets/sprites/villagers/MiniLumberjack.png") != null,
 			"лист лесоруба загружается")
 	_check(AssetsSc.tex("res://assets/sprites/hero/knight_Idle.png") != null,
