@@ -341,16 +341,18 @@ func _draw_resident(r: Dictionary) -> void:
 		var rc := Color(String(sim._race_def(r).get("tint", "#ffffff")))
 		col = col.lerp(rc, 0.3)
 		radius *= float(sim._race_def(r).get("scale", 1.0))
-	# v1.49.1: взрослые с профессией из пака Minifolks рисуются спрайтом
-	# (idle/ходьба/работа); якорь — НОГИ на позиции жителя (y-сортировка),
-	# видимый рост ~23px против 32 у рыцаря. Дети, стражи, староста и
-	# профессии без листа — прежний кружок; оттенок цвета профессии не
-	# применяем (портит арт), кроме болезней/ран
+	# v1.49.1: взрослые с профессией рисуются спрайтом (idle/ходьба/работа);
+	# якорь — НОГИ на позиции жителя (y-сортировка), видимый рост ~23px
+	# против 32 у рыцаря. Дети, спящие и профессии без листа — прежний
+	# кружок (v1.72: все взрослые — спрайты, включая стража и старосту);
+	# оттенок цвета профессии не применяем (портит арт), кроме болезней/ран
 	var working_states := ["work", "build", "harvest", "fill", "hunt", "chop", "mine", "farm"]
 	# v1.64 (п.3, ответ №108 «силуэт + палитра»): раса жителя — палитра
 	# поверх спрайта профессии и рост (дворф/гном/гоблин ниже); болезнь/рана
-	# перекрашивают сильнее; ангелу — тонкий нимб
-	var race_def: Dictionary = sim._race_def(r)
+	# перекрашивают сильнее; ангелу — тонкий нимб.
+	# v1.72.1: голему-старосте раса не перекрашивает — он «белый, без черт»
+	# (в старых сейвах ему могла накатиться случайная раса при спавне)
+	var race_def: Dictionary = Dictionary() if bool(r.get("golem", false)) else sim._race_def(r)
 	var race_tint := Color.WHITE
 	if not race_def.is_empty():
 		race_tint = Color.WHITE.lerp(Color(String(race_def.get("tint", "#ffffff"))), 0.55)
@@ -360,7 +362,7 @@ func _draw_resident(r: Dictionary) -> void:
 	elif ail == "wounded":
 		race_tint = race_tint.lerp(Color(1.0, 0.45, 0.45), 0.5)
 	var drawn_villager := false
-	if not child and not sleeping and not _is_elder_golem(r):
+	if not child and not sleeping:
 		var vx: float = 0.0
 		if not pth.is_empty():
 			vx = (pth[0] - pos).x
@@ -381,8 +383,10 @@ func _draw_resident(r: Dictionary) -> void:
 		var half := float(body.get_width()) * 0.5
 		draw_texture_rect(body, Rect2(center - Vector2(half, half),
 				Vector2(float(body.get_width()), float(body.get_width()))), false)
-	# голем-староста: белое «лицо» камня поверх кружка (он один на город)
-	if _is_elder_golem(r):
+	# голем-староста: белое «лицо» камня поверх кружка (он один на город);
+	# v1.72.1: староста рисуется спрайтом KitElder — лицо только как фолбэк,
+	# если спрайт не нарисовался
+	if _is_elder_golem(r) and not drawn_villager:
 		draw_circle(center, radius - 3.0, Color(1.0, 1.0, 1.0, 0.95))
 		draw_circle(center + Vector2(-2.0, -1.5), 1.1, Color("#3a3f4a"))
 		draw_circle(center + Vector2(2.0, -1.5), 1.1, Color("#3a3f4a"))

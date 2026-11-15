@@ -7,6 +7,7 @@ const PROFS := [
 	"smith", "smelter", "armorer", "hunter",
 	"porter", "bartender", "trader", "healer",
 	"acolyte", "guard", "crafter", "fisher",
+	"elder",
 ]
 
 const CELL := Vector2(190.0, 150.0)

@@ -256,9 +256,11 @@ const VILLAGER_PROF := {
 	"trader": "KitTrader",          # v1.72: купец (товар/мешок)
 	"healer": "KitHealer",          # v1.72: травница-лекарь (снадобье)
 	"acolyte": "KitAcolyte",        # v1.72: маг-ученик (заклинание)
-	"guard": "KitGuard",            # v1.72: стражник (выпад копьём)
+	"guard": "KitGuard",            # v1.72: стражник (щит наперевес)
 	"crafter": "KitMaster",         # v1.72: мастер (ремесленный двор, молот)
 	"fisher": "KitFisher",          # v1.72: рыбак (улов на руках)
+	"elder": "KitElder",            # v1.72.1: староста-гуманоид (старейшина-маг,
+	                                #   решение заказчика — вместо голема-кружка)
 }
 
 const VILLAGER_FRAME := 32.0     # кадр листа
