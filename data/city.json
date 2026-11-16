@@ -964,7 +964,7 @@
 		{
 			"id": "wall",
 			"w": 1,
-			"sprite": "b:wall",
+			"sprite": "b:частокол",
 			"short": "bld.short.wall",
 			"loc": "bld.wall",
 			"desc": "bld.desc.wall",
@@ -980,7 +980,7 @@
 		{
 			"id": "gate",
 			"w": 1,
-			"sprite": "b:gate",
+			"sprite": "b:ворота",
 			"short": "bld.short.gate",
 			"loc": "bld.gate",
 			"desc": "bld.desc.gate",
@@ -1085,7 +1085,7 @@
 		{
 			"id": "smelter",
 			"w": 2,
-			"sprite": "b:dom12",
+			"sprite": "b:плавильня",
 			"short": "bld.short.smelter",
 			"loc": "bld.smelter",
 			"desc": "bld.desc.smelter",
@@ -1231,7 +1231,7 @@
 		{
 			"id": "market",
 			"w": 2,
-			"sprite": "pc:шатёр",
+			"sprite": "b:рынок",
 			"short": "bld.short.market",
 			"loc": "bld.market",
 			"desc": "bld.desc.market",
@@ -1285,7 +1285,7 @@
 		{
 			"id": "bridge",
 			"w": 1,
-			"sprite": "b:bridge",
+			"sprite": "pc:мост_каменный_1",
 			"short": "bld.short.bridge",
 			"loc": "bld.bridge",
 			"desc": "bld.desc.bridge",
@@ -1339,7 +1339,7 @@
 		{
 			"id": "brewery",
 			"w": 2,
-			"sprite": "b:vinokur",
+			"sprite": "b:винокурня",
 			"short": "bld.short.brewery",
 			"loc": "bld.brewery",
 			"desc": "bld.desc.brewery",

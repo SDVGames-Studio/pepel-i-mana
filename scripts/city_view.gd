@@ -52,7 +52,9 @@ func _draw_building(b: Dictionary) -> void:
 		var ref := _bld_sprite_ref(type_id, b)
 		var tex: Texture2D = Assets.sprite(ref) if ref != "" else null
 		var drew_tex := false
-		if tex != null and not type_id in ["wall", "gate"]:
+		# v1.75.1: частокол и ворота тоже спрайтом (секция palisade/gate
+		# заказчика вместо серой схематичной коробки — замечание на стенде)
+		if tex != null:
 			var dw: float = rect.size.x * 1.5
 			var dh: float = dw * float(tex.get_height()) / float(tex.get_width())
 			# якорь — низ-footprint (по нему идёт Y-сортировка), спрайт над ним

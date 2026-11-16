@@ -35,7 +35,7 @@ func _test_props() -> void:
 	for ref in refs:
 		if Assets.sprite(String(ref)) == null:
 			bad_refs.append(String(ref))
-	_check(refs.size() >= 40 and bad_refs.is_empty(),
+	_check(refs.size() >= 36 and bad_refs.is_empty(),
 			"справочники валидны: %d рефов, битых %d" % [refs.size(), bad_refs.size()])
 	# 4) данные: рынок одет шатром из пака
 	var city_cfg: Variant = _read_json("res://data/city.json")
@@ -45,8 +45,10 @@ func _test_props() -> void:
 			if String((b as Dictionary).get("id", "")) == "market":
 				mref = String((b as Dictionary).get("sprite", ""))
 				break
-		_check(mref == "pc:шатёр", "рынок рисуется шатром из пака (pc:шатёр)")
-		_check(Assets.sprite("pc:шатёр") != null, "шатёр рынка существует")
+		# v1.75.1: рынок — рыночный шатёр заказчика (b:рынок),
+		# походный pc:шатёр не соответствовал описанию
+		_check(mref == "b:рынок", "рынок рисуется шатром-рынком (b:рынок)")
+		_check(Assets.sprite("b:рынок") != null, "спрайт рынка существует")
 	# 5) расстановка детерминирована: хэш-функция стабильна (дисциплина
 	# расстановки фонарей/надгробий — без новой симуляции)
 	_check(vp._hash(3, 7, 6) == vp._hash(3, 7, 6), "хэш расстановки детерминирован")

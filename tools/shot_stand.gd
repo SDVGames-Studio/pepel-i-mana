@@ -16,7 +16,8 @@ func _on_frame() -> void:
 	if _frames < 8:
 		return
 	var views := [Vector2(520, -120), Vector2(1100, 500), Vector2(2100, 900),
-			Vector2(2600, 1750)]
+			Vector2(3400, 1800), Vector2(5900, 1800), Vector2(8700, 1800),
+			Vector2(10620, 1800)]
 	if _stage >= views.size():
 		quit(0)
 		return

@@ -80,11 +80,16 @@ ATLAS_FILES = [
 ]
 
 
-def col_runs(band):
-    """Непрерывные по колонкам блобы ряда: [(x0, x1), ...]."""
+def slice_frames(img, y0, y1, n, fig_w):
+    """Кадры ряда: блобы фигур; слипшиеся блобы (шире 1.35 фигуры) режутся
+    по «перетяжкам» — локальным минимумам вертикальной плотности (у части
+    листов кита фигуры стоят вплотную, равная резка рождает кадры-
+    «половинки» — билборд-баг v1.72/v1.75)."""
     import numpy as np
+    band = img.crop((0, y0, img.size[0], y1 + 1))
     a = np.array(band.getchannel("A"))
-    filled = (a > 8).sum(axis=0) > 0
+    dens = (a > 8).sum(axis=0)
+    filled = dens > 0
     w = len(filled)
     runs = []
     i = 0
@@ -97,53 +102,75 @@ def col_runs(band):
             i = j + 1
         else:
             i += 1
-    return runs
-
-
-def blobs_of_row(band, fig_w):
-    """Блобы фигур ряда: осколки (инструмент/древко) клеятся к соседям,
-    слипшиеся фигуры режутся на k равных частей по средней ширине фигуры."""
-    runs = col_runs(band)
-    if not runs:
+    figs = []
+    for x0, x1 in runs:
+        bw = x1 - x0 + 1
+        if bw < 0.3 * fig_w:
+            continue   # пылинка/осколок в стороне от фигур
+        if bw <= 1.35 * fig_w:
+            figs.append((x0, x1))
+            continue
+        # перетяжки внутри слипшегося блоба
+        seg = dens[x0:x1 + 1]
+        peak = np.percentile(seg[seg > 0], 90)
+        thin = seg < peak * 0.22
+        cuts = []
+        k = 0
+        while k < len(thin):
+            if thin[k]:
+                g0 = k
+                while k + 1 < len(thin) and thin[k + 1]:
+                    k += 1
+                if k - g0 + 1 <= 0.3 * fig_w:   # узкая перетяжка, не дыра
+                    cuts.append(x0 + (g0 + k) // 2)
+            k += 1
+        if not cuts:
+            figs.append((x0, x1))
+            continue
+        edges = [x0 - 1] + cuts + [x1 + 1]
+        for t in range(len(edges) - 1):
+            a0, a1 = edges[t] + 1, edges[t + 1] - 1
+            if a1 - a0 + 1 >= 0.3 * fig_w:
+                figs.append((a0, a1))
+    if not figs:
         return []
-    small = 0.35 * fig_w      # обломки: древко копья, искры
-    merged = [list(runs[0])]
-    for r in runs[1:]:
-        if r[1] - r[0] + 1 < small:
-            continue                  # пылинка/осколок далеко от фигуры — мусор
-        merged.append(list(r))
-    out = []
-    for x0, x1 in merged:
-        w = x1 - x0 + 1
-        if w > 1.5 * fig_w:
-            k = max(2, int(round(w / fig_w)))
-            step = w / float(k)
-            for t in range(k):
-                out.append((int(x0 + t * step), int(x0 + (t + 1) * step) - 1))
-        else:
-            out.append((x0, x1))
-    return out
-
-
-def slice_frames(img, y0, y1, n, fig_w):
+    if len(figs) > n:
+        step = len(figs) / float(n)
+        figs = [figs[int(t * step)] for t in range(n)]
     frames = []
-    band = img.crop((0, y0, img.size[0], y1 + 1))
-    for x0, x1 in blobs_of_row(band, fig_w)[:n]:
+    for x0, x1 in figs:
         fr = band.crop((x0, 0, x1 + 1, band.size[1]))
         bbox = fr.getbbox()
         if bbox:
             fr = fr.crop(bbox)
         frames.append(fr)
+    while len(frames) < n:
+        frames.append(frames[len(frames) % max(1, len(frames))])
     return frames
 
 
 def estimate_fig_w(img, bands, walk_idx):
-    """Средняя ширина фигуры — по чистому ряду шага (медиана блобов 40-220px)."""
+    """Средняя ширина фигуры — медиана блобов walk-ряда (40-260px)."""
+    import numpy as np
     y0, y1 = bands[walk_idx]
-    ws = [x1 - x0 + 1 for x0, x1 in col_runs(img.crop((0, y0, img.size[0], y1 + 1)))
-          if 40 <= x1 - x0 + 1 <= 220]
+    band = img.crop((0, y0, img.size[0], y1 + 1))
+    a = np.array(band.getchannel("A"))
+    dens = (a > 8).sum(axis=0)
+    filled = dens > 0
+    ws = []
+    i = 0
+    while i < len(filled):
+        if filled[i]:
+            j = i
+            while j + 1 < len(filled) and filled[j + 1]:
+                j += 1
+            if 40 <= j - i + 1 <= 260:
+                ws.append(j - i + 1)
+            i = j + 1
+        else:
+            i += 1
     if not ws:
-        ws = [x1 - x0 + 1 for _, x1 in [(0, 0)]] or [80]
+        return 80
     ws.sort()
     return ws[len(ws) // 2]
 
