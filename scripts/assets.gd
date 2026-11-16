@@ -264,7 +264,9 @@ const VILLAGER_PROF := {
 }
 
 const VILLAGER_FRAME := 32.0     # кадр листа
-const VILLAGER_CHAR_H := 13.5    # видимый рост персонажа в кадре (альфа-бокс)
+const VILLAGER_CHAR_H := 26.0    # видимый рост фигуры в Kit-кадре (26/32,
+						 # v1.75.2: было 13.5 под старые Minifolks — жители были х2)
+
 const VILLAGER_FEET_Y := 30.0    # ноги от верха кадра
 const VILLAGER_VISIBLE_H := 27.0 # целевой видимый рост жителя (рыцарь — 31, v1.67.2)
 

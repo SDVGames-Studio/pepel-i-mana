@@ -13,7 +13,7 @@ const BLD_SPACING := 360.0
 const ROW_GAP := 420.0
 
 const VILL_HEIGHT := 64.0    # высота фигур в рядах (для читаемости)
-const MOB_HEIGHT := 72.0
+const MOB_HEIGHT := 60.0
 const BOSS_HEIGHT := 130.0
 const BLD_HEIGHT := 180.0
 
@@ -127,7 +127,7 @@ func _draw() -> void:
 		var org := Vector2(i * VILL_SPACING, row_y)
 		var pos: Vector2 = to_screen.call(org + Vector2(VILL_SPACING * 0.5, 40.0))
 		Assets.draw_villager(self, String(_villagers[i][0]), "right",
-				false, false, pos, _t + 0.13 * float(i), Color.WHITE, 1.0)
+				false, false, pos, _t + 0.13 * float(i), Color.WHITE, 2.0)
 		_label(font, pos + Vector2(0, 46), String(_villagers[i][1]))
 
 	# --- ряд 2: герой (idle-анимация рыцаря) ---
@@ -137,7 +137,7 @@ func _draw() -> void:
 	if _hero_tex != null:
 		var f := int(_t * 8.0) % 10
 		var hpos: Vector2 = to_screen.call(Vector2(140.0, row_y + 60.0))
-		var s := 96.0 / 120.0
+		var s := 62.0 / 76.0   # фигура героя ~62px при жителе ~54 (2x игры)
 		var dst := Rect2(hpos - Vector2(48.0, 80.0 * s),
 				Vector2(120.0 * s, 80.0 * s))
 		draw_texture_rect_region(_hero_tex, dst,

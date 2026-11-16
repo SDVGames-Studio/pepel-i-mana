@@ -51,28 +51,21 @@ def key_checker(rgb: np.ndarray) -> np.ndarray:
     return np.isin(lab, list(border))
 
 
-def fit_frame(rgba: Image.Image) -> Image.Image:
-    """Кадр 120x80: фигура вписана по высоте, ноги на нижнем крае."""
-    bbox = rgba.getbbox()
-    if bbox:
-        rgba = rgba.crop(bbox)
-    sc = min(TARGET_H / float(rgba.size[1]),
-             (FRAME_W - 8) / float(rgba.size[0]))
-    nw = max(1, int(rgba.size[0] * sc))
-    nh = max(1, int(rgba.size[1] * sc))
-    fig = rgba.resize((nw, nh), Image.LANCZOS)
-    canvas = Image.new("RGBA", (FRAME_W, FRAME_H), (0, 0, 0, 0))
-    canvas.paste(fig, ((FRAME_W - nw) // 2, FRAME_H - nh), fig)
-    return canvas
-
-
 def main() -> None:
+    """Единый масштаб на ВЕСЬ лист (v1.75.2): нормируем по union-высоте
+    idle-ряда, клетки режем целиком и выравниваем по низу кадра. Раньше
+    каждый кадр кадрировался и масштабировался своим фактором — фигура
+    пульсировала ростом/пропорциями (герой «дёргался»)."""
     img = Image.open(SRC).convert("RGB")
     rgb = np.array(img)
     fg = ~key_checker(rgb)
     rgba_img = np.dstack([rgb, np.where(fg, 255, 0).astype(np.uint8)])
     sheet = Image.fromarray(rgba_img, "RGBA")
     cw = img.size[0] / float(COLS)
+    idle_y0, idle_y1 = STRIPS["knight_Idle"][0]
+    idle_union = sheet.crop((0, idle_y0, img.size[0], idle_y1 + 1)).getbbox()
+    scale = TARGET_H / float(idle_union[3] - idle_union[1])
+    print("idle union:", idle_union, "scale: %.3f" % scale)
     for name, (band, picks) in STRIPS.items():
         y0, y1 = band
         idxs = list(range(COLS)) if picks is None else picks
@@ -80,7 +73,14 @@ def main() -> None:
                           (0, 0, 0, 0))
         for i, k in enumerate(idxs):
             cell = sheet.crop((int(k * cw), y0, int((k + 1) * cw), y1 + 1))
-            strip.paste(fit_frame(cell), (i * FRAME_W, 0))
+            nw = max(1, int(cell.size[0] * scale))
+            nh = max(1, int(cell.size[1] * scale))
+            if nh > FRAME_H:      # ряд с широкими взмахами (атака/смерть)
+                nw = max(1, int(nw * float(FRAME_H) / nh))
+                nh = FRAME_H
+            cell = cell.resize((nw, nh), Image.LANCZOS)
+            strip.paste(cell, (i * FRAME_W + (FRAME_W - nw) // 2,
+                               FRAME_H - nh))   # низ клетки = линия земли
         strip.save(os.path.join(OUT, name + ".png"))
         print(name, strip.size, len(idxs), "кадров")
 
