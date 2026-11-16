@@ -128,8 +128,14 @@ func _make_letter(group: String, col: Color, text: String) -> Dictionary:
 	tst.bg_color = col
 	tst.set_corner_radius_all(3)
 	tab.add_theme_stylebox_override("normal", tst)
-	tab.add_theme_stylebox_override("hover", tst.darkened(0.15))
-	tab.add_theme_stylebox_override("pressed", tst.darkened(0.25))
+	# v1.74: StyleBoxFlat не имеет darkened() — это метод Color; закладке —
+	# свои StyleBox с затемнённым bg_color (раньше письмо падало с ошибкой)
+	var tst_hover := (tst as StyleBoxFlat).duplicate()
+	tst_hover.bg_color = (tst.bg_color as Color).darkened(0.15)
+	var tst_pressed := (tst as StyleBoxFlat).duplicate()
+	tst_pressed.bg_color = (tst.bg_color as Color).darkened(0.25)
+	tab.add_theme_stylebox_override("hover", tst_hover)
+	tab.add_theme_stylebox_override("pressed", tst_pressed)
 	tab.add_theme_stylebox_override("focus", tst)
 	tab.visible = false
 	tab.pressed.connect(func() -> void:

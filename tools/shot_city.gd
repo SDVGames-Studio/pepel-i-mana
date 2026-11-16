@@ -131,6 +131,36 @@ func _decorate(city: Node, game: Node) -> void:
 		var dres: Vector3i = sim.demo_populate()
 		print("shot: demo buildings +%d (no room %d), residents +%d"
 				% [int(dres.x), int(dres.y), int(dres.z)])
+	# SHOT_RAID=<тип1,тип2,...>: враги у площади (v1.74, оценка арта)
+	if OS.get_environment("SHOT_RAID") != "":
+		if sim._enemies_cfg.is_empty():
+			var ed: Variant = sim._read_json_file("res://data/enemies.json")
+			sim._enemies_cfg = ed if ed is Array else []
+		var kinds := OS.get_environment("SHOT_RAID").split(",")
+		var spawned := 0
+		var defs := {}
+		for d in sim._enemies_cfg:
+			defs[String(d["id"])] = d
+		for k in kinds:
+			var kt := String(k).strip_edges()
+			if kt == "" or not defs.has(kt):
+				continue
+			var def: Dictionary = defs[kt]
+			var ring := 4 + (spawned / 8) * 4      # кольца по 8 врагов
+			var ang := float(spawned % 8) * TAU / 8.0 + float(spawned / 8) * 0.35
+			var tile: Vector2i = map.spawn_tile + Vector2i(
+					int(round(cos(ang) * ring)), int(round(sin(ang) * ring)))
+			sim.raiders.append({
+				"id": sim._next_id, "type": kt, "p": def,
+				"hp": int(def["hp"]), "max_hp": int(def["hp"]),
+				"pos": map.tile_center_px(tile),
+				"target": Vector2i(-1, -1), "path": PackedVector2Array(),
+				"atk_cd": 0.0, "mode": "advance",
+			})
+			sim._next_id += 1
+			spawned += 1
+		sim.raid_active = true
+		print("shot: raid spawned %d/%d" % [spawned, kinds.size()])
 	var cem: Dictionary = sim._cemetery()
 	if not cem.is_empty():
 		var c: Vector2i = cem["tile"]
