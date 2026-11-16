@@ -12,6 +12,7 @@ const LEVELS := ["low", "normal", "high"]
 @onready var version_label: Label = %VersionLabel
 @onready var new_game_button: Button = %NewGameButton
 @onready var continue_button: Button = %ContinueButton
+@onready var stand_button: Button = %StandButton
 @onready var exit_button: Button = %ExitButton
 
 
@@ -21,13 +22,16 @@ func _ready() -> void:
 	version_label.text = Loc.t("menu.version") % _read_version()
 	new_game_button.text = Loc.t("menu.new_game")
 	continue_button.text = Loc.t("menu.continue_city")
+	stand_button.text = Loc.t("menu.stand")
 	exit_button.text = Loc.t("menu.exit")
 	# «Продолжить» виден, если игра идёт ИЛИ есть файл сейва (M14-A)
 	continue_button.visible = Game.city_sim != null or Game.has_save()
-	for b in [new_game_button, continue_button, exit_button]:
+	for b in [new_game_button, continue_button, stand_button, exit_button]:
 		UITheme.apply_button(b)   # v1.68: единая тема
 	new_game_button.pressed.connect(_on_new_game_pressed)
 	continue_button.pressed.connect(_on_continue_pressed)
+	stand_button.pressed.connect(func() -> void:
+		get_tree().change_scene_to_file("res://scenes/stand.tscn"))
 	exit_button.pressed.connect(_on_exit_pressed)
 	_build_save_button()
 	_build_fullscreen_check()
