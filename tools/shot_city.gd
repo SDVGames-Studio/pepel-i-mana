@@ -125,6 +125,12 @@ func _decorate(city: Node, game: Node) -> void:
 	sim.necro_dark = 0.55
 	sim.necro_known = true
 	sim.necro_army = 5
+	# SHOT_DEMO=1: демо-застройка — все типы зданий и профессий у площади
+	# (v1.73, оценка арта домов)
+	if OS.get_environment("SHOT_DEMO") == "1":
+		var dres: Vector3i = sim.demo_populate()
+		print("shot: demo buildings +%d (no room %d), residents +%d"
+				% [int(dres.x), int(dres.y), int(dres.z)])
 	var cem: Dictionary = sim._cemetery()
 	if not cem.is_empty():
 		var c: Vector2i = cem["tile"]

@@ -413,6 +413,17 @@ func _build() -> void:
 	# в поселении НПС кнопки нет — он уже автономен (№120)
 	if not guest:
 		_add_autonomy_btn(tr_box)
+	# v1.73: демо-застройка — оценка нового арта домов/жителей на живой карте
+	var demo_btn := Button.new()
+	demo_btn.text = Loc.t("city.demo_btn")
+	demo_btn.tooltip_text = Loc.t("city.demo_tip")
+	demo_btn.custom_minimum_size = Vector2(96, 40)
+	demo_btn.add_theme_font_size_override("font_size", 15)
+	demo_btn.focus_mode = Control.FOCUS_NONE
+	demo_btn.pressed.connect(func() -> void:
+		var dres: Vector3i = sim.demo_populate()
+		toast(Loc.t("city.demo_toast") % [int(dres.x), int(dres.y), int(dres.z)]))
+	tr_box.add_child(demo_btn)
 
 	# --- тост по центру сверху
 	# v1.68: стек тостов — до 3 событий видны одновременно, каждое в

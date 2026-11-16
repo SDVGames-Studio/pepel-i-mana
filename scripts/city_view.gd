@@ -63,8 +63,11 @@ func _draw_building(b: Dictionary) -> void:
 			draw_rect(rect, col)
 			draw_rect(rect.grow(-2), col.darkened(0.3), false, 2.0)
 			_draw_bld_door(b, rect)
-		if type_id == "tent":
-			_draw_tent_awning(rect)   # полосатый навес — торговая читаемость (этап 2)
+		# v1.73: навес палатки больше не рисуем — в арте sanct_26 свой
+		# полосатый тент; схематичный навес остался в _draw_tent_awning
+		# (нужен, если спрайт палатки пропадёт)
+		if type_id == "tent" and tex == null:
+			_draw_tent_awning(rect)
 		# точка-работник: занятое здание подсвечено
 		if int(b["worker"]) > 0:
 			draw_circle(rect.position + Vector2(rect.size.x - 6.0, 6.0), 2.5, Color(1, 1, 1, 0.95))

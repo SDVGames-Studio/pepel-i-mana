@@ -769,7 +769,7 @@
 		},
 		{
 			"id": "smelter",
-			"sprite": "k:86",
+			"sprite": "b:плавильня",
 			"loc": "prof.smelter",
 			"color": "#ff8a65"
 		},
@@ -856,7 +856,7 @@
 		{
 			"id": "farm",
 			"w": 2,
-			"sprite": "b:амбар",
+			"sprite": "b:ферма_грядки",
 			"short": "bld.short.farm",
 			"loc": "bld.farm",
 			"desc": "bld.desc.farm",
@@ -873,7 +873,7 @@
 		{
 			"id": "sawmill",
 			"w": 2,
-			"sprite": "b:dom4",
+			"sprite": "b:лесопилка",
 			"short": "bld.short.sawmill",
 			"loc": "bld.sawmill",
 			"desc": "bld.desc.sawmill",
@@ -905,7 +905,7 @@
 		{
 			"id": "quarry",
 			"w": 2,
-			"sprite": "b:dom9",
+			"sprite": "b:каменоломня",
 			"short": "bld.short.quarry",
 			"loc": "bld.quarry",
 			"desc": "bld.desc.quarry",
@@ -939,7 +939,7 @@
 		{
 			"id": "workshop",
 			"w": 2,
-			"sprite": "b:dom11",
+			"sprite": "b:мастерская",
 			"short": "bld.short.workshop",
 			"loc": "bld.workshop",
 			"desc": "bld.desc.workshop",
@@ -997,7 +997,7 @@
 		{
 			"id": "tower",
 			"w": 2,
-			"sprite": "b:башня_каменная",
+			"sprite": "b:вышка",
 			"short": "bld.short.tower",
 			"loc": "bld.tower",
 			"desc": "bld.desc.tower",
@@ -1033,7 +1033,7 @@
 		{
 			"id": "healer_hut",
 			"w": 2,
-			"sprite": "b:dom15",
+			"sprite": "b:хижина_лекаря",
 			"short": "bld.short.healer_hut",
 			"loc": "bld.healer_hut",
 			"desc": "bld.desc.healer_hut",
@@ -1068,7 +1068,7 @@
 		{
 			"id": "mine",
 			"w": 2,
-			"sprite": "b:dom13",
+			"sprite": "b:шахта",
 			"short": "bld.short.mine",
 			"loc": "bld.mine",
 			"desc": "bld.desc.mine",
@@ -1133,7 +1133,7 @@
 		{
 			"id": "armory",
 			"w": 2,
-			"sprite": "b:dom17",
+			"sprite": "b:оружейная",
 			"short": "bld.short.armory",
 			"loc": "bld.armory",
 			"desc": "bld.desc.armory",
@@ -1318,7 +1318,7 @@
 		{
 			"id": "craftsman",
 			"w": 2,
-			"sprite": "b:workshop",
+			"sprite": "b:ремесленный_двор",
 			"short": "bld.short.craftsman",
 			"loc": "bld.craftsman",
 			"desc": "bld.desc.craftsman",

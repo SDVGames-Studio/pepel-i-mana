@@ -38,14 +38,23 @@ func _test_races() -> void:
 		_check(String(loc.get("race." + String(id), "")) != "",
 				"локализация расы: " + String(id))
 
-	# генерация: броски дают людей чаще прочих, покрывают большинство рас
+	# генерация: v1.73 флаг races_enabled=false (ассетов рас нет) — все люди;
+	# при включённом флаге броски дают людей чаще прочих, покрывают расы
 	var sim := _make_sim()
 	var seen: Dictionary = {"human": 0}
 	for i in 400:
 		var rid := String(sim._roll_race())
 		seen[rid] = int(seen.get(rid, 0)) + 1
-	_check(int(seen.get("human", 0)) > 150, "люди — самая частая раса (%d из 400)" % int(seen.get("human", 0)))
-	_check(seen.size() >= 7, "броски покрывают расы (%d видов)" % seen.size())
+	_check(seen.size() == 1 and int(seen.get("human", 0)) == 400,
+			"расы отключены (races_enabled=false): все 400 человек")
+	sim.people["races_enabled"] = true
+	var seen2: Dictionary = {"human": 0}
+	for i in 400:
+		var rid := String(sim._roll_race())
+		seen2[rid] = int(seen2.get(rid, 0)) + 1
+	_check(int(seen2.get("human", 0)) > 150, "люди — самая частая раса (%d из 400)" % int(seen2.get("human", 0)))
+	_check(seen2.size() >= 7, "броски покрывают расы (%d видов)" % seen2.size())
+	sim.people["races_enabled"] = false
 	_check(String(sim.residents[0].get("race", "?")) != "?", "у новых жителей есть раса")
 
 	# статы: орк силённее того же пула на +2 (модификатор в _stat);

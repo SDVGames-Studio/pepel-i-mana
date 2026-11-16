@@ -1,4 +1,5 @@
 {
+  "races_enabled": false,
   "traits_per_resident_min": 1,
   "traits_per_resident_max": 2,
   "mood_base": 50.0,

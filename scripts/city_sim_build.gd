@@ -290,6 +290,91 @@ func _spots_dirty() -> void:
 
 # --- стройка -------------------------------------------------------------
 
+const DEMO_PROFS := ["builder", "lumberjack", "farmer", "miner", "smith",
+		"smelter", "armorer", "hunter", "porter", "bartender", "trader",
+		"healer", "acolyte", "guard", "crafter", "fisher"]
+
+## Демо-застройка (v1.73, оценка нового арта домов): у площади появляется
+## по зданию КАЖДОГО типа (мгновенно достроено, бесплатно) и по жителю
+## каждой профессии. Идемпотентно: стоящие типы и живые профессии не
+## дублируются — кнопкой можно «досыпать» после расширения города.
+## Возвращает Vector3i(зданий +, без места, жителей +).
+func demo_populate() -> Vector3i:
+	var have_types := {}
+	for b in buildings:
+		have_types[String(b["type"])] = true
+	var added_b := 0
+	var no_room := 0
+	for d in cfg["buildings"]:
+		var tid := String(d["id"])
+		if have_types.has(tid) or String(tid) == "bridge":
+			continue   # мост — только на воде по руслу, демо не решает
+		var tile := _demo_find_tile(tid)
+		if tile == Vector2i(-1, -1):
+			no_room += 1
+			continue
+		_demo_place(tid, tile)
+		added_b += 1
+	var have_profs := {}
+	for r in residents:
+		if String(r.get("ail", "")) != "dead":
+			have_profs[String(r["prof"])] = true
+	var names: Array = cfg["names"]
+	var added_r := 0
+	for prof in DEMO_PROFS:
+		if have_profs.has(prof):
+			continue
+		var off := Vector2i((_next_id % 13) - 6, (_next_id % 9) - 4)
+		var tile2: Vector2i = map.nearest_walkable(map.spawn_tile + off)
+		var nm: String = String(names[_next_id % names.size()])
+		var r2 := _new_resident(nm, prof, tile2)
+		r2["traits"] = []          # демо-житель без характера — оценка облика
+		residents.append(r2)
+		_next_id += 1
+		added_r += 1
+	_bld_ver += 1
+	_assign_jobs()
+	return Vector3i(added_b, no_room, added_r)
+
+
+## Спираль вокруг площади: первая клетка, где тип можно ставить (с зазором
+## между зданиями — иначе спрайты соседей перекрывают друг друга).
+func _demo_find_tile(type_id: String) -> Vector2i:
+	var spawn: Vector2i = map.spawn_tile
+	for radius in range(3, 40):
+		for dy in range(-radius, radius + 1):
+			for dx in range(-radius, radius + 1):
+				if maxi(absi(dx), absi(dy)) != radius:
+					continue   # только периметр квадрата
+				var t: Vector2i = spawn + Vector2i(dx, dy)
+				if not map.in_bounds(t):
+					continue
+				if is_buildable_tile(t, type_id) and placement_block(type_id, t) == "" \
+						and placement_gap_ok(type_id, t):
+					return t
+	return Vector2i(-1, -1)
+
+
+## Бесплатная мгновенная постройка без лимитов числа (демо-оценка арта).
+func _demo_place(type_id: String, tile: Vector2i) -> void:
+	var def := _def({"type": type_id})
+	if def.is_empty():
+		return
+	buildings.append({
+		"id": _next_id, "type": type_id, "tile": tile,
+		"w": int(def.get("w", 1)), "done": true, "progress": 0.0,
+		"worker": -1, "enchant": "", "ench_mult": 1.0, "stun_left": 0.0,
+		"hp": float(_bld_max_hp(type_id)), "pile": {},
+	})
+	_next_id += 1
+	var w := int(def.get("w", 1))
+	for dy in w:
+		for dx in w:
+			map.remove_road(tile + Vector2i(dx, dy))
+			_drop_zone_cell(tile + Vector2i(dx, dy))
+	events.append({"type": "site", "bld": type_id})
+
+
 ## Тайл годен под стройку: проходимая суша (или руда под шахту), нет здания, не аномалия.
 func is_buildable_tile(tile: Vector2i, type_id := "") -> bool:
 	if not map.in_bounds(tile) or tile == map.anomaly_tile:

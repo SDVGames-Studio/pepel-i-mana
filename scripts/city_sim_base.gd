@@ -357,7 +357,10 @@ func _spawn_golem() -> void:
 ## Раса жителя (v1.64, п.3 — ответ №108: орк/нежить/ангел/демон/гоблин/
 ## кобольд/дворф/гном; различение «силуэт + палитра»): вес — доля среди
 ## беженцев, палитра/рост/статы — data/residents.json -> races.
+## v1.73: флаг races_enabled=false (ассетов рас пока нет) — все люди.
 func _roll_race() -> String:
+	if not bool(people.get("races_enabled", true)):
+		return "human"
 	var races: Dictionary = people.get("races", {})
 	if races.is_empty():
 		return "human"
