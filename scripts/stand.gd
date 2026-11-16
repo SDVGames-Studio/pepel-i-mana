@@ -130,19 +130,31 @@ func _draw() -> void:
 				false, false, pos, _t + 0.13 * float(i), Color.WHITE, 2.0)
 		_label(font, pos + Vector2(0, 46), String(_villagers[i][1]))
 
-	# --- ряд 2: герой (idle-анимация рыцаря) ---
+	# --- ряд 2: герой во ВСЕХ анимациях (v1.75.3) ---
 	row_y += ROW_GAP
 	_row_caption(font, to_screen, Vector2(-VILL_SPACING, row_y - 150.0),
 			Loc.t("stand.row_hero"))
-	if _hero_tex != null:
-		var f := int(_t * 8.0) % 10
-		var hpos: Vector2 = to_screen.call(Vector2(140.0, row_y + 60.0))
-		var s := 62.0 / 76.0   # фигура героя ~62px при жителе ~54 (2x игры)
-		var dst := Rect2(hpos - Vector2(48.0, 80.0 * s),
-				Vector2(120.0 * s, 80.0 * s))
-		draw_texture_rect_region(_hero_tex, dst,
+	var hero_anims := [
+		["knight_Idle", 5.0, "Айдл"], ["knight_Run", 12.0, "Бег"],
+		["knight_Attack", 12.0, "Атака"], ["knight_Cast", 10.0, "Магия"],
+		["knight_Roll", 14.0, "Рывок"], ["knight_Death", 8.0, "Смерть"],
+	]
+	var hsp := 62.0 / 76.0   # фигура героя ~62px при жителе ~54 (2x игры)
+	for i in range(hero_anims.size()):
+		var spec: Array = hero_anims[i]
+		var htex: Texture2D = Assets.tex(
+				"res://assets/sprites/hero/%s.png" % String(spec[0]))
+		if htex == null:
+			continue
+		var hn := int(htex.get_width()) / 120
+		var f := int(_t * float(spec[1])) % maxi(1, hn)
+		var hpos: Vector2 = to_screen.call(
+				Vector2(150.0 + 220.0 * float(i), row_y + 60.0))
+		var dst := Rect2(hpos - Vector2(60.0, 80.0 * hsp),
+				Vector2(120.0 * hsp, 80.0 * hsp))
+		draw_texture_rect_region(htex, dst,
 				Rect2(float(f) * 120.0, 0, 120, 80))
-		_label(font, hpos + Vector2(0, 30), Loc.t("stand.hero"))
+		_label(font, hpos + Vector2(0, 30), String(spec[2]))
 
 	# --- ряд 3: монстры (обычные) ---
 	row_y += ROW_GAP

@@ -327,6 +327,7 @@ func _cast_spell(spell_id: String, free_cast := false) -> void:
 		hud.toast(Loc.t("magic.no_mana"))
 		return
 	hero.mana -= cost
+	hero.play_anim("cast")   # v1.75.3: жест магии
 	SfxLib.play("spell_" + String(Game.magic.spell(spell_id).get("school", "wild")))   # v1.65.3
 	Game.spell_cast(spell_id)   # v1.66: прокачка использованием
 	# магия качает стату (v1.24): заклинания — интеллект, трата маны — мудрость

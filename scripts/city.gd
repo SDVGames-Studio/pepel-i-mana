@@ -100,6 +100,8 @@ func cast_combat_spell(spell_id: String) -> void:
 	var err: String = _cast_combat_spell(spell_id)
 	if err == "":
 		var lvl := Game.spell_cast(spell_id)   # v1.66: прокачка использованием
+		if hero != null and is_instance_valid(hero):
+			hero.play_anim("cast")   # v1.75.3: жест магии
 		SfxLib.play("spell_" + String(Game.magic.spell(spell_id).get("school", "wild")))
 		hud.toast(Loc.t("magic.cast_done") % Loc.t("spell." + spell_id)
 				+ (" " + Loc.t("magic.level") % lvl if lvl > 0 else ""))

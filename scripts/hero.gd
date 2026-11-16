@@ -63,7 +63,8 @@ static func build_knight_frames() -> SpriteFrames:
 	if not sf.has_animation("default"):
 		sf.add_animation("default")
 	var defs := {
-		"idle": ["knight_Idle", 8.0, true],
+		"idle": ["knight_Idle", 5.0, true],    # v1.75.3: медленный цикл дыхания
+		"cast": ["knight_Cast", 10.0, false],  # v1.75.3: каст заклинания
 		"run": ["knight_Run", 12.0, true],
 		"attack": ["knight_Attack", 12.0, false],
 		"roll": ["knight_Roll", 14.0, false],
@@ -86,6 +87,16 @@ static func build_knight_frames() -> SpriteFrames:
 			at.region = Rect2(i * KNIGHT_FRAME, 0, KNIGHT_FRAME, KNIGHT_FRAME_H)
 			sf.add_frame(anim, at)
 	return sf
+
+
+## Проиграть анимацию героя (v1.75.3): раньше play() вызывался один раз
+## при спавне — атака/рывок/каст/смерть не анимировались вовсе.
+func play_anim(a: String) -> void:
+	if _sprite == null or dead:
+		return
+	if _sprite.animation != a:
+		_sprite.play(a)
+	queue_redraw()
 
 
 ## Масштаб спрайта: высота персонажа в кадре → целевая (3.2 радиуса).
@@ -242,6 +253,9 @@ func _ready() -> void:
 	# видимый AnimatedSprite2D — «два персонажа»). В городе тело и меч
 	# выводит draw_body в общий Y-сортированный слой city_view (M12).
 	_sprite.visible = false
+	_sprite.animation_finished.connect(func() -> void:
+		if not dead and _sprite.animation != "idle":
+			_sprite.play("idle"))
 	add_child(_sprite)
 	var cam := Camera2D.new()
 	cam.name = "Camera"
@@ -348,6 +362,7 @@ func _physics_process(delta: float) -> void:
 			facing = dir.normalized()
 			_dash_left = float(p["dash_time"])
 			_dash_cd = float(p["dash_cooldown"]) * skill_mult("dash_cd_mult", 1.0) * eq_mult("dash_cd_mult", 1.0)
+			play_anim("roll")   # v1.75.3
 		if _dash_left > 0.0:
 			_dash_left -= delta
 			var dash_speed_c := float(p["dash_distance"]) / float(p["dash_time"])
@@ -388,6 +403,8 @@ func _drive_anim() -> void:
 		want = "roll"
 	elif _sprite.animation == "attack" and _sprite.is_playing():
 		want = "attack"          # замах не перебивается ходьбой до конца кадра
+	elif _sprite.animation == "cast" and _sprite.is_playing():
+		want = "cast"            # v1.75.3: жест магии дорабатывает до конца
 	elif velocity.length() > 5.0:
 		want = "run"
 	if _sprite.animation != want:
@@ -411,6 +428,7 @@ func try_attack() -> void:
 	var wpn: Dictionary = Game.weapon_params()
 	var cd := float(wpn.get("attack_cooldown", p["attack_cooldown"]))
 	_attack_cd = cd * skill_mult("attack_cd_mult", 1.0)
+	play_anim("attack")   # v1.75.3
 	var to_mouse := get_global_mouse_position() - global_position
 	if to_mouse.length() > 4.0:
 		facing = to_mouse.normalized()

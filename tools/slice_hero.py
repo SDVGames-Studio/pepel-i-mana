@@ -33,6 +33,8 @@ STRIPS = {
     "knight_Attack": (ROWS[5], [5, 6, 7, 8, 9, 10]),
     "knight_Roll":   (ROWS[4], None),
     "knight_Death":  (ROWS[10], None),
+    "knight_Cast":   (ROWS[6], None),     # магия (взмах заклинания)
+    "knight_Explode": (ROWS[7], None),    # вспышка заклинания
 }
 
 
