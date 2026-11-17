@@ -69,7 +69,7 @@ func _test_v149_assets() -> void:
 	for anim in ["idle", "run", "attack", "roll", "death"]:
 		_check(frames.has_animation(anim), "анимация рыцаря: %s" % anim)
 	_check(frames.get_frame_count("idle") == 6, "idle — 6 кадров дыхания (v1.75.4)")
-	_check(frames.get_frame_count("attack") == 6, "attack — 6 кадров (v1.74)")
+	_check(frames.get_frame_count("attack") == 3, "attack — 3 кадра по разметке заказчика (v1.75.7)")
 	# жители: маппинг профессий на листы Minifolks
 	var AssetsSc = load("res://scripts/assets.gd")
 	_check(AssetsSc.VILLAGER_PROF.has("lumberjack"), "лесоруб имеет лист Minifolks")

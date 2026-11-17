@@ -67,15 +67,17 @@ static func build_knight_frames() -> SpriteFrames:
 	var defs := {
 		"idle": ["knight_Idle", 2.5, true],   # дыхание 2.4с (v1.75.6: ещё медленнее)
 		"cast": ["knight_Cast", 10.0, false],  # жест магии
-		"run": ["knight_Run", 12.0, true],      # вбок
-		"run_up": ["knight_RunUp", 12.0, true],    # спиной вверх (v1.75.4)
-		"run_down": ["knight_RunDown", 12.0, true], # анфас вниз (v1.75.4)
-		"attack": ["knight_Attack", 12.0, false],
-		"roll": ["knight_Roll", 14.0, false],
+		# v1.75.7: полосы пересобраны из кадров, отобранных заказчиком
+		# (tools/hero_frames «<группа> (N)»); fps под новые счёта кадров
+		"run": ["knight_Run", 10.0, true],      # вбок (5 кадров)
+		"run_up": ["knight_RunUp", 12.0, true],    # спиной вверх (атлас)
+		"run_down": ["knight_RunDown", 6.0, true], # анфас вниз (2 кадра)
+		"attack": ["knight_Attack", 8.0, false],   # 3 кадра, взмах 0.4с
+		"roll": ["knight_Roll", 14.0, false],      # дэш-поза (1 кадр)
 		"ready": ["knight_Ready", 3.0, true],   # боевая стойка (v1.75.4)
-		"crouch": ["knight_Crouch", 8.0, true], # присед (v1.75.4)
+		"crouch": ["knight_Crouch", 8.0, true], # крадучись (10 кадров)
 		"hurt": ["knight_Hurt", 15.0, false],   # урон (v1.75.4)
-		"death": ["knight_Death", 8.0, false],
+		"death": ["knight_Death", 7.0, false],     # 7 кадров
 	}
 	for anim: String in defs:
 		var d: Array = defs[anim]
@@ -419,16 +421,15 @@ func _drive_anim() -> void:
 		want = "cast"            # v1.75.3: жест магии дорабатывает до конца
 	elif _sprite.animation == "hurt" and _sprite.is_playing():
 		want = "hurt"            # v1.75.4: отброс урона дорабатывает
+	elif _crouch:               # v1.75.7: крадучись и в движении —
+		want = "crouch"          # 10-кадровый цикл подкрадывания
 	elif velocity.length() > 5.0:
-		# v1.75.4: направленный бег — атлас содержит три ряда (вбок/
-		# спиной вверх/анфас вниз); раньше боковой ряд гонялся для всех
-		# направлений и «проскакивали» чужие ракурсы
+		# v1.75.4: направленный бег — вбок/спиной вверх/анфас вниз;
+		# влево — зеркало бег-вправо (отзеркаливание, решение заказчика)
 		if absf(velocity.y) > absf(velocity.x) * 1.3:
 			want = "run_down" if velocity.y > 0.0 else "run_up"
 		else:
 			want = "run"
-	elif _crouch:               # v1.75.5: присед сильнее боевой стойки
-		want = "crouch"
 	elif _combat_until > 0.0:   # v1.75.4: после боя — стойка с мечом
 		want = "ready"
 	if _sprite.animation != want:
