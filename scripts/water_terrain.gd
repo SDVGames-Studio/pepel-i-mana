@@ -63,6 +63,7 @@ func setup(terrain_ref, cfg_colors: Dictionary) -> void:
 		_texs[kind] = Assets.tex("res://assets/sprites/env/n2_water_%s.png" % kind)
 	# v1.50 «Живая земля»: вода — 6-кадровая анимация ForgottenMemories;
 	# кадры полосы 192×96: колонка = кадр, ряд = вариант фактуры
+	# v1.76 «Лето»: летняя вода из атласа заказчика
 	_fm_water = Assets.tex("res://assets/sprites/env/fm_water.png")
 	# духовка статики: v1.43 — большие карты пекутся 8px/тайл (LINEAR при
 	# уменьшении, глобальный NEAREST растягивает обратно в _draw)
@@ -206,6 +207,12 @@ func _draw() -> void:
 ## полосы fm_water (6 кадров), фактура — ряд ПО МИРОВОМУ Y (строки полосы
 ## стыкуются без швов по вертикали). Тон — под палитру игры: озеро глубже,
 ## река светлее, болото глухо-зелёное (тина поверх — в запечке).
+## v1.76 «Лето»: сменить полосу воды по сезону (запекать не нужно —
+## вода рисуется живым слоем).
+func reload_water(summer: bool) -> void:
+	_fm_water = Assets.tex("res://assets/sprites/env/summer/fm_water_summer.png") if summer else Assets.tex("res://assets/sprites/env/fm_water.png")
+
+
 func _draw_fm_water() -> void:
 	var ts := float(map.ts)
 	var xf := get_viewport_transform()

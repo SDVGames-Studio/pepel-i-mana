@@ -27,6 +27,7 @@ var _grass_shades: Array = []
 # 3 тона-семейства (L/M/D) × 2 варианта, генератор tools/make_video_grass.py.
 # Семейство выбирает крупный шум (пятна луга), вариант — хэш тайла.
 var _grass_texs: Array = []
+var _grass_fills: Array = []   # v1.76.1: подложки среднего цвета (лето)
 var _rock_deep := Color("#565248")
 var _water_lake := Color("#3f87b5")   # v1.29.1: озеро — яркая синь
 var _water_river := Color("#57b2d4")  # v1.29.1: река — светло-бирюзовая
@@ -78,11 +79,7 @@ func setup(city_map, city_cfg: Dictionary, city_sim = null, cache_key := "") -> 
 	# (3 тона-семейства × 2 варианта, каждый тайл с нарисованными травинками).
 	# FM-плоская база давала гигантские одноцветные «плиты» — возвращено.
 	# Из ForgottenMemories остались: земля мелких проплешин, вода, декор.
-	_grass_texs = []
-	for fam in ["L", "M", "D"]:
-		for v in 2:
-			_grass_texs.append(Assets.tex(
-					"res://assets/sprites/env/grass_%s%d.png" % [fam, v + 1]))
+	_grass_texs = _load_grass_set()
 	_rock_deep = colors.get("rock_deep", Color("#565248"))
 	_water_lake = colors.get("water_lake", _water_lake)
 	_water_river = colors.get("water_river", _water_river)
@@ -434,3 +431,28 @@ func _snapshot_static() -> void:
 
 func _static_increment(edits: Array) -> void:
 	pass
+
+
+# v1.76 «Лето»: сезонная трава из атласа заказчика (summer/grass_S1..S6)
+# против обычной dual-grid травы; вызывается при старте и смене сезона.
+func _load_grass_set() -> Array:
+	var summer: bool = sim != null and sim.has_method("season") and String(sim.season()) == "summer"
+	var out: Array = []
+	if summer:
+		for i in range(6):
+			out.append(Assets.tex(
+					"res://assets/sprites/env/summer/grass_S%d.png" % (i + 1)))
+		var fills: Array = []
+		for i in range(6):
+			fills.append(Assets.tex(
+					"res://assets/sprites/env/summer/grass_S%d_fill.png" % (i + 1)))
+		if out[0] != null and fills[0] != null:
+			_grass_fills = fills   # v1.76.1: подложка среднего цвета тайла
+			return out
+	for fam in ["L", "M", "D"]:
+		for v in 2:
+			out.append(Assets.tex(
+					"res://assets/sprites/env/grass_%s%d.png" % [fam, v + 1]))
+	_grass_fills = []
+	return out
+

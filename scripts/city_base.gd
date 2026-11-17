@@ -104,6 +104,8 @@ func _ready() -> void:
 	# над запечённой землёй, под тенями и жителями
 	_water = load("res://scripts/water_terrain.gd").new()
 	_water.setup(_terrain, _terrain.colors)
+	_season_loaded = String(sim.season())
+	_water.reload_water(_season_loaded == "summer")   # v1.76: лето — полоса воды заказчика
 	add_child(_water)
 	# тени солнечного цикла (v1.27): под объектами, над ландшафтом
 	_sky_shadows = SKY.new()
@@ -323,6 +325,7 @@ func _leftover_line() -> String:
 
 var _hud_refresh_accum := 0.0     # троттлинг HUD (v1.21): панели не чаще 4 раз/сек
 var _terrain_redraw_accum := 0.0  # ландшафт перерисовывается не чаще 2 раз/сек
+var _season_loaded := ""         # v1.76: сезон, под который загружена земля
 var _hero_last_land := Vector2(-99999, -99999)  # последняя точка героя на суше (вода непроходима)
 var _baked_grid_ver := -1   # версия сетки, на которую запечена земля (v1.28.1)
 
@@ -337,6 +340,15 @@ func _process(delta: float) -> void:
 	if not hero.dead:
 		sim.hero_pos = hero.global_position
 		sim.hero_alive = true
+	# v1.76 «Лето»: смена сезона — перезагрузить сезонную землю/воду/деревья
+	if _season_loaded == "":
+		_season_loaded = String(sim.season())
+	elif _season_loaded != String(sim.season()):
+		_season_loaded = String(sim.season())
+		if _terrain != null:
+			_terrain.reload_season()
+		if _water != null and _water.has_method("reload_water"):
+			_water.reload_water(_season_loaded == "summer")
 	# меч героя и ландшафт меняются — перерисовываем точечно
 	hero.queue_redraw()
 	# болотная зона города (M14-I): тайлы у воды вязнут — герой медленнее.

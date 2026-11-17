@@ -31,6 +31,11 @@ func _draw_tiles(region: Rect2i) -> void:
 				map.TILE_GRASS, map.TILE_TREE:
 					var tex: Texture2D = _grass_texture_at(x, y)
 					if tex != null:
+						# v1.76.1: у летних тайлов растушёванные края — под ними
+						# заливка среднего цвета тайла (скрывает квадратные швы)
+						var fi := _grass_index_at(x, y)
+						if fi >= 0 and fi < _grass_fills.size() and _grass_fills[fi] != null:
+							_drawer.draw_texture_rect(_grass_fills[fi], rect, false)
 						_drawer.draw_texture_rect(tex, rect, false)
 					else:
 						_drawer.draw_rect(rect, _grass_at(x, y))
@@ -595,6 +600,21 @@ func _grass_at(x: int, y: int) -> Color:
 ## Текстура травяного тайла — как в принятой v1.32: семейство тонов
 ## (L/M/D) — крупный шум пятен луга, вариант внутри семейства — хэш тайла
 ## (соседние тайлы всегда разные, повтор 32px не ловится глазом).
+## v1.76 «Лето»: перезагрузить сезонные текстуры земли и пересобрать чанки.
+func reload_season() -> void:
+	_grass_texs = _load_grass_set()
+	rebake(true, int(map.grid_ver))
+
+
+## v1.76.1: индекс выбранного травяного тайла (для подложки лета).
+func _grass_index_at(x: int, y: int) -> int:
+	if _grass_texs.is_empty():
+		return -1
+	var fam := clampi(int(_noise2(x / 7.0, y / 7.0, 3, 11)), 0, 2)
+	var v: int = _hash(x, y, 2)
+	return fam * 2 + v
+
+
 func _grass_texture_at(x: int, y: int) -> Texture2D:
 	if _grass_texs.is_empty():
 		return null

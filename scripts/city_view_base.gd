@@ -447,7 +447,11 @@ func _build_tree_desc(tile: Vector2i, ts: float) -> Array:
 		return [bottom.y, "stump", tile, null, Rect2(), Rect2(), bottom, ts * 0.3]
 	var scale := ts * 1.9 if kind == map.TREE_SMALL \
 			else (ts * 2.4 if kind == map.TREE_MEDIUM else ts * 3.0)
-	var ref: String = TREE_REFS[_hash(tile.x, tile.y, TREE_REFS.size())]
+	# v1.76 «Лето»: летние деревья из атласа заказчика
+	var tree_refs: Array = TREE_REFS
+	if sim != null and sim.has_method("season") and String(sim.season()) == "summer":
+		tree_refs = SUMMER_TREE_REFS
+	var ref: String = tree_refs[_hash(tile.x, tile.y, tree_refs.size())]
 	# тёмный лес у болот (v1.39.2, заказчик): деревья в 2 тайлах от воды
 	# болота рисуются затемнёнными вариантами (мрачная хвоя/ива)
 	if _near_swamp(tile):
@@ -519,6 +523,9 @@ func _tree_composite(ref: String, t: Texture2D, src: Rect2) -> ImageTexture:
 
 const TREE_REFS := ["e:tree2_red", "e:tree2_pine", "e:tree2_birch",
 		"e:tree2_teal", "e:tree2_willow"]
+# v1.76 «Лето»: деревья из атласа заказчика (summer/decor)
+const SUMMER_TREE_REFS := ["e:tree2_summer_oak", "e:tree2_summer_pine",
+		"e:tree2_summer_birch", "e:tree2_summer_willow", "e:tree2_summer_dead"]
 
 
 const DARK_TREE_REFS := ["e:tree2_dark_pine", "e:tree2_dark_willow"]
