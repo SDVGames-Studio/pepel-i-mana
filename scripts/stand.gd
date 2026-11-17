@@ -135,7 +135,7 @@ func _draw() -> void:
 	_row_caption(font, to_screen, Vector2(-VILL_SPACING, row_y - 150.0),
 			Loc.t("stand.row_hero"))
 	var hero_anims := [
-		["knight_Idle", 5.0, "Айдл"], ["knight_Run", 12.0, "Бег вбок"],
+		["knight_Idle", 2.5, "Айдл"], ["knight_Run", 12.0, "Бег вбок"],
 		["knight_RunUp", 12.0, "Бег вверх"], ["knight_RunDown", 12.0, "Бег вниз"],
 		["knight_Attack", 12.0, "Атака"], ["knight_Ready", 3.0, "Готовность"],
 		["knight_Cast", 10.0, "Магия"], ["knight_Crouch", 8.0, "Присед"],

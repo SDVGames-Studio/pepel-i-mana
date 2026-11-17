@@ -65,7 +65,7 @@ static func build_knight_frames() -> SpriteFrames:
 	if not sf.has_animation("default"):
 		sf.add_animation("default")
 	var defs := {
-		"idle": ["knight_Idle", 5.0, true],    # дыхание (6 кадров)
+		"idle": ["knight_Idle", 2.5, true],   # дыхание 2.4с (v1.75.6: ещё медленнее)
 		"cast": ["knight_Cast", 10.0, false],  # жест магии
 		"run": ["knight_Run", 12.0, true],      # вбок
 		"run_up": ["knight_RunUp", 12.0, true],    # спиной вверх (v1.75.4)
@@ -400,6 +400,7 @@ func _physics_process(delta: float) -> void:
 	move_and_slide()
 	_play_step(delta, velocity.length() > 5.0)
 	_drive_anim()
+	queue_redraw()   # v1.75.6: _draw кэшируется — без редрава герой в данже статичен
 
 
 ## Выбор анимации рыцаря по состоянию: смерть → рывок → замах (доигрывается)
