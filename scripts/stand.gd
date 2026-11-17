@@ -135,9 +135,12 @@ func _draw() -> void:
 	_row_caption(font, to_screen, Vector2(-VILL_SPACING, row_y - 150.0),
 			Loc.t("stand.row_hero"))
 	var hero_anims := [
-		["knight_Idle", 5.0, "Айдл"], ["knight_Run", 12.0, "Бег"],
-		["knight_Attack", 12.0, "Атака"], ["knight_Cast", 10.0, "Магия"],
-		["knight_Roll", 14.0, "Рывок"], ["knight_Death", 8.0, "Смерть"],
+		["knight_Idle", 5.0, "Айдл"], ["knight_Run", 12.0, "Бег вбок"],
+		["knight_RunUp", 12.0, "Бег вверх"], ["knight_RunDown", 12.0, "Бег вниз"],
+		["knight_Attack", 12.0, "Атака"], ["knight_Ready", 3.0, "Готовность"],
+		["knight_Cast", 10.0, "Магия"], ["knight_Crouch", 8.0, "Присед"],
+		["knight_Roll", 14.0, "Рывок"], ["knight_Hurt", 15.0, "Урон"],
+		["knight_Death", 8.0, "Смерть"],
 	]
 	var hsp := 62.0 / 76.0   # фигура героя ~62px при жителе ~54 (2x игры)
 	for i in range(hero_anims.size()):

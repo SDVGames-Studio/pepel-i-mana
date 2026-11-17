@@ -17,6 +17,7 @@ var bonus_damage := 0             # боевые комплекты героя �
 var bonus_armor := 0              # плоское снижение входящего урона
 
 var _dash_left := 0.0
+var _combat_until := 0.0    # v1.75.4: до этого времени вместо дыхания — боевая стойка
 var _dash_cd := 0.0
 var _attack_cd := 0.0
 var _invuln := 0.0
@@ -63,11 +64,16 @@ static func build_knight_frames() -> SpriteFrames:
 	if not sf.has_animation("default"):
 		sf.add_animation("default")
 	var defs := {
-		"idle": ["knight_Idle", 5.0, true],    # v1.75.3: медленный цикл дыхания
-		"cast": ["knight_Cast", 10.0, false],  # v1.75.3: каст заклинания
-		"run": ["knight_Run", 12.0, true],
+		"idle": ["knight_Idle", 5.0, true],    # дыхание (6 кадров)
+		"cast": ["knight_Cast", 10.0, false],  # жест магии
+		"run": ["knight_Run", 12.0, true],      # вбок
+		"run_up": ["knight_RunUp", 12.0, true],    # спиной вверх (v1.75.4)
+		"run_down": ["knight_RunDown", 12.0, true], # анфас вниз (v1.75.4)
 		"attack": ["knight_Attack", 12.0, false],
 		"roll": ["knight_Roll", 14.0, false],
+		"ready": ["knight_Ready", 3.0, true],   # боевая стойка (v1.75.4)
+		"crouch": ["knight_Crouch", 8.0, true], # присед (v1.75.4)
+		"hurt": ["knight_Hurt", 15.0, false],   # урон (v1.75.4)
 		"death": ["knight_Death", 8.0, false],
 	}
 	for anim: String in defs:
@@ -336,6 +342,8 @@ func _physics_process(delta: float) -> void:
 				+ 0.045 * absf(sin(_flicker_time * 8.0))
 				+ 0.03 * absf(sin(_flicker_time * 21.7)))
 	_dash_cd = maxf(0.0, _dash_cd - delta)
+	if _combat_until > 0.0:
+		_combat_until = maxf(0.0, _combat_until - delta)
 	_attack_cd = maxf(0.0, _attack_cd - delta)
 	_invuln = maxf(0.0, _invuln - delta)
 	_shield_left = maxf(0.0, _shield_left - delta)
@@ -405,8 +413,18 @@ func _drive_anim() -> void:
 		want = "attack"          # замах не перебивается ходьбой до конца кадра
 	elif _sprite.animation == "cast" and _sprite.is_playing():
 		want = "cast"            # v1.75.3: жест магии дорабатывает до конца
+	elif _sprite.animation == "hurt" and _sprite.is_playing():
+		want = "hurt"            # v1.75.4: отброс урона дорабатывает
 	elif velocity.length() > 5.0:
-		want = "run"
+		# v1.75.4: направленный бег — атлас содержит три ряда (вбок/
+		# спиной вверх/анфас вниз); раньше боковой ряд гонялся для всех
+		# направлений и «проскакивали» чужие ракурсы
+		if absf(velocity.y) > absf(velocity.x) * 1.3:
+			want = "run_down" if velocity.y > 0.0 else "run_up"
+		else:
+			want = "run"
+	elif _combat_until > 0.0:   # v1.75.4: после боя — стойка с мечом
+		want = "ready"
 	if _sprite.animation != want:
 		_sprite.play(want)
 	elif not _sprite.is_playing() and want in ["idle", "run"]:
@@ -429,6 +447,7 @@ func try_attack() -> void:
 	var cd := float(wpn.get("attack_cooldown", p["attack_cooldown"]))
 	_attack_cd = cd * skill_mult("attack_cd_mult", 1.0)
 	play_anim("attack")   # v1.75.3
+	_combat_until = 2.5   # v1.75.4: после замаха — стойка с мечом
 	var to_mouse := get_global_mouse_position() - global_position
 	if to_mouse.length() > 4.0:
 		facing = to_mouse.normalized()
@@ -561,6 +580,7 @@ func take_damage(dmg: int) -> void:
 	# раны закаляют (v1.24): полученный урон качает выносливость
 	if dmg > 0:
 		Game.hero_train("end", float(attrs_cfg().get("train_hurt_end", 0.1)))
+		play_anim("hurt")   # v1.75.4: отброс
 	queue_redraw()
 	if hp <= 0:
 		dead = true
@@ -669,7 +689,9 @@ func draw_body(canvas: CanvasItem, pos: Vector2) -> void:
 		rot = sin(_bob_time) * 0.09
 	canvas.draw_set_transform(pos, rot, Vector2.ONE)
 	var dst := Rect2(Vector2(-fw / 2.0, feet_y - KNIGHT_FEET_Y * ks), Vector2(fw, fh))
-	if facing.x < 0.0:
+	# v1.75.4: полосы «мрачного рыцаря» смотрят ВЛЕВО (было наоборот
+	# у FreeKnight — герой бежал спиной вперёд)
+	if facing.x > 0.0:
 		dst.size.x = -dst.size.x
 	canvas.draw_texture_rect(tex, dst, false)
 	canvas.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)

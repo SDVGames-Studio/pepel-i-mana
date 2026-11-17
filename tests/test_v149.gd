@@ -68,7 +68,7 @@ func _test_v149_assets() -> void:
 	_check(frames != null, "SpriteFrames рыцаря построился")
 	for anim in ["idle", "run", "attack", "roll", "death"]:
 		_check(frames.has_animation(anim), "анимация рыцаря: %s" % anim)
-	_check(frames.get_frame_count("idle") == 10, "idle — 10 кадров (атлас рыцаря)")
+	_check(frames.get_frame_count("idle") == 6, "idle — 6 кадров дыхания (v1.75.4)")
 	_check(frames.get_frame_count("attack") == 6, "attack — 6 кадров (v1.74)")
 	# жители: маппинг профессий на листы Minifolks
 	var AssetsSc = load("res://scripts/assets.gd")
