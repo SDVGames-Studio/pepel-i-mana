@@ -18,6 +18,7 @@ var bonus_armor := 0              # плоское снижение входящ
 
 var _dash_left := 0.0
 var _combat_until := 0.0    # v1.75.4: до этого времени вместо дыхания — боевая стойка
+var _crouch := false        # v1.75.5: присед (C) — тихий шаг, половинная скорость
 var _dash_cd := 0.0
 var _attack_cd := 0.0
 var _invuln := 0.0
@@ -102,6 +103,8 @@ func play_anim(a: String) -> void:
 		return
 	if _sprite.animation != a:
 		_sprite.play(a)
+	if a == "attack" or a == "cast":
+		_combat_until = 2.5   # v1.75.5: после удара/магии — стойка с мечом
 	queue_redraw()
 
 
@@ -376,7 +379,7 @@ func _physics_process(delta: float) -> void:
 			var dash_speed_c := float(p["dash_distance"]) / float(p["dash_time"])
 			velocity = facing * dash_speed_c * city_speed_mult
 		else:
-			velocity = dir * (float(p["speed"]) + agi_speed) * city_speed_mult
+			velocity = dir * (float(p["speed"]) + agi_speed) * city_speed_mult * (0.5 if _crouch else 1.0)
 		move_and_slide()
 		_play_step(delta, true)
 		_drive_anim()
@@ -393,7 +396,7 @@ func _physics_process(delta: float) -> void:
 		velocity = facing * dash_speed
 	else:
 		velocity = dir * (float(p["speed"]) + float(_sk.get("speed", 0.0)) \
-				+ float(_eq.get("speed", 0.0)) + agi_speed)
+				+ float(_eq.get("speed", 0.0)) + agi_speed) * (0.5 if _crouch else 1.0)
 	move_and_slide()
 	_play_step(delta, velocity.length() > 5.0)
 	_drive_anim()
@@ -423,6 +426,8 @@ func _drive_anim() -> void:
 			want = "run_down" if velocity.y > 0.0 else "run_up"
 		else:
 			want = "run"
+	elif _crouch:               # v1.75.5: присед сильнее боевой стойки
+		want = "crouch"
 	elif _combat_until > 0.0:   # v1.75.4: после боя — стойка с мечом
 		want = "ready"
 	if _sprite.animation != want:
@@ -432,6 +437,10 @@ func _drive_anim() -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
+	# v1.75.5: присед (C) — в городе и данже, до режимных гейтов
+	if event is InputEventKey and event.pressed and not event.echo and event.physical_keycode == KEY_C:
+		_crouch = not _crouch
+		play_anim("crouch" if _crouch else "idle")
 	if city_mode:
 		return
 	if event is InputEventMouseButton and event.pressed \
@@ -689,9 +698,9 @@ func draw_body(canvas: CanvasItem, pos: Vector2) -> void:
 		rot = sin(_bob_time) * 0.09
 	canvas.draw_set_transform(pos, rot, Vector2.ONE)
 	var dst := Rect2(Vector2(-fw / 2.0, feet_y - KNIGHT_FEET_Y * ks), Vector2(fw, fh))
-	# v1.75.4: полосы «мрачного рыцаря» смотрят ВЛЕВО (было наоборот
-	# у FreeKnight — герой бежал спиной вперёд)
-	if facing.x > 0.0:
+	# v1.75.5: полосы смотрят ВПРАВО — флип при движении ВЛЕВО (инверсия
+	# v1.75.4 была ошибкой: бежал вправо лицом влево)
+	if facing.x < 0.0:
 		dst.size.x = -dst.size.x
 	canvas.draw_texture_rect(tex, dst, false)
 	canvas.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)

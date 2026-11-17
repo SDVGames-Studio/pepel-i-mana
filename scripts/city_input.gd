@@ -21,6 +21,11 @@ func _unhandled_input(event: InputEvent) -> void:
 			hud.toast(Loc.t("magic.slot_empty"))
 		get_viewport().set_input_as_handled()
 		return
+	# v1.75.5: ЛКМ при рейде — герой бьёт сам (замах/стойка видны в городе;
+	# вне рейда город мирный — клики остаются за стройкой/выбором)
+	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT and sim.raid_active and hero != null and is_instance_valid(hero):
+		hero.try_attack()
+		return
 	if event.is_action_pressed("interact"):
 		# в чужом городе герой — гость: аномалия, оружейка, храм и ручной
 		# труд — только дома («Мир v2», этап 3)
