@@ -26,9 +26,8 @@ func _initialize() -> void:
 	hero.velocity = Vector2.ZERO
 	hero._attack_cd = 0.0
 	hero.try_attack()
-	print("атака -> ", hero._sprite.animation, "| стойка до ", hero._combat_until)
+	print("атака -> ", hero._sprite.animation)
 	hero._sprite.play("idle")
-	hero._combat_until = 0.0
 	hero._crouch = true
 	hero._drive_anim()
 	print("присед -> ", hero._sprite.animation)

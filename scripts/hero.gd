@@ -17,7 +17,6 @@ var bonus_damage := 0             # боевые комплекты героя �
 var bonus_armor := 0              # плоское снижение входящего урона
 
 var _dash_left := 0.0
-var _combat_until := 0.0    # v1.75.4: до этого времени вместо дыхания — боевая стойка
 var _crouch := false        # v1.75.5: присед (C) — тихий шаг, половинная скорость
 var _dash_cd := 0.0
 var _attack_cd := 0.0
@@ -74,7 +73,6 @@ static func build_knight_frames() -> SpriteFrames:
 		"run_down": ["knight_RunDown", 6.0, true], # анфас вниз (2 кадра)
 		"attack": ["knight_Attack", 8.0, false],   # 3 кадра, взмах 0.4с
 		"roll": ["knight_Roll", 14.0, false],      # дэш-поза (1 кадр)
-		"ready": ["knight_Ready", 3.0, true],   # боевая стойка (v1.75.4)
 		"crouch": ["knight_Crouch", 8.0, true], # крадучись (10 кадров)
 		"hurt": ["knight_Hurt", 15.0, false],   # урон (v1.75.4)
 		"death": ["knight_Death", 7.0, false],     # 7 кадров
@@ -105,8 +103,6 @@ func play_anim(a: String) -> void:
 		return
 	if _sprite.animation != a:
 		_sprite.play(a)
-	if a == "attack" or a == "cast":
-		_combat_until = 2.5   # v1.75.5: после удара/магии — стойка с мечом
 	queue_redraw()
 
 
@@ -347,8 +343,6 @@ func _physics_process(delta: float) -> void:
 				+ 0.045 * absf(sin(_flicker_time * 8.0))
 				+ 0.03 * absf(sin(_flicker_time * 21.7)))
 	_dash_cd = maxf(0.0, _dash_cd - delta)
-	if _combat_until > 0.0:
-		_combat_until = maxf(0.0, _combat_until - delta)
 	_attack_cd = maxf(0.0, _attack_cd - delta)
 	_invuln = maxf(0.0, _invuln - delta)
 	_shield_left = maxf(0.0, _shield_left - delta)
@@ -430,8 +424,6 @@ func _drive_anim() -> void:
 			want = "run_down" if velocity.y > 0.0 else "run_up"
 		else:
 			want = "run"
-	elif _combat_until > 0.0:   # v1.75.4: после боя — стойка с мечом
-		want = "ready"
 	if _sprite.animation != want:
 		_sprite.play(want)
 	elif not _sprite.is_playing() and want in ["idle", "run"]:
@@ -458,7 +450,6 @@ func try_attack() -> void:
 	var cd := float(wpn.get("attack_cooldown", p["attack_cooldown"]))
 	_attack_cd = cd * skill_mult("attack_cd_mult", 1.0)
 	play_anim("attack")   # v1.75.3
-	_combat_until = 2.5   # v1.75.4: после замаха — стойка с мечом
 	var to_mouse := get_global_mouse_position() - global_position
 	if to_mouse.length() > 4.0:
 		facing = to_mouse.normalized()
@@ -706,12 +697,8 @@ func draw_body(canvas: CanvasItem, pos: Vector2) -> void:
 		dst.size.x = -dst.size.x
 	canvas.draw_texture_rect(tex, dst, false)
 	canvas.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
-	# v1.50: оружие в руке по надетому предмету — в покое и беге. В кадрах
-	# атаки НЕ рисуем (меч вшит в knight_Attack — иначе двоится), в рывке
-	# и смерти тоже: тело скручено/лежит.
-	var anim := _sprite.animation
-	if anim == "idle" or anim == "run":
-		_draw_held_weapon(canvas, pos, facing.x < 0.0)
+	# v1.75.9: оружие в руке больше не рисуем — меч вшит в новые полосы
+	# рыцаря заказчика (двойной меч «висел рядом» — замечание заказчика)
 
 
 ## Оружие в руке героя (v1.50, правка приёмки «оружие в руках»): FreeKnight

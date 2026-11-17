@@ -137,7 +137,7 @@ func _draw() -> void:
 	var hero_anims := [
 		["knight_Idle", 2.5, "Айдл"], ["knight_Run", 10.0, "Бег вбок"],
 		["knight_RunUp", 12.0, "Бег вверх"], ["knight_RunDown", 6.0, "Бег вниз"],
-		["knight_Attack", 8.0, "Атака"], ["knight_Ready", 3.0, "Готовность"],
+		["knight_Attack", 8.0, "Атака"],
 		["knight_Cast", 10.0, "Магия"], ["knight_Crouch", 8.0, "Крадучись"],
 		["knight_Roll", 14.0, "Рывок"], ["knight_Hurt", 15.0, "Урон"],
 		["knight_Death", 7.0, "Смерть"],
