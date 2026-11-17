@@ -17,6 +17,9 @@ TARGET_H = 76
 STRIPS = [
     ("knight_Idle",    "айдл стоять"),
     ("knight_Attack",  "атака"),
+    # v1.75.8: готовность после удара — финальная поза атаки (меч вниз),
+    # НЕ старт кувырка (присед — «почему в айдле атаки приседание?»)
+    ("knight_Ready",   "атака:3"),
     ("knight_Run",     "бег в право"),
     ("knight_RunDown", "бег в низ"),
     ("knight_Roll",    "дэш"),
@@ -54,8 +57,16 @@ def main():
     scale = TARGET_H / float(union_h(idle))
     print("idle union scale: %.3f" % scale)
     for strip, prefix in STRIPS:
+        num = 0
+        if ":" in prefix:                 # «группа:N» — один кадр группы
+            prefix, num_s = prefix.split(":", 1)
+            num = int(num_s)
         files = group_files(prefix)
         assert files, "нет файлов группы: " + prefix
+        if num > 0:
+            files = [f for f in files
+                     if re.match(r".*\((%d)\)\.png$" % num, f)]
+            assert files, "нет кадра %d в группе %s" % (num, prefix)
         canvas = Image.new("RGBA", (FRAME_W * len(files), FRAME_H),
                            (0, 0, 0, 0))
         for i, fname in enumerate(files):
