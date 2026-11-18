@@ -33,10 +33,16 @@ var _season_btn: OptionButton = null
 var _lib_box: VBoxContainer = null
 var _tray: HBoxContainer = null
 var _biome_btns: Array = []
+var _ver := "?"   # версия для метки и диагностики
 
 
 func _ready() -> void:
 	const UITheme = preload("res://scripts/ui_theme.gd")
+	var vf := FileAccess.open("res://data/version.json", FileAccess.READ)
+	if vf != null:
+		var vd: Variant = JSON.parse_string(vf.get_as_text())
+		if vd is Dictionary:
+			_ver = String(vd.get("version", "?"))
 	set_anchors_preset(Control.PRESET_FULL_RECT)
 	var bg := ColorRect.new()
 	bg.color = Color(0.13, 0.12, 0.11)
@@ -133,6 +139,15 @@ func _ready() -> void:
 		b2.pressed.connect(Callable(self, String(pair[1])))
 		btns.add_child(b2)
 
+	# v1.78.3: версия игры в углу + автодиагностика вкладки
+	var vlbl := Label.new()
+	vlbl.text = "v" + _ver
+	vlbl.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
+	vlbl.offset_left = -120.0
+	vlbl.offset_top = -30.0
+	vlbl.add_theme_font_size_override("font_size", 14)
+	vlbl.add_theme_color_override("font_color", Color(0.6, 0.7, 0.6))
+	add_child(vlbl)
 	# --- правая зона: живой превью
 	_preview = Control.new()
 	_preview.set_anchors_preset(Control.PRESET_RIGHT_WIDE)
@@ -189,8 +204,17 @@ func _open_biome(i: int) -> void:
 	grid.add_theme_constant_override("h_separation", 6)
 	grid.add_theme_constant_override("v_separation", 6)
 	_lib_box.add_child(grid)
+	var tiles_n := 0
+	var nulls := 0
 	for gp in e.get("grass", []):
+		if Assets.tex(String(gp)) == null:
+			nulls += 1
+		else:
+			tiles_n += 1
 		_add_pick(grid, String(gp), "grass", Vector2(64, 64))
+	var df := FileAccess.open("user://composer_diag.txt", FileAccess.WRITE)
+	if df != null:
+		df.store_string("v%s tab=%s sources=%d tiles=%d nulls=%d window=%s" % [_ver, String(e.get("label", "?")), _sources.size(), tiles_n, nulls, str(DisplayServer.window_get_size())])
 
 	if String(e.get("water", "")) != "":
 		var wcap := Label.new()
