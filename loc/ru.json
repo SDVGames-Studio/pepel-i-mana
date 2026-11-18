@@ -12,6 +12,7 @@
   "stand.row_mobs": "МОНСТРЫ",
   "stand.row_bosses": "БОССЫ",
   "stand.row_buildings": "ЗДАНИЯ",
+  "stand.row_biomes": "БИОМЫ — земля / река / деревья (20×20 тайлов)",
   "stand.hero": "Герой",
   "menu.exit": "Выход",
   "menu.setup_title": "Новый город",

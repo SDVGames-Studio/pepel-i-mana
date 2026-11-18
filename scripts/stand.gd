@@ -27,6 +27,7 @@ var _mobs: Array = []            # [ref, подпись]
 var _bosses: Array = []          # [ref, подпись]
 var _buildings: Array = []       # [ref, подпись]
 var _hero_tex: Texture2D = null
+var _biome_patches: Array = []   # v1.76.3: галерея биомов 20x20 (запечённые)
 
 
 func _ready() -> void:
@@ -70,6 +71,7 @@ func _ready() -> void:
 		_buildings.append([ref, Loc.t(String(b["loc"]))])
 
 	_hero_tex = Assets.tex("res://assets/sprites/hero/knight_Idle.png")
+	_prepare_biome_patches()   # v1.76.3
 
 
 func _read_json(path: String) -> Variant:
@@ -77,6 +79,75 @@ func _read_json(path: String) -> Variant:
 	if f == null:
 		return null
 	return JSON.parse_string(f.get_as_text())
+
+
+## v1.76.3: галерея биомов — патч 20x20 тайлов на каждый биом заказчика:
+## земля (6 тайлов + подложки) запекается в ImageTexture один раз,
+## река (3 тайла, меандр) рисуется живой анимацией полосы воды,
+## деревья — 5 позиций из манифеста. Лето добавляется отдельной записью
+## (его файлы лежат в env/summer, не в манифесте).
+func _prepare_biome_patches() -> void:
+	var mf: Dictionary = Assets.biome_manifest()
+	var list: Array = []
+	var summer := {
+		"tag": "лето",
+		"grass": [], "fill": [],
+		"water": "res://assets/sprites/env/summer/fm_water_summer.png",
+		"trees": ["e:tree2_summer_oak", "e:tree2_summer_pine",
+				"e:tree2_summer_birch", "e:tree2_summer_willow",
+				"e:tree2_summer_dead"],
+	}
+	for i in range(6):
+		summer["grass"].append("res://assets/sprites/env/summer/grass_S%d.png" % (i + 1))
+		summer["fill"].append("res://assets/sprites/env/summer/grass_S%d_fill.png" % (i + 1))
+	list.append(summer)
+	for tag in ["весна", "осень", "зима", "болота", "берёзовая роща",
+			"древний лес", "мёртвый лес", "мистический лес",
+			"огненные земли", "проклятый лес", "пустыня", "степи",
+			"скалы", "цветущий край"]:
+		if not mf.has(tag):
+			continue
+		var e: Dictionary = mf[tag]
+		var entry := {"tag": tag, "grass": e.get("grass", []),
+			"fill": [], "water": String(e.get("water", "")),
+			"trees": e.get("trees", [])}
+		for gp in entry["grass"]:
+			entry["fill"].append(String(gp).replace(".png", "_fill.png"))
+		list.append(entry)
+	var tiles := 20
+	var img_cache: Dictionary = {}
+	for entry in list:
+		var img := Image.create(tiles * 32, tiles * 32, false, Image.FORMAT_RGBA8)
+		var n_grass: int = (entry["grass"] as Array).size()
+		for ty in range(tiles):
+			for tx in range(tiles):
+				var fi := (tx * tx * 3 + ty * ty * 7 + tx * ty) % maxi(1, n_grass)
+				var fill_p := String(entry["fill"][fi])
+				if not img_cache.has(fill_p):
+					var ft := Assets.tex(fill_p)
+					img_cache[fill_p] = null if ft == null else ft.get_image()
+				var fim: Image = img_cache[fill_p]
+				if fim != null:
+					img.blend_rect(fim, Rect2i(0, 0, 32, 32), Vector2i(tx * 32, ty * 32))
+				var grass_p := String(entry["grass"][fi])
+				if not img_cache.has(grass_p):
+					var gt := Assets.tex(grass_p)
+					img_cache[grass_p] = null if gt == null else gt.get_image()
+				var gim: Image = img_cache[grass_p]
+				if gim != null:
+					img.blend_rect(gim, Rect2i(0, 0, 32, 32), Vector2i(tx * 32, ty * 32))
+		entry["baked"] = ImageTexture.create_from_image(img)
+		var cells: Array = []
+		if entry["water"] != "" and Assets.tex(String(entry["water"])) != null:
+			for tx in range(tiles):
+				var yc := 8 + int(round(2.0 * sin(tx / 3.0)))
+				for dy in 3:
+					cells.append(Vector2i(tx, yc + dy))
+		entry["cells"] = cells
+		entry["spots"] = [Vector2i(3, 3), Vector2i(15, 4), Vector2i(4, 15),
+				Vector2i(15, 15), Vector2i(9, 17)]
+		_biome_patches.append(entry)
+	print("stand: биом-патчей ", _biome_patches.size())
 
 
 func _back_to_menu() -> void:
@@ -191,6 +262,36 @@ func _draw() -> void:
 		Assets.draw_ref(self, String(_buildings[i][0]), pos, BLD_HEIGHT)
 		_label(font, pos + Vector2(0, BLD_HEIGHT * 0.5 + 18.0),
 				String(_buildings[i][1]))
+
+	# --- ряд 6: БИОМЫ — патчи 20x20 с рекой и деревьями (v1.76.3) ---
+	var by := row_y + 300.0
+	_row_caption(font, to_screen, Vector2(-VILL_SPACING, by - 60.0),
+			Loc.t("stand.row_biomes"))
+	for i in range(_biome_patches.size()):
+		var e: Dictionary = _biome_patches[i]
+		var origin := Vector2(-VILL_SPACING + 30.0 + float(i % 2) * 700.0,
+				by + float(i / 2) * 730.0)
+		var corner: Vector2 = to_screen.call(origin)
+		draw_texture_rect(e["baked"], Rect2(corner, Vector2(640, 640)), false)
+		# река: живая анимация полосы воды (кадр по времени, вариант по y)
+		var wtex: Texture2D = null
+		if String(e["water"]) != "":
+			wtex = Assets.tex(String(e["water"]))
+		if wtex != null:
+			var wf := int(_t * 3.0) % 6
+			for c in e["cells"]:
+				var vpx: Vector2 = to_screen.call(origin + Vector2(float(c.x * 32), float(c.y * 32)))
+				draw_texture_rect_region(wtex, Rect2(vpx, Vector2(32, 32)),
+						Rect2(float(wf) * 32.0, float(c.y % 3) * 32.0, 32.0, 32.0))
+		# деревья из манифеста биома
+		var trees: Array = e["trees"]
+		if not trees.is_empty():
+			for k in range(e["spots"].size()):
+				var tp: Vector2i = e["spots"][k]
+				var ref := String(trees[(i + k) % trees.size()])
+				var base: Vector2 = origin + Vector2(float(tp.x * 32 + 16), float(tp.y * 32 + 30))
+				Assets.draw_ref(self, ref, to_screen.call(base) + Vector2(0, -34), 100.0)
+		_label(font, to_screen.call(origin + Vector2(320, 672)), String(e["tag"]))
 
 
 func _row_caption(font: Font, to_screen: Callable, world: Vector2,
