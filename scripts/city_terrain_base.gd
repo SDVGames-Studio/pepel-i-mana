@@ -452,6 +452,14 @@ func _load_grass_set() -> Array:
 	var tag := _biome_tag()
 	if tag != "" and Assets.biome_manifest().has(tag):
 		var mf: Dictionary = Assets.biome_manifest()[tag]
+		# v1.78.0: собранные в композиторе — ЕДИНЫЙ рецепт на лету
+		if bool(mf.get("composed", false)):
+			var uni := Assets.uniform_ground(mf.get("grass", []))
+			var ug: Array = uni[0]
+			if ug.size() >= 4:
+				_grass_fills = uni[1]
+				return ug
+			return _load_default_grass()
 		var mg: Array = []
 		var mfl: Array = []
 		for gp in mf.get("grass", []):
@@ -463,8 +471,12 @@ func _load_grass_set() -> Array:
 				mfl.append(mfl[mfl.size() % maxi(1, len(mfl))])
 			_grass_fills = mfl
 			return mg
-	var summer: bool = sim != null and sim.has_method("season") and String(sim.season()) == "summer"
+	return _load_default_grass()
+
+## Хвост выбора: лето -> обычная dual-grid трава (v1.78.0 вынесен).
+func _load_default_grass() -> Array:
 	var out: Array = []
+	var summer: bool = sim != null and sim.has_method("season") and String(sim.season()) == "summer"
 	if summer:
 		for i in range(6):
 			out.append(Assets.tex(
@@ -474,7 +486,7 @@ func _load_grass_set() -> Array:
 			fills.append(Assets.tex(
 					"res://assets/sprites/env/summer/grass_S%d_fill.png" % (i + 1)))
 		if out[0] != null and fills[0] != null:
-			_grass_fills = fills   # v1.76.1: подложка среднего цвета тайла
+			_grass_fills = fills
 			return out
 	for fam in ["L", "M", "D"]:
 		for v in 2:

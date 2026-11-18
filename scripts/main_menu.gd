@@ -13,6 +13,7 @@ const LEVELS := ["low", "normal", "high"]
 @onready var new_game_button: Button = %NewGameButton
 @onready var continue_button: Button = %ContinueButton
 @onready var stand_button: Button = %StandButton
+@onready var composer_button: Button = %ComposerButton
 @onready var exit_button: Button = %ExitButton
 
 
@@ -23,15 +24,18 @@ func _ready() -> void:
 	new_game_button.text = Loc.t("menu.new_game")
 	continue_button.text = Loc.t("menu.continue_city")
 	stand_button.text = Loc.t("menu.stand")
+	composer_button.text = Loc.t("menu.composer")
 	exit_button.text = Loc.t("menu.exit")
 	# «Продолжить» виден, если игра идёт ИЛИ есть файл сейва (M14-A)
 	continue_button.visible = Game.city_sim != null or Game.has_save()
-	for b in [new_game_button, continue_button, stand_button, exit_button]:
+	for b in [new_game_button, continue_button, stand_button, composer_button, exit_button]:
 		UITheme.apply_button(b)   # v1.68: единая тема
 	new_game_button.pressed.connect(_on_new_game_pressed)
 	continue_button.pressed.connect(_on_continue_pressed)
 	stand_button.pressed.connect(func() -> void:
 		get_tree().change_scene_to_file("res://scenes/stand.tscn"))
+	composer_button.pressed.connect(func() -> void:
+		get_tree().change_scene_to_file("res://scenes/biome_composer.tscn"))
 	exit_button.pressed.connect(_on_exit_pressed)
 	_build_save_button()
 	_build_fullscreen_check()

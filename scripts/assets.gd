@@ -17,6 +17,7 @@ const SPRITE_FROM := 60  # тайлы 60+ — существа/предметы,
 static var _cache: Dictionary = {}
 static var _biome_manifest: Dictionary = {}
 static var _biome_manifest_read := false
+const TS_G := 32   # размер тайла земли для uniform_ground
 
 ## v1.76.1: манифест биомов заказчика (tools/slice_biomes.py) —
 ## пути травы/воды/деревьев для сезонных и региональных скинов.
@@ -28,7 +29,77 @@ static func biome_manifest() -> Dictionary:
 			var parsed: Variant = JSON.parse_string(f.get_as_text())
 			if parsed is Dictionary:
 				_biome_manifest = parsed
+		# v1.78.0: собранные в ИГРЕ биомы (композитор) — user://
+		var d := DirAccess.open("user://biomes_composed")
+		if d != null:
+			for dir in d.get_directories():
+				var bf := FileAccess.open("user://biomes_composed/%s/biome.json" % dir, FileAccess.READ)
+				if bf == null:
+					continue
+				var bp: Variant = JSON.parse_string(bf.get_as_text())
+				if bp is Dictionary:
+					_biome_manifest[dir] = bp
 	return _biome_manifest
+
+static func reload_biome_manifest() -> void:
+	_biome_manifest_read = false
+	_biome_manifest = {}
+
+## ЕДИНЫЙ РЕЦЕПТ ЗЕМЛИ (v1.78.0): путям травы -> [текстуры (6),
+## подложки (6)]. Общий тон набора, нормализация каналов к нему
+## (0.7..1.4), мягкие края (0.35..1.0), сплошная подложка. Используют
+## композитор (превью), город и стенд — одинаковая земля везде.
+static func uniform_ground(paths: Array) -> Array:
+	var imgs: Array = []
+	for p in paths:
+		var t: Texture2D = tex(String(p))
+		if t != null:
+			imgs.append(t.get_image())
+	if imgs.is_empty():
+		return [[], []]
+	var means := []
+	for im: Image in imgs:
+		var sm := Vector3(0, 0, 0)
+		for y in TS_G:
+			for x in TS_G:
+				var c := im.get_pixel(x, y)
+				sm += Vector3(c.r8, c.g8, c.b8)
+		var n := float(TS_G * TS_G)
+		means.append(sm / n)
+	var acc := Vector3(0, 0, 0)
+	for m in means:
+		acc += m
+	var shared := acc / float(means.size())
+	var shared_c := Color(clampf(shared.x, 1, 254) / 255.0, clampf(shared.y, 1, 254) / 255.0, clampf(shared.z, 1, 254) / 255.0)
+	var texs: Array = []
+	var fills: Array = []
+	for im: Image in imgs:
+		var tm: Vector3 = means[imgs.find(im)]
+		var out := Image.create(TS_G, TS_G, false, Image.FORMAT_RGBA8)
+		for y in TS_G:
+			for x in TS_G:
+				var c := im.get_pixel(x, y)
+				var ratio := Vector3(
+						clampf(shared.x / maxf(tm.x, 1.0), 0.7, 1.4),
+						clampf(shared.y / maxf(tm.y, 1.0), 0.7, 1.4),
+						clampf(shared.z / maxf(tm.z, 1.0), 0.7, 1.4))
+				var edge := float(mini(mini(x, TS_G - 1 - x), mini(y, TS_G - 1 - y)))
+				var ramp := 0.35 + 0.65 * clampf(edge / 8.0, 0.0, 1.0)
+				var nr := clampf(c.r8 * ratio.x, 0, 255)
+				var ng := clampf(c.g8 * ratio.y, 0, 255)
+				var nb := clampf(c.b8 * ratio.z, 0, 255)
+				var rr := lerpf(shared_c.r8, nr, ramp)
+				var gg := lerpf(shared_c.g8, ng, ramp)
+				var bb := lerpf(shared_c.b8, nb, ramp)
+				out.set_pixel(x, y, Color(rr / 255.0, gg / 255.0, bb / 255.0, 1.0))
+		texs.append(ImageTexture.create_from_image(out))
+		var fl := Image.create(TS_G, TS_G, false, Image.FORMAT_RGBA8)
+		fl.fill(shared_c)
+		fills.append(ImageTexture.create_from_image(fl))
+	while texs.size() < 6:
+		texs.append(texs[texs.size() % maxi(1, texs.size())])
+		fills.append(fills[fills.size() % maxi(1, fills.size())])
+	return [texs, fills]
 
 ## Тег биома для сезона (весна/осень/зима из папок заказчика; лето —
 ## отдельный принятый атлас env/summer).

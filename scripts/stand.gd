@@ -121,6 +121,15 @@ func _prepare_biome_patches() -> void:
 		var entry := {"tag": String(e.get("label", String(tag))), "grass": e.get("grass", []),
 			"fill": [], "water": String(e.get("water", "")),
 			"trees": e.get("trees", [])}
+		if bool(e.get("composed", false)):
+			# v1.78.0: собранные в композиторе — рецепт на лету
+			var uni := Assets.uniform_ground(e.get("grass", []))
+			entry["gimgs"] = []
+			for ut in uni[0]:
+				entry["gimgs"].append((ut as Texture2D).get_image())
+			entry["fimgs"] = []
+			for ut2 in uni[1]:
+				entry["fimgs"].append((ut2 as Texture2D).get_image())
 		for gp in entry["grass"]:
 			entry["fill"].append(String(gp).replace(".png", "_fill.png"))
 		list.append(entry)
@@ -132,13 +141,18 @@ func _prepare_biome_patches() -> void:
 		for ty in range(tiles):
 			for tx in range(tiles):
 				var fi := (tx * tx * 3 + ty * ty * 7 + tx * ty) % maxi(1, n_grass)
-				var fill_p := String(entry["fill"][fi])
+				var fill_p := String(entry["fill"][fi]) if (entry["fill"] as Array).size() > 0 else ""
 				if not img_cache.has(fill_p):
 					var ft := Assets.tex(fill_p)
 					img_cache[fill_p] = null if ft == null else ft.get_image()
 				var fim: Image = img_cache[fill_p]
 				if fim != null:
 					img.blend_rect(fim, Rect2i(0, 0, 32, 32), Vector2i(tx * 32, ty * 32))
+				var gim2: Image = null
+				if (entry.get("gimgs", []) as Array).size() > 0:
+					gim2 = entry["gimgs"][fi % (entry["gimgs"] as Array).size()]
+					if gim2 != null:
+						img.blend_rect(gim2, Rect2i(0, 0, 32, 32), Vector2i(tx * 32, ty * 32))
 				var grass_p := String(entry["grass"][fi])
 				if not img_cache.has(grass_p):
 					var gt := Assets.tex(grass_p)
