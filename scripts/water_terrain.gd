@@ -39,6 +39,7 @@ var _swamp_tiles: Array = []
 var _swamp_near: Array = [] # трава вокруг болота (тёмный ореол + камыши)
 var _ford_tiles: Array = []
 var _water_tiles: Array = [] # v1.50: все водные тайлы (для анимированной заливки)
+var _biome_water := Color(0, 0, 0, 0)   # v1.78.6: цвет воды биома (мель/берега)
 
 # --- запечка статики ---
 var _vp: SubViewport = null
@@ -210,11 +211,14 @@ func _draw() -> void:
 ## река светлее, болото глухо-зелёное (тина поверх — в запечке).
 ## v1.76 «Лето»: сменить полосу воды по сезону (запекать не нужно —
 ## вода рисуется живым слоем).
+## v1.78.6: базовый цвет берегов/мель — из ПОЛОСЫ БИОМА (стандартный
+## голубой читался кричаще на осенней/зимней земле).
 func reload_water(tag: String) -> void:
 	if tag == "summer":
 		var t_summer: Texture2D = Assets.tex("res://assets/sprites/env/summer/fm_water_summer.png")
 		if t_summer != null:
 			_fm_water = t_summer
+			_update_biome_water(t_summer)
 			return
 	var mf: Dictionary = Assets.biome_manifest()
 	if tag != "" and mf.has(tag):
@@ -223,8 +227,32 @@ func reload_water(tag: String) -> void:
 			var t: Texture2D = Assets.tex(wp)
 			if t != null:
 				_fm_water = t
+				_update_biome_water(t)
 				return
 	_fm_water = Assets.tex("res://assets/sprites/env/fm_water.png")
+	_biome_water = Color(0, 0, 0, 0)
+
+
+## Средний цвет непрозрачных пикселей полосы биома — тон мель/берегов.
+func _update_biome_water(t: Texture2D) -> void:
+	_biome_water = Color(0, 0, 0, 0)
+	var im := t.get_image()
+	if im == null or im.is_empty():
+		return
+	var acc := Vector3(0, 0, 0)
+	var n := 0
+	var w := im.get_width()
+	var h := im.get_height()
+	for y in range(0, h, 2):
+		for x in range(0, w, 2):
+			var c := im.get_pixel(x, y)
+			if c.a < 0.5:
+				continue
+			acc += Vector3(c.r8, c.g8, c.b8)
+			n += 1
+	if n > 0:
+		_biome_water = Color(acc.x / n / 255.0, acc.y / n / 255.0,
+				acc.z / n / 255.0)
 
 
 func _draw_fm_water() -> void:
@@ -290,6 +318,15 @@ func _draw_static() -> void:
 
 
 func _base_color(kind: String) -> Color:
+	if _biome_water.a > 0.0:
+		# v1.78.6: цвет биомной полосы — мель/пена согласованы с землёй
+		match kind:
+			"river":
+				return _biome_water.lightened(0.18)
+			"swamp":
+				return _biome_water.darkened(0.22)
+			_:
+				return _biome_water.darkened(0.08)
 	match kind:
 		"river":
 			return colors.get("water_river", Color("#57b2d4"))

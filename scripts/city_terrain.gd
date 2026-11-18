@@ -607,16 +607,26 @@ func reload_season() -> void:
 
 
 ## v1.76.1: индекс выбранного травяного тайла (для подложки лета).
+## v1.78.6: ТАЙЛЫ ПЯТНАМИ (фидбек «заполнение одним тайлом» — соль-перец
+## из одинакового тона сливался в монотон): крупный шум выбирает «род»
+## тайла (пятно ~6×6 тайлов одного арта, как фактура карты), хэш тайла —
+## вариант внутри рода (соседние не повторяются).
 func _grass_index_at(x: int, y: int) -> int:
-	if _grass_texs.is_empty():
-		return -1
-	return _hash(x, y, 97) % maxi(1, _grass_texs.size())   # v1.78.2: полный разброс
+	return _grass_fam_index(x, y)
 
 
 func _grass_texture_at(x: int, y: int) -> Texture2D:
 	if _grass_texs.is_empty():
 		return null
-	return _grass_texs[_hash(x, y, 97) % maxi(1, _grass_texs.size())]   # v1.78.2
+	return _grass_texs[_grass_fam_index(x, y)]
+
+
+func _grass_fam_index(x: int, y: int) -> int:
+	var size := maxi(1, _grass_texs.size())
+	var fams := maxi(2, size / 4)     # родов
+	var per := maxi(1, size / fams)   # вариантов в роде
+	var fam: int = absi(int(_noise2(x / 6.0, y / 6.0, 100, 71))) % fams
+	return mini(size - 1, fam * per + _hash(x, y, 97) % per)
 
 
 
@@ -634,6 +644,11 @@ var _prop_texs: Array = []   # кусты/валуны ForgottenMemories (кэш
 ## камешки и кусты/валуны у воды. Всё детерминировано хэшами — одинаково
 ## при каждой перевыпечке чанка. Детали масштаба 1px при запечке 8px/тайл.
 func _draw_meadow_decor(x: int, y: int, rect: Rect2) -> void:
+	# v1.78.6: зимой цветов/кустов нет — снег всё скрыл (зелёные кусты
+	# на белом читались мусором)
+	if sim != null and sim.has_method("season") \
+			and String(sim.season()) == "winter":
+		return
 	var field := _noise2(x / 6.0, y / 6.0, 100, 71) / 99.0
 	var blooms := 0
 	if field > 0.62:

@@ -126,12 +126,17 @@ func _decorate(city: Node, game: Node) -> void:
 	sim.necro_dark = 0.55
 	sim.necro_known = true
 	sim.necro_army = 5
-	# SHOT_SEASON=summer: принудительный сезон (v1.76, проверка летних тайлов)
+	# SHOT_SEASON=spring|summer|autumn|winter: принудительный сезон
+	# (v1.76, проверка сезонных тайлов; v1.78.6 — все 4 сезона)
 	if OS.get_environment("SHOT_SEASON") != "":
-		# день считается из времени (city_sim_tick) — двигаем ВРЕМЯ:
-		# time = season_days (12) * day_length -> начало «лета»
+		# день считается из времени (city_sim_tick) — двигаем ВРЕМЯ
 		var wcfg: Dictionary = _city.sim._weather_cfg()
-		_city.sim.time = float(wcfg.get("season_days", 12)) * float(_city.sim.cfg["day_length"]) if OS.get_environment("SHOT_SEASON") == "summer" else 0.0
+		var seasons: Array = wcfg.get("seasons", ["spring", "summer", "autumn", "winter"])
+		var sidx := maxi(0, seasons.find(OS.get_environment("SHOT_SEASON")))
+		# середина ДНЯ середины сезона (ночь ничего не показывает;
+		# фаза суток 0.3 = полдень, ночь при t >= 1 - night_fraction)
+		_city.sim.time = (float(sidx) * float(wcfg.get("season_days", 12)) + 1.3) \
+				* float(_city.sim.cfg["day_length"])
 		print("shot: season=", sim.season(), " day=", sim.day)
 	# SHOT_DEMO=1: демо-застройка — все типы зданий и профессий у площади
 	# (v1.73, оценка арта домов)
@@ -201,8 +206,10 @@ func _decorate(city: Node, game: Node) -> void:
 		sim.time = float(sim.cfg["day_length"]) * 0.65
 	elif OS.get_environment("SHOT_CLEAR") != "":
 		# v1.29.4: ясное утро — длинные тени деревьев/скал (проверка теней)
+		# v1.78.6: время не трогаем, если задан SHOT_SEASON (сезон сильнее)
 		_weather_override = "clear"
-		sim.time = float(sim.cfg["day_length"]) * 0.18
+		if OS.get_environment("SHOT_SEASON") == "":
+			sim.time = float(sim.cfg["day_length"]) * 0.18
 	if OS.get_environment("SHOT_FOG") != "":
 		_weather_override = "fog"
 		sim.time = float(sim.cfg["day_length"]) * 0.4
@@ -248,12 +255,13 @@ func _on_frame() -> void:
 	if _frames < 45:
 		return
 	if _frames == 44 and OS.get_environment("SHOT_SEASON") != "":
-		# день считается из времени (city_sim_tick) — двигаем ВРЕМЯ:
-		# time = season_days (12) * day_length -> начало «лета»
 		var wcfg: Dictionary = _city.sim._weather_cfg()
-		_city.sim.time = float(wcfg.get("season_days", 12)) * float(_city.sim.cfg["day_length"]) if OS.get_environment("SHOT_SEASON") == "summer" else 0.0
+		var seasons2: Array = wcfg.get("seasons", ["spring", "summer", "autumn", "winter"])
+		var sidx2 := maxi(0, seasons2.find(OS.get_environment("SHOT_SEASON")))
+		_city.sim.time = (float(sidx2) * float(wcfg.get("season_days", 12)) + 1.3) \
+				* float(_city.sim.cfg["day_length"])
 		_season = String(_city.sim.season())
-		print("frame44: day=", _city.sim.day, " season=", _season)
+		print("frame44: day=", _city.sim.day, " season=", _season, " time/dl=", _city.sim.time / float(_city.sim.cfg["day_length"]))
 	if _frames == 45 and OS.get_environment("SHOT_SEASON") != "":
 		print("frame45: day=", _city.sim.day, " season=", _city.sim.season())
 	if OS.get_environment("SHOT_AB") != "":

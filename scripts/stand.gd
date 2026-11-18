@@ -82,6 +82,25 @@ func _read_json(path: String) -> Variant:
 
 
 ## v1.76.3: галерея биомов — патч 20x20 тайлов на каждый биом заказчика:
+## Превью-шум (как в композиторе/городе): тайлы раскладываются пятнами.
+func _pv_hash(x: int, y: int, n: int) -> int:
+	return absi(int((x * 73856093) ^ (y * 19349663) ^ (n * 83492791))) % 97
+
+
+func _pv_noise(xf: float, yf: float, n: int) -> float:
+	var x0 := int(floorf(xf))
+	var y0 := int(floorf(yf))
+	var fx := xf - float(x0)
+	var fy := yf - float(y0)
+	var sx := fx * fx * (3.0 - 2.0 * fx)
+	var sy := fy * fy * (3.0 - 2.0 * fy)
+	var a := float(_pv_hash(x0, y0, n))
+	var b := float(_pv_hash(x0 + 1, y0, n))
+	var c := float(_pv_hash(x0, y0 + 1, n))
+	var d := float(_pv_hash(x0 + 1, y0 + 1, n))
+	return lerpf(lerpf(a, b, sx), lerpf(c, d, sx), sy)
+
+
 ## земля (6 тайлов + подложки) запекается в ImageTexture один раз,
 ## река (3 тайла, меандр) рисуется живой анимацией полосы воды,
 ## деревья — 5 позиций из манифеста. Лето добавляется отдельной записью
@@ -138,9 +157,14 @@ func _prepare_biome_patches() -> void:
 	for entry in list:
 		var img := Image.create(tiles * 32, tiles * 32, false, Image.FORMAT_RGBA8)
 		var n_grass: int = (entry["grass"] as Array).size()
+		# v1.78.6: тайлы пятнами (крупный шум — «род», хэш — вариант)
+		var fams := maxi(2, n_grass / 4)
+		var per := maxi(1, n_grass / fams)
 		for ty in range(tiles):
 			for tx in range(tiles):
-				var fi := (tx * tx * 3 + ty * ty * 7 + tx * ty) % maxi(1, n_grass)
+				var n_71: int = int(_pv_noise(tx / 6.0, ty / 6.0, 71))
+				var fi: int = mini(n_grass - 1,
+						(absi(n_71) % fams) * per + _pv_hash(tx, ty, 97) % per)
 				var fill_p := String(entry["fill"][fi]) if (entry["fill"] as Array).size() > 0 else ""
 				if not img_cache.has(fill_p):
 					var ft := Assets.tex(fill_p)

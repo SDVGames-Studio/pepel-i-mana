@@ -662,7 +662,9 @@ func _rebuild_preview() -> void:
 	var img := Image.create(TILES * TS, TILES * TS, false, Image.FORMAT_RGBA8)
 	for ty in range(TILES):
 		for tx in range(TILES):
-			var fi := (tx * tx * 3 + ty * ty * 7 + tx * ty) % texs.size()
+			# v1.78.6: тайлы пятнами (крупный шум — «род», хэш — вариант),
+			# как город рисует: периодический узор выглядел «одним тайлом»
+			var fi := _pv_tile_index(tx, ty, texs.size())
 			var gim: Image = (texs[fi] as Texture2D).get_image()
 			img.blend_rect(gim, Rect2i(0, 0, TS, TS), Vector2i(tx * TS, ty * TS))
 	_preview_tex = ImageTexture.create_from_image(img)
@@ -679,6 +681,33 @@ func _rebuild_preview() -> void:
 			var im := _clean_cell(sheet, cc.x, cc.y)
 			_water_frame_texs.append(
 					ImageTexture.create_from_image(im) if im != null else null)
+
+
+## Превью-шум: билинейный хэш-шум как в городе (city_terrain._noise2) —
+## тайлы раскладываются пятнами, а не шахматкой.
+func _pv_hash(x: int, y: int, n: int) -> int:
+	return absi(int((x * 73856093) ^ (y * 19349663) ^ (n * 83492791))) % 97
+
+
+func _pv_noise(xf: float, yf: float, n: int) -> float:
+	var x0 := int(floorf(xf))
+	var y0 := int(floorf(yf))
+	var fx := xf - float(x0)
+	var fy := yf - float(y0)
+	var sx := fx * fx * (3.0 - 2.0 * fx)
+	var sy := fy * fy * (3.0 - 2.0 * fy)
+	var a := float(_pv_hash(x0, y0, n))
+	var b := float(_pv_hash(x0 + 1, y0, n))
+	var c := float(_pv_hash(x0, y0 + 1, n))
+	var d := float(_pv_hash(x0 + 1, y0 + 1, n))
+	return lerpf(lerpf(a, b, sx), lerpf(c, d, sx), sy)
+
+
+func _pv_tile_index(tx: int, ty: int, size: int) -> int:
+	var fams := maxi(2, size / 4)
+	var per := maxi(1, size / fams)
+	var fam: int = absi(int(_pv_noise(tx / 6.0, ty / 6.0, 71))) % fams
+	return mini(size - 1, fam * per + _pv_hash(tx, ty, 97) % per)
 
 
 func _process(delta: float) -> void:
