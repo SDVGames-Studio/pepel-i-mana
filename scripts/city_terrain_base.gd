@@ -457,7 +457,10 @@ func _load_grass_set() -> Array:
 		for gp in mf.get("grass", []):
 			mg.append(Assets.tex(String(gp)))
 			mfl.append(Assets.tex(String(gp).replace(".png", "_fill.png")))
-		if mg.size() == 6 and mg[0] != null and mfl[0] != null:
+		if mg.size() >= 4 and mg[0] != null and mfl[0] != null:
+			while mg.size() < 6:   # v1.76.2: зима даёт 4 — циклим до 6
+				mg.append(mg[mg.size() % maxi(1, len(mg))])
+				mfl.append(mfl[mfl.size() % maxi(1, len(mfl))])
 			_grass_fills = mfl
 			return mg
 	var summer: bool = sim != null and sim.has_method("season") and String(sim.season()) == "summer"

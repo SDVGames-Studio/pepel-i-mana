@@ -101,22 +101,32 @@ def longest_water_run(cells):
     return best_y, best
 
 
-def composite(tile):
-    core = tile[:, :, :3].reshape(-1, 3).mean(axis=0).astype(np.uint8)
+def composite(tile, shared_mean):
+    """v1.76.2: ОБЩАЯ заливка кластера + нормализация цвета тайла к ней.
+    Разные средние тайлов давали квадратную мозайку («весна шахматкой») —
+    теперь базовый тон один, тайлы несут только фактуру."""
     fill = np.zeros((TS, TS, 4), np.uint8)
-    fill[:, :, :3] = core
+    fill[:, :, :3] = shared_mean
     fill[:, :, 3] = 255
+    # нормализация каналов тайла к общему тону (мягкая, с потолком x1.4)
+    tm = tile[:, :, :3].reshape(-1, 3).mean(axis=0)
+    ratio = np.clip(shared_mean / np.maximum(tm, 1.0), 0.7, 1.4)
+    t = tile.astype(np.float32)
+    t[:, :, :3] *= ratio
+    t[:, :, :3] = np.clip(t[:, :, :3], 0, 255)
+    t = t.astype(np.uint8)
     yy, xx = np.mgrid[0:TS, 0:TS]
     edge = np.minimum(np.minimum(xx, TS - 1 - xx),
                       np.minimum(yy, TS - 1 - yy)).astype(np.float32)
-    ramp = 0.10 + 0.45 * np.clip(edge / float(FEATHER), 0.0, 1.0)
-    t = tile.copy()
+    # v1.76.3: фактура автора почти в полную силу (0.35..1.0), гасится
+    # только кайма — «пластиковая» заливка 10-55% убивала лист заказчика
+    ramp = 0.35 + 0.65 * np.clip(edge / float(FEATHER), 0.0, 1.0)
     t[:, :, 3] = (t[:, :, 3].astype(np.float32) * ramp).astype(np.uint8)
     af = t[:, :, 3:4].astype(np.float32) / 255.0
     comp = (t[:, :, :3].astype(np.float32) * af
             + fill[:, :, :3].astype(np.float32) * (1.0 - af)).astype(np.uint8)
     out = np.dstack([comp, np.full((TS, TS), 255, np.uint8)])
-    return Image.fromarray(out), Image.fromarray(np.tile(core, (TS, TS, 1)))
+    return Image.fromarray(out), Image.fromarray(np.tile(shared_mean, (TS, TS, 1)))
 
 
 def main():
@@ -141,9 +151,13 @@ def main():
         bdir = os.path.join(OUT, tag)
         os.makedirs(bdir, exist_ok=True)
         grass_paths = []
+        # v1.76.2: общий тон кластера — заливка ОДНА на все 6 тайлов
+        means = np.array([rgb[cy*TS:(cy+1)*TS, cx*TS:(cx+1)*TS][:, :, :3]
+                          .reshape(-1, 3).mean(axis=0) for cx, cy in pick])             if pick else np.zeros((1, 3))
+        shared_mean = np.clip(means.mean(axis=0), 1, 254).astype(np.uint8)
         for i, (cx, cy) in enumerate(pick):
             tile = rgb[cy*TS:(cy+1)*TS, cx*TS:(cx+1)*TS]
-            comp_img, fill_img = composite(np.ascontiguousarray(tile))
+            comp_img, fill_img = composite(np.ascontiguousarray(tile), shared_mean)
             comp_img.save(os.path.join(bdir, "grass_%d.png" % (i + 1)))
             fill_img.save(os.path.join(bdir, "grass_%d_fill.png" % (i + 1)))
             grass_paths.append("res://assets/sprites/env/biomes/%s/grass_%d.png" % (tag, i + 1))

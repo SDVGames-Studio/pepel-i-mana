@@ -612,7 +612,7 @@ func _grass_index_at(x: int, y: int) -> int:
 		return -1
 	var fam := clampi(int(_noise2(x / 7.0, y / 7.0, 3, 11)), 0, 2)
 	var v: int = _hash(x, y, 2)
-	return fam * 2 + v
+	return (fam * 2 + v) % maxi(1, _grass_texs.size())   # v1.76.2: кламп
 
 
 func _grass_texture_at(x: int, y: int) -> Texture2D:
@@ -620,7 +620,7 @@ func _grass_texture_at(x: int, y: int) -> Texture2D:
 		return null
 	var fam := clampi(int(_noise2(x / 7.0, y / 7.0, 3, 11)), 0, 2)
 	var v: int = _hash(x, y, 2)
-	return _grass_texs[fam * 2 + v]
+	return _grass_texs[(fam * 2 + v) % maxi(1, _grass_texs.size())]
 
 
 ## ---------- декор луга и земляные проплешины (v1.50 «Живая земля») ----------
