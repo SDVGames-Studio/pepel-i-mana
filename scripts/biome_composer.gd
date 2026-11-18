@@ -214,7 +214,11 @@ func _open_biome(i: int) -> void:
 		_add_pick(grid, String(gp), "grass", Vector2(64, 64))
 	var df := FileAccess.open("user://composer_diag.txt", FileAccess.WRITE)
 	if df != null:
-		df.store_string("v%s tab=%s sources=%d tiles=%d nulls=%d window=%s" % [_ver, String(e.get("label", "?")), _sources.size(), tiles_n, nulls, str(DisplayServer.window_get_size())])
+		var null_paths := []
+		for gp2 in e.get("grass", []):
+			if Assets.tex(String(gp2)) == null:
+				null_paths.append(String(gp2))
+		df.store_string("v%s tab=%s sources=%d tiles=%d nulls=%d window=%s null_list=%s" % [_ver, String(e.get("label", "?")), _sources.size(), tiles_n, nulls, str(DisplayServer.window_get_size()), ", ".join(null_paths)])
 
 	if String(e.get("water", "")) != "":
 		var wcap := Label.new()
@@ -240,6 +244,15 @@ func _open_biome(i: int) -> void:
 func _add_pick(parent: Control, ref: String, kind: String, sizev: Vector2) -> void:
 	var tex: Texture2D = Assets.tex(ref) if ref.begins_with("res://") else Assets.sprite(ref)
 	if tex == null:
+		# v1.78.4: файл не импортирован редактором — КРАСНАЯ заглушка
+		# (не пустота): видно, что нажать «Переимпортировать»
+		var nb := Button.new()
+		nb.custom_minimum_size = sizev
+		nb.text = "!"
+		nb.modulate = Color(1, 0.3, 0.3)
+		nb.disabled = true
+		nb.tooltip_text = ref
+		parent.add_child(nb)
 		return
 	var b := Button.new()
 	b.custom_minimum_size = sizev
