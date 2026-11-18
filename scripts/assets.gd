@@ -55,17 +55,27 @@ static func uniform_ground(paths: Array) -> Array:
 		var t: Texture2D = tex(String(p))
 		if t != null:
 			imgs.append(t.get_image())
+	return uniform_ground_imgs(imgs)
+
+
+## v1.78.5: рецепт прямо из Image (композитор нарезает клетки листов
+## заказчика в память — путей ещё не существует до сохранения).
+static func uniform_ground_imgs(imgs: Array) -> Array:
 	if imgs.is_empty():
 		return [[], []]
 	var means := []
 	for im: Image in imgs:
 		var sm := Vector3(0, 0, 0)
+		var n := 0
 		for y in TS_G:
 			for x in TS_G:
 				var c := im.get_pixel(x, y)
-				sm += Vector3(c.r8, c.g8, c.b8)
-		var n := float(TS_G * TS_G)
-		means.append(sm / n)
+				# v1.78.5: прозрачные пиксели (чистка шашечки листов) не
+				# тянут тон вниз — учитываются только видимые
+				if c.a >= 0.5:
+					sm += Vector3(c.r8, c.g8, c.b8)
+					n += 1
+		means.append(sm / float(maxi(1, n)))
 	var acc := Vector3(0, 0, 0)
 	for m in means:
 		acc += m
@@ -90,6 +100,11 @@ static func uniform_ground(paths: Array) -> Array:
 				var dith := float((x * 127 + y * 311 + 17) % 97) / 97.0
 				var ramp := clampf((edge + dith * 7.0) / 8.0, 0.0, 1.0)
 				ramp = 0.35 + 0.65 * ramp
+				if c.a < 0.5:
+					# дырка после чистки шашечки — заливается общим тоном
+					# биома (срастание краёв, как у подложки)
+					out.set_pixel(x, y, shared_c)
+					continue
 				var nr := clampf(c.r8 * ratio.x, 0, 255)
 				var ng := clampf(c.g8 * ratio.y, 0, 255)
 				var nb := clampf(c.b8 * ratio.z, 0, 255)
@@ -125,7 +140,17 @@ static func biome_tag_for_season(season: String) -> String:
 
 static func tex(path: String) -> Texture2D:
 	if not _cache.has(path):
-		var t: Texture2D = load(path)
+		var t: Texture2D = null
+		if path.begins_with("user://"):
+			# v1.78.5: патчи композитора (user://biomes_composed/...) — мимо
+			# импорт-системы редактора, грузим с диска напрямую: биом работает
+			# СРАЗУ после сохранения, без переимпорта и в экспорте тоже
+			var abs := ProjectSettings.globalize_path(path)
+			var im := Image.load_from_file(abs)
+			if im != null and not im.is_empty():
+				t = ImageTexture.create_from_image(im)
+		else:
+			t = load(path)
 		_cache[path] = t
 	return _cache[path]
 

@@ -139,12 +139,13 @@ def main():
         img = Image.open(path).convert("RGBA")
         rgb = np.array(img)
         cells = full_cells(rgb)
-        # v1.78.2: ВСЕ полные не-водные клетки листа (до 24) — заказчик:
-        # «почему у меня столько тайлов, а у тебя пару куцых»
+        # v1.78.3: ВСЕ полные не-водные клетки листа (до 40) — заказчик:
+        # «наполнение не полное» — в библиотеке композитора должны быть
+        # ВСЕ тайлы листа, не выборка
         allg = [(cx, cy) for cx, cy, m in cells
                 if not (m[2] > m[0] + 10 and m[2] > m[1] + 10)]
         allg.sort(key=lambda c: (c[1], c[0]))
-        pick = allg[:24]
+        pick = allg[:40]
         bdir = os.path.join(OUT, tag)
         os.makedirs(bdir, exist_ok=True)
         grass_paths = []

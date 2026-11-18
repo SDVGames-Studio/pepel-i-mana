@@ -447,10 +447,9 @@ func _build_tree_desc(tile: Vector2i, ts: float) -> Array:
 		return [bottom.y, "stump", tile, null, Rect2(), Rect2(), bottom, ts * 0.3]
 	var scale := ts * 1.9 if kind == map.TREE_SMALL \
 			else (ts * 2.4 if kind == map.TREE_MEDIUM else ts * 3.0)
-	# v1.76 «Лето»: летние деревья из атласа заказчика
-	var tree_refs: Array = TREE_REFS
-	if sim != null and sim.has_method("season") and String(sim.season()) == "summer":
-		tree_refs = SUMMER_TREE_REFS
+	# v1.78.5: деревья по манифесту биома сезона (в т.ч. собранные
+	# в композиторе) > летние > обычные
+	var tree_refs: Array = _tree_refs_for_season()
 	var ref: String = tree_refs[_hash(tile.x, tile.y, tree_refs.size())]
 	# тёмный лес у болот (v1.39.2, заказчик): деревья в 2 тайлах от воды
 	# болота рисуются затемнёнными вариантами (мрачная хвоя/ива)
@@ -474,6 +473,23 @@ func _build_tree_desc(tile: Vector2i, ts: float) -> Array:
 	var ch := float(comp.get_height()) / maxf(1.0, src.size.y)
 	var dst := Rect2(Vector2(pos.x - w * cw * 0.5, pos.y - scale), Vector2(w * cw, scale * ch))
 	return [bottom.y, "tree", tile, comp, Rect2(Vector2.ZERO, comp.get_size()), dst, bottom, 0.0]
+
+
+## v1.78.5: refs деревьев сезона — манифест биома (собранные в композиторе
+## и сезонные папки заказчика) > летний атлас > обычные.
+func _tree_refs_for_season() -> Array:
+	if sim != null and sim.has_method("season"):
+		var st := String(sim.season())
+		var tag := Assets.biome_tag_for_season(st)
+		if tag != "":
+			var mf := Assets.biome_manifest()
+			if mf.has(tag):
+				var tt: Array = (mf[tag] as Dictionary).get("trees", [])
+				if not tt.is_empty():
+					return tt
+		if st == "summer":
+			return SUMMER_TREE_REFS
+	return TREE_REFS
 
 
 ## Композит дерева (v1.22): спрайт дерева печётся в одну текстуру один раз

@@ -250,6 +250,11 @@ const BLOCKS := [
 	["res://tests/test_magic_simple.gd", [
 	"_test_magic_simple",
 ]],
+
+	["res://tests/test_composer.gd", [
+	"_test_composer_sheets",
+	"_test_composer_save",
+]],
 ]
 
 
