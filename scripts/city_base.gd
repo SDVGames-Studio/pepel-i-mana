@@ -105,7 +105,10 @@ func _ready() -> void:
 	_water = load("res://scripts/water_terrain.gd").new()
 	_water.setup(_terrain, _terrain.colors)
 	_season_loaded = String(sim.season())
-	_water.reload_water(_season_loaded == "summer")   # v1.76: лето — полоса воды заказчика
+	var _btag := OS.get_environment("SHOT_BIOME")
+	if _btag == "" and Assets.biome_manifest().has(Assets.biome_tag_for_season(_season_loaded)):
+		_btag = Assets.biome_tag_for_season(_season_loaded)
+	_water.reload_water(_btag)   # v1.76.1: вода по биому/сезону
 	add_child(_water)
 	# тени солнечного цикла (v1.27): под объектами, над ландшафтом
 	_sky_shadows = SKY.new()
@@ -348,7 +351,10 @@ func _process(delta: float) -> void:
 		if _terrain != null:
 			_terrain.reload_season()
 		if _water != null and _water.has_method("reload_water"):
-			_water.reload_water(_season_loaded == "summer")
+			var _btag2 := OS.get_environment("SHOT_BIOME")
+			if _btag2 == "" and Assets.biome_manifest().has(Assets.biome_tag_for_season(_season_loaded)):
+				_btag2 = Assets.biome_tag_for_season(_season_loaded)
+			_water.reload_water(_btag2)
 	# меч героя и ландшафт меняются — перерисовываем точечно
 	hero.queue_redraw()
 	# болотная зона города (M14-I): тайлы у воды вязнут — герой медленнее.

@@ -63,7 +63,8 @@ func setup(terrain_ref, cfg_colors: Dictionary) -> void:
 		_texs[kind] = Assets.tex("res://assets/sprites/env/n2_water_%s.png" % kind)
 	# v1.50 «Живая земля»: вода — 6-кадровая анимация ForgottenMemories;
 	# кадры полосы 192×96: колонка = кадр, ряд = вариант фактуры
-	# v1.76 «Лето»: летняя вода из атласа заказчика
+	# v1.76.1: вода — по биому/сезону (reload_water зовёт city_base);
+	# старт — стандартная полоса, лето накатывается при первом кадре
 	_fm_water = Assets.tex("res://assets/sprites/env/fm_water.png")
 	# духовка статики: v1.43 — большие карты пекутся 8px/тайл (LINEAR при
 	# уменьшении, глобальный NEAREST растягивает обратно в _draw)
@@ -209,8 +210,21 @@ func _draw() -> void:
 ## река светлее, болото глухо-зелёное (тина поверх — в запечке).
 ## v1.76 «Лето»: сменить полосу воды по сезону (запекать не нужно —
 ## вода рисуется живым слоем).
-func reload_water(summer: bool) -> void:
-	_fm_water = Assets.tex("res://assets/sprites/env/summer/fm_water_summer.png") if summer else Assets.tex("res://assets/sprites/env/fm_water.png")
+func reload_water(tag: String) -> void:
+	if tag == "summer":
+		var t_summer: Texture2D = Assets.tex("res://assets/sprites/env/summer/fm_water_summer.png")
+		if t_summer != null:
+			_fm_water = t_summer
+			return
+	var mf: Dictionary = Assets.biome_manifest()
+	if tag != "" and mf.has(tag):
+		var wp := String(mf[tag].get("water", ""))
+		if wp != "":
+			var t: Texture2D = Assets.tex(wp)
+			if t != null:
+				_fm_water = t
+				return
+	_fm_water = Assets.tex("res://assets/sprites/env/fm_water.png")
 
 
 func _draw_fm_water() -> void:

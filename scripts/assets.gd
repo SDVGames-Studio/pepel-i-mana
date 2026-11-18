@@ -15,6 +15,29 @@ const ATLAS_TS := 16
 const SPRITE_FROM := 60  # тайлы 60+ — существа/предметы, фон вырезан (prepare_atlas.py)
 
 static var _cache: Dictionary = {}
+static var _biome_manifest: Dictionary = {}
+static var _biome_manifest_read := false
+
+## v1.76.1: манифест биомов заказчика (tools/slice_biomes.py) —
+## пути травы/воды/деревьев для сезонных и региональных скинов.
+static func biome_manifest() -> Dictionary:
+	if not _biome_manifest_read:
+		_biome_manifest_read = true
+		var f := FileAccess.open("res://assets/sprites/env/biomes/manifest.json", FileAccess.READ)
+		if f != null:
+			var parsed: Variant = JSON.parse_string(f.get_as_text())
+			if parsed is Dictionary:
+				_biome_manifest = parsed
+	return _biome_manifest
+
+## Тег биома для сезона (весна/осень/зима из папок заказчика; лето —
+## отдельный принятый атлас env/summer).
+static func biome_tag_for_season(season: String) -> String:
+	match season:
+		"spring": return "весна"
+		"autumn": return "осень"
+		"winter": return "зима"
+	return ""
 
 
 static func tex(path: String) -> Texture2D:

@@ -435,7 +435,31 @@ func _static_increment(edits: Array) -> void:
 
 # v1.76 «Лето»: сезонная трава из атласа заказчика (summer/grass_S1..S6)
 # против обычной dual-grid травы; вызывается при старте и смене сезона.
+## Тег биома: SHOT_BIOME (превью) > сезонный (весна/осень/зима) > "".
+func _biome_tag() -> String:
+	var env_tag := OS.get_environment("SHOT_BIOME")
+	if env_tag != "" and Assets.biome_manifest().has(env_tag):
+		return env_tag
+	if sim != null and sim.has_method("season"):
+		var st := String(sim.season())
+		var tag := Assets.biome_tag_for_season(st)
+		if Assets.biome_manifest().has(tag):
+			return tag
+	return ""
+
+
 func _load_grass_set() -> Array:
+	var tag := _biome_tag()
+	if tag != "" and Assets.biome_manifest().has(tag):
+		var mf: Dictionary = Assets.biome_manifest()[tag]
+		var mg: Array = []
+		var mfl: Array = []
+		for gp in mf.get("grass", []):
+			mg.append(Assets.tex(String(gp)))
+			mfl.append(Assets.tex(String(gp).replace(".png", "_fill.png")))
+		if mg.size() == 6 and mg[0] != null and mfl[0] != null:
+			_grass_fills = mfl
+			return mg
 	var summer: bool = sim != null and sim.has_method("season") and String(sim.season()) == "summer"
 	var out: Array = []
 	if summer:
