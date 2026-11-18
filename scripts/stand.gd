@@ -101,14 +101,24 @@ func _prepare_biome_patches() -> void:
 		summer["grass"].append("res://assets/sprites/env/summer/grass_S%d.png" % (i + 1))
 		summer["fill"].append("res://assets/sprites/env/summer/grass_S%d_fill.png" % (i + 1))
 	list.append(summer)
-	for tag in ["весна", "осень", "зима", "болота", "берёзовая роща",
-			"древний лес", "мёртвый лес", "мистический лес",
-			"огненные земли", "проклятый лес", "пустыня", "степи",
-			"скалы", "цветущий край"]:
+	# v1.77.0: порядок — сезонные (композитор может подменить их
+	# полем season), затем остальные по алфавиту манифеста
+	var seen := {}
+	var order: Array = []
+	for ssn in ["spring", "autumn", "winter"]:
+		var st := Assets.biome_tag_for_season(ssn)
+		if st != "" and mf.has(st) and not seen.has(st):
+			order.append(st)
+			seen[st] = true
+	for tag in mf.keys():
+		if not seen.has(tag):
+			order.append(String(tag))
+			seen[tag] = true
+	for tag in order:
 		if not mf.has(tag):
 			continue
 		var e: Dictionary = mf[tag]
-		var entry := {"tag": tag, "grass": e.get("grass", []),
+		var entry := {"tag": String(e.get("label", String(tag))), "grass": e.get("grass", []),
 			"fill": [], "water": String(e.get("water", "")),
 			"trees": e.get("trees", [])}
 		for gp in entry["grass"]:

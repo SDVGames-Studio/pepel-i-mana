@@ -33,10 +33,17 @@ static func biome_manifest() -> Dictionary:
 ## Тег биома для сезона (весна/осень/зима из папок заказчика; лето —
 ## отдельный принятый атлас env/summer).
 static func biome_tag_for_season(season: String) -> String:
+	# v1.77.0: собранные заказчиком биомы (compose_biome.py) с полем
+	# season перекрывают вшитые сезонные теги
+	var mf := biome_manifest()
+	for tag in mf:
+		if String((mf[tag] as Dictionary).get("season", "")) == season:
+			return String(tag)
 	match season:
 		"spring": return "весна"
 		"autumn": return "осень"
 		"winter": return "зима"
+		"summer": return "summer"
 	return ""
 
 
