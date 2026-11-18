@@ -610,17 +610,14 @@ func reload_season() -> void:
 func _grass_index_at(x: int, y: int) -> int:
 	if _grass_texs.is_empty():
 		return -1
-	var fam := clampi(int(_noise2(x / 7.0, y / 7.0, 3, 11)), 0, 2)
-	var v: int = _hash(x, y, 2)
-	return (fam * 2 + v) % maxi(1, _grass_texs.size())   # v1.76.2: кламп
+	return _hash(x, y, 97) % maxi(1, _grass_texs.size())   # v1.78.2: полный разброс
 
 
 func _grass_texture_at(x: int, y: int) -> Texture2D:
 	if _grass_texs.is_empty():
 		return null
-	var fam := clampi(int(_noise2(x / 7.0, y / 7.0, 3, 11)), 0, 2)
-	var v: int = _hash(x, y, 2)
-	return _grass_texs[(fam * 2 + v) % maxi(1, _grass_texs.size())]
+	return _grass_texs[_hash(x, y, 97) % maxi(1, _grass_texs.size())]   # v1.78.2
+
 
 
 ## ---------- декор луга и земляные проплешины (v1.50 «Живая земля») ----------

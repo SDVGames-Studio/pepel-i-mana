@@ -11,7 +11,7 @@ extends Control
 
 const TILES := 20
 const TS := 32
-const MAX_GRASS := 6
+const MAX_GRASS := 8
 const MAX_TREES := 5
 const TREE_SPOTS: Array = [Vector2i(3, 3), Vector2i(15, 4), Vector2i(4, 15),
 		Vector2i(15, 15), Vector2i(9, 17)]
@@ -185,7 +185,7 @@ func _open_biome(i: int) -> void:
 	gcap.add_theme_font_size_override("font_size", 13)
 	_lib_box.add_child(gcap)
 	var grid := GridContainer.new()
-	grid.columns = 6
+	grid.columns = 8
 	grid.add_theme_constant_override("h_separation", 6)
 	grid.add_theme_constant_override("v_separation", 6)
 	_lib_box.add_child(grid)

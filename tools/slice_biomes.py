@@ -139,28 +139,24 @@ def main():
         img = Image.open(path).convert("RGBA")
         rgb = np.array(img)
         cells = full_cells(rgb)
-        best = largest_ground(cells)
-        rows_in = {}
-        for (cx, cy) in sorted(best):
-            rows_in.setdefault(cy, []).append(cx)
-        pick = []
-        for cy in sorted(rows_in):
-            for cx in sorted(rows_in[cy]):
-                if len(pick) < 6:
-                    pick.append((cx, cy))
+        # v1.78.2: ВСЕ полные не-водные клетки листа (до 24) — заказчик:
+        # «почему у меня столько тайлов, а у тебя пару куцых»
+        allg = [(cx, cy) for cx, cy, m in cells
+                if not (m[2] > m[0] + 10 and m[2] > m[1] + 10)]
+        allg.sort(key=lambda c: (c[1], c[0]))
+        pick = allg[:24]
         bdir = os.path.join(OUT, tag)
         os.makedirs(bdir, exist_ok=True)
         grass_paths = []
-        # v1.76.2: общий тон кластера — заливка ОДНА на все 6 тайлов
-        means = np.array([rgb[cy*TS:(cy+1)*TS, cx*TS:(cx+1)*TS][:, :, :3]
-                          .reshape(-1, 3).mean(axis=0) for cx, cy in pick])             if pick else np.zeros((1, 3))
-        shared_mean = np.clip(means.mean(axis=0), 1, 254).astype(np.uint8)
-        for i, (cx, cy) in enumerate(pick):
+        means = [rgb[cy*TS:(cy+1)*TS, cx*TS:(cx+1)*TS][:, :, :3]
+                 .reshape(-1, 3).mean(axis=0) for cx, cy in pick]
+        shared_mean = np.clip(np.mean(means, axis=0), 1, 254).astype(np.uint8)
+        for i, (cx, cy) in enumerate(pick, 1):
             tile = rgb[cy*TS:(cy+1)*TS, cx*TS:(cx+1)*TS]
             comp_img, fill_img = composite(np.ascontiguousarray(tile), shared_mean)
-            comp_img.save(os.path.join(bdir, "grass_%d.png" % (i + 1)))
-            fill_img.save(os.path.join(bdir, "grass_%d_fill.png" % (i + 1)))
-            grass_paths.append("res://assets/sprites/env/biomes/%s/grass_%d.png" % (tag, i + 1))
+            comp_img.save(os.path.join(bdir, "grass_%d.png" % i))
+            fill_img.save(os.path.join(bdir, "grass_%d_fill.png" % i))
+            grass_paths.append("res://assets/sprites/env/biomes/%s/grass_%d.png" % (tag, i))
         wy, run = longest_water_run(cells)
         water_path = ""
         if wy is not None and len(run) >= 3:
