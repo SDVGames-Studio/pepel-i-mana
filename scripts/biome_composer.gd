@@ -17,10 +17,18 @@ extends Control
 
 const TILES := 20
 const TS := 32
-const MAX_GRASS := 12
+const MAX_GRASS := 24
 const MAX_TREES := 5
 const TREE_SPOTS: Array = [Vector2i(3, 3), Vector2i(15, 4), Vector2i(4, 15),
 		Vector2i(15, 15), Vector2i(9, 17)]
+
+# v1.78.7: КАЖДАЯ ВКЛАДКА — СВОЙ БИОМ И СВОЁ СОХРАНЕНИЕ (поручение
+# заказчика: «тыкаю на лето — составляю — сохраняю; тыкаю на осень —
+# составляю — сохраняю; и так для каждого биома, а не одно сохранение
+# для всего»). Сезон вкладки проставляется сам: лето → summer и т.д.
+# — сохранённый биом вкладки СРАЗУ становится обликом города в этот сезон.
+const SHEET_SEASON := {"лето": "summer", "весна": "spring",
+	"осень": "autumn", "зима": "winter"}
 
 # Исходные листы заказчика: (метка, папка, файл). v1.78.5: композитор
 # сам нарезает клетки из листов — слайсеры нужны только для вшитых биомов.
@@ -51,6 +59,8 @@ var _active := 0
 var _sheet_cache := {}          # путь листа -> Image (загружен с диска)
 var _analysis := {}             # путь листа -> {cells[], water{}, found}
 var _clean_cache := {}          # "лист|cx,cy" -> Image (шашечка снята)
+var _workspaces := {}           # v1.78.7: путь листа -> сборка ЭТОЙ вкладки
+var _active_sheet := ""         # лист открытой вкладки
 var _sel_grass: Array = []      # [{"sheet", "cx", "cy"}]
 var _sel_water := {}            # {"sheet", "cells": [Vector2i]} или {}
 var _sel_trees: Array = []      # спрайт-рефы деревьев
@@ -435,18 +445,98 @@ func _cell_tex(path: String, cx: int, cy: int) -> ImageTexture:
 	return ImageTexture.create_from_image(im) if im != null else null
 
 
-## Открыть лист: его клетки/вода/деревья (клик = добавить/убрать).
+## Спрятать сборку текущей вкладки в workspace (v1.78.7: у каждой
+## вкладки свой набор тайлов — не одно общее сохранение).
+func _store_workspace() -> void:
+	if _active_sheet == "":
+		return
+	_workspaces[_active_sheet] = {
+		"grass": _sel_grass.duplicate(true),
+		"water": _sel_water.duplicate(true),
+		"trees": _sel_trees.duplicate(true),
+		"name": _name_edit.text,
+		"season": _season,
+	}
+
+
+## Загрузить сборку вкладки: из workspace этой сессии или из сохранённого
+## biome.json (клетки листа восстановятся — выбор продолжается с того же
+## места).
+func _load_workspace(sheet: String) -> void:
+	var label := String(_sources[_active].get("label", ""))
+	var ws: Dictionary = _workspaces.get(sheet, {})
+	if ws.is_empty():
+		var bf := FileAccess.open(
+				"user://biomes_composed/%s/biome.json" % label, FileAccess.READ)
+		if bf != null:
+			var parsed: Variant = JSON.parse_string(bf.get_as_text())
+			if parsed is Dictionary:
+				var cells: Array = (parsed as Dictionary).get("cells", [])
+				for c in cells:
+					_sel_grass.append({
+						"sheet": String(c.get("sheet", sheet)),
+						"cx": int(c.get("cx", 0)),
+						"cy": int(c.get("cy", 0)),
+					})
+				var wc: Dictionary = (parsed as Dictionary).get("water_cells", {})
+				if not (wc.get("cells", []) as Array).is_empty():
+					var wlist: Array = []
+					for c2 in wc.get("cells", []):
+						# JSON: Vector2i -> {"x": .., "y": ..}
+						var cc: Variant = c2
+						if cc is Dictionary:
+							wlist.append(Vector2i(int(cc.get("x", 0)),
+									int(cc.get("y", 0))))
+						elif cc is Vector2i:
+							wlist.append(cc)
+					_sel_water = {"sheet": String(wc.get("sheet", sheet)),
+							"cells": wlist}
+				_sel_trees = (parsed as Dictionary).get("trees", [])
+				var ssn: String = String((parsed as Dictionary).get("season", ""))
+				_season = ssn
+				_season_btn.select(maxi(0, ["", "spring", "summer",
+						"autumn", "winter"].find(_season)))
+				_name_edit.text = String((parsed as Dictionary).get("label", ""))
+				_workspaces[sheet] = {
+					"grass": _sel_grass.duplicate(true),
+					"water": _sel_water.duplicate(true),
+					"trees": _sel_trees.duplicate(true),
+					"name": _name_edit.text,
+					"season": _season,
+				}
+		return
+	_sel_grass = (ws.get("grass", []) as Array).duplicate(true)
+	_sel_water = (ws.get("water", {}) as Dictionary).duplicate(true)
+	_sel_trees = (ws.get("trees", []) as Array).duplicate(true)
+	_name_edit.text = String(ws.get("name", ""))
+	_season = String(ws.get("season", ""))
+	var sidx := ["", "spring", "summer", "autumn", "winter"].find(_season) \
+			if _season != "" else 0
+	_season_btn.select(maxi(0, sidx))
+
+
+## Открыть вкладку-биом: своя сборка у каждой (v1.78.7). Перед
+## переключением состояние текущей вкладки прячется в workspace,
+## открываемая — восстанавливается (или подгружается из сохранённого).
 func _open_biome(i: int) -> void:
+	_store_workspace()
 	_active = clampi(i, 0, _sources.size() - 1)
 	for ch in _lib_box.get_children():
 		ch.queue_free()
 	var e: Dictionary = _sources[_active]
 	var sheet := String(e.get("sheet", ""))
+	_active_sheet = sheet
+	_load_workspace(sheet)
 	var an := _analyze_sheet(sheet)
+	var label := String(e.get("label", "?"))
+	var saved := FileAccess.file_exists(
+			"user://biomes_composed/%s/biome.json" % label)
 	var cap := Label.new()
-	cap.text = Loc.t("composer.biome_header") % String(e.get("label", "?"))
+	cap.text = Loc.t("composer.biome_header") % label \
+			+ ("  · сохранён" if saved else "")
 	cap.add_theme_font_size_override("font_size", 18)
-	cap.add_theme_color_override("font_color", Color(0.95, 0.85, 0.6))
+	cap.add_theme_color_override("font_color",
+			Color(0.7, 0.95, 0.7) if saved else Color(0.95, 0.85, 0.6))
 	_lib_box.add_child(cap)
 
 	if not bool(an["found"]):
@@ -744,10 +834,17 @@ func _draw_preview() -> void:
 
 
 func _on_save() -> void:
+	var label := String(_sources[_active].get("label", ""))
 	var nm := _name_edit.text.strip_edges()
-	if nm == "" or _sel_grass.is_empty():
+	if nm == "":
+		nm = label   # v1.78.7: имя вкладки по умолчанию — сохраняешь биом
+		             # этой вкладки (лето сохраняется как «лето»)
+	if _sel_grass.is_empty():
 		_status.text = Loc.t("composer.need_name")
 		return
+	var ssn := _season
+	if ssn == "":
+		ssn = String(SHEET_SEASON.get(label, ""))   # сезон вкладки — сам
 	var tag := nm.replace("/", "_").replace("\\", "_").replace(":", "_")
 	var dir := "user://biomes_composed/%s" % tag
 	DirAccess.make_dir_recursive_absolute(dir)
@@ -786,20 +883,30 @@ func _on_save() -> void:
 		"water": water_path,
 		"trees": _sel_trees,
 		"label": nm,
-		"season": _season,
+		"season": ssn,
+		# v1.78.7: клетки листа сохраняются — вкладка восстановит свой выбор
+		"cells": _sel_grass,
+		"water_cells": _sel_water,
+		"sheet_label": label,
 	}
 	var f := FileAccess.open(dir + "/biome.json", FileAccess.WRITE)
 	f.store_string(JSON.stringify(data, "  ", false))
+	f.close()
+	_store_workspace()
 	Assets.reload_biome_manifest()
 	_status.text = Loc.t("composer.saved") % [nm,
-			Loc.t("composer.season_" + _season) if _season != "" else Loc.t("composer.season_none")]
+			Loc.t("composer.season_" + ssn) if ssn != "" else Loc.t("composer.season_none")]
 
 
 func _on_clear() -> void:
+	# v1.78.7: очистка только АКТИВНОЙ вкладки (у каждой свой биом)
 	_sel_grass = []
 	_sel_water = {}
 	_sel_trees = []
 	_season = ""
+	_name_edit.text = ""
+	if _active_sheet != "":
+		_workspaces.erase(_active_sheet)
 	_season_btn.select(0)
 	_rebuild_preview()
 	_rebuild_tray()
