@@ -69,7 +69,9 @@ def uniform_recipe(img, shared_mean):
     yy, xx = np.mgrid[0:TS, 0:TS]
     edge = np.minimum(np.minimum(xx, TS - 1 - xx),
                       np.minimum(yy, TS - 1 - yy)).astype(np.float32)
-    ramp = 0.35 + 0.65 * np.clip(edge / float(FEATHER), 0.0, 1.0)
+    # v1.78.1: дизеринг кромки — срастание краёв тайлов
+    dith = ((xx * 127 + yy * 311 + 17) % 97) / 97.0
+    ramp = 0.35 + 0.65 * np.clip((edge + dith * 7.0) / 8.0, 0.0, 1.0)
     t[:, :, 3] = (t[:, :, 3].astype(np.float32) * ramp).astype(np.uint8)
     af = t[:, :, 3:4].astype(np.float32) / 255.0
     comp = (t[:, :, :3].astype(np.float32) * af

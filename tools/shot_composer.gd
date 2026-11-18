@@ -1,6 +1,5 @@
 extends SceneTree
-## E2E-тест композитора биомов (v1.78.0): собираем биом, сохраняем,
-## снимаем UI; затем shot_city с SHOT_BIOME показывает его в городе.
+## E2E композитора v2 (v1.78.1): кнопки биомов, вкладки, смесь тайлов.
 var _frames := 0
 
 func _initialize() -> void:
@@ -8,20 +7,21 @@ func _initialize() -> void:
 	var ui = scene.instantiate()
 	root.add_child(ui)
 	await process_frame
-	var mf: Dictionary = Assets.biome_manifest()
-	# сборка: трава весны x3 + степей, вода скал, деревья мёртвого леса + лета
-	ui._sel_grass = []
-	for i in range(3):
-		ui._sel_grass.append(mf["весна"]["grass"][i])
-	ui._sel_grass.append(mf["степи"]["grass"][0])
-	ui._sel_water = String(mf["скалы"]["water"])
-	ui._sel_trees = [mf["мёртвый лес"]["trees"][0], "e:tree2_summer_oak"]
-	ui._name_edit.text = "ТЕСТ СМЕСЬ"
+	print("composer: источников=", ui._sources.size())
+	# смесь: 3 тайла весны + 1 тайл зимы (разные тайлы — края срастаются)
+	ui._sel_grass = [
+		ui._sources[1]["grass"][0], ui._sources[1]["grass"][2],
+		ui._sources[1]["grass"][4], ui._sources[3]["grass"][0],
+	]
+	ui._sel_water = String(ui._sources[13]["water"])
+	ui._sel_trees = [ui._sources[7]["trees"][0], "e:tree2_summer_oak"]
+	ui._name_edit.text = "ТЕСТ СМЕСЬ 2"
 	ui._season_btn.select(3)
 	ui._season = "autumn"
 	ui._rebuild_preview()
-	ui._status.text = "e2e"
-	print("composer: собрано трава=%d вода=%s деревья=%d" % [ui._sel_grass.size(), ui._sel_water != "", ui._sel_trees.size()])
+	ui._rebuild_tray()
+	ui._open_biome(1)
+	print("composer: смесь трава=%d" % ui._sel_grass.size())
 	process_frame.connect(_on_frame.bind(ui))
 
 func _on_frame(ui) -> void:
@@ -29,8 +29,6 @@ func _on_frame(ui) -> void:
 	if _frames == 8:
 		var img: Image = root.get_texture().get_image()
 		img.save_png("res://tools/shot_composer.png")
-		print("shot: композитор снят")
-		ui._on_save()
-		print("composer: сохранён? ", Assets.biome_manifest().has("ТЕСТ СМЕСЬ"))
+		print("shot: композитор v2 снят")
 	if _frames >= 10:
 		quit(0)

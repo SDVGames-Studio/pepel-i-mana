@@ -84,7 +84,12 @@ static func uniform_ground(paths: Array) -> Array:
 						clampf(shared.y / maxf(tm.y, 1.0), 0.7, 1.4),
 						clampf(shared.z / maxf(tm.z, 1.0), 0.7, 1.4))
 				var edge := float(mini(mini(x, TS_G - 1 - x), mini(y, TS_G - 1 - y)))
-				var ramp := 0.35 + 0.65 * clampf(edge / 8.0, 0.0, 1.0)
+				# v1.78.1: СРАСТАНИЕ КРАЁВ — детерминированный дизеринг:
+				# кромка не ровная, а пиксельным переливом; соседние тайлы
+				# перетекают в общий тон без швов и зазоров
+				var dith := float((x * 127 + y * 311 + 17) % 97) / 97.0
+				var ramp := clampf((edge + dith * 7.0) / 8.0, 0.0, 1.0)
+				ramp = 0.35 + 0.65 * ramp
 				var nr := clampf(c.r8 * ratio.x, 0, 255)
 				var ng := clampf(c.g8 * ratio.y, 0, 255)
 				var nb := clampf(c.b8 * ratio.z, 0, 255)

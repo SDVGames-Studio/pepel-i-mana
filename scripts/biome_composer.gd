@@ -1,19 +1,26 @@
 extends Control
-## КОМПОЗИТОР БИОМОВ (v1.78.0): собираем биом прямо в игре.
-## Слева — библиотека нарезанных ассетов (все биомы + лето): клик по тайлу
-## травы/воды/дереву добавляет его в свой биом (повторный клик убирает).
-## Справа — живой превью 20×20 (земля единым рецептом + река + деревья).
-## Сохранение: user://biomes_composed/<имя>/biome.json — биом сразу
-## появляется в городе (season), на стенде и в превью SHOT_BIOME.
+## КОМПОЗИТОР БИОМОВ v2 (v1.78.1, спецификация заказчика):
+## 1) внутри ВСЕ ассеты из папок «биом/биомы» (+ лето);
+## 2) сверху КНОПКИ БИОМОВ — клик открывает тайлы/воду/деревья этого биома;
+##    клик по тайлу добавляет его в сборку (повторный — убирает), мешать
+##    можно из разных биомов;
+## 3) разные тайлы СРАСТАЮТСЯ КРАЯМИ: единая база-тон + детерминированный
+##    дизеринг кромки (Assets.uniform_ground) — границы растворяются
+##    пиксельным переливом, без швов и зазоров.
+## Превью 20×20 справа — что видишь, то и в игре; имя+сезон+Сохранить.
 
 const TILES := 20
 const TS := 32
 const MAX_GRASS := 6
 const MAX_TREES := 5
+const TREE_SPOTS: Array = [Vector2i(3, 3), Vector2i(15, 4), Vector2i(4, 15),
+		Vector2i(15, 15), Vector2i(9, 17)]
 
-var _sel_grass: Array = []    # res:// пути травы
-var _sel_water := ""          # res:// полоса воды
-var _sel_trees: Array = []    # спрайт-рефы деревьев (img:/e:)
+var _sources: Array = []        # [{label, grass[], water, trees[]}]
+var _active := 0                # индекс открытого биома
+var _sel_grass: Array = []      # res:// пути травы
+var _sel_water := ""
+var _sel_trees: Array = []      # спрайт-рефы деревьев
 var _season := ""
 var _t := 0.0
 
@@ -23,104 +30,124 @@ var _water_cells: Array = []
 var _status: Label = null
 var _name_edit: LineEdit = null
 var _season_btn: OptionButton = null
-const TREE_SPOTS: Array = [Vector2i(3, 3), Vector2i(15, 4), Vector2i(4, 15),
-		Vector2i(15, 15), Vector2i(9, 17)]
+var _lib_box: VBoxContainer = null
+var _tray: HBoxContainer = null
+var _biome_btns: Array = []
 
 
 func _ready() -> void:
 	const UITheme = preload("res://scripts/ui_theme.gd")
-	var root := self
-	root.set_anchors_preset(Control.PRESET_FULL_RECT)
+	set_anchors_preset(Control.PRESET_FULL_RECT)
 	var bg := ColorRect.new()
 	bg.color = Color(0.13, 0.12, 0.11)
 	bg.set_anchors_preset(Control.PRESET_FULL_RECT)
-	root.add_child(bg)
+	add_child(bg)
 
-	# --- левая панель: имя/сезон/библиотека/кнопки
+	# --- верх: КНОПКИ БИОМОВ (спецификация п.2)
+	var top := PanelContainer.new()
+	top.set_anchors_preset(Control.PRESET_TOP_WIDE)
+	top.offset_bottom = 64.0
+	add_child(top)
+	var tscroll := ScrollContainer.new()
+	tscroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
+	tscroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	top.add_child(tscroll)
+	var tabs := HBoxContainer.new()
+	tabs.add_theme_constant_override("separation", 6)
+	tscroll.add_child(tabs)
+	_load_sources()
+	for i in range(_sources.size()):
+		var e: Dictionary = _sources[i]
+		var b := Button.new()
+		b.text = String(e.get("label", "?"))
+		b.toggle_mode = true
+		b.button_pressed = i == 0
+		b.custom_minimum_size = Vector2(120, 40)
+		b.add_theme_font_size_override("font_size", 16)
+		b.focus_mode = Control.FOCUS_NONE
+		UITheme.apply_button(b)
+		var ci := i
+		b.toggled.connect(func(on: bool) -> void:
+			if on:
+				_open_biome(ci))
+		tabs.add_child(b)
+		_biome_btns.append(b)
+
+	# --- левая колонка: библиотека открытого биома + выбор + кнопки
 	var left := PanelContainer.new()
 	left.set_anchors_preset(Control.PRESET_LEFT_WIDE)
+	left.offset_top = 72.0
 	left.offset_right = 560.0
-	left.offset_bottom = 0.0
-	root.add_child(left)
+	add_child(left)
 	var lv := VBoxContainer.new()
 	lv.add_theme_constant_override("separation", 8)
 	left.add_child(lv)
 
-	var title := Label.new()
-	title.text = Loc.t("composer.title")
-	title.add_theme_font_size_override("font_size", 24)
-	title.add_theme_color_override("font_color", Color(0.95, 0.85, 0.6))
-	lv.add_child(title)
-
-	var hint := Label.new()
-	hint.text = Loc.t("composer.hint")
-	hint.add_theme_font_size_override("font_size", 13)
-	hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	lv.add_child(hint)
-
-	var name_row := HBoxContainer.new()
-	lv.add_child(name_row)
 	_name_edit = LineEdit.new()
 	_name_edit.placeholder_text = Loc.t("composer.name_ph")
 	_name_edit.custom_minimum_size = Vector2(320, 36)
-	name_row.add_child(_name_edit)
+	lv.add_child(_name_edit)
 	_season_btn = OptionButton.new()
 	for s in ["—", "весна", "лето", "осень", "зима"]:
 		_season_btn.add_item(s)
 	_season_btn.custom_minimum_size = Vector2(150, 36)
 	_season_btn.item_selected.connect(func(i: int) -> void:
-		_season = [ "", "spring", "summer", "autumn", "winter" ][i])
-	name_row.add_child(_season_btn)
+		_season = ["", "spring", "summer", "autumn", "winter"][i])
+	lv.add_child(_season_btn)
+
+	_lib_box = VBoxContainer.new()
+	_lib_box.add_theme_constant_override("separation", 6)
+	lv.add_child(_lib_box)
+	_open_biome(0)
 
 	_status = Label.new()
-	_status.add_theme_font_size_override("font_size", 14)
+	_status.add_theme_font_size_override("font_size", 13)
 	_status.add_theme_color_override("font_color", Color(0.7, 0.9, 0.7))
-	_status.text = " "
+	_status.text = Loc.t("composer.picked") % [0, MAX_GRASS, 0, MAX_TREES]
 	lv.add_child(_status)
 
-	var scroll := ScrollContainer.new()
-	scroll.custom_minimum_size = Vector2(520, 560)
-	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	lv.add_child(scroll)
-	var lib := VBoxContainer.new()
-	lib.add_theme_constant_override("separation", 6)
-	scroll.add_child(lib)
-	_build_library(lib)
+	var tray_cap := Label.new()
+	tray_cap.text = Loc.t("composer.tray")
+	tray_cap.add_theme_font_size_override("font_size", 13)
+	lv.add_child(tray_cap)
+	var tray_scroll := ScrollContainer.new()
+	tray_scroll.custom_minimum_size = Vector2(520, 70)
+	tray_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
+	tray_scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	lv.add_child(tray_scroll)
+	_tray = HBoxContainer.new()
+	_tray.add_theme_constant_override("separation", 6)
+	tray_scroll.add_child(_tray)
 
 	var btns := HBoxContainer.new()
 	btns.add_theme_constant_override("separation", 10)
 	lv.add_child(btns)
 	for pair in [["composer.save", "_on_save"], ["composer.clear", "_on_clear"],
 			["composer.back", "_on_back"]]:
-		var b := Button.new()
-		b.text = Loc.t(String(pair[0]))
-		b.custom_minimum_size = Vector2(150, 40)
-		b.add_theme_font_size_override("font_size", 15)
-		b.focus_mode = Control.FOCUS_NONE
-		UITheme.apply_button(b)
-		b.pressed.connect(Callable(self, String(pair[1])))
-		btns.add_child(b)
+		var b2 := Button.new()
+		b2.text = Loc.t(String(pair[0]))
+		b2.custom_minimum_size = Vector2(150, 40)
+		b2.add_theme_font_size_override("font_size", 15)
+		b2.focus_mode = Control.FOCUS_NONE
+		UITheme.apply_button(b2)
+		b2.pressed.connect(Callable(self, String(pair[1])))
+		btns.add_child(b2)
 
 	# --- правая зона: живой превью
 	_preview = Control.new()
 	_preview.set_anchors_preset(Control.PRESET_RIGHT_WIDE)
 	_preview.offset_left = 580.0
+	_preview.offset_top = 72.0
 	_preview.draw.connect(_draw_preview)
-	root.add_child(_preview)
+	add_child(_preview)
 	set_process(true)
 
 
-func _process(delta: float) -> void:
-	_t += delta
-	if _preview != null:
-		_preview.queue_redraw()
-
-
-## Библиотека: каждый биом — строка с кнопками травы/воды/деревьев.
-func _build_library(lib: VBoxContainer) -> void:
-	var sources: Array = []
+## Все источники: лето + все биомы манифеста (папки «биом/биомы»).
+func _load_sources() -> void:
+	_sources = []
 	var summer := {
-		"tag": "лето",
+		"label": "лето",
 		"grass": [], "water": "res://assets/sprites/env/summer/fm_water_summer.png",
 		"trees": ["e:tree2_summer_oak", "e:tree2_summer_pine",
 			"e:tree2_summer_birch", "e:tree2_summer_willow",
@@ -129,35 +156,65 @@ func _build_library(lib: VBoxContainer) -> void:
 	for i in range(MAX_GRASS):
 		summer["grass"].append(
 				"res://assets/sprites/env/summer/grass_S%d.png" % (i + 1))
-	sources.append(summer)
+	_sources.append(summer)
 	var mf := Assets.biome_manifest()
 	for tag in mf.keys():
-		sources.append(mf[tag])
-	for src in sources:
-		var e: Dictionary = src
-		var row := HBoxContainer.new()
-		row.add_theme_constant_override("separation", 4)
-		lib.add_child(row)
-		var cap := Label.new()
-		cap.text = String(e.get("label", String(e.get("tag", "?"))))
-		cap.custom_minimum_size = Vector2(120, 40)
-		cap.add_theme_font_size_override("font_size", 13)
-		row.add_child(cap)
-		for gp in e.get("grass", []):
-			_add_pick(row, String(gp), "grass", Vector2(40, 40))
-		var wp := String(e.get("water", ""))
-		if wp != "":
-			_add_pick(row, wp, "water", Vector2(40, 40))
+		var e: Dictionary = mf[tag]
+		_sources.append({
+			"label": String(e.get("label", String(tag))),
+			"grass": e.get("grass", []),
+			"water": String(e.get("water", "")),
+			"trees": e.get("trees", []),
+		})
+
+
+## Открыть биом: его тайлы/вода/деревья (клик = добавить/убрать).
+func _open_biome(i: int) -> void:
+	_active = clampi(i, 0, _sources.size() - 1)
+	for ch in _lib_box.get_children():
+		ch.queue_free()
+	var e: Dictionary = _sources[_active]
+	var cap := Label.new()
+	cap.text = Loc.t("composer.biome_header") % String(e.get("label", "?"))
+	cap.add_theme_font_size_override("font_size", 18)
+	cap.add_theme_color_override("font_color", Color(0.95, 0.85, 0.6))
+	_lib_box.add_child(cap)
+
+	var gcap := Label.new()
+	gcap.text = Loc.t("composer.grass_cap")
+	gcap.add_theme_font_size_override("font_size", 13)
+	_lib_box.add_child(gcap)
+	var grid := GridContainer.new()
+	grid.columns = 6
+	grid.add_theme_constant_override("h_separation", 6)
+	grid.add_theme_constant_override("v_separation", 6)
+	_lib_box.add_child(grid)
+	for gp in e.get("grass", []):
+		_add_pick(grid, String(gp), "grass", Vector2(64, 64))
+
+	if String(e.get("water", "")) != "":
+		var wcap := Label.new()
+		wcap.text = Loc.t("composer.water_cap")
+		wcap.add_theme_font_size_override("font_size", 13)
+		_lib_box.add_child(wcap)
+		var wrow := HBoxContainer.new()
+		_lib_box.add_child(wrow)
+		_add_pick(wrow, String(e["water"]), "water", Vector2(64, 64))
+
+	if not (e.get("trees", []) as Array).is_empty():
+		var tcap := Label.new()
+		tcap.text = Loc.t("composer.trees_cap")
+		tcap.add_theme_font_size_override("font_size", 13)
+		_lib_box.add_child(tcap)
+		var trow := HBoxContainer.new()
+		trow.add_theme_constant_override("separation", 6)
+		_lib_box.add_child(trow)
 		for tr in e.get("trees", []):
-			_add_pick(row, String(tr), "tree", Vector2(48, 56))
+			_add_pick(trow, String(tr), "tree", Vector2(64, 80))
 
 
-func _add_pick(row: HBoxContainer, ref: String, kind: String, sizev: Vector2) -> void:
-	var tex: Texture2D = null
-	if ref.begins_with("res://"):
-		tex = Assets.tex(ref)
-	else:
-		tex = Assets.sprite(ref)
+func _add_pick(parent: Control, ref: String, kind: String, sizev: Vector2) -> void:
+	var tex: Texture2D = Assets.tex(ref) if ref.begins_with("res://") else Assets.sprite(ref)
 	if tex == null:
 		return
 	var b := Button.new()
@@ -167,9 +224,15 @@ func _add_pick(row: HBoxContainer, ref: String, kind: String, sizev: Vector2) ->
 	b.vertical_icon_alignment = VERTICAL_ALIGNMENT_CENTER
 	b.expand_icon = true
 	b.focus_mode = Control.FOCUS_NONE
-	b.tooltip_text = kind
-	b.pressed.connect(func() -> void: _toggle(ref, kind))
-	row.add_child(b)
+	b.modulate = Color(1, 1, 1, 0.45) if not _is_picked(ref) else Color.WHITE
+	b.pressed.connect(func() -> void:
+		_toggle(ref, kind)
+		b.modulate = Color(1, 1, 1, 0.45) if not _is_picked(ref) else Color.WHITE)
+	parent.add_child(b)
+
+
+func _is_picked(ref: String) -> bool:
+	return _sel_grass.has(ref) or _sel_water == ref or _sel_trees.has(ref)
 
 
 func _toggle(ref: String, kind: String) -> void:
@@ -189,6 +252,37 @@ func _toggle(ref: String, kind: String) -> void:
 	_rebuild_preview()
 	_status.text = Loc.t("composer.picked") % [
 			_sel_grass.size(), MAX_GRASS, _sel_trees.size(), MAX_TREES]
+	_rebuild_tray()
+
+
+## Лоток выбора: что уже в биоме (клик — убрать).
+func _rebuild_tray() -> void:
+	for ch in _tray.get_children():
+		ch.queue_free()
+	var all: Array = _sel_grass.duplicate()
+	if _sel_water != "":
+		all.append(_sel_water)
+	all += _sel_trees
+	for ref in all:
+		var tex: Texture2D = Assets.tex(String(ref)) if String(ref).begins_with("res://") else Assets.sprite(String(ref))
+		if tex == null:
+			continue
+		var b := Button.new()
+		b.custom_minimum_size = Vector2(56, 56)
+		b.icon = ImageTexture.create_from_image(tex.get_image())
+		b.icon_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		b.vertical_icon_alignment = VERTICAL_ALIGNMENT_CENTER
+		b.expand_icon = true
+		b.focus_mode = Control.FOCUS_NONE
+		var r := String(ref)
+		b.pressed.connect(func() -> void:
+			_sel_grass.erase(r)
+			if _sel_water == r:
+				_sel_water = ""
+			_sel_trees.erase(r)
+			_rebuild_preview()
+			_rebuild_tray())
+		_tray.add_child(b)
 
 
 func _rebuild_preview() -> void:
@@ -214,6 +308,12 @@ func _rebuild_preview() -> void:
 				_water_cells.append(Vector2i(tx, yc + dy))
 
 
+func _process(delta: float) -> void:
+	_t += delta
+	if _preview != null:
+		_preview.queue_redraw()
+
+
 func _draw_preview() -> void:
 	var ox := 20.0
 	var oy := 20.0
@@ -230,8 +330,7 @@ func _draw_preview() -> void:
 			var wf := int(_t * 3.0) % 6
 			for c in _water_cells:
 				_preview.draw_texture_rect_region(wtex,
-						Rect2(ox + float(c.x * TS), oy + float(c.y * TS),
-								TS, TS),
+						Rect2(ox + float(c.x * TS), oy + float(c.y * TS), TS, TS),
 						Rect2(float(wf) * TS, float(c.y % 3) * TS, TS, TS))
 	for k in range(_sel_trees.size()):
 		var tp: Vector2i = TREE_SPOTS[k % TREE_SPOTS.size()]
@@ -268,7 +367,8 @@ func _on_clear() -> void:
 	_season = ""
 	_season_btn.select(0)
 	_rebuild_preview()
-	_status.text = " "
+	_rebuild_tray()
+	_status.text = Loc.t("composer.picked") % [0, MAX_GRASS, 0, MAX_TREES]
 
 
 func _on_back() -> void:
