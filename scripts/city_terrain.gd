@@ -622,6 +622,17 @@ func _grass_texture_at(x: int, y: int) -> Texture2D:
 
 
 func _grass_fam_index(x: int, y: int) -> int:
+	# v1.78.8: нарисованная в композиторе карта — город рисует ЕЁ
+	# (плитка 20×20 тайлов повторяется по миру; отрицательные через posmod)
+	if _biome_grid.size() == 400:
+		var gx: int = x % 20
+		if gx < 0:
+			gx += 20
+		var gy: int = y % 20
+		if gy < 0:
+			gy += 20
+		var gi: int = int(_biome_grid[gy * 20 + gx])
+		return clampi(gi, 0, maxi(0, _grass_texs.size() - 1))
 	var size := maxi(1, _grass_texs.size())
 	var fams := maxi(2, size / 4)     # родов
 	var per := maxi(1, size / fams)   # вариантов в роде

@@ -448,6 +448,10 @@ func _biome_tag() -> String:
 	return ""
 
 
+var _biome_grid: Array = []   # v1.78.8: НАРИСОВАННАЯ карта биома 20×20
+                              # (композитор-рисовалка): город рисует её
+
+
 func _load_grass_set() -> Array:
 	var tag := _biome_tag()
 	if tag != "" and Assets.biome_manifest().has(tag):
@@ -458,8 +462,14 @@ func _load_grass_set() -> Array:
 			var ug: Array = uni[0]
 			if ug.size() >= 4:
 				_grass_fills = uni[1]
+				# v1.78.8: нарисованная карта — город рисует её как есть
+				_biome_grid = mf.get("grid", [])
+				if _biome_grid.size() != 400:
+					_biome_grid = []
 				return ug
+			_biome_grid = []
 			return _load_default_grass()
+		_biome_grid = []
 		var mg: Array = []
 		var mfl: Array = []
 		for gp in mf.get("grass", []):

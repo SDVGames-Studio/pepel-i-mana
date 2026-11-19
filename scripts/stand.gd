@@ -139,7 +139,7 @@ func _prepare_biome_patches() -> void:
 		var e: Dictionary = mf[tag]
 		var entry := {"tag": String(e.get("label", String(tag))), "grass": e.get("grass", []),
 			"fill": [], "water": String(e.get("water", "")),
-			"trees": e.get("trees", [])}
+			"trees": e.get("trees", []), "grid": e.get("grid", [])}
 		if bool(e.get("composed", false)):
 			# v1.78.0: собранные в композиторе — рецепт на лету
 			var uni := Assets.uniform_ground(e.get("grass", []))
@@ -157,14 +157,23 @@ func _prepare_biome_patches() -> void:
 	for entry in list:
 		var img := Image.create(tiles * 32, tiles * 32, false, Image.FORMAT_RGBA8)
 		var n_grass: int = (entry["grass"] as Array).size()
-		# v1.78.6: тайлы пятнами (крупный шум — «род», хэш — вариант)
+		# v1.78.8: нарисованная карта (grid 20×20) рисуется КАК ЕСТЬ —
+		# что заказчик нарисовал, то стенд и город показывают
+		var big_grid: Array = entry.get("grid", [])
+		var use_grid: bool = (big_grid as Array).size() == tiles * tiles
+		# v1.78.6 (для алгоритмических биомов): тайлы пятнами
 		var fams := maxi(2, n_grass / 4)
 		var per := maxi(1, n_grass / fams)
 		for ty in range(tiles):
 			for tx in range(tiles):
-				var n_71: int = int(_pv_noise(tx / 6.0, ty / 6.0, 71))
-				var fi: int = mini(n_grass - 1,
-						(absi(n_71) % fams) * per + _pv_hash(tx, ty, 97) % per)
+				var fi: int = -1
+				if use_grid:
+					fi = clampi(int(big_grid[ty * tiles + tx]), 0,
+							maxi(0, n_grass - 1))
+				else:
+					var n_71: int = int(_pv_noise(tx / 6.0, ty / 6.0, 71))
+					fi = mini(n_grass - 1,
+							(absi(n_71) % fams) * per + _pv_hash(tx, ty, 97) % per)
 				var fill_p := String(entry["fill"][fi]) if (entry["fill"] as Array).size() > 0 else ""
 				if not img_cache.has(fill_p):
 					var ft := Assets.tex(fill_p)

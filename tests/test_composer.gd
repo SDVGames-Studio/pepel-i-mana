@@ -1,15 +1,8 @@
-# Тест композитора биомов v2 (v1.78.5): нарезка клеток из исходных листов
-# заказчика, сохранение патчей в user://, загрузка их через Assets.tex.
+# Тест композитора-рисовалки v4 (v1.78.8): кисти, нарисованная карта,
+# сохранение grid в user://, город рисует карту как есть.
 extends "res://tests/test_base.gd"
 
 const COMPOSER := "res://scripts/biome_composer.gd"
-
-# Тесты роняют раннер на машинах без исходных листов заказчика — тогда
-# проверяем только программную часть (рецепт/печать на синтетике).
-func _summer_path() -> String:
-	var comp = load(COMPOSER).new()
-	return String(comp.SHEET_BASE) + "/" + "Биомы лето" + "/" \
-			+ "Пиксельный атлас лесных и водных тайловета.png"
 
 
 func _make_comp() -> Object:
@@ -18,8 +11,7 @@ func _make_comp() -> Object:
 		var loc: Node = load("res://scripts/loc.gd").new()
 		loc.name = "Loc"
 		tree.root.add_child(loc)
-	# UI композитора в headless не строим (root раннера до старта цикла)
-	# — нужные для логики поля подставляем вручную
+	# UI композитора в headless не строим — нужные поля подставляем вручную
 	var comp: Object = load(COMPOSER).new()
 	comp._load_sources()
 	comp._name_edit = LineEdit.new()
@@ -35,7 +27,7 @@ func _test_composer_sheets() -> void:
 	var an: Dictionary = comp._analyze_sheet(sp)
 	if not bool(an["found"]):
 		print("  skip: исходные листы заказчика недоступны на этой машине")
-		comp.queue_free()
+		comp.free()
 		return
 	_check(int((an["cells"] as Array).size()) >= 150,
 			"лето: в библиотеке ВСЕ клетки листа (%d)" % int((an["cells"] as Array).size()))
@@ -49,8 +41,8 @@ func _test_composer_sheets() -> void:
 	_check(im != null and im.get_size() == Vector2i(32, 32),
 			"клетка листа нарезается 32×32")
 	var tex: ImageTexture = comp._cell_tex(sp, first.x, first.y)
-	_check(tex != null, "клетка листа превращается в текстуру кнопки")
-	comp.queue_free()
+	_check(tex != null, "клетка листа превращается в текстуру кисти")
+	comp.free()
 
 
 func _test_composer_save() -> void:
@@ -62,18 +54,27 @@ func _test_composer_save() -> void:
 	if not bool(an["found"]):
 		print("  skip: сохранение биома проверяется только при наличии листов")
 		return
-	# сборка: 6 клеток земли + авто-вода
+	# кисти: 4 клетки листа
 	var cells: Array = an["cells"]
 	comp._sel_grass = []
-	for i in range(6):
+	for i in range(4):
 		comp._sel_grass.append({"sheet": sp, "cx": int(cells[i]["cx"]),
 				"cy": int(cells[i]["cy"])})
 	comp._sel_water = an["water"]
 	comp._sel_trees = ["e:tree2_summer_oak"]
 	comp._season = "summer"
+	# НАРИСОВАННАЯ КАРТА 20×20: каждый тайл ставится «руками»
+	var grid: Array = []
+	grid.resize(400)
+	for k in range(400):
+		grid[k] = -1
+	for y in range(20):
+		for x in range(20):
+			grid[y * 20 + x] = (x * 7 + y * 3) % 4
+	comp._grid = grid
 	comp._name_edit.text = tag
-	comp._rebuild_preview()
-	_check(comp._preview_tex != null, "превью собирается из клеток листа")
+	comp._redraw_canvas()
+	_check(comp._canvas_tex != null, "холст рисуется из нарисованной карты")
 	comp._on_save()
 	_check(FileAccess.file_exists(dir + "/grass_1.png"), "grass_1.png напечатан в user://")
 	_check(FileAccess.file_exists(dir + "/water.png"), "water.png (полоса 6×3) напечатан")
@@ -83,10 +84,13 @@ func _test_composer_save() -> void:
 	bf.close()   # Windows: открытый read-хэндл блокирует удаление ниже
 	_check(data is Dictionary and bool(data["composed"]),
 			"biome.json помечен composed")
-	_check((data["grass"] as Array).size() >= 4
-			and String(data["grass"][0]).begins_with("user://"),
-			"пути травы в biome.json — user://")
-	# город-ветка: рецепт по сохранённым патчам
+	_check((data["grid"] as Array).size() == 400,
+			"НАРИСОВАННАЯ КАРТА сохранена (grid 20×20)")
+	_check((data["cells"] as Array).size() == 4,
+			"клетки кистей сохранены (восстановление вкладки)")
+	_check(String(data["season"]) == "summer",
+			"сезон вкладки проставлен сам (лето → summer)")
+	# город-ветка: рецепт по сохранённым патчам + grid
 	var mf: Dictionary = Assets.biome_manifest()
 	_check(mf.has(tag), "биом появился в манифесте сразу после сохранения")
 	var uni := Assets.uniform_ground((mf[tag] as Dictionary).get("grass", []))
@@ -101,7 +105,6 @@ func _test_composer_save() -> void:
 	var wt: Texture2D = Assets.tex(String(mf[tag].get("water", "")))
 	_check(wt != null and wt.get_size() == Vector2(192, 96),
 			"вода user:// — полоса 192×96 (кадры города)")
-	# стенд-ветка: подложки для composed не нужны — recipe-тайлы непрозрачны
 	# уборка за собой (манифест перечитывается)
 	var d2 := DirAccess.open(dir)
 	for f in d2.get_files():
@@ -109,4 +112,4 @@ func _test_composer_save() -> void:
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(dir))
 	Assets.reload_biome_manifest()
 	_check(not Assets.biome_manifest().has(tag), "тестовый биом убран из манифеста")
-	comp.queue_free()
+	comp.free()

@@ -1,37 +1,28 @@
 extends Control
-## КОМПОЗИТОР БИОМОВ v2 (v1.78.5, спецификация заказчика):
-## 1) библиотека читает ИСХОДНЫЕ листы заказчика НАПРЯМУЮ (Image.load_from_file,
-##    мимо импорт-системы редактора) — в кнопках ВСЕ тайлы листа (до 48 клеток),
-##    никакой выборки и никаких «куцых» библиотек;
-## 2) сверху КНОПКИ БИОМОВ — клик открывает тайлы/воду/деревья этого листа;
-##    клик по тайлу добавляет его в сборку (повторный — убирает), мешать
-##    можно из разных листов;
-## 3) разные тайлы СРАСТАЮТСЯ КРАЯМИ: единый тон набора + детерминированный
-##    дизеринг кромки (Assets.uniform_ground_imgs) — границы растворяются.
-##
-## Сохранение: печатает grass_N.png + water.png в
-## user://biomes_composed/<имя>/ и пишет biome.json — город грузит патчи
-## напрямую с диска (Assets.tex умеет user://), биом работает СРАЗУ после
-## сохранения: без переимпорта редактора и в экспорте тоже.
-## Превью 20×20 справа — что видишь, то и в игре.
+## КОМПОЗИТОР-РИСОВАЛКА БИОМОВ v4 (v1.78.8, поручение заказчика:
+## «я должен рисовать сам, каждый тайл»):
+## 1) сверху кнопки биомов; У КАЖДОЙ ВКЛАДКИ — СВОЙ БИОМ И СВОЁ СОХРАНЕНИЕ
+##    (открыл «лето» — нарисовал — сохранил; потом «осень» — своя);
+## 2) клик по тайлу библиотеки берёт его КИСТЬЮ; рисуешь мышью по холсту
+##    20×20 — КАЖДЫЙ ТАЙЛ на карте ставишь САМ; ПКМ/«Ластик» — стереть;
+## 3) сохранение пишет НАРИСОВАННУЮ КАРТУ (grid 20×20) в biome.json —
+##    город рисует ровно твой рисунок (тайлится по миру), а не алгоритм.
+## Библиотека читает исходные листы напрямую (мимо импорта), шашечка
+## вместо альфы снимается сама, вода — полоса из листа (перекраска берега —
+## в цвет биома). Патчи печатаются в user://biomes_composed/<имя>/ —
+## биом работает СРАЗУ, без переимпорта редактора и в экспорте.
 
 const TILES := 20
 const TS := 32
-const MAX_GRASS := 24
 const MAX_TREES := 5
 const TREE_SPOTS: Array = [Vector2i(3, 3), Vector2i(15, 4), Vector2i(4, 15),
 		Vector2i(15, 15), Vector2i(9, 17)]
 
-# v1.78.7: КАЖДАЯ ВКЛАДКА — СВОЙ БИОМ И СВОЁ СОХРАНЕНИЕ (поручение
-# заказчика: «тыкаю на лето — составляю — сохраняю; тыкаю на осень —
-# составляю — сохраняю; и так для каждого биома, а не одно сохранение
-# для всего»). Сезон вкладки проставляется сам: лето → summer и т.д.
-# — сохранённый биом вкладки СРАЗУ становится обликом города в этот сезон.
+# Сезон вкладки проставляется сам: сохранённый биом вкладки сразу
+# становится обликом города в этот сезон.
 const SHEET_SEASON := {"лето": "summer", "весна": "spring",
 	"осень": "autumn", "зима": "winter"}
 
-# Исходные листы заказчика: (метка, папка, файл). v1.78.5: композитор
-# сам нарезает клетки из листов — слайсеры нужны только для вшитых биомов.
 const SHEET_BASE := "F:/востановление кхорно юнитов/assets/ассеты домов/новые ассеты монстров"
 const SHEETS := [
 	["лето", "Биомы лето", "Пиксельный атлас лесных и водных тайловета.png"],
@@ -50,35 +41,41 @@ const SHEETS := [
 	["скалы", "биомы скалы", "Фэнтезийный атлас горных и водных тайлов.png"],
 	["цветущий край", "биомы цветуший край и речной", "Пиксельный атлас фантастического мира-1.png"],
 ]
-# Летние деревья — принятые нарезки (город их уже показывает).
 const SUMMER_TREES := ["e:tree2_summer_oak", "e:tree2_summer_pine",
 	"e:tree2_summer_birch", "e:tree2_summer_willow", "e:tree2_summer_dead"]
 
 var _sources: Array = []        # [{label, sheet, trees[]}]
 var _active := 0
-var _sheet_cache := {}          # путь листа -> Image (загружен с диска)
+var _sheet_cache := {}          # путь листа -> Image
 var _analysis := {}             # путь листа -> {cells[], water{}, found}
 var _clean_cache := {}          # "лист|cx,cy" -> Image (шашечка снята)
-var _workspaces := {}           # v1.78.7: путь листа -> сборка ЭТОЙ вкладки
-var _active_sheet := ""         # лист открытой вкладки
-var _sel_grass: Array = []      # [{"sheet", "cx", "cy"}]
+var _workspaces := {}           # путь листа -> рисование ЭТОЙ вкладки
+var _active_sheet := ""
+
+# --- рисование ---
+var _grid: Array = []           # TILES*TILES int: индекс палитры или -1 (фон)
+var _brush := -1                # индекс палитры; -1 = ластик
+var _painting := false          # ЛКМ зажата — рисуем при движении
+var _sel_grass: Array = []      # палитра: [{"sheet", "cx", "cy"}]
+var _palette_texs: Array = []   # обработанные текстуры палитры (городские)
+var _fill_color := Color(0.35, 0.4, 0.25)
+var _canvas_tex: ImageTexture = null
 var _sel_water := {}            # {"sheet", "cells": [Vector2i]} или {}
 var _sel_trees: Array = []      # спрайт-рефы деревьев
 var _season := ""
 var _t := 0.0
 
 var _preview: Control = null
-var _preview_tex: ImageTexture = null
 var _water_cells: Array = []
-var _water_frame_texs: Array = []   # v1.78.5: кадры воды — ТЕКСТУРЫ вне draw
-                                    # (создание ImageTexture внутри _draw
-                                    # рисует белым — данные не успевают)
+var _water_frame_texs: Array = []
 var _status: Label = null
 var _name_edit: LineEdit = null
 var _season_btn: OptionButton = null
 var _lib_box: VBoxContainer = null
 var _lib_scroll: ScrollContainer = null
 var _tray: HBoxContainer = null
+var _tray_btns: Array = []      # кнопки палитры (подсветка кисти)
+var _cell_btns: Array = []      # кнопки библиотеки (подсветка кисти)
 var _ver := "?"
 
 
@@ -95,7 +92,6 @@ func _ready() -> void:
 	bg.set_anchors_preset(Control.PRESET_FULL_RECT)
 	add_child(bg)
 
-	# --- верх: КНОПКИ БИОМОВ (спецификация п.2)
 	var top := PanelContainer.new()
 	top.set_anchors_preset(Control.PRESET_TOP_WIDE)
 	top.offset_bottom = 64.0
@@ -124,7 +120,6 @@ func _ready() -> void:
 				_open_biome(ci))
 		tabs.add_child(b)
 
-	# --- левая колонка: библиотека открытого листа + выбор + кнопки
 	var left := PanelContainer.new()
 	left.set_anchors_preset(Control.PRESET_LEFT_WIDE)
 	left.offset_top = 72.0
@@ -146,21 +141,18 @@ func _ready() -> void:
 		_season = ["", "spring", "summer", "autumn", "winter"][i])
 	lv.add_child(_season_btn)
 
-	# v1.78.5: библиотека листа до 48 клеток — скролл
 	_lib_scroll = ScrollContainer.new()
-	_lib_scroll.custom_minimum_size = Vector2(520, 360)
+	_lib_scroll.custom_minimum_size = Vector2(520, 330)
 	_lib_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	_lib_scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
 	lv.add_child(_lib_scroll)
 	_lib_box = VBoxContainer.new()
 	_lib_box.add_theme_constant_override("separation", 6)
 	_lib_scroll.add_child(_lib_box)
-	_open_biome(0)
 
 	_status = Label.new()
 	_status.add_theme_font_size_override("font_size", 13)
 	_status.add_theme_color_override("font_color", Color(0.7, 0.9, 0.7))
-	_status.text = Loc.t("composer.picked") % [0, MAX_GRASS, 0, MAX_TREES]
 	lv.add_child(_status)
 
 	var tray_cap := Label.new()
@@ -198,8 +190,7 @@ func _ready() -> void:
 	vlbl.add_theme_font_size_override("font_size", 14)
 	vlbl.add_theme_color_override("font_color", Color(0.6, 0.7, 0.6))
 	add_child(vlbl)
-	# --- правая зона: живой превью (FULL_RECT + offsets: RIGHT_WIDE с
-	# offset_left=580 уезжал за правый край окна — превью не рисовалось)
+	# --- правая зона: холст рисования (клик/драг мышью)
 	_preview = Control.new()
 	_preview.set_anchors_preset(Control.PRESET_FULL_RECT)
 	_preview.offset_left = 580.0
@@ -207,12 +198,13 @@ func _ready() -> void:
 	_preview.offset_right = -20.0
 	_preview.offset_bottom = -40.0
 	_preview.draw.connect(_draw_preview)
+	_preview.gui_input.connect(_on_canvas_input)
 	add_child(_preview)
 	set_process(true)
+	_open_biome(0)   # ПОСЛЕ всех полей UI (_status/_tray нужны рисовалке)
 
 
-## Источники: 15 листов заказчика (лето + 14 папок «биом/биомы»).
-## Деревья — нарезанные манифестные (res://, надёжны в экспорте).
+## Источники: 15 листов заказчика. Деревья — нарезанные манифестные.
 func _load_sources() -> void:
 	_sources = []
 	var mf := Assets.biome_manifest()
@@ -240,8 +232,8 @@ func _sheet_img(path: String) -> Image:
 	return im
 
 
-## Анализ листа (кэш): полные клетки (альфа>200 по всей 32×32, сэмпл шаг 2),
-## средний цвет, вода/не-вода + длиннейшая горизонтальная серия воды.
+## Анализ листа (кэш): полные клетки (альфа>200, сэмпл шаг 2), вода —
+## длиннейшая горизонтальная серия синих клеток. Шашечка-фон отсеивается.
 func _analyze_sheet(path: String) -> Dictionary:
 	if _analysis.has(path):
 		return _analysis[path]
@@ -260,7 +252,7 @@ func _analyze_sheet(path: String) -> Dictionary:
 			var amin := 255
 			var sm := Vector3(0, 0, 0)
 			var n := 0
-			var is_light_px := 0        # светлые нейтральные (шашечка/белое)
+			var is_light_px := 0
 			var lum_lo := 999.0
 			var lum_hi := -1.0
 			for y in range(0, TS, 2):
@@ -287,19 +279,13 @@ func _analyze_sheet(path: String) -> Dictionary:
 			if amin > 200:
 				var m := sm / float(n)
 				var lum := m.x * 0.299 + m.y * 0.587 + m.z * 0.114
-				# v1.78.5: клетки с НАРИСОВАННОЙ шашечкой вместо альфы
-				# (весенний лист): почти вся клетка — светлые нейтральные
-				# пиксели ДВУХ тонов (шахматное чередование) — это фон
-				# листа, а не тайл; в библиотеку не попадает
 				var light_spread := lum_hi - lum_lo
 				if is_light_px * 4 > n * 3 and light_spread > 12.0:
-					continue
+					continue   # клетка-фон листа (шашечка)
 				cells.append({
 					"cx": cx, "cy": cy, "mean": m, "lum": lum,
 					"water": m.z > m.x + 10.0 and m.z > m.y + 10.0,
 				})
-	# земля: сортировка по (ряд, колонка) — заказ листа; БЕЗ лимита —
-	# в библиотеке композитора все тайлы листа (пожелание заказчика)
 	var ground := []
 	for c in cells:
 		if not bool(c["water"]):
@@ -309,9 +295,6 @@ func _analyze_sheet(path: String) -> Dictionary:
 			return int(a["cy"]) < int(b["cy"])
 		return int(a["cx"]) < int(b["cx"]))
 	res["cells"] = ground
-	# вода: длиннейшая серия синих клеток в строке. Светлотный порог 70
-	# (осенние листы с запечённой тёмной рамкой) душит тёмную воду лета —
-	# v1.78.5: порог 42 (тёмный фон листа почти чёрный, lum < 30)
 	var rows := {}
 	for c in cells:
 		if bool(c["water"]) and float(c["lum"]) > 42.0:
@@ -351,12 +334,9 @@ func _cell_img(path: String, cx: int, cy: int) -> Image:
 	return img.get_region(Rect2i(cx * TS, cy * TS, TS, TS))
 
 
-## Чистка клетки (v1.78.5): у части листов заказчика вместо альфы НАРИСОВАНА
-## шашечка (светло-серый/белый шахматный фон). Пиксель считается шашечным,
-## если он светлый нейтральный (max>170, разброс каналов<14) И его пара на
-## ±8px — светлый нейтральный ДРУГОГО тона (шахматное чередование; снег и
-## цветы пар не имеют — не затрагиваются). Шашечка снимается ЗАЛИВКОЙ ОТ
-## КРАЁВ клетки — белые цветы внутри травы заливка не достигает.
+## Чистка клетки: шашечка-вместо-альфы (светлый нейтральный пиксель, чья
+## пара на ±8px — светлый нейтральный другого тона) снимается заливкой
+## от краёв; цветы внутри травы заливка не достигает. >80% шашечки — фон.
 func _clean_cell(path: String, cx: int, cy: int) -> Image:
 	var key := "%s|%d,%d" % [path, cx, cy]
 	if _clean_cache.has(key):
@@ -397,7 +377,6 @@ func _clean_cell(path: String, cx: int, cy: int) -> Image:
 						and absi(sum1 - (r2 + g2 + b2)) >= 36:
 					mask[row + x] = 1
 					break
-	# заливка от краёв клетки по шашечным пикселям
 	var queue: Array = []
 	for x in range(W):
 		for ye in [0, H - 1]:
@@ -420,7 +399,6 @@ func _clean_cell(path: String, cx: int, cy: int) -> Image:
 			if mask[idx2] == 1:
 				mask[idx2] = 2
 				queue.append(Vector2i(nx2, ny2))
-	# шашечка -> прозрачная; остальное — как в листе
 	var holes := 0
 	var out := Image.create(W, H, false, Image.FORMAT_RGBA8)
 	for y2 in range(H):
@@ -433,7 +411,6 @@ func _clean_cell(path: String, cx: int, cy: int) -> Image:
 			else:
 				out.set_pixel(x2, y2, Color8(data[i3], data[i3 + 1],
 						data[i3 + 2], data[i3 + 3]))
-	# клетка почти целиком была шашечкой — пометить как «фон»
 	if holes * 10 > W * H * 8:
 		out = null
 	_clean_cache[key] = out
@@ -445,8 +422,8 @@ func _cell_tex(path: String, cx: int, cy: int) -> ImageTexture:
 	return ImageTexture.create_from_image(im) if im != null else null
 
 
-## Спрятать сборку текущей вкладки в workspace (v1.78.7: у каждой
-## вкладки свой набор тайлов — не одно общее сохранение).
+## ---------- workspace: у каждой вкладки свой рисунок ----------
+
 func _store_workspace() -> void:
 	if _active_sheet == "":
 		return
@@ -454,16 +431,25 @@ func _store_workspace() -> void:
 		"grass": _sel_grass.duplicate(true),
 		"water": _sel_water.duplicate(true),
 		"trees": _sel_trees.duplicate(true),
+		"grid": _grid.duplicate(),
 		"name": _name_edit.text,
 		"season": _season,
 	}
 
 
-## Загрузить сборку вкладки: из workspace этой сессии или из сохранённого
-## biome.json (клетки листа восстановятся — выбор продолжается с того же
-## места).
+## Загрузить рисование вкладки: из workspace сессии или из сохранённого
+## biome.json (клетки и grid восстановятся — рисунок продолжается).
 func _load_workspace(sheet: String) -> void:
 	var label := String(_sources[_active].get("label", ""))
+	_grid = []
+	_grid.resize(TILES * TILES)
+	for k in range(_grid.size()):
+		_grid[k] = -1
+	_sel_grass = []
+	_sel_water = {}
+	_sel_trees = []
+	_season = ""
+	_name_edit.text = ""
 	var ws: Dictionary = _workspaces.get(sheet, {})
 	if ws.is_empty():
 		var bf := FileAccess.open(
@@ -471,18 +457,22 @@ func _load_workspace(sheet: String) -> void:
 		if bf != null:
 			var parsed: Variant = JSON.parse_string(bf.get_as_text())
 			if parsed is Dictionary:
-				var cells: Array = (parsed as Dictionary).get("cells", [])
-				for c in cells:
+				var d: Dictionary = parsed
+				for c in d.get("cells", []):
 					_sel_grass.append({
 						"sheet": String(c.get("sheet", sheet)),
 						"cx": int(c.get("cx", 0)),
 						"cy": int(c.get("cy", 0)),
 					})
-				var wc: Dictionary = (parsed as Dictionary).get("water_cells", {})
+				for k2 in range(_grid.size()):
+					_grid[k2] = -1
+				var gd: Array = d.get("grid", [])
+				for k3 in range(mini(gd.size(), _grid.size())):
+					_grid[k3] = int(gd[k3])
+				var wc: Dictionary = d.get("water_cells", {})
 				if not (wc.get("cells", []) as Array).is_empty():
 					var wlist: Array = []
 					for c2 in wc.get("cells", []):
-						# JSON: Vector2i -> {"x": .., "y": ..}
 						var cc: Variant = c2
 						if cc is Dictionary:
 							wlist.append(Vector2i(int(cc.get("x", 0)),
@@ -491,23 +481,17 @@ func _load_workspace(sheet: String) -> void:
 							wlist.append(cc)
 					_sel_water = {"sheet": String(wc.get("sheet", sheet)),
 							"cells": wlist}
-				_sel_trees = (parsed as Dictionary).get("trees", [])
-				var ssn: String = String((parsed as Dictionary).get("season", ""))
-				_season = ssn
+				_sel_trees = d.get("trees", [])
+				_season = String(d.get("season", ""))
 				_season_btn.select(maxi(0, ["", "spring", "summer",
 						"autumn", "winter"].find(_season)))
-				_name_edit.text = String((parsed as Dictionary).get("label", ""))
-				_workspaces[sheet] = {
-					"grass": _sel_grass.duplicate(true),
-					"water": _sel_water.duplicate(true),
-					"trees": _sel_trees.duplicate(true),
-					"name": _name_edit.text,
-					"season": _season,
-				}
+				_name_edit.text = String(d.get("label", ""))
+				_store_workspace()
 		return
 	_sel_grass = (ws.get("grass", []) as Array).duplicate(true)
 	_sel_water = (ws.get("water", {}) as Dictionary).duplicate(true)
 	_sel_trees = (ws.get("trees", []) as Array).duplicate(true)
+	_grid = (ws.get("grid", []) as Array).duplicate()
 	_name_edit.text = String(ws.get("name", ""))
 	_season = String(ws.get("season", ""))
 	var sidx := ["", "spring", "summer", "autumn", "winter"].find(_season) \
@@ -515,9 +499,8 @@ func _load_workspace(sheet: String) -> void:
 	_season_btn.select(maxi(0, sidx))
 
 
-## Открыть вкладку-биом: своя сборка у каждой (v1.78.7). Перед
-## переключением состояние текущей вкладки прячется в workspace,
-## открываемая — восстанавливается (или подгружается из сохранённого).
+## Открыть вкладку-биом: свой рисунок у каждой. Перед переключением
+## текущее рисование прячется в workspace, вкладка восстанавливается.
 func _open_biome(i: int) -> void:
 	_store_workspace()
 	_active = clampi(i, 0, _sources.size() - 1)
@@ -526,6 +509,7 @@ func _open_biome(i: int) -> void:
 	var e: Dictionary = _sources[_active]
 	var sheet := String(e.get("sheet", ""))
 	_active_sheet = sheet
+	_cell_btns = []   # кнопки прошлой вкладки освобождены вместе с lib_box
 	_load_workspace(sheet)
 	var an := _analyze_sheet(sheet)
 	var label := String(e.get("label", "?"))
@@ -581,9 +565,12 @@ func _open_biome(i: int) -> void:
 		_lib_box.add_child(trow)
 		for tr in trees:
 			_add_ref_pick(trow, String(tr), "tree", Vector2(64, 80))
+	_rebuild_palette()
+	_rebuild_water()
+	_redraw_canvas()
 
 
-## Кнопка клетки листа: иконка = сам регион листа; клик — в сборку.
+## Клик по клетке библиотеки = ВЗЯТЬ КИСТЬ (рисовать этим тайлом).
 func _add_cell_pick(parent: Control, sheet: String, cx: int, cy: int) -> void:
 	var tex := _cell_tex(sheet, cx, cy)
 	if tex == null:
@@ -601,27 +588,31 @@ func _add_cell_pick(parent: Control, sheet: String, cx: int, cy: int) -> void:
 	b.vertical_icon_alignment = VERTICAL_ALIGNMENT_CENTER
 	b.expand_icon = true
 	b.focus_mode = Control.FOCUS_NONE
-	b.tooltip_text = "клетка %d,%d" % [cx, cy]
-	var picked := func() -> bool:
-		for g in _sel_grass:
-			if String(g["sheet"]) == sheet and int(g["cx"]) == cx and int(g["cy"]) == cy:
-				return true
-		return false
-	b.modulate = Color.WHITE if picked.call() else Color(1, 1, 1, 0.45)
+	b.tooltip_text = "кисть: клетка %d,%d" % [cx, cy]
+	_cell_btns.append({"btn": b, "sheet": sheet, "cx": cx, "cy": cy})
 	b.pressed.connect(func() -> void:
-		var cur := false
-		for g in _sel_grass:
-			if String(g["sheet"]) == sheet and int(g["cx"]) == cx and int(g["cy"]) == cy:
-				_sel_grass.erase(g)
-				cur = true
-				break
-		if not cur and _sel_grass.size() < MAX_GRASS:
-			_sel_grass.append({"sheet": sheet, "cx": cx, "cy": cy})
-		_after_toggle())
+		_pick_brush_cell(sheet, cx, cy))
 	parent.add_child(b)
 
 
-## Кнопка воды листа: иконка — первый кадр авто-полосы.
+func _pick_brush_cell(sheet: String, cx: int, cy: int) -> void:
+	# тайл уже в палитре?
+	for k in range(_sel_grass.size()):
+		var g: Dictionary = _sel_grass[k]
+		if String(g["sheet"]) == sheet and int(g["cx"]) == cx \
+				and int(g["cy"]) == cy:
+			_brush = k
+			_refresh_brush_ui()
+			return
+	if _sel_grass.size() >= 24:
+		return
+	_sel_grass.append({"sheet": sheet, "cx": cx, "cy": cy})
+	_brush = _sel_grass.size() - 1
+	_rebuild_palette()
+	_rebuild_water()
+
+
+## Кнопка воды листа: полоса биома.
 func _add_water_pick(parent: Control, water: Dictionary) -> void:
 	var cells: Array = water.get("cells", [])
 	var sheet := String(water.get("sheet", ""))
@@ -644,10 +635,11 @@ func _add_water_pick(parent: Control, water: Dictionary) -> void:
 			_sel_water = {}
 		else:
 			_sel_water = {"sheet": sheet, "cells": cells.duplicate()}
-		_after_toggle())
+		_rebuild_water())
 	parent.add_child(b)
 
 
+## Деревья остаются выбором (клик — добавить/убрать).
 func _add_ref_pick(parent: Control, ref: String, kind: String, sizev: Vector2) -> void:
 	var tex: Texture2D = Assets.sprite(ref) if not ref.begins_with("res://") else Assets.tex(ref)
 	if tex == null:
@@ -666,138 +658,179 @@ func _add_ref_pick(parent: Control, ref: String, kind: String, sizev: Vector2) -
 	b.vertical_icon_alignment = VERTICAL_ALIGNMENT_CENTER
 	b.expand_icon = true
 	b.focus_mode = Control.FOCUS_NONE
-	b.modulate = Color(1, 1, 1, 0.45) if not _is_picked(ref) else Color.WHITE
+	b.modulate = Color(1, 1, 1, 0.45) if not _sel_trees.has(ref) else Color.WHITE
 	b.pressed.connect(func() -> void:
-		_toggle(ref, kind)
-		b.modulate = Color(1, 1, 1, 0.45) if not _is_picked(ref) else Color.WHITE)
+		if _sel_trees.has(ref):
+			_sel_trees.erase(ref)
+		elif _sel_trees.size() < MAX_TREES:
+			_sel_trees.append(ref)
+		b.modulate = Color(1, 1, 1, 0.45) if not _sel_trees.has(ref) else Color.WHITE
+		_rebuild_water())
 	parent.add_child(b)
 
 
-func _is_picked(ref: String) -> bool:
-	return _sel_trees.has(ref)
+## ---------- холст: рисование мышью ----------
+
+func _on_canvas_input(event: InputEvent) -> void:
+	if event is InputEventMouseButton:
+		var mb := event as InputEventMouseButton
+		if mb.button_index == MOUSE_BUTTON_LEFT:
+			_painting = mb.pressed
+			_paint_at(mb.position, mb.pressed)
+		elif mb.button_index == MOUSE_BUTTON_RIGHT and mb.pressed:
+			_erase_at(mb.position)
+		accept_event()
+	elif event is InputEventMouseMotion:
+		var mm := event as InputEventMouseMotion
+		if _painting and (mm.button_mask & MOUSE_BUTTON_MASK_LEFT) != 0:
+			_paint_at(mm.position, true)
 
 
-func _toggle(ref: String, kind: String) -> void:
-	if _sel_trees.has(ref):
-		_sel_trees.erase(ref)
-	elif _sel_trees.size() < MAX_TREES:
-		_sel_trees.append(ref)
-	_after_toggle()
+## Ставит/стирает тайл по координате мыши на холсте 20×20.
+func _paint_at(local: Vector2, on: bool) -> void:
+	var tx := int(floorf((local.x - 20.0) / float(TS)))
+	var ty := int(floorf((local.y - 20.0) / float(TS)))
+	if tx < 0 or ty < 0 or tx >= TILES or ty >= TILES:
+		return
+	var idx := ty * TILES + tx
+	var brush := _brush
+	if brush < 0 or brush >= _sel_grass.size():
+		brush = -1   # кисть не выбрана — рисовать нечем (стирание ПКМ)
+	var v := brush if (on and brush >= 0) else -1
+	if v < 0 and brush >= 0 and not on:
+		v = -1
+	if _grid[idx] == v:
+		return
+	_grid[idx] = v
+	_redraw_canvas()
 
 
-func _after_toggle() -> void:
-	_rebuild_preview()
-	_status.text = Loc.t("composer.picked") % [
-			_sel_grass.size(), MAX_GRASS, _sel_trees.size(), MAX_TREES]
-	_rebuild_tray()
+func _erase_at(local: Vector2) -> void:
+	var tx := int(floorf((local.x - 20.0) / float(TS)))
+	var ty := int(floorf((local.y - 20.0) / float(TS)))
+	if tx < 0 or ty < 0 or tx >= TILES or ty >= TILES:
+		return
+	var idx := ty * TILES + tx
+	if _grid[idx] == -1:
+		return
+	_grid[idx] = -1
+	_redraw_canvas()
 
 
-## Лоток выбора: что уже в биоме (клик — убрать).
-func _rebuild_tray() -> void:
-	for ch in _tray.get_children():
-		ch.queue_free()
-	for g in _sel_grass:
-		var tex := _cell_tex(String(g["sheet"]), int(g["cx"]), int(g["cy"]))
-		if tex == null:
-			continue
-		_tray_add(tex, func() -> void:
-			_sel_grass.erase(g)
-			_after_toggle())
-	if not _sel_water.is_empty():
-		var cells: Array = _sel_water.get("cells", [])
-		if not cells.is_empty():
-			var c0: Vector2i = cells[0]
-			var wtex := _cell_tex(String(_sel_water["sheet"]), c0.x, c0.y)
-			if wtex != null:
-				_tray_add(wtex, func() -> void:
-					_sel_water = {}
-					_after_toggle())
-	for ref in _sel_trees:
-		var tex: Texture2D = Assets.sprite(String(ref)) if not String(ref).begins_with("res://") else Assets.tex(String(ref))
-		if tex == null:
-			continue
-		var r := String(ref)
-		_tray_add(ImageTexture.create_from_image(tex.get_image()), func() -> void:
-			_sel_trees.erase(r)
-			_after_toggle())
-
-
-func _tray_add(icon: Texture2D, on_press: Callable) -> void:
-	var b := Button.new()
-	b.custom_minimum_size = Vector2(56, 56)
-	b.icon = icon
-	b.icon_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	b.vertical_icon_alignment = VERTICAL_ALIGNMENT_CENTER
-	b.expand_icon = true
-	b.focus_mode = Control.FOCUS_NONE
-	b.pressed.connect(on_press)
-	_tray.add_child(b)
-
-
-func _rebuild_preview() -> void:
-	_preview_tex = null
-	_water_cells = []
-	_water_frame_texs = []
+## Перестроить холст: фон (общий тон биома) + тайлы по grid.
+func _redraw_canvas() -> void:
+	_canvas_tex = null
 	var imgs: Array = []
 	for g in _sel_grass:
 		var im := _clean_cell(String(g["sheet"]), int(g["cx"]), int(g["cy"]))
 		if im != null:
 			imgs.append(im)
-	if imgs.is_empty():
-		return
 	var uni := Assets.uniform_ground_imgs(imgs)
 	var texs: Array = uni[0]
-	if texs.is_empty():
-		return
+	_palette_texs = texs
+	if (uni[1] as Array).size() > 0 and uni[1][0] != null:
+		var fim: Image = (uni[1][0] as Texture2D).get_image()
+		_fill_color = fim.get_pixel(16, 16)
 	var img := Image.create(TILES * TS, TILES * TS, false, Image.FORMAT_RGBA8)
+	img.fill(_fill_color)
 	for ty in range(TILES):
 		for tx in range(TILES):
-			# v1.78.6: тайлы пятнами (крупный шум — «род», хэш — вариант),
-			# как город рисует: периодический узор выглядел «одним тайлом»
-			var fi := _pv_tile_index(tx, ty, texs.size())
+			var fi: int = int(_grid[ty * TILES + tx])
+			if fi < 0 or fi >= texs.size():
+				continue
 			var gim: Image = (texs[fi] as Texture2D).get_image()
 			img.blend_rect(gim, Rect2i(0, 0, TS, TS), Vector2i(tx * TS, ty * TS))
-	_preview_tex = ImageTexture.create_from_image(img)
+	_canvas_tex = ImageTexture.create_from_image(img)
+	# живая вода поверх холста
+	_water_cells = []
+	_water_frame_texs = []
 	if not _sel_water.is_empty():
 		var wcells: Array = _sel_water.get("cells", [])
-		for tx in range(TILES):
-			var yc := 8 + int(round(2.0 * sin(tx / 3.0)))
+		for tx2 in range(TILES):
+			var yc := 8 + int(round(2.0 * sin(tx2 / 3.0)))
 			for dy in 3:
-				_water_cells.append(Vector2i(tx, yc + dy))
-		# кадры воды текстурами заранее (в draw белели)
+				_water_cells.append(Vector2i(tx2, yc + dy))
 		var sheet := String(_sel_water.get("sheet", ""))
 		for k in range(wcells.size()):
 			var cc: Vector2i = wcells[k]
-			var im := _clean_cell(sheet, cc.x, cc.y)
+			var wim := _clean_cell(sheet, cc.x, cc.y)
 			_water_frame_texs.append(
-					ImageTexture.create_from_image(im) if im != null else null)
+					ImageTexture.create_from_image(wim) if wim != null else null)
+	_refresh_brush_ui()
+	if _preview != null:
+		_preview.queue_redraw()
 
 
-## Превью-шум: билинейный хэш-шум как в городе (city_terrain._noise2) —
-## тайлы раскладываются пятнами, а не шахматкой.
-func _pv_hash(x: int, y: int, n: int) -> int:
-	return absi(int((x * 73856093) ^ (y * 19349663) ^ (n * 83492791))) % 97
+## Подсветка кисти: в библиотеке и в палитре.
+func _refresh_brush_ui() -> void:
+	for e in _cell_btns:
+		var b: Button = e["btn"]
+		if b == null or not is_instance_valid(b):
+			continue
+		b.modulate = Color(1, 1, 1, 0.45)
+	for e2 in _cell_btns:
+		var b2: Button = e2["btn"]
+		if b2 == null or not is_instance_valid(b2):
+			continue
+		if _brush >= 0 and _brush < _sel_grass.size():
+			var g: Dictionary = _sel_grass[_brush]
+			if String(e2["sheet"]) == String(g["sheet"]) \
+					and int(e2["cx"]) == int(g["cx"]) \
+					and int(e2["cy"]) == int(g["cy"]):
+				b2.modulate = Color.WHITE
+	for k in range(_tray_btns.size()):
+		var tb: Button = _tray_btns[k]
+		if tb == null or not is_instance_valid(tb):
+			continue
+		tb.modulate = Color.WHITE if k == _brush else Color(1, 1, 1, 0.45)
+	var drawn := 0
+	for v in _grid:
+		if int(v) >= 0:
+			drawn += 1
+	_status.text = "кисть: %s  ·  нарисовано клеток: %d  ·  деревья %d/%d" % [
+			"ластик" if _brush < 0 else "#%d" % (_brush + 1),
+			drawn, _sel_trees.size(), MAX_TREES]
 
 
-func _pv_noise(xf: float, yf: float, n: int) -> float:
-	var x0 := int(floorf(xf))
-	var y0 := int(floorf(yf))
-	var fx := xf - float(x0)
-	var fy := yf - float(y0)
-	var sx := fx * fx * (3.0 - 2.0 * fx)
-	var sy := fy * fy * (3.0 - 2.0 * fy)
-	var a := float(_pv_hash(x0, y0, n))
-	var b := float(_pv_hash(x0 + 1, y0, n))
-	var c := float(_pv_hash(x0, y0 + 1, n))
-	var d := float(_pv_hash(x0 + 1, y0 + 1, n))
-	return lerpf(lerpf(a, b, sx), lerpf(c, d, sx), sy)
+## Палитра: тайлы, взятые кистью (клик — кисть), + «Ластик».
+func _rebuild_palette() -> void:
+	for ch in _tray.get_children():
+		ch.queue_free()
+	_tray_btns = []
+	# ластик
+	var er := Button.new()
+	er.text = "Ластик"
+	er.custom_minimum_size = Vector2(64, 56)
+	er.add_theme_font_size_override("font_size", 13)
+	er.focus_mode = Control.FOCUS_NONE
+	er.pressed.connect(func() -> void:
+		_brush = -1
+		_refresh_brush_ui())
+	_tray.add_child(er)
+	_tray_btns.append(er)
+	for k in range(_sel_grass.size()):
+		var g: Dictionary = _sel_grass[k]
+		var tex := _cell_tex(String(g["sheet"]), int(g["cx"]), int(g["cy"]))
+		if tex == null:
+			_tray_btns.append(null)
+			continue
+		var b := Button.new()
+		b.custom_minimum_size = Vector2(56, 56)
+		b.icon = tex
+		b.icon_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		b.vertical_icon_alignment = VERTICAL_ALIGNMENT_CENTER
+		b.expand_icon = true
+		b.focus_mode = Control.FOCUS_NONE
+		var kk := k
+		b.pressed.connect(func() -> void:
+			_brush = kk
+			_refresh_brush_ui())
+		_tray.add_child(b)
+		_tray_btns.append(b)
 
 
-func _pv_tile_index(tx: int, ty: int, size: int) -> int:
-	var fams := maxi(2, size / 4)
-	var per := maxi(1, size / fams)
-	var fam: int = absi(int(_pv_noise(tx / 6.0, ty / 6.0, 71))) % fams
-	return mini(size - 1, fam * per + _pv_hash(tx, ty, 97) % per)
+func _rebuild_water() -> void:
+	_redraw_canvas()
 
 
 func _process(delta: float) -> void:
@@ -809,10 +842,11 @@ func _process(delta: float) -> void:
 func _draw_preview() -> void:
 	var ox := 20.0
 	var oy := 20.0
-	if _preview_tex != null:
-		_preview.draw_texture_rect(_preview_tex, Rect2(ox, oy, 640, 640), false)
+	if _canvas_tex != null:
+		_preview.draw_texture_rect(_canvas_tex,
+				Rect2(ox, oy, TILES * TS, TILES * TS), false)
 	else:
-		_preview.draw_rect(Rect2(ox, oy, 640, 640), Color(0.2, 0.2, 0.2))
+		_preview.draw_rect(Rect2(ox, oy, TILES * TS, TILES * TS), Color(0.2, 0.2, 0.2))
 		_preview.draw_string(ThemeDB.fallback_font, Vector2(ox + 30, oy + 320),
 				Loc.t("composer.empty"), HORIZONTAL_ALIGNMENT_LEFT, -1, 18,
 				Color(0.8, 0.8, 0.75))
@@ -828,6 +862,10 @@ func _draw_preview() -> void:
 		var tp: Vector2i = TREE_SPOTS[k % TREE_SPOTS.size()]
 		Assets.draw_ref(_preview, String(_sel_trees[k]),
 				Vector2(ox + float(tp.x * TS + 16), oy + float(tp.y * TS - 8)), 100.0)
+	# рамка кисти: клетка под курсором (визуально)
+	if _brush >= 0:
+		_preview.draw_rect(Rect2(ox, oy, TILES * TS, TILES * TS),
+				Color(1, 1, 0.6, 0.12), false, 2.0)
 	_preview.draw_string(ThemeDB.fallback_font, Vector2(ox, oy + 670),
 			Loc.t("composer.preview"), HORIZONTAL_ALIGNMENT_LEFT, -1, 14,
 			Color(0.7, 0.75, 0.7))
@@ -837,10 +875,13 @@ func _on_save() -> void:
 	var label := String(_sources[_active].get("label", ""))
 	var nm := _name_edit.text.strip_edges()
 	if nm == "":
-		nm = label   # v1.78.7: имя вкладки по умолчанию — сохраняешь биом
-		             # этой вкладки (лето сохраняется как «лето»)
-	if _sel_grass.is_empty():
-		_status.text = Loc.t("composer.need_name")
+		nm = label   # имя вкладки по умолчанию: сохраняешь биом этой вкладки
+	var drawn := 0
+	for v in _grid:
+		if int(v) >= 0:
+			drawn += 1
+	if _sel_grass.is_empty() or drawn == 0:
+		_status.text = Loc.t("composer.need_draw")
 		return
 	var ssn := _season
 	if ssn == "":
@@ -848,7 +889,7 @@ func _on_save() -> void:
 	var tag := nm.replace("/", "_").replace("\\", "_").replace(":", "_")
 	var dir := "user://biomes_composed/%s" % tag
 	DirAccess.make_dir_recursive_absolute(dir)
-	# ЕДИНЫЙ рецепт земли: чистые клетки листа -> обработанные тайлы + печать
+	# печатаются тайлы ПАЛИТРЫ в порядке индексов (grid ссылается на них)
 	var imgs: Array = []
 	for g in _sel_grass:
 		var im := _clean_cell(String(g["sheet"]), int(g["cx"]), int(g["cy"]))
@@ -857,13 +898,19 @@ func _on_save() -> void:
 	var uni := Assets.uniform_ground_imgs(imgs)
 	var texs: Array = uni[0]
 	if texs.is_empty():
-		_status.text = Loc.t("composer.need_name")
+		_status.text = Loc.t("composer.need_draw")
 		return
 	var grass_paths := []
-	for i in range(texs.size()):
+	var cells_json := []
+	for i in range(_sel_grass.size()):
+		if i >= texs.size():
+			break
 		var out: Image = (texs[i] as Texture2D).get_image()
 		out.save_png("%s/grass_%d.png" % [dir, i + 1])
 		grass_paths.append("user://biomes_composed/%s/grass_%d.png" % [tag, i + 1])
+		var g: Dictionary = _sel_grass[i]
+		cells_json.append({"sheet": String(g["sheet"]),
+				"cx": int(g["cx"]), "cy": int(g["cy"])})
 	var water_path := ""
 	if not _sel_water.is_empty():
 		var cells: Array = _sel_water.get("cells", [])
@@ -884,8 +931,9 @@ func _on_save() -> void:
 		"trees": _sel_trees,
 		"label": nm,
 		"season": ssn,
-		# v1.78.7: клетки листа сохраняются — вкладка восстановит свой выбор
-		"cells": _sel_grass,
+		# НАРИСОВАННАЯ КАРТА: город рисует ровно её (тайлится 20×20)
+		"grid": _grid,
+		"cells": cells_json,
 		"water_cells": _sel_water,
 		"sheet_label": label,
 	}
@@ -899,18 +947,19 @@ func _on_save() -> void:
 
 
 func _on_clear() -> void:
-	# v1.78.7: очистка только АКТИВНОЙ вкладки (у каждой свой биом)
+	# очистка ТОЛЬКО активной вкладки (рисование и палитра)
 	_sel_grass = []
 	_sel_water = {}
 	_sel_trees = []
 	_season = ""
+	_brush = -1
 	_name_edit.text = ""
 	if _active_sheet != "":
 		_workspaces.erase(_active_sheet)
 	_season_btn.select(0)
-	_rebuild_preview()
-	_rebuild_tray()
-	_status.text = Loc.t("composer.picked") % [0, MAX_GRASS, 0, MAX_TREES]
+	_rebuild_palette()
+	_redraw_canvas()
+	_status.text = Loc.t("composer.cleared")
 
 
 func _on_back() -> void:
