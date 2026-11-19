@@ -98,16 +98,20 @@ func _ready() -> void:
 	view = load(VIEW_SCRIPT).new()
 	# статический ландшафт — отдельным слоем под динамикой (M9, 60 FPS)
 	_terrain = load("res://scripts/city_terrain.gd").new()
-	_terrain.setup(map, cfg, sim, "player" if Game.poi_id == 0 else "npc:%d" % Game.poi_id)
+	# v1.78.9: ключ кэша чанков включает ТЕКУЩИЙ БИОМ — при смене биома
+	# (сохранение в композиторе/сезон) кэш старой земли не подмешивался
+	# к новой: на карте было «два слоя текстур»
+	var _btag := OS.get_environment("SHOT_BIOME")
+	_season_loaded = String(sim.season())
+	if _btag == "" and Assets.biome_manifest().has(Assets.biome_tag_for_season(_season_loaded)):
+		_btag = Assets.biome_tag_for_season(_season_loaded)
+	var city_key := "player" if Game.poi_id == 0 else "npc:%d" % Game.poi_id
+	_terrain.setup(map, cfg, sim, city_key + ":" + _btag)
 	add_child(_terrain)
 	# живая вода «Природы 2.0» (v1.39.0): анимация/пена/рябь/камыши —
 	# над запечённой землёй, под тенями и жителями
 	_water = load("res://scripts/water_terrain.gd").new()
 	_water.setup(_terrain, _terrain.colors)
-	_season_loaded = String(sim.season())
-	var _btag := OS.get_environment("SHOT_BIOME")
-	if _btag == "" and Assets.biome_manifest().has(Assets.biome_tag_for_season(_season_loaded)):
-		_btag = Assets.biome_tag_for_season(_season_loaded)
 	_water.reload_water(_btag)   # v1.76.1: вода по биому/сезону
 	add_child(_water)
 	# тени солнечного цикла (v1.27): под объектами, над ландшафтом
