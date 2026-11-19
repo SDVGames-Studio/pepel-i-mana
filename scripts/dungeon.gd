@@ -499,8 +499,11 @@ func _check_dungeon_cleared() -> void:
 func _on_hero_died() -> void:
 	Game.last_run_death = true
 	Game.lose_half_loot()
-	_clear_location_context()
-	get_tree().change_scene_to_file(_return_scene())
+	# v1.79.1: анимация смерти доигрывается на месте (6 кадров @ 7fps ≈ 0.86с
+	# + пауза 0.5с), и только потом телепорт домой — «не сразу телепортировало»
+	get_tree().create_timer(1.4).timeout.connect(func() -> void:
+		_clear_location_context()
+		get_tree().change_scene_to_file(_return_scene()))
 
 
 func _leave_dungeon() -> void:

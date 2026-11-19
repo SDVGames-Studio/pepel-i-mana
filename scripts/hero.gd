@@ -322,6 +322,10 @@ func make_light(radius_px: float) -> void:
 
 func _physics_process(delta: float) -> void:
 	if dead:
+		# v1.79.1: анимация смерти ДОИГРЫВАЕТСЯ на месте (тело остаётся,
+		# телепорт ждёт в dungeon._on_hero_died)
+		velocity = Vector2.ZERO
+		_drive_anim()
 		return
 	_flicker_time += delta
 	# бобинг (M9): частый в движении, медленный «дыхание» в покое
@@ -586,6 +590,8 @@ func take_damage(dmg: int) -> void:
 	queue_redraw()
 	if hp <= 0:
 		dead = true
+		velocity = Vector2.ZERO
+		play_anim("death")   # v1.79.1: смерть проигрывается (6 кадров)
 		died.emit()
 
 
