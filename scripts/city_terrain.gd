@@ -660,6 +660,10 @@ func _draw_meadow_decor(x: int, y: int, rect: Rect2) -> void:
 	if sim != null and sim.has_method("season") \
 			and String(sim.season()) == "winter":
 		return
+	# v1.78.9: при биомной земле городской декор цветов поверх тайлов
+	# добавлял «конфетти» — тайлы листа сами несут свои цветы/кусты
+	if not _grass_fills.is_empty():
+		return
 	var field := _noise2(x / 6.0, y / 6.0, 100, 71) / 99.0
 	var blooms := 0
 	if field > 0.62:

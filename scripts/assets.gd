@@ -63,6 +63,9 @@ static func uniform_ground(paths: Array) -> Array:
 static func uniform_ground_imgs(imgs: Array) -> Array:
 	if imgs.is_empty():
 		return [[], []]
+	# v1.78.9: тон между тайлами выравнивается ЖЁСТЧЕ (0.8..1.25 вместо
+	# 0.7..1.4) — разнотон соседей читался «композицией из тайлов»
+	# (см. _normalize_ratio ниже)
 	var means := []
 	for im: Image in imgs:
 		var sm := Vector3(0, 0, 0)
@@ -85,33 +88,48 @@ static func uniform_ground_imgs(imgs: Array) -> Array:
 	var fills: Array = []
 	for im: Image in imgs:
 		var tm: Vector3 = means[imgs.find(im)]
+		# v1.78.9: БЕСШОВНОСТЬ — тайлы листов заказчика это кусочки
+		# иллюстраций с жёсткими краями: при стыковке каждый читался
+		# отдельным квадратиком («композиция из многих тайлов»).
+		# Края тайла зеркально сливаются с противоположными (правый край
+		# ↔ левый, верх ↔ низ): тайл стыкуется сам с собой бесшовно,
+		# а с нормализованным тоном набора — и с любым соседом.
+		var W := im.get_width()
+		var H := im.get_height()
+		var src := []
+		for y in H:
+			for x in W:
+				var c0 := im.get_pixel(x, y)
+				var ratio := Vector3(
+						clampf(shared.x / maxf(tm.x, 1.0), 0.8, 1.25),
+						clampf(shared.y / maxf(tm.y, 1.0), 0.8, 1.25),
+						clampf(shared.z / maxf(tm.z, 1.0), 0.8, 1.25))
+				if c0.a < 0.5:
+					src.append(shared_c)
+				else:
+					src.append(Color(clampf(c0.r8 * ratio.x, 0, 255) / 255.0,
+							clampf(c0.g8 * ratio.y, 0, 255) / 255.0,
+							clampf(c0.b8 * ratio.z, 0, 255) / 255.0, 1.0))
 		var out := Image.create(TS_G, TS_G, false, Image.FORMAT_RGBA8)
+		var F := 7
 		for y in TS_G:
 			for x in TS_G:
-				var c := im.get_pixel(x, y)
-				var ratio := Vector3(
-						clampf(shared.x / maxf(tm.x, 1.0), 0.7, 1.4),
-						clampf(shared.y / maxf(tm.y, 1.0), 0.7, 1.4),
-						clampf(shared.z / maxf(tm.z, 1.0), 0.7, 1.4))
-				var edge := float(mini(mini(x, TS_G - 1 - x), mini(y, TS_G - 1 - y)))
-				# v1.78.1: СРАСТАНИЕ КРАЁВ — детерминированный дизеринг:
-				# кромка не ровная, а пиксельным переливом; соседние тайлы
-				# перетекают в общий тон без швов и зазоров
-				var dith := float((x * 127 + y * 311 + 17) % 97) / 97.0
-				var ramp := clampf((edge + dith * 7.0) / 8.0, 0.0, 1.0)
-				ramp = 0.35 + 0.65 * ramp
-				if c.a < 0.5:
-					# дырка после чистки шашечки — заливается общим тоном
-					# биома (срастание краёв, как у подложки)
-					out.set_pixel(x, y, shared_c)
-					continue
-				var nr := clampf(c.r8 * ratio.x, 0, 255)
-				var ng := clampf(c.g8 * ratio.y, 0, 255)
-				var nb := clampf(c.b8 * ratio.z, 0, 255)
-				var rr := lerpf(shared_c.r8, nr, ramp)
-				var gg := lerpf(shared_c.g8, ng, ramp)
-				var bb := lerpf(shared_c.b8, nb, ramp)
-				out.set_pixel(x, y, Color(rr / 255.0, gg / 255.0, bb / 255.0, 1.0))
+				var c: Color = src[y * W + x]
+				var wx := 0.0
+				if x < F:
+					wx = 0.5 * (1.0 - float(x) / float(F))
+				elif x >= W - F:
+					wx = 0.5 * (1.0 - float(W - 1 - x) / float(F))
+				if wx > 0.0:
+					c = c.lerp(src[y * W + (W - 1 - x)], wx)
+				var wy := 0.0
+				if y < F:
+					wy = 0.5 * (1.0 - float(y) / float(F))
+				elif y >= H - F:
+					wy = 0.5 * (1.0 - float(H - 1 - y) / float(F))
+				if wy > 0.0:
+					c = c.lerp(src[(H - 1 - y) * W + x], wy)
+				out.set_pixel(x, y, c)
 		texs.append(ImageTexture.create_from_image(out))
 		var fl := Image.create(TS_G, TS_G, false, Image.FORMAT_RGBA8)
 		fl.fill(shared_c)

@@ -68,22 +68,7 @@
   "label": "осень"
  },
  "зима": {
-  "grass": [
-   "res://assets/sprites/env/biomes/зима/grass_1.png",
-   "res://assets/sprites/env/biomes/зима/grass_2.png",
-   "res://assets/sprites/env/biomes/зима/grass_3.png",
-   "res://assets/sprites/env/biomes/зима/grass_4.png",
-   "res://assets/sprites/env/biomes/зима/grass_5.png",
-   "res://assets/sprites/env/biomes/зима/grass_6.png",
-   "res://assets/sprites/env/biomes/зима/grass_7.png",
-   "res://assets/sprites/env/biomes/зима/grass_8.png",
-   "res://assets/sprites/env/biomes/зима/grass_9.png",
-   "res://assets/sprites/env/biomes/зима/grass_10.png",
-   "res://assets/sprites/env/biomes/зима/grass_11.png",
-   "res://assets/sprites/env/biomes/зима/grass_12.png",
-   "res://assets/sprites/env/biomes/зима/grass_13.png",
-   "res://assets/sprites/env/biomes/зима/grass_14.png"
-  ],
+  "grass": [],
   "water": "res://assets/sprites/env/biomes/зима/water.png",
   "trees": [
    "img:env/biomes/зима/tree_1.png",

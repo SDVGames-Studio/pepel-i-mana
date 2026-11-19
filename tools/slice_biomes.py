@@ -101,32 +101,51 @@ def longest_water_run(cells):
     return best_y, best
 
 
+def make_tileable(tile, F=7):
+    """Бесшовность: края тайла зеркально сливаются с противоположными
+    (правый край <-> левый, верх <-> низ) — тайл стыкуется сам с собой
+    бесшовно, а с нормализованным тоном набора и с любым соседом
+    (v1.78.9: тайлы-«кусочки иллюстраций» не сливались в землю)."""
+    H, W = tile.shape[:2]
+    rgb = tile[:, :, :3].astype(np.float32)
+    a = tile[:, :, 3].astype(np.float32) / 255.0
+    out = rgb.copy()
+    for y in range(H):
+        for x in range(W):
+            c = rgb[y, x].copy()
+            wx = 0.0
+            if x < F:
+                wx = 0.5 * (1.0 - x / float(F))
+            elif x >= W - F:
+                wx = 0.5 * (1.0 - (W - 1 - x) / float(F))
+            if wx > 0.0:
+                c = c * (1.0 - wx) + rgb[y, W - 1 - x] * wx
+            wy = 0.0
+            if y < F:
+                wy = 0.5 * (1.0 - y / float(F))
+            elif y >= H - F:
+                wy = 0.5 * (1.0 - (H - 1 - y) / float(F))
+            if wy > 0.0:
+                c = c * (1.0 - wy) + rgb[H - 1 - y, x] * wy
+            out[y, x] = c
+    t = np.dstack([np.clip(out, 0, 255).astype(np.uint8),
+                   tile[:, :, 3].copy()])
+    return t
+
+
 def composite(tile, shared_mean):
-    """v1.76.2: ОБЩАЯ заливка кластера + нормализация цвета тайла к ней.
-    Разные средние тайлов давали квадратную мозайку («весна шахматкой») —
-    теперь базовый тон один, тайлы несут только фактуру."""
-    fill = np.zeros((TS, TS, 4), np.uint8)
-    fill[:, :, :3] = shared_mean
-    fill[:, :, 3] = 255
-    # нормализация каналов тайла к общему тону (мягкая, с потолком x1.4)
+    """Общий тон + БЕСШОВНОСТЬ (v1.78.9): нормализация жёстче, края тайла
+    зеркально сливаются с противоположными — тайлы сливаются в единую
+    землю (раньше каждый читался отдельным квадратиком)."""
     tm = tile[:, :, :3].reshape(-1, 3).mean(axis=0)
-    ratio = np.clip(shared_mean / np.maximum(tm, 1.0), 0.7, 1.4)
+    ratio = np.clip(shared_mean / np.maximum(tm, 1.0), 0.8, 1.25)
     t = tile.astype(np.float32)
-    t[:, :, :3] *= ratio
-    t[:, :, :3] = np.clip(t[:, :, :3], 0, 255)
+    t[:, :, :3] = np.clip(t[:, :, :3] * ratio, 0, 255)
     t = t.astype(np.uint8)
-    yy, xx = np.mgrid[0:TS, 0:TS]
-    edge = np.minimum(np.minimum(xx, TS - 1 - xx),
-                      np.minimum(yy, TS - 1 - yy)).astype(np.float32)
-    # v1.76.3: фактура автора почти в полную силу (0.35..1.0), гасится
-    # только кайма — «пластиковая» заливка 10-55% убивала лист заказчика
-    ramp = 0.35 + 0.65 * np.clip(edge / float(FEATHER), 0.0, 1.0)
-    t[:, :, 3] = (t[:, :, 3].astype(np.float32) * ramp).astype(np.uint8)
-    af = t[:, :, 3:4].astype(np.float32) / 255.0
-    comp = (t[:, :, :3].astype(np.float32) * af
-            + fill[:, :, :3].astype(np.float32) * (1.0 - af)).astype(np.uint8)
-    out = np.dstack([comp, np.full((TS, TS), 255, np.uint8)])
-    return Image.fromarray(out), Image.fromarray(np.tile(shared_mean, (TS, TS, 1)))
+    t = make_tileable(t)
+    out = np.dstack([t[:, :, :3], np.full((TS, TS), 255, np.uint8)])
+    return Image.fromarray(out), Image.fromarray(
+        np.tile(shared_mean, (TS, TS, 1)))
 
 
 def main():
