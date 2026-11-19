@@ -942,6 +942,12 @@ func _on_save() -> void:
 	f.close()
 	_store_workspace()
 	Assets.reload_biome_manifest()
+	# v1.78.11: сохранил биом — кэш запечённой земли городов УСТАРЕЛ
+	# (чанки с прежней землёй подмешивались к новой: «старый слой» при
+	# загрузке карты и «два слоя текстур»)
+	var game: Node = get_tree().root.get_node_or_null("Game")
+	if game != null:
+		game.city_bake_cache.clear()
 	_status.text = Loc.t("composer.saved") % [nm,
 			Loc.t("composer.season_" + ssn) if ssn != "" else Loc.t("composer.season_none")]
 

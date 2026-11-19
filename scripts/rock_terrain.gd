@@ -206,7 +206,7 @@ func _draw_ore(tk: Vector2i, origin: Vector2, ts: float) -> void:
 ## Месторождение регионального ресурса (v1.56): кристаллы цвета ресурса.
 func _draw_deposit(tk: Vector2i, origin: Vector2, ts: float) -> void:
 	var rid: String = t.map.region_resource
-	var rdef: Dictionary = t.REGION_RESOURCES.get(rid, {})
+	var rdef: Dictionary = t.map.REGION_RESOURCES.get(rid, {})
 	var col := Color(String(rdef.get("color", "#d0c8b0")))
 	for i in 4:
 		var h: int = t._hash(tk.x * 13 + i, tk.y * 17 + i, 100)

@@ -451,6 +451,11 @@ func _build_tree_desc(tile: Vector2i, ts: float) -> Array:
 	# в композиторе) > летние > обычные
 	var tree_refs: Array = _tree_refs_for_season()
 	var ref: String = tree_refs[_hash(tile.x, tile.y, tree_refs.size())]
+	if Assets.sprite(ref) == null:
+		# v1.78.11: спрайт биома не загрузился (битый реф/не импортирован) —
+		# фолбэк на обычное дерево: без этого view падал каждый кадр и
+		# жители/герой/стройки пропадали («персонаж под текстурами»)
+		ref = TREE_REFS[0]
 	# тёмный лес у болот (v1.39.2, заказчик): деревья в 2 тайлах от воды
 	# болота рисуются затемнёнными вариантами (мрачная хвоя/ива)
 	if _near_swamp(tile):
