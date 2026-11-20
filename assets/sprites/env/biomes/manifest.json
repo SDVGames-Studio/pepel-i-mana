@@ -169,35 +169,7 @@
    "res://assets/sprites/env/biomes/берёзовая роща/grass_9.png",
    "res://assets/sprites/env/biomes/берёзовая роща/grass_10.png",
    "res://assets/sprites/env/biomes/берёзовая роща/grass_11.png",
-   "res://assets/sprites/env/biomes/берёзовая роща/grass_12.png",
-   "res://assets/sprites/env/biomes/берёзовая роща/grass_13.png",
-   "res://assets/sprites/env/biomes/берёзовая роща/grass_14.png",
-   "res://assets/sprites/env/biomes/берёзовая роща/grass_15.png",
-   "res://assets/sprites/env/biomes/берёзовая роща/grass_16.png",
-   "res://assets/sprites/env/biomes/берёзовая роща/grass_17.png",
-   "res://assets/sprites/env/biomes/берёзовая роща/grass_18.png",
-   "res://assets/sprites/env/biomes/берёзовая роща/grass_19.png",
-   "res://assets/sprites/env/biomes/берёзовая роща/grass_20.png",
-   "res://assets/sprites/env/biomes/берёзовая роща/grass_21.png",
-   "res://assets/sprites/env/biomes/берёзовая роща/grass_22.png",
-   "res://assets/sprites/env/biomes/берёзовая роща/grass_23.png",
-   "res://assets/sprites/env/biomes/берёзовая роща/grass_24.png",
-   "res://assets/sprites/env/biomes/берёзовая роща/grass_25.png",
-   "res://assets/sprites/env/biomes/берёзовая роща/grass_26.png",
-   "res://assets/sprites/env/biomes/берёзовая роща/grass_27.png",
-   "res://assets/sprites/env/biomes/берёзовая роща/grass_28.png",
-   "res://assets/sprites/env/biomes/берёзовая роща/grass_29.png",
-   "res://assets/sprites/env/biomes/берёзовая роща/grass_30.png",
-   "res://assets/sprites/env/biomes/берёзовая роща/grass_31.png",
-   "res://assets/sprites/env/biomes/берёзовая роща/grass_32.png",
-   "res://assets/sprites/env/biomes/берёзовая роща/grass_33.png",
-   "res://assets/sprites/env/biomes/берёзовая роща/grass_34.png",
-   "res://assets/sprites/env/biomes/берёзовая роща/grass_35.png",
-   "res://assets/sprites/env/biomes/берёзовая роща/grass_36.png",
-   "res://assets/sprites/env/biomes/берёзовая роща/grass_37.png",
-   "res://assets/sprites/env/biomes/берёзовая роща/grass_38.png",
-   "res://assets/sprites/env/biomes/берёзовая роща/grass_39.png",
-   "res://assets/sprites/env/biomes/берёзовая роща/grass_40.png"
+   "res://assets/sprites/env/biomes/берёзовая роща/grass_12.png"
   ],
   "water": "res://assets/sprites/env/biomes/берёзовая роща/water.png",
   "trees": [
@@ -206,7 +178,9 @@
    "img:env/biomes/берёзовая роща/tree_3.png",
    "img:env/biomes/берёзовая роща/tree_4.png",
    "img:env/biomes/берёзовая роща/tree_5.png"
-  ]
+  ],
+  "canvas": "res://assets/sprites/env/biomes/берёзовая роща/canvas.png",
+  "label": "берёзовая роща"
  },
  "древний лес": {
   "grass": [
@@ -221,35 +195,7 @@
    "res://assets/sprites/env/biomes/древний лес/grass_9.png",
    "res://assets/sprites/env/biomes/древний лес/grass_10.png",
    "res://assets/sprites/env/biomes/древний лес/grass_11.png",
-   "res://assets/sprites/env/biomes/древний лес/grass_12.png",
-   "res://assets/sprites/env/biomes/древний лес/grass_13.png",
-   "res://assets/sprites/env/biomes/древний лес/grass_14.png",
-   "res://assets/sprites/env/biomes/древний лес/grass_15.png",
-   "res://assets/sprites/env/biomes/древний лес/grass_16.png",
-   "res://assets/sprites/env/biomes/древний лес/grass_17.png",
-   "res://assets/sprites/env/biomes/древний лес/grass_18.png",
-   "res://assets/sprites/env/biomes/древний лес/grass_19.png",
-   "res://assets/sprites/env/biomes/древний лес/grass_20.png",
-   "res://assets/sprites/env/biomes/древний лес/grass_21.png",
-   "res://assets/sprites/env/biomes/древний лес/grass_22.png",
-   "res://assets/sprites/env/biomes/древний лес/grass_23.png",
-   "res://assets/sprites/env/biomes/древний лес/grass_24.png",
-   "res://assets/sprites/env/biomes/древний лес/grass_25.png",
-   "res://assets/sprites/env/biomes/древний лес/grass_26.png",
-   "res://assets/sprites/env/biomes/древний лес/grass_27.png",
-   "res://assets/sprites/env/biomes/древний лес/grass_28.png",
-   "res://assets/sprites/env/biomes/древний лес/grass_29.png",
-   "res://assets/sprites/env/biomes/древний лес/grass_30.png",
-   "res://assets/sprites/env/biomes/древний лес/grass_31.png",
-   "res://assets/sprites/env/biomes/древний лес/grass_32.png",
-   "res://assets/sprites/env/biomes/древний лес/grass_33.png",
-   "res://assets/sprites/env/biomes/древний лес/grass_34.png",
-   "res://assets/sprites/env/biomes/древний лес/grass_35.png",
-   "res://assets/sprites/env/biomes/древний лес/grass_36.png",
-   "res://assets/sprites/env/biomes/древний лес/grass_37.png",
-   "res://assets/sprites/env/biomes/древний лес/grass_38.png",
-   "res://assets/sprites/env/biomes/древний лес/grass_39.png",
-   "res://assets/sprites/env/biomes/древний лес/grass_40.png"
+   "res://assets/sprites/env/biomes/древний лес/grass_12.png"
   ],
   "water": "res://assets/sprites/env/biomes/древний лес/water.png",
   "trees": [
@@ -258,7 +204,9 @@
    "img:env/biomes/древний лес/tree_3.png",
    "img:env/biomes/древний лес/tree_4.png",
    "img:env/biomes/древний лес/tree_5.png"
-  ]
+  ],
+  "canvas": "res://assets/sprites/env/biomes/древний лес/canvas.png",
+  "label": "древний лес"
  },
  "мёртвый лес": {
   "grass": [
@@ -273,35 +221,7 @@
    "res://assets/sprites/env/biomes/мёртвый лес/grass_9.png",
    "res://assets/sprites/env/biomes/мёртвый лес/grass_10.png",
    "res://assets/sprites/env/biomes/мёртвый лес/grass_11.png",
-   "res://assets/sprites/env/biomes/мёртвый лес/grass_12.png",
-   "res://assets/sprites/env/biomes/мёртвый лес/grass_13.png",
-   "res://assets/sprites/env/biomes/мёртвый лес/grass_14.png",
-   "res://assets/sprites/env/biomes/мёртвый лес/grass_15.png",
-   "res://assets/sprites/env/biomes/мёртвый лес/grass_16.png",
-   "res://assets/sprites/env/biomes/мёртвый лес/grass_17.png",
-   "res://assets/sprites/env/biomes/мёртвый лес/grass_18.png",
-   "res://assets/sprites/env/biomes/мёртвый лес/grass_19.png",
-   "res://assets/sprites/env/biomes/мёртвый лес/grass_20.png",
-   "res://assets/sprites/env/biomes/мёртвый лес/grass_21.png",
-   "res://assets/sprites/env/biomes/мёртвый лес/grass_22.png",
-   "res://assets/sprites/env/biomes/мёртвый лес/grass_23.png",
-   "res://assets/sprites/env/biomes/мёртвый лес/grass_24.png",
-   "res://assets/sprites/env/biomes/мёртвый лес/grass_25.png",
-   "res://assets/sprites/env/biomes/мёртвый лес/grass_26.png",
-   "res://assets/sprites/env/biomes/мёртвый лес/grass_27.png",
-   "res://assets/sprites/env/biomes/мёртвый лес/grass_28.png",
-   "res://assets/sprites/env/biomes/мёртвый лес/grass_29.png",
-   "res://assets/sprites/env/biomes/мёртвый лес/grass_30.png",
-   "res://assets/sprites/env/biomes/мёртвый лес/grass_31.png",
-   "res://assets/sprites/env/biomes/мёртвый лес/grass_32.png",
-   "res://assets/sprites/env/biomes/мёртвый лес/grass_33.png",
-   "res://assets/sprites/env/biomes/мёртвый лес/grass_34.png",
-   "res://assets/sprites/env/biomes/мёртвый лес/grass_35.png",
-   "res://assets/sprites/env/biomes/мёртвый лес/grass_36.png",
-   "res://assets/sprites/env/biomes/мёртвый лес/grass_37.png",
-   "res://assets/sprites/env/biomes/мёртвый лес/grass_38.png",
-   "res://assets/sprites/env/biomes/мёртвый лес/grass_39.png",
-   "res://assets/sprites/env/biomes/мёртвый лес/grass_40.png"
+   "res://assets/sprites/env/biomes/мёртвый лес/grass_12.png"
   ],
   "water": "res://assets/sprites/env/biomes/мёртвый лес/water.png",
   "trees": [
@@ -310,7 +230,9 @@
    "img:env/biomes/мёртвый лес/tree_3.png",
    "img:env/biomes/мёртвый лес/tree_4.png",
    "img:env/biomes/мёртвый лес/tree_5.png"
-  ]
+  ],
+  "canvas": "res://assets/sprites/env/biomes/мёртвый лес/canvas.png",
+  "label": "мёртвый лес"
  },
  "мистический лес": {
   "grass": [
@@ -325,35 +247,7 @@
    "res://assets/sprites/env/biomes/мистический лес/grass_9.png",
    "res://assets/sprites/env/biomes/мистический лес/grass_10.png",
    "res://assets/sprites/env/biomes/мистический лес/grass_11.png",
-   "res://assets/sprites/env/biomes/мистический лес/grass_12.png",
-   "res://assets/sprites/env/biomes/мистический лес/grass_13.png",
-   "res://assets/sprites/env/biomes/мистический лес/grass_14.png",
-   "res://assets/sprites/env/biomes/мистический лес/grass_15.png",
-   "res://assets/sprites/env/biomes/мистический лес/grass_16.png",
-   "res://assets/sprites/env/biomes/мистический лес/grass_17.png",
-   "res://assets/sprites/env/biomes/мистический лес/grass_18.png",
-   "res://assets/sprites/env/biomes/мистический лес/grass_19.png",
-   "res://assets/sprites/env/biomes/мистический лес/grass_20.png",
-   "res://assets/sprites/env/biomes/мистический лес/grass_21.png",
-   "res://assets/sprites/env/biomes/мистический лес/grass_22.png",
-   "res://assets/sprites/env/biomes/мистический лес/grass_23.png",
-   "res://assets/sprites/env/biomes/мистический лес/grass_24.png",
-   "res://assets/sprites/env/biomes/мистический лес/grass_25.png",
-   "res://assets/sprites/env/biomes/мистический лес/grass_26.png",
-   "res://assets/sprites/env/biomes/мистический лес/grass_27.png",
-   "res://assets/sprites/env/biomes/мистический лес/grass_28.png",
-   "res://assets/sprites/env/biomes/мистический лес/grass_29.png",
-   "res://assets/sprites/env/biomes/мистический лес/grass_30.png",
-   "res://assets/sprites/env/biomes/мистический лес/grass_31.png",
-   "res://assets/sprites/env/biomes/мистический лес/grass_32.png",
-   "res://assets/sprites/env/biomes/мистический лес/grass_33.png",
-   "res://assets/sprites/env/biomes/мистический лес/grass_34.png",
-   "res://assets/sprites/env/biomes/мистический лес/grass_35.png",
-   "res://assets/sprites/env/biomes/мистический лес/grass_36.png",
-   "res://assets/sprites/env/biomes/мистический лес/grass_37.png",
-   "res://assets/sprites/env/biomes/мистический лес/grass_38.png",
-   "res://assets/sprites/env/biomes/мистический лес/grass_39.png",
-   "res://assets/sprites/env/biomes/мистический лес/grass_40.png"
+   "res://assets/sprites/env/biomes/мистический лес/grass_12.png"
   ],
   "water": "res://assets/sprites/env/biomes/мистический лес/water.png",
   "trees": [
@@ -362,7 +256,9 @@
    "img:env/biomes/мистический лес/tree_3.png",
    "img:env/biomes/мистический лес/tree_4.png",
    "img:env/biomes/мистический лес/tree_5.png"
-  ]
+  ],
+  "canvas": "res://assets/sprites/env/biomes/мистический лес/canvas.png",
+  "label": "мистический лес"
  },
  "огненные земли": {
   "grass": [
@@ -377,35 +273,7 @@
    "res://assets/sprites/env/biomes/огненные земли/grass_9.png",
    "res://assets/sprites/env/biomes/огненные земли/grass_10.png",
    "res://assets/sprites/env/biomes/огненные земли/grass_11.png",
-   "res://assets/sprites/env/biomes/огненные земли/grass_12.png",
-   "res://assets/sprites/env/biomes/огненные земли/grass_13.png",
-   "res://assets/sprites/env/biomes/огненные земли/grass_14.png",
-   "res://assets/sprites/env/biomes/огненные земли/grass_15.png",
-   "res://assets/sprites/env/biomes/огненные земли/grass_16.png",
-   "res://assets/sprites/env/biomes/огненные земли/grass_17.png",
-   "res://assets/sprites/env/biomes/огненные земли/grass_18.png",
-   "res://assets/sprites/env/biomes/огненные земли/grass_19.png",
-   "res://assets/sprites/env/biomes/огненные земли/grass_20.png",
-   "res://assets/sprites/env/biomes/огненные земли/grass_21.png",
-   "res://assets/sprites/env/biomes/огненные земли/grass_22.png",
-   "res://assets/sprites/env/biomes/огненные земли/grass_23.png",
-   "res://assets/sprites/env/biomes/огненные земли/grass_24.png",
-   "res://assets/sprites/env/biomes/огненные земли/grass_25.png",
-   "res://assets/sprites/env/biomes/огненные земли/grass_26.png",
-   "res://assets/sprites/env/biomes/огненные земли/grass_27.png",
-   "res://assets/sprites/env/biomes/огненные земли/grass_28.png",
-   "res://assets/sprites/env/biomes/огненные земли/grass_29.png",
-   "res://assets/sprites/env/biomes/огненные земли/grass_30.png",
-   "res://assets/sprites/env/biomes/огненные земли/grass_31.png",
-   "res://assets/sprites/env/biomes/огненные земли/grass_32.png",
-   "res://assets/sprites/env/biomes/огненные земли/grass_33.png",
-   "res://assets/sprites/env/biomes/огненные земли/grass_34.png",
-   "res://assets/sprites/env/biomes/огненные земли/grass_35.png",
-   "res://assets/sprites/env/biomes/огненные земли/grass_36.png",
-   "res://assets/sprites/env/biomes/огненные земли/grass_37.png",
-   "res://assets/sprites/env/biomes/огненные земли/grass_38.png",
-   "res://assets/sprites/env/biomes/огненные земли/grass_39.png",
-   "res://assets/sprites/env/biomes/огненные земли/grass_40.png"
+   "res://assets/sprites/env/biomes/огненные земли/grass_12.png"
   ],
   "water": "res://assets/sprites/env/biomes/огненные земли/water.png",
   "trees": [
@@ -414,7 +282,9 @@
    "img:env/biomes/огненные земли/tree_3.png",
    "img:env/biomes/огненные земли/tree_4.png",
    "img:env/biomes/огненные земли/tree_5.png"
-  ]
+  ],
+  "canvas": "res://assets/sprites/env/biomes/огненные земли/canvas.png",
+  "label": "огненные земли"
  },
  "проклятый лес": {
   "grass": [
@@ -429,35 +299,7 @@
    "res://assets/sprites/env/biomes/проклятый лес/grass_9.png",
    "res://assets/sprites/env/biomes/проклятый лес/grass_10.png",
    "res://assets/sprites/env/biomes/проклятый лес/grass_11.png",
-   "res://assets/sprites/env/biomes/проклятый лес/grass_12.png",
-   "res://assets/sprites/env/biomes/проклятый лес/grass_13.png",
-   "res://assets/sprites/env/biomes/проклятый лес/grass_14.png",
-   "res://assets/sprites/env/biomes/проклятый лес/grass_15.png",
-   "res://assets/sprites/env/biomes/проклятый лес/grass_16.png",
-   "res://assets/sprites/env/biomes/проклятый лес/grass_17.png",
-   "res://assets/sprites/env/biomes/проклятый лес/grass_18.png",
-   "res://assets/sprites/env/biomes/проклятый лес/grass_19.png",
-   "res://assets/sprites/env/biomes/проклятый лес/grass_20.png",
-   "res://assets/sprites/env/biomes/проклятый лес/grass_21.png",
-   "res://assets/sprites/env/biomes/проклятый лес/grass_22.png",
-   "res://assets/sprites/env/biomes/проклятый лес/grass_23.png",
-   "res://assets/sprites/env/biomes/проклятый лес/grass_24.png",
-   "res://assets/sprites/env/biomes/проклятый лес/grass_25.png",
-   "res://assets/sprites/env/biomes/проклятый лес/grass_26.png",
-   "res://assets/sprites/env/biomes/проклятый лес/grass_27.png",
-   "res://assets/sprites/env/biomes/проклятый лес/grass_28.png",
-   "res://assets/sprites/env/biomes/проклятый лес/grass_29.png",
-   "res://assets/sprites/env/biomes/проклятый лес/grass_30.png",
-   "res://assets/sprites/env/biomes/проклятый лес/grass_31.png",
-   "res://assets/sprites/env/biomes/проклятый лес/grass_32.png",
-   "res://assets/sprites/env/biomes/проклятый лес/grass_33.png",
-   "res://assets/sprites/env/biomes/проклятый лес/grass_34.png",
-   "res://assets/sprites/env/biomes/проклятый лес/grass_35.png",
-   "res://assets/sprites/env/biomes/проклятый лес/grass_36.png",
-   "res://assets/sprites/env/biomes/проклятый лес/grass_37.png",
-   "res://assets/sprites/env/biomes/проклятый лес/grass_38.png",
-   "res://assets/sprites/env/biomes/проклятый лес/grass_39.png",
-   "res://assets/sprites/env/biomes/проклятый лес/grass_40.png"
+   "res://assets/sprites/env/biomes/проклятый лес/grass_12.png"
   ],
   "water": "res://assets/sprites/env/biomes/проклятый лес/water.png",
   "trees": [
@@ -466,7 +308,9 @@
    "img:env/biomes/проклятый лес/tree_3.png",
    "img:env/biomes/проклятый лес/tree_4.png",
    "img:env/biomes/проклятый лес/tree_5.png"
-  ]
+  ],
+  "canvas": "res://assets/sprites/env/biomes/проклятый лес/canvas.png",
+  "label": "проклятый лес"
  },
  "пустыня": {
   "grass": [
@@ -481,35 +325,7 @@
    "res://assets/sprites/env/biomes/пустыня/grass_9.png",
    "res://assets/sprites/env/biomes/пустыня/grass_10.png",
    "res://assets/sprites/env/biomes/пустыня/grass_11.png",
-   "res://assets/sprites/env/biomes/пустыня/grass_12.png",
-   "res://assets/sprites/env/biomes/пустыня/grass_13.png",
-   "res://assets/sprites/env/biomes/пустыня/grass_14.png",
-   "res://assets/sprites/env/biomes/пустыня/grass_15.png",
-   "res://assets/sprites/env/biomes/пустыня/grass_16.png",
-   "res://assets/sprites/env/biomes/пустыня/grass_17.png",
-   "res://assets/sprites/env/biomes/пустыня/grass_18.png",
-   "res://assets/sprites/env/biomes/пустыня/grass_19.png",
-   "res://assets/sprites/env/biomes/пустыня/grass_20.png",
-   "res://assets/sprites/env/biomes/пустыня/grass_21.png",
-   "res://assets/sprites/env/biomes/пустыня/grass_22.png",
-   "res://assets/sprites/env/biomes/пустыня/grass_23.png",
-   "res://assets/sprites/env/biomes/пустыня/grass_24.png",
-   "res://assets/sprites/env/biomes/пустыня/grass_25.png",
-   "res://assets/sprites/env/biomes/пустыня/grass_26.png",
-   "res://assets/sprites/env/biomes/пустыня/grass_27.png",
-   "res://assets/sprites/env/biomes/пустыня/grass_28.png",
-   "res://assets/sprites/env/biomes/пустыня/grass_29.png",
-   "res://assets/sprites/env/biomes/пустыня/grass_30.png",
-   "res://assets/sprites/env/biomes/пустыня/grass_31.png",
-   "res://assets/sprites/env/biomes/пустыня/grass_32.png",
-   "res://assets/sprites/env/biomes/пустыня/grass_33.png",
-   "res://assets/sprites/env/biomes/пустыня/grass_34.png",
-   "res://assets/sprites/env/biomes/пустыня/grass_35.png",
-   "res://assets/sprites/env/biomes/пустыня/grass_36.png",
-   "res://assets/sprites/env/biomes/пустыня/grass_37.png",
-   "res://assets/sprites/env/biomes/пустыня/grass_38.png",
-   "res://assets/sprites/env/biomes/пустыня/grass_39.png",
-   "res://assets/sprites/env/biomes/пустыня/grass_40.png"
+   "res://assets/sprites/env/biomes/пустыня/grass_12.png"
   ],
   "water": "res://assets/sprites/env/biomes/пустыня/water.png",
   "trees": [
@@ -518,7 +334,9 @@
    "img:env/biomes/пустыня/tree_3.png",
    "img:env/biomes/пустыня/tree_4.png",
    "img:env/biomes/пустыня/tree_5.png"
-  ]
+  ],
+  "canvas": "res://assets/sprites/env/biomes/пустыня/canvas.png",
+  "label": "пустыня"
  },
  "степи": {
   "grass": [
@@ -533,40 +351,14 @@
    "res://assets/sprites/env/biomes/степи/grass_9.png",
    "res://assets/sprites/env/biomes/степи/grass_10.png",
    "res://assets/sprites/env/biomes/степи/grass_11.png",
-   "res://assets/sprites/env/biomes/степи/grass_12.png",
-   "res://assets/sprites/env/biomes/степи/grass_13.png",
-   "res://assets/sprites/env/biomes/степи/grass_14.png",
-   "res://assets/sprites/env/biomes/степи/grass_15.png",
-   "res://assets/sprites/env/biomes/степи/grass_16.png",
-   "res://assets/sprites/env/biomes/степи/grass_17.png",
-   "res://assets/sprites/env/biomes/степи/grass_18.png",
-   "res://assets/sprites/env/biomes/степи/grass_19.png",
-   "res://assets/sprites/env/biomes/степи/grass_20.png",
-   "res://assets/sprites/env/biomes/степи/grass_21.png",
-   "res://assets/sprites/env/biomes/степи/grass_22.png",
-   "res://assets/sprites/env/biomes/степи/grass_23.png",
-   "res://assets/sprites/env/biomes/степи/grass_24.png",
-   "res://assets/sprites/env/biomes/степи/grass_25.png",
-   "res://assets/sprites/env/biomes/степи/grass_26.png",
-   "res://assets/sprites/env/biomes/степи/grass_27.png",
-   "res://assets/sprites/env/biomes/степи/grass_28.png",
-   "res://assets/sprites/env/biomes/степи/grass_29.png",
-   "res://assets/sprites/env/biomes/степи/grass_30.png",
-   "res://assets/sprites/env/biomes/степи/grass_31.png",
-   "res://assets/sprites/env/biomes/степи/grass_32.png",
-   "res://assets/sprites/env/biomes/степи/grass_33.png",
-   "res://assets/sprites/env/biomes/степи/grass_34.png",
-   "res://assets/sprites/env/biomes/степи/grass_35.png",
-   "res://assets/sprites/env/biomes/степи/grass_36.png",
-   "res://assets/sprites/env/biomes/степи/grass_37.png",
-   "res://assets/sprites/env/biomes/степи/grass_38.png",
-   "res://assets/sprites/env/biomes/степи/grass_39.png",
-   "res://assets/sprites/env/biomes/степи/grass_40.png"
+   "res://assets/sprites/env/biomes/степи/grass_12.png"
   ],
   "water": "res://assets/sprites/env/biomes/степи/water.png",
   "trees": [
    "img:env/biomes/степи/tree_1.png"
-  ]
+  ],
+  "canvas": "res://assets/sprites/env/biomes/степи/canvas.png",
+  "label": "степи"
  },
  "скалы": {
   "grass": [
@@ -581,35 +373,7 @@
    "res://assets/sprites/env/biomes/скалы/grass_9.png",
    "res://assets/sprites/env/biomes/скалы/grass_10.png",
    "res://assets/sprites/env/biomes/скалы/grass_11.png",
-   "res://assets/sprites/env/biomes/скалы/grass_12.png",
-   "res://assets/sprites/env/biomes/скалы/grass_13.png",
-   "res://assets/sprites/env/biomes/скалы/grass_14.png",
-   "res://assets/sprites/env/biomes/скалы/grass_15.png",
-   "res://assets/sprites/env/biomes/скалы/grass_16.png",
-   "res://assets/sprites/env/biomes/скалы/grass_17.png",
-   "res://assets/sprites/env/biomes/скалы/grass_18.png",
-   "res://assets/sprites/env/biomes/скалы/grass_19.png",
-   "res://assets/sprites/env/biomes/скалы/grass_20.png",
-   "res://assets/sprites/env/biomes/скалы/grass_21.png",
-   "res://assets/sprites/env/biomes/скалы/grass_22.png",
-   "res://assets/sprites/env/biomes/скалы/grass_23.png",
-   "res://assets/sprites/env/biomes/скалы/grass_24.png",
-   "res://assets/sprites/env/biomes/скалы/grass_25.png",
-   "res://assets/sprites/env/biomes/скалы/grass_26.png",
-   "res://assets/sprites/env/biomes/скалы/grass_27.png",
-   "res://assets/sprites/env/biomes/скалы/grass_28.png",
-   "res://assets/sprites/env/biomes/скалы/grass_29.png",
-   "res://assets/sprites/env/biomes/скалы/grass_30.png",
-   "res://assets/sprites/env/biomes/скалы/grass_31.png",
-   "res://assets/sprites/env/biomes/скалы/grass_32.png",
-   "res://assets/sprites/env/biomes/скалы/grass_33.png",
-   "res://assets/sprites/env/biomes/скалы/grass_34.png",
-   "res://assets/sprites/env/biomes/скалы/grass_35.png",
-   "res://assets/sprites/env/biomes/скалы/grass_36.png",
-   "res://assets/sprites/env/biomes/скалы/grass_37.png",
-   "res://assets/sprites/env/biomes/скалы/grass_38.png",
-   "res://assets/sprites/env/biomes/скалы/grass_39.png",
-   "res://assets/sprites/env/biomes/скалы/grass_40.png"
+   "res://assets/sprites/env/biomes/скалы/grass_12.png"
   ],
   "water": "res://assets/sprites/env/biomes/скалы/water.png",
   "trees": [
@@ -618,7 +382,9 @@
    "img:env/biomes/скалы/tree_3.png",
    "img:env/biomes/скалы/tree_4.png",
    "img:env/biomes/скалы/tree_5.png"
-  ]
+  ],
+  "canvas": "res://assets/sprites/env/biomes/скалы/canvas.png",
+  "label": "скалы"
  },
  "цветущий край": {
   "grass": [
@@ -633,35 +399,7 @@
    "res://assets/sprites/env/biomes/цветущий край/grass_9.png",
    "res://assets/sprites/env/biomes/цветущий край/grass_10.png",
    "res://assets/sprites/env/biomes/цветущий край/grass_11.png",
-   "res://assets/sprites/env/biomes/цветущий край/grass_12.png",
-   "res://assets/sprites/env/biomes/цветущий край/grass_13.png",
-   "res://assets/sprites/env/biomes/цветущий край/grass_14.png",
-   "res://assets/sprites/env/biomes/цветущий край/grass_15.png",
-   "res://assets/sprites/env/biomes/цветущий край/grass_16.png",
-   "res://assets/sprites/env/biomes/цветущий край/grass_17.png",
-   "res://assets/sprites/env/biomes/цветущий край/grass_18.png",
-   "res://assets/sprites/env/biomes/цветущий край/grass_19.png",
-   "res://assets/sprites/env/biomes/цветущий край/grass_20.png",
-   "res://assets/sprites/env/biomes/цветущий край/grass_21.png",
-   "res://assets/sprites/env/biomes/цветущий край/grass_22.png",
-   "res://assets/sprites/env/biomes/цветущий край/grass_23.png",
-   "res://assets/sprites/env/biomes/цветущий край/grass_24.png",
-   "res://assets/sprites/env/biomes/цветущий край/grass_25.png",
-   "res://assets/sprites/env/biomes/цветущий край/grass_26.png",
-   "res://assets/sprites/env/biomes/цветущий край/grass_27.png",
-   "res://assets/sprites/env/biomes/цветущий край/grass_28.png",
-   "res://assets/sprites/env/biomes/цветущий край/grass_29.png",
-   "res://assets/sprites/env/biomes/цветущий край/grass_30.png",
-   "res://assets/sprites/env/biomes/цветущий край/grass_31.png",
-   "res://assets/sprites/env/biomes/цветущий край/grass_32.png",
-   "res://assets/sprites/env/biomes/цветущий край/grass_33.png",
-   "res://assets/sprites/env/biomes/цветущий край/grass_34.png",
-   "res://assets/sprites/env/biomes/цветущий край/grass_35.png",
-   "res://assets/sprites/env/biomes/цветущий край/grass_36.png",
-   "res://assets/sprites/env/biomes/цветущий край/grass_37.png",
-   "res://assets/sprites/env/biomes/цветущий край/grass_38.png",
-   "res://assets/sprites/env/biomes/цветущий край/grass_39.png",
-   "res://assets/sprites/env/biomes/цветущий край/grass_40.png"
+   "res://assets/sprites/env/biomes/цветущий край/grass_12.png"
   ],
   "water": "res://assets/sprites/env/biomes/цветущий край/water.png",
   "trees": [
@@ -670,7 +408,9 @@
    "img:env/biomes/цветущий край/tree_3.png",
    "img:env/biomes/цветущий край/tree_4.png",
    "img:env/biomes/цветущий край/tree_5.png"
-  ]
+  ],
+  "canvas": "res://assets/sprites/env/biomes/цветущий край/canvas.png",
+  "label": "цветущий край"
  },
  "мох": {
   "grass": [

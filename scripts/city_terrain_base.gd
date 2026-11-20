@@ -450,12 +450,24 @@ func _biome_tag() -> String:
 
 var _biome_grid: Array = []   # v1.78.8: НАРИСОВАННАЯ карта биома 20×20
                               # (композитор-рисовалка): город рисует её
+var _biome_canvas: Texture2D = null  # v1.79.5: ЦЕЛОЕ ПОЛОТНО биома —
+                              # земля города замощается им 1:1 без тайлов
 
 
 func _load_grass_set() -> Array:
 	var tag := _biome_tag()
 	if tag != "" and Assets.biome_manifest().has(tag):
 		var mf: Dictionary = Assets.biome_manifest()[tag]
+		# v1.79.5: ПОЛОТНО — если у биома есть canvas, земля города рисуется
+		# им 1:1 (замощение бесшовное): ни тайлов, ни второго слоя
+		_biome_canvas = null
+		var cv := String(mf.get("canvas", ""))
+		if cv != "":
+			var ct: Texture2D = Assets.tex(cv)
+			if ct != null:
+				_biome_canvas = ct
+				_grass_fills = []
+				return [ct]
 		# v1.78.0: собранные в композиторе — ЕДИНЫЙ рецепт на лету
 		if bool(mf.get("composed", false)):
 			var uni := Assets.uniform_ground(mf.get("grass", []))

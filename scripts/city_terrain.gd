@@ -29,6 +29,16 @@ func _draw_tiles(region: Rect2i) -> void:
 			var rect := Rect2(x * map.ts, y * map.ts, map.ts, map.ts)
 			match tile:
 				map.TILE_GRASS, map.TILE_TREE:
+					if _biome_canvas != null:
+						# v1.79.5: земля = ЦЕЛОЕ ПОЛОТНО биома, замощение
+						# бесшовное по мировым координатам (без тайлов)
+						var cw := float(_biome_canvas.get_width())
+						var chh := float(_biome_canvas.get_height())
+						var wx := fposmod(float(x) * float(map.ts), cw)
+						var wy := fposmod(float(y) * float(map.ts), chh)
+						_drawer.draw_texture_rect_region(_biome_canvas, rect,
+								Rect2(wx, wy, float(map.ts), float(map.ts)))
+						continue
 					var tex: Texture2D = _grass_texture_at(x, y)
 					if tex != null:
 						# v1.76.1: у летних тайлов растушёванные края — под ними
