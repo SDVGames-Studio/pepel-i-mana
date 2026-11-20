@@ -138,6 +138,10 @@ def main():
         strip = Image.new("RGBA", (FRAME_W * max(1, len(imgs)), FRAME_H),
                           (0, 0, 0, 0))
         for i, img in enumerate(imgs):
+            if key == "run":
+                # v1.79.2: лист бега нарисован смотрящим ВЛЕВО — полосы
+                # игры смотрят ВПРАВО (флип в hero.gd при facing.x < 0)
+                img = img.transpose(Image.FLIP_LEFT_RIGHT)
             tile = make_tile(img, key)
             strip.alpha_composite(tile, (i * FRAME_W, 0))
         name = STRIP_NAMES[key]
