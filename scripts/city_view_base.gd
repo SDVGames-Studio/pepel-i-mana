@@ -131,7 +131,10 @@ func _draw() -> void:
 	# тоже в запечке — живой слой не платит за него каждый кадр
 	_draw_plaza_pulse()
 	_draw_field_live()
-	if lod:
+	# v1.79.5: при ПОЛОТНЕ биома живых травинок нет — это «второй слой
+	# зелёной травы» поверх цельного полотна
+	var canvas_on: bool = city != null and city._terrain != null 			and city._terrain.get("_biome_canvas") != null 			and city._terrain._biome_canvas != null
+	if lod and not canvas_on:
 		# v1.52: три яруса детализации — чем дальше камера, тем реже
 		# живые травинки и блики (мельче пикселя — глаз не отличит,
 		# команд в разы меньше)

@@ -440,7 +440,8 @@
    "res://assets/sprites/env/biomes/мох/grass_24.png"
   ],
   "label": "мох",
-  "season": "spring"
+  "season": "spring",
+  "canvas": "res://assets/sprites/env/biomes/мох/canvas.png"
  },
  "лето": {
   "grass": [

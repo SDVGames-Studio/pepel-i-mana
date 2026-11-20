@@ -350,6 +350,19 @@ func _draw() -> void:
 		return
 	if map == null:
 		return
+	# v1.79.5: ПОЛОТНО биома — земля рисуется напрямую (1:1, пиксель
+	# полотна = пиксель мира), БЕЗ 8px-запечки: она мылила мелкий пиксель
+	# полотна вчетверо. Чанки поверх несут только скалы/руины/надстройки.
+	if _biome_canvas != null:
+		texture_repeat = CanvasItem.TEXTURE_REPEAT_ENABLED
+		var xfc := get_viewport_transform()
+		var visc: Rect2 = (xfc.affine_inverse() * get_viewport_rect()).grow(float(map.ts) * 4.0)
+		draw_texture_rect(_biome_canvas, Rect2(visc.position, visc.size), false)
+	# надстройки (зоны/дороги/плиты) поверх полотна
+	if _static_tex != null:
+		draw_texture_rect(_static_tex, Rect2(Vector2.ZERO, Vector2(map.w * map.ts, map.h * map.ts)), false)
+	if map == null:
+		return
 	# v1.50 (FPS): рисуем только чанки в видимой области — при большом
 	# зуме-отдалении и так все видны, вблизи экономит десятки квадов
 	var xf := get_viewport_transform()
