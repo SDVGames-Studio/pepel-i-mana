@@ -41,7 +41,7 @@ SHEETS = [
 STRIP_NAMES = {
     "idle": "knight_Idle",
     "run": "knight_Run",
-    "run2": "knight_RunDown",
+    "run2": "knight_RunUp",
     "attack": "knight_Attack",
     "roll": "knight_Roll",
     "cast": "knight_Cast",
@@ -98,10 +98,11 @@ def sheet_frames(path):
     return out
 
 
-def make_tile(img, scale, out_name):
-    """Кадр -> 120×80: фигура масштабируется по высоте, низ на землю,
-    центр по X."""
+def make_tile(img, out_name):
+    """Кадр -> 120×80: фигура тянется до 76px ВЫСОТЫ (все анимации одной
+    высоты — «разного размера» исчезает), низ на землю, центр по X."""
     fw, fh = img.size
+    scale = TARGET_H / float(max(1, fh))
     nw = max(1, int(round(fw * scale)))
     nh = max(1, int(round(fh * scale)))
     r = img.resize((nw, nh), Image.LANCZOS)
@@ -113,9 +114,10 @@ def make_tile(img, scale, out_name):
 
 
 def main():
-    # 1) собрать все кадры всех листов, ЕДИНЫЙ масштаб по стойке (idle)
+    # 1) собрать все кадры всех листов; v1.79.2: КАЖДЫЙ кадр приводится
+    # к 76px ВЫСОТЫ — иначе стойка 76px, бег 38px («разного размера» при
+    # смене анимаций); пропорции кадра сохраняются
     data = {}
-    idle_max_h = 0
     for fname, key in SHEETS:
         path = os.path.join(BASE, fname)
         if not os.path.exists(path):
@@ -127,20 +129,16 @@ def main():
             img = Image.open(path).convert("RGBA").crop(
                 (x0, y0, x1, y1))
             imgs.append(img)
-            if key == "idle":
-                idle_max_h = max(idle_max_h, y1 - y0)
         data[key] = imgs
         print("%-46s кадров=%d (ширины %s)" % (
             fname[:46], len(imgs),
             str([b - a for a, _y, b, _y2 in boxes])))
-    scale = TARGET_H / float(max(1, idle_max_h))
-    print("единый масштаб: %.3f (стойка %dpx)" % (scale, idle_max_h))
     # 2) полосы
     for key, imgs in data.items():
         strip = Image.new("RGBA", (FRAME_W * max(1, len(imgs)), FRAME_H),
                           (0, 0, 0, 0))
         for i, img in enumerate(imgs):
-            tile = make_tile(img, scale, key)
+            tile = make_tile(img, key)
             strip.alpha_composite(tile, (i * FRAME_W, 0))
         name = STRIP_NAMES[key]
         strip.save(os.path.join(OUT, name + ".png"))
@@ -148,7 +146,7 @@ def main():
     # 3) урон — 2-й кадр падения (падает на колено)
     if "death" in data and len(data["death"]) >= 2:
         img = data["death"][1]
-        tile = make_tile(img, scale, "hurt")
+        tile = make_tile(img, "hurt")
         tile.save(os.path.join(OUT, "knight_Hurt.png"))
         print("полоса knight_Hurt: 1 кадр (падение, кадр 2)")
     # 4) контакт-лист

@@ -70,7 +70,7 @@ static func build_knight_frames() -> SpriteFrames:
 		# (tools/hero_frames «<группа> (N)»); fps под новые счёта кадров
 		"run": ["knight_Run", 10.0, true],      # вбок (5 кадров)
 		"run_up": ["knight_RunUp", 12.0, true],    # спиной вверх (атлас)
-		"run_down": ["knight_RunDown", 10.0, true], # v1.79: бег вниз (6 кадров)
+		"run_down": ["knight_Run", 10.0, true],    # v1.79: вниз — профиль (анфас-бега нет)
 		"attack": ["knight_Attack", 12.0, false],  # v1.79: 6 кадров с дугой (0.5с)
 		"roll": ["knight_Roll", 16.0, false],      # v1.79: рывок 6 кадров (0.4с)
 		"crouch": ["knight_Crouch", 8.0, true], # крадучись (10 кадров)
