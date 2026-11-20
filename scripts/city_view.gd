@@ -451,12 +451,8 @@ func _draw_speech_bubble(pos: Vector2, text: String) -> void:
 ## v1.36.1: на плато герой стоит выше равнины (подъём анимируется на
 ## лестнице) — высота ощущается, а не выглядит плоской текстурой.
 func _draw_hero(hero) -> void:
-	if OS.get_environment("SHOT_HERO") != "":
-		print("view: _draw_hero вызван pos=", hero.global_position)
 	var lift := _entity_lift("hero", hero.global_position)
 	hero.draw_body(self, hero.global_position + Vector2(0, -lift))
-	if OS.get_environment("SHOT_HERO") != "":
-		print("view: draw_body завершён")
 
 
 func _draw_ghost() -> void:

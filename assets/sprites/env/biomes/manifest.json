@@ -30,7 +30,6 @@
   "trees": [
    "img:env/biomes/весна/tree_1.png"
   ],
-  "season": "spring",
   "label": "весна"
  },
  "осень": {
@@ -68,7 +67,32 @@
   "label": "осень"
  },
  "зима": {
-  "grass": [],
+  "grass": [
+   "res://assets/sprites/env/biomes/зима/grass_1.png",
+   "res://assets/sprites/env/biomes/зима/grass_2.png",
+   "res://assets/sprites/env/biomes/зима/grass_3.png",
+   "res://assets/sprites/env/biomes/зима/grass_4.png",
+   "res://assets/sprites/env/biomes/зима/grass_5.png",
+   "res://assets/sprites/env/biomes/зима/grass_6.png",
+   "res://assets/sprites/env/biomes/зима/grass_7.png",
+   "res://assets/sprites/env/biomes/зима/grass_8.png",
+   "res://assets/sprites/env/biomes/зима/grass_9.png",
+   "res://assets/sprites/env/biomes/зима/grass_10.png",
+   "res://assets/sprites/env/biomes/зима/grass_11.png",
+   "res://assets/sprites/env/biomes/зима/grass_12.png",
+   "res://assets/sprites/env/biomes/зима/grass_13.png",
+   "res://assets/sprites/env/biomes/зима/grass_14.png",
+   "res://assets/sprites/env/biomes/зима/grass_15.png",
+   "res://assets/sprites/env/biomes/зима/grass_16.png",
+   "res://assets/sprites/env/biomes/зима/grass_17.png",
+   "res://assets/sprites/env/biomes/зима/grass_18.png",
+   "res://assets/sprites/env/biomes/зима/grass_19.png",
+   "res://assets/sprites/env/biomes/зима/grass_20.png",
+   "res://assets/sprites/env/biomes/зима/grass_21.png",
+   "res://assets/sprites/env/biomes/зима/grass_22.png",
+   "res://assets/sprites/env/biomes/зима/grass_23.png",
+   "res://assets/sprites/env/biomes/зима/grass_24.png"
+  ],
   "water": "res://assets/sprites/env/biomes/зима/water.png",
   "trees": [
    "img:env/biomes/зима/tree_1.png",
@@ -677,5 +701,35 @@
   ],
   "label": "мох",
   "season": "spring"
+ },
+ "лето": {
+  "grass": [
+   "res://assets/sprites/env/biomes/лето/grass_1.png",
+   "res://assets/sprites/env/biomes/лето/grass_2.png",
+   "res://assets/sprites/env/biomes/лето/grass_3.png",
+   "res://assets/sprites/env/biomes/лето/grass_4.png",
+   "res://assets/sprites/env/biomes/лето/grass_5.png",
+   "res://assets/sprites/env/biomes/лето/grass_6.png",
+   "res://assets/sprites/env/biomes/лето/grass_7.png",
+   "res://assets/sprites/env/biomes/лето/grass_8.png",
+   "res://assets/sprites/env/biomes/лето/grass_9.png",
+   "res://assets/sprites/env/biomes/лето/grass_10.png",
+   "res://assets/sprites/env/biomes/лето/grass_11.png",
+   "res://assets/sprites/env/biomes/лето/grass_12.png",
+   "res://assets/sprites/env/biomes/лето/grass_13.png",
+   "res://assets/sprites/env/biomes/лето/grass_14.png",
+   "res://assets/sprites/env/biomes/лето/grass_15.png",
+   "res://assets/sprites/env/biomes/лето/grass_16.png",
+   "res://assets/sprites/env/biomes/лето/grass_17.png",
+   "res://assets/sprites/env/biomes/лето/grass_18.png",
+   "res://assets/sprites/env/biomes/лето/grass_19.png",
+   "res://assets/sprites/env/biomes/лето/grass_20.png",
+   "res://assets/sprites/env/biomes/лето/grass_21.png",
+   "res://assets/sprites/env/biomes/лето/grass_22.png",
+   "res://assets/sprites/env/biomes/лето/grass_23.png",
+   "res://assets/sprites/env/biomes/лето/grass_24.png"
+  ],
+  "label": "лето",
+  "season": "summer"
  }
 }

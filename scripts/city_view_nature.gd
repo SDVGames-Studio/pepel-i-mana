@@ -66,14 +66,7 @@ func _draw_world_sorted() -> void:
 			continue   # спит/лежит/прячется внутри дома — с карты не виден
 		dyn.append([Vector2(r["pos"]).y, "res", r])
 	if city != null and city.hero != null and not city.hero.dead:
-		if OS.get_environment("SHOT_HERO") != "":
-			print("nature: hero в dyn y=", city.hero.global_position.y)
 		dyn.append([city.hero.global_position.y, "hero", city.hero])
-	else:
-		if OS.get_environment("SHOT_HERO") != "":
-			print("nature: hero НЕ добавлен city=", city != null,
-					" hero=", city.hero if city != null else null,
-					" dead=", city.hero.dead if (city != null and city.hero != null) else "?")
 	dyn.sort_custom(func(a, b) -> bool: return float(a[0]) < float(b[0]))
 	_draw_campfire()
 	_draw_founded_cemetery()   # могилы кладбища без здания (v1.23)
@@ -83,10 +76,6 @@ func _draw_world_sorted() -> void:
 	var si := _static_window_start()
 	var di := 0
 	var y_max := _vis.end.y + float(map.ts) * 3.0
-	if OS.get_environment("SHOT_HERO") != "":
-		_merge_log = 0
-		print("merge: dyn=", dyn.size(), " static=", _static_sorted.size(),
-				" y_max=", y_max, " vis=", _vis)
 	while true:
 		var take_dyn := false
 		if di >= dyn.size():
@@ -103,9 +92,6 @@ func _draw_world_sorted() -> void:
 		else:
 			e = _static_sorted[si]
 			si += 1
-		if OS.get_environment("SHOT_HERO") != "" and _merge_log < 40:
-			_merge_log += 1
-			print("merge[", _merge_log, "]=", String(e[1]), " y=", float(e[0]))
 		match String(e[1]):
 			"tree":
 				# v1.21.5: дескриптор из кэша; v1.22: тень впечена в текстуру.
@@ -150,8 +136,6 @@ func _draw_world_sorted() -> void:
 			"res":
 				_draw_resident(e[2])
 			"hero":
-				if OS.get_environment("SHOT_HERO") != "":
-					print("nature: match hero -> рисуем")
 				_draw_hero(e[2])
 
 

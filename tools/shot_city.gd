@@ -38,41 +38,6 @@ func _call_deferred(cb: Callable) -> void:
 func _decorate(city: Node, game: Node) -> void:
 	_game = game
 	_city = city
-	# v1.78.11 diag: земля/декор/герой
-	if OS.get_environment("SHOT_NOTERRAIN") != "":
-		city._terrain.visible = false
-	if OS.get_environment("SHOT_HEROMOVE") != "":
-		# герой в сторону от спавна: проверить, кто закрывал героя
-		city.hero.position += Vector2(float(OS.get_environment("SHOT_HEROMOVE")),
-				float(OS.get_environment("SHOT_HEROMOVE")))
-	if OS.get_environment("SHOT_NOSKY") != "":
-		city._sky.visible = false
-		city._sky_shadows.visible = false
-	if OS.get_environment("SHOT_NOWATER") != "":
-		city._water.visible = false
-	if OS.get_environment("SHOT_NOVIEW") != "":
-		city.view.visible = false
-	if OS.get_environment("SHOT_NOAMB") != "":
-		city._ambience.visible = false
-	if OS.get_environment("SHOT_NOMOD") != "":
-		city._modulate.visible = false
-	if OS.get_environment("SHOT_NOSTATIC") != "":
-		city._static_body.visible = false
-	if OS.get_environment("SHOT_HERO") != "":
-		print("hero.dead=", city.hero.dead,
-				" pos=", city.hero.global_position)
-	await process_frame
-	var terr: Node = city._terrain
-	var h: Node = city.hero
-	print("diag: fills=", (terr._grass_fills as Array).size(),
-			" grid=", (terr._biome_grid as Array).size(),
-			" texs=", (terr._grass_texs as Array).size(),
-			" hero=", h != null,
-			" hero_pos=", h.global_position if h != null else Vector2.ZERO,
-			" cam=", city.get_viewport().get_camera_2d().global_position if city.get_viewport().get_camera_2d() != null else Vector2.ZERO)
-	if h != null:
-		print("diag-hero: visible=", h.visible, " modulate=", h.modulate,
-				" z=", h.z_index, " children_self=", h.get_child_count())
 	var names := []
 	for ch in city.get_children():
 		names.append(String(ch.name))
