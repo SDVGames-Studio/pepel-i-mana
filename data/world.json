@@ -308,8 +308,8 @@
     ]
   },
   "encounters": {
-    "_note": "v1.22: случайные встречи в пути — бросок на каждый день дороги",
-    "chance_per_day": 0.25,
+    "_note": "v1.80: встречи реже, по местности (biomes), после встречи затишье lull_days; засада — ЗАСЛОН на карте мира",
+    "chance_per_day": 0.12,
     "kinds": {
       "ambush": {
         "w": 20,
@@ -317,33 +317,66 @@
           4,
           10
         ],
-        "scale": 0.7
+        "scale": 0.7,
+        "biomes": [
+          "forest",
+          "hills",
+          "swamp",
+          "waste"
+        ]
       },
       "merchant": {
-        "w": 15
+        "w": 15,
+        "biomes": [
+          "plains",
+          "road",
+          "waste"
+        ]
       },
       "wounded": {
         "w": 15,
         "food_cost": 5,
-        "rep": 8
+        "rep": 8,
+        "biomes": [
+          "plains",
+          "road",
+          "forest"
+        ]
       },
       "cache": {
         "w": 15,
         "coins": [
           5,
           15
+        ],
+        "biomes": [
+          "forest",
+          "hills",
+          "swamp"
         ]
       },
       "storm": {
         "w": 20,
-        "food_frac": 0.1
+        "food_frac": 0.1,
+        "biomes": [
+          "waste",
+          "plains",
+          "swamp"
+        ]
       },
       "pilgrim": {
         "w": 15,
         "coins_cost": 5,
-        "rep": 10
+        "rep": 10,
+        "biomes": [
+          "plains",
+          "road",
+          "forest",
+          "hills"
+        ]
       }
-    }
+    },
+    "lull_days": 2
   },
   "nests": {
     "max_level": 3,

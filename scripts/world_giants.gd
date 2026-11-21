@@ -90,7 +90,18 @@ func update(delta: float, hero_px: Vector2) -> Array:
 				g["days"] = 0.0
 				g["wait"] = 4.0
 			else:
+				# v1.80: поводок погони — гигант устаёт: истёк срок погони или
+				# герой оторвался (раньше гнались БЕСКОНЕЧНО через всю карту —
+				# «засада тянется за тобой», фидбек заказчика)
+				g["chase_left"] = float(g.get("chase_left",
+						float(cfg.get("chase_giveup_s", 8.0)))) - delta
 				g["px"] = (g["px"] as Vector2) + to_hero.normalized() * chase * delta
+				if float(g["chase_left"]) <= 0.0 \
+						or to_hero.length() > float(cfg.get("giveup_dist_px", 360.0)):
+					g["mood"] = "neutral"
+					g["days"] = 0.0
+					g["wait"] = 6.0
+					events.append({"type": "calmed", "giant": g})
 			continue
 		# своя задача: путь к тайлам домашнего биома
 		g["wait"] = float(g["wait"]) - delta
@@ -161,6 +172,8 @@ func interact(hero_px: Vector2, ctx: Dictionary) -> Dictionary:
 			angry_now = bool(ctx.get("provoked", false))
 	if angry_now and String(g["mood"]) != "friendly":
 		g["mood"] = "angered"
+		# v1.80: срок погони (поводок — см. update)
+		g["chase_left"] = float(cfg.get("chase_giveup_s", 8.0))
 		return {"type": "angered", "giant": g}
 	# помогает сам, если герой чист от порчи (титан — по issue)
 	if id == "ash_titan" and float(ctx.get("pollution", 100.0)) < float(anger.get("pollution_help_max", 30.0)):

@@ -872,6 +872,53 @@ func _dispatch_ability(name: String, args: Variant) -> void:
 			queue_redraw()
 		"heal":
 			_ab_heal(float(a.get("frac", 0.15)))
+		# v1.80: разные тактики боссов — веер снарядов и шаг сквозь тень
+		"volley":
+			_ab_volley(int(a.get("count", 5)), float(a.get("spread", 0.55)),
+					float(a.get("speed", 230.0)), String(a.get("color", "")))
+		"blink":
+			_ab_blink(float(a.get("dist", 90.0)))
+
+
+## Веер снарядов (v1.80): N снарядов веером в текущую позицию героя —
+## дыхание дракона, осколки колосса, болты лича.
+func _ab_volley(count: int, spread: float, speed: float, col_hex: String) -> void:
+	if hero == null or not is_instance_valid(hero) or hero.dead:
+		return
+	var parent := get_parent()
+	if parent == null:
+		return
+	var base: Vector2 = (hero.global_position - global_position).normalized()
+	var col: Color = Color(col_hex) if col_hex != "" else Color(String(p.get("color", "#b39ddb")))
+	for i in count:
+		var ang := lerpf(-spread, spread,
+				float(i) / maxf(1.0, float(maxi(1, count - 1))))
+		var proj = load("res://scripts/projectile.gd").new()
+		proj.setup(global_position, base.rotated(ang), speed, 300.0,
+				spell_damage(p), col, float(p["radius"]))
+		proj.target_group = "hero"
+		if parent.has_method("_solid_at"):
+			proj.solid_check = Callable(parent, "_solid_at")
+		parent.add_child(proj)
+
+
+## Шаг сквозь тень (v1.80): мгновенный перенос к флангу героя (туман-шаг
+## вампира) — обходит рывок героя, разрывает кайт. Первый свободный сектор.
+func _ab_blink(dist: float) -> void:
+	if hero == null or not is_instance_valid(hero):
+		return
+	var parent := get_parent()
+	if parent == null:
+		return
+	for i in 8:
+		var dir := Vector2.from_angle(TAU * float(i) / 8.0)
+		var px: Vector2 = hero.global_position + dir * dist
+		if parent.has_method("_solid_at") and parent.call("_solid_at", px):
+			continue
+		global_position = px
+		_hit_flash = 0.5
+		queue_redraw()
+		return
 
 
 ## Призыв свиты: N слабых копий врага вокруг босса (группа enemies —

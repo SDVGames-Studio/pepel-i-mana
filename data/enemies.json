@@ -354,16 +354,22 @@
     "xp": 40,
     "phases": [
       {
-        "hp": 0.66,
+        "hp": 0.6,
         "ability": "ring_aoe",
         "args": {
-          "damage": 6,
+          "damage": 9,
           "radius": 120.0
         }
       },
       {
-        "hp": 0.33,
-        "ability": "rage"
+        "hp": 0.3,
+        "ability": "volley",
+        "args": {
+          "count": 6,
+          "spread": 0.8,
+          "speed": 200.0,
+          "color": "#7fd8e8"
+        }
       }
     ]
   },
@@ -747,7 +753,17 @@
         }
       },
       {
-        "hp": 0.33,
+        "hp": 0.35,
+        "ability": "volley",
+        "args": {
+          "count": 5,
+          "spread": 0.55,
+          "speed": 240.0,
+          "color": "#ef6c3a"
+        }
+      },
+      {
+        "hp": 0.15,
         "ability": "rage"
       }
     ]
@@ -796,18 +812,18 @@
     },
     "phases": [
       {
-        "hp": 0.66,
-        "ability": "summon",
+        "hp": 0.6,
+        "ability": "blink",
         "args": {
-          "enemy": "ghoul",
-          "count": 2
+          "dist": 110.0
         }
       },
       {
-        "hp": 0.33,
-        "ability": "heal",
+        "hp": 0.3,
+        "ability": "summon",
         "args": {
-          "frac": 0.12
+          "count": 2,
+          "enemy": "ghoul"
         }
       }
     ]
@@ -858,18 +874,28 @@
     },
     "phases": [
       {
-        "hp": 0.66,
+        "hp": 0.6,
         "ability": "summon",
         "args": {
-          "enemy": "skeleton",
-          "count": 3
+          "count": 2,
+          "enemy": "skeleton_mage"
         }
       },
       {
-        "hp": 0.33,
+        "hp": 0.35,
+        "ability": "volley",
+        "args": {
+          "count": 4,
+          "spread": 0.5,
+          "speed": 260.0,
+          "color": "#b39ddb"
+        }
+      },
+      {
+        "hp": 0.15,
         "ability": "heal",
         "args": {
-          "frac": 0.12
+          "frac": 0.2
         }
       }
     ]

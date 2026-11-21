@@ -597,22 +597,41 @@ func legend_rumor(legend_id: int) -> int:
 # открывает сцену данжа, остальные встречи — выбор с эффектами.
 
 ## Бросок дня пути: id встречи из конфига или "" (не случилось).
-func roll_encounter() -> String:
+## v1.80: встречи ПО МЕСТНОСТИ (kinds[].biomes — где может случиться) и
+## затишье после события (lull_days — следующая возможна через N дней).
+## biome — тайл героя на карте мира (plains/forest/hills/swamp/waste/road).
+func roll_encounter(biome := "") -> String:
 	var ecfg: Dictionary = cfg.get("encounters", {})
-	if ecfg.is_empty() or _rng.randf() > float(ecfg.get("chance_per_day", 0.25)):
+	if ecfg.is_empty():
+		return ""
+	if int(_enc_lull) > 0:
+		_enc_lull = int(_enc_lull) - 1
+		return ""
+	if _rng.randf() > float(ecfg.get("chance_per_day", 0.25)):
 		return ""
 	var kinds: Dictionary = ecfg.get("kinds", {})
 	var total := 0
 	for k in kinds:
-		total += int(kinds[k].get("w", 1))
+		var kl: Dictionary = kinds[k]
+		var bl: Array = kl.get("biomes", [])
+		if biome != "" and not bl.is_empty() and not bl.has(biome):
+			continue
+		total += int(kl.get("w", 1))
 	if total <= 0:
 		return ""
 	var roll := _rng.randi_range(1, total)
 	for k in kinds:
-		roll -= int(kinds[k].get("w", 1))
+		var kl2: Dictionary = kinds[k]
+		var bl2: Array = kl2.get("biomes", [])
+		if biome != "" and not bl2.is_empty() and not bl2.has(biome):
+			continue
+		roll -= int(kl2.get("w", 1))
 		if roll <= 0:
+			_enc_lull = int(ecfg.get("lull_days", 2))
 			return String(k)
 	return ""
+
+var _enc_lull := 0   # v1.80: дней затишья после встречи
 
 
 ## Раненый путник: помочь едой из пула города (+репутация торговцев).
@@ -660,6 +679,49 @@ func encounter_ambush_coins() -> int:
 
 func encounter_ambush_scale() -> float:
 	return float(cfg.get("encounters", {}).get("kinds", {}).get("ambush", {}).get("scale", 0.7))
+
+
+# --- засада-заслон на карте (v1.80, фидбек: «засада должна происходить на
+# карте: поваленные деревья, заслоны или узкий проход между скал») ---------
+
+var ambush_sites: Array = []   # {tile: Vector2i, biome: String} — до зачистки
+
+
+## Заложить засаду на тайле ПУТИ героя (2-5 тайлов впереди): герой в неё
+## войдёт — или обойдёт, перестроив маршрут; засада остаётся на карте.
+func stage_ambush_site(path: Array, biome: String) -> Vector2i:
+	if map == null:
+		return Vector2i(-1, -1)
+	for i in range(2, mini(path.size(), 6)):
+		var t: Vector2i = path[i]
+		if not map.in_bounds(t) or not map.is_walkable(t):
+			continue
+		var near := false
+		for s in ambush_sites:
+			if Vector2((s["tile"] as Vector2i) - t).length() < 6.0:
+				near = true
+				break
+		if near:
+			continue
+		ambush_sites.append({"tile": t, "biome": biome})
+		return t
+	return Vector2i(-1, -1)
+
+
+func has_ambush_at(t: Vector2i) -> bool:
+	for s in ambush_sites:
+		if (s["tile"] as Vector2i) == t:
+			return true
+	return false
+
+
+## Засада зачищена (победа в сцене данжа) — заслон снят.
+func clear_ambush_site(t: Vector2i) -> bool:
+	for i in ambush_sites.size():
+		if (ambush_sites[i]["tile"] as Vector2i) == t:
+			ambush_sites.remove_at(i)
+			return true
+	return false
 
 
 # --- зачистка и осмотр локаций ---------------------------------------------

@@ -46,6 +46,7 @@ var dungeon_scale := 1.0         # масштаб локации (руины/л�
 var poi_id := 0                  # id точки интереса, из которой вошли (0 — город)
 var poi_coins := 0               # монеты за зачистку лагеря/руин (M8)
 var world_hero_tile := Vector2i(-1, -1)   # тайл героя на карте мира
+var ambush_site := Vector2i(-1, -1)      # v1.80: тайл заслона засады на карте мира
 var city_return_tile := Vector2i(-1, -1)  # тайл героя при возврате в город
 var world_active := false        # игрок сейчас на карте мира («Продолжить» вернёт туда, M8)
 var npc_cities = null            # npc_cities.gd — города поселений НПС («Мир v2», этап 3)
@@ -358,6 +359,7 @@ func new_city() -> void:
 	poi_id = 0
 	poi_coins = 0
 	world_hero_tile = Vector2i(-1, -1)
+	ambush_site = Vector2i(-1, -1)
 	city_return_tile = Vector2i(-1, -1)
 	world_active = false
 	menu_hero_tile = Vector2i(-1, -1)

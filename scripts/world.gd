@@ -117,6 +117,9 @@ func _update_giants(delta: float) -> void:
 			_reveal(hero_tile)
 			hud.toast(Loc.t("giant.stomp") % Loc.t(String(g["def"]["loc"])))
 			_chron("chron.giant_stomp", Loc.t(String(g["def"]["loc"])))
+		elif String(ev["type"]) == "calmed":
+			# v1.80: поводок погони отработал — гигант вернулся к своим делам
+			hud.toast(Loc.t("giant.calmed") % Loc.t(String(ev["giant"]["def"]["loc"])))
 
 
 ## Поднести дар / talk у гиганта; возвращает true, если E поймал гиганта.
@@ -285,6 +288,10 @@ func _update_travel(delta: float) -> void:
 	while int(travel["day_mark"]) < day_now and int(travel["day_mark"]) < int(travel["days"]):
 		travel["day_mark"] = int(travel["day_mark"]) + 1
 		_advance_world_day()
+	# v1.80: вошли в тайл заслона засады — бой в сцене данжа
+	if sim.has_ambush_at(hero_tile):
+		_enter_ambush(hero_tile)
+		return
 	if path.size() <= 1:
 		_finish_travel()
 
@@ -388,11 +395,51 @@ func _legend_rumor(l: Dictionary) -> void:
 func _maybe_encounter() -> void:
 	if travel.is_empty() or bool(travel.get("hold", false)) or hud.choice_visible():
 		return
-	var kind: String = sim.roll_encounter()
+	var kind: String = sim.roll_encounter(_tile_biome())
 	if kind == "":
+		return
+	if kind == "ambush":
+		# v1.80: засада — ЗАСЛОН впереди по пути (на карте мира), а не
+		# мгновенный бой из модалки. Обойти — засада остаётся на карте.
+		_stage_ambush()
 		return
 	travel["hold"] = true
 	_open_encounter(kind)
+
+
+## Биом тайла героя в терминах world.json encounters.kinds[].biomes.
+func _tile_biome() -> String:
+	match int(map.grid[hero_tile.y][hero_tile.x]):
+		map.TILE_FOREST: return "forest"
+		map.TILE_HILL: return "hills"
+		map.TILE_WASTE: return "waste"
+		map.TILE_SWAMP: return "swamp"
+		map.TILE_ROAD: return "road"
+	return "plains"
+
+
+## Заложить засаду-заслон на 2-4 тайла впереди по пути героя.
+func _stage_ambush() -> void:
+	var path: Array = travel.get("path", [])
+	var t: Vector2i = sim.stage_ambush_site(path, _tile_biome())
+	if t.x < 0:
+		return   # места под заслон нет — встречи не будет (не спамим)
+	_reveal(t)
+	hud.toast(Loc.t("enc.ambush_staged") % Loc.t("enc.stage_" + _tile_biome()))
+	_chron("chron.ambush_staged")
+
+
+## Герой вошёл в тайл заслона — бой в сцене данжа.
+func _enter_ambush(t: Vector2i) -> void:
+	travel = {}   # маршрут прерван боем
+	Game.ambush_site = t
+	Game.return_scene = "res://scenes/world.tscn"
+	Game.world_hero_tile = map.tile_of_px(hero_px)
+	Game.poi_id = -1
+	Game.forced_biome = "bandit_camp"
+	Game.dungeon_scale = sim.encounter_ambush_scale()
+	Game.poi_coins = sim.encounter_ambush_coins()
+	get_tree().change_scene_to_file(DUNGEON_SCENE)
 
 
 func _open_encounter(kind: String) -> void:
@@ -851,8 +898,10 @@ func _poi_hint(poi: Dictionary) -> String:
 				return Loc.t("world.hint_vampire_keep")
 			if kind == "lich_tower":
 				return Loc.t("world.hint_lich_tower")
-			return Loc.t("world.hint_dragon_castle") if kind == "dragon_castle" \
-					else Loc.t("world.hint_enter_loc")
+			if kind == "dragon_castle":
+				return Loc.t("world.hint_dragon_castle")
+			# v1.80: стимул — у входа видна награда (зачем идти внутрь)
+			return "%s • %s" % [Loc.t("world.hint_enter_loc"), Loc.t("poi.hint_loot")]
 	return Loc.t("world.hint")
 
 
