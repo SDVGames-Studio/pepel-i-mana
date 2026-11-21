@@ -152,8 +152,10 @@ func _draw_campfire() -> void:
 	if not evening and not sim.is_night() and not sim._raid_warned:
 		return
 	var pos: Vector2 = map.tile_center_px(fire) + Vector2(0, 4)
-	var glow := 0.14 + 0.05 * sin(Time.get_ticks_msec() / 180.0)
-	draw_circle(pos, map.ts * 1.6, Color(1.0, 0.6, 0.25, glow))
+	# v1.79.14: костёр реально светит — гало заметнее (ночью сверху ещё
+	# PointLight2D и гало от city_ambience)
+	var glow := 0.26 + 0.09 * sin(Time.get_ticks_msec() / 180.0)
+	draw_circle(pos, map.ts * 2.0, Color(1.0, 0.6, 0.25, glow))
 	Assets.draw_sheet(self, "fire", int(_anim_time * 9.0) % 5, pos, map.ts * 0.9)
 
 

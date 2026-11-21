@@ -131,8 +131,9 @@ func _ready() -> void:
 	_modulate.color = Color.WHITE
 	add_child(_modulate)
 	# светлячки и болотные огоньки (M14-C/T21/T23): VFX ночи без просадки FPS
+	# v1.79.14: +sim — уличные огни (костёр площади, фонари домов)
 	_ambience = load("res://scripts/city_ambience.gd").new()
-	_ambience.setup(map)
+	_ambience.setup(map, sim)
 	add_child(_ambience)
 	# погода (M14-J): дождь/снег/туман/пепельная буря поверх мира
 	_weather_fx = load("res://scripts/city_weather.gd").new()

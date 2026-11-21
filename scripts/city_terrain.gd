@@ -689,8 +689,11 @@ func _draw_meadow_decor(x: int, y: int, rect: Rect2) -> void:
 			and String(sim.season()) == "winter":
 		return
 	# v1.78.9: при биомной земле городской декор цветов поверх тайлов
-	# добавлял «конфетти» — тайлы листа сами несут свои цветы/кусты
-	if not _grass_fills.is_empty():
+	# добавлял «конфетти» — тайлы листа сами несут свои цветы/кусты.
+	# v1.79.14: проверка и для canvas-полотна и grid-рисовалки (раньше
+	# проверялось только _grass_fills, и валуны/цветы рисовали «кольцо
+	# квадратов» вокруг воды на мшистом полотне)
+	if not _grass_fills.is_empty() or _biome_canvas != null or not _biome_grid.is_empty():
 		return
 	var field := _noise2(x / 6.0, y / 6.0, 100, 71) / 99.0
 	var blooms := 0

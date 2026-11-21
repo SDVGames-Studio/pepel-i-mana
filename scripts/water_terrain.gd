@@ -188,6 +188,23 @@ func _draw() -> void:
 	# живое поверх статики: пена, течение, ряби, камыши, искорки
 	_out = self
 	var ts := float(map.ts)
+	# v1.79.14: кромки берегов живой отрисовкой для видимых тайлов —
+	# мель/скругления в 8px-запечке читались серыми полосами и квадратами
+	# у углов (запечённая версия остаётся для дальнего зума, живая её
+	# накрывает вблизи)
+	var xfc := get_viewport_transform()
+	var vis: Rect2 = (xfc.affine_inverse() * get_viewport_rect()).grow(ts * 2.0)
+	for c in _coast:
+		var t0: Vector2i = c["tile"]
+		if not vis.intersects(Rect2(Vector2(t0) * ts, Vector2(ts, ts))):
+			continue
+		match _kind_at(t0):
+			"lake":
+				_static_lake_coast(t0, c["sides"], ts)
+			"river":
+				_static_river_coast(t0, c["sides"], ts)
+			"swamp":
+				_static_swamp_coast(t0, c["sides"], ts)
 	for c in _coast:
 		var t: Vector2i = c["tile"]
 		match _kind_at(t):
@@ -203,6 +220,9 @@ func _draw() -> void:
 	_draw_reeds(ts)
 	_draw_ripples(ts)
 	_draw_ford_sparks(ts)
+	# v1.79.14: мелкие детали воды — живой отрисовкой (кочки/лужи/камыши/
+	# камешки/кувшинки); в запечке 8px/тайл они растягивались в квадраты
+	_draw_water_details(ts)
 
 
 ## Анимированная заливка воды (v1.50): видимые тайлы, кадр — колонка
@@ -214,31 +234,37 @@ func _draw() -> void:
 ## v1.78.6: базовый цвет берегов/мель — из ПОЛОСЫ БИОМА (стандартный
 ## голубой читался кричаще на осенней/зимней земле).
 func reload_water(tag: String) -> void:
-	if tag == "summer":
-		var t_summer: Texture2D = Assets.tex("res://assets/sprites/env/summer/fm_water_summer.png")
-		if t_summer != null:
-			_fm_water = t_summer
-			_update_biome_water(t_summer)
-			return
-	var mf: Dictionary = Assets.biome_manifest()
-	if tag != "" and mf.has(tag):
-		var wp := String(mf[tag].get("water", ""))
-		if wp != "":
-			var t: Texture2D = Assets.tex(wp)
-			if t != null:
-				_fm_water = t
-				_update_biome_water(t)
-				return
+	# v1.79.14: заливка воды — ЕДИНЫЙ тёмный лист fm_water (спокойная
+	# тёмная вода — принятый стиль). Яркие морские полосы биома (белые
+	# гребни пены, остатки шахматки по краям) читались «заплатками моря»
+	# на мшистой земле и циклично меняли картинки. От полосы биома
+	# остаётся ТОЛЬКО тон мель/берегов, притемнённый к тёмной заливке.
 	_fm_water = Assets.tex("res://assets/sprites/env/fm_water.png")
 	_biome_water = Color(0, 0, 0, 0)
+	if _fm_water == null:
+		return
+	var strip: Texture2D = null
+	if tag == "summer":
+		strip = Assets.tex("res://assets/sprites/env/summer/fm_water_summer.png")
+	else:
+		var mf: Dictionary = Assets.biome_manifest()
+		if tag != "" and mf.has(tag):
+			var wp := String(mf[tag].get("water", ""))
+			if wp != "":
+				strip = Assets.tex(wp)
+	if strip != null:
+		var sm := _strip_mean(strip)
+		if sm.a > 0.0:
+			_biome_water = sm.lerp(_strip_mean(_fm_water), 0.55).darkened(0.12)
 
 
-## Средний цвет непрозрачных пикселей полосы биома — тон мель/берегов.
-func _update_biome_water(t: Texture2D) -> void:
-	_biome_water = Color(0, 0, 0, 0)
+## Средний цвет непрозрачных пикселей полосы — тон мель/берегов.
+func _strip_mean(t: Texture2D) -> Color:
 	var im := t.get_image()
 	if im == null or im.is_empty():
-		return
+		return Color(0, 0, 0, 0)
+	if im.is_compressed():
+		im.decompress()
 	var acc := Vector3(0, 0, 0)
 	var n := 0
 	var w := im.get_width()
@@ -250,28 +276,32 @@ func _update_biome_water(t: Texture2D) -> void:
 				continue
 			acc += Vector3(c.r8, c.g8, c.b8)
 			n += 1
-	if n > 0:
-		_biome_water = Color(acc.x / n / 255.0, acc.y / n / 255.0,
-				acc.z / n / 255.0)
+	if n == 0:
+		return Color(0, 0, 0, 0)
+	return Color(acc.x / n / 255.0, acc.y / n / 255.0, acc.z / n / 255.0, 1.0)
 
 
 func _draw_fm_water() -> void:
 	var ts := float(map.ts)
 	var xf := get_viewport_transform()
 	var vis: Rect2 = (xf.affine_inverse() * get_viewport_rect()).grow(ts * 2.0)
-	var frame := int(_time * _fps()) % 6
+	# v1.79.14: вода СПОКОЙНАЯ — вырез полотна закреплён ЗА ТАЙЛОМ (хэш).
+	# Раньше 6 фаз циклично сменяли друг друга (int(_time*_fps())%6):
+	# фазы нарезаны диагональными кусками СТАТИЧНОГО полотна — это не
+	# анимация, а «постоянно меняющиеся разные картинки».
 	for t: Vector2i in _water_tiles:
 		var px := Vector2(t) * ts
 		if not vis.grow_individual(0, 0, ts, ts).has_point(px):
 			continue
 		var variant: int = absi(t.y) % 3
-		var src := Rect2(frame * 32.0, variant * 32.0, 32.0, 32.0)
-		var mod := Color(0.72, 0.92, 1.18)   # озеро: глубже и синее
+		var h: int = terrain._hash(t.x, t.y, 33)
+		var src := Rect2(float(h % 6) * 32.0, float(variant) * 32.0, 32.0, 32.0)
+		var mod := Color(1, 1, 1)          # озеро: полотно как есть
 		match _kind_at(t):
 			"river":
-				mod = Color(0.85, 1.0, 1.18)   # светло-бирюзовая река
+				mod = Color(1.06, 1.06, 1.06)   # река чуть светлее
 			"swamp":
-				mod = Color(0.62, 0.68, 0.55)  # мутная зелёная топь
+				mod = Color(0.78, 0.82, 0.62)   # мутная зелёная топь
 		draw_texture_rect_region(_fm_water, Rect2(px, Vector2(ts, ts)), src, mod)
 
 
@@ -311,10 +341,10 @@ func _draw_static() -> void:
 				_static_river_coast(t, sides, ts)
 			"swamp":
 				_static_swamp_coast(t, sides, ts)
-	_static_swamp_details(ts)
-	_static_swamp_reeds(ts)
+	# v1.79.14: мелкие детали (кочки/лужи/камыши/камешки/кувшинки) переехали
+	# в живую отрисовку _draw_water_details — в запечке 8px/тайл круги
+	# превращались в квадраты
 	_static_fords(ts)
-	_static_lilies(ts)
 
 
 func _base_color(kind: String) -> Color:
@@ -388,9 +418,11 @@ func _round_corner(canvas: Object, t: Vector2i, s1: Vector2i, s2: Vector2i,
 func _static_lake_coast(t: Vector2i, sides: Array, ts: float) -> void:
 	var base := _base_color("lake")
 	var grass: Color = colors.get("grass", Color("#5ca046"))
-	var shallow := Color(base.lightened(_opt("lake", "shallow_light", 0.20)), 0.72)
+	# v1.79.14: мель мягче (на тёмной воде серый пояс читался полосами),
+	# рисование через _out — кромка работает и в запечке, и живьём
+	var shallow := Color(base.lightened(_opt("lake", "shallow_light", 0.20)), 0.5)
 	for side: Vector2i in sides:
-		_shallow_strip(_sd, t, side, ts, shallow)
+		_shallow_strip(_out, t, side, ts, shallow)
 		if side == Vector2i(0, 1):
 			var deep := _deep_color("lake")
 			_out.draw_rect(Rect2(Vector2(t) * ts + Vector2(0, ts * 0.62),
@@ -398,23 +430,23 @@ func _static_lake_coast(t: Vector2i, sides: Array, ts: float) -> void:
 					Color(deep, _opt("lake", "side_deep_alpha", 0.30)))
 		elif side == Vector2i(0, -1):
 			var glint := Color(base.lightened(_opt("lake", "shallow_light", 0.20) + 0.08),
-					_opt("lake", "side_glint_alpha", 0.30))
+					_opt("lake", "side_glint_alpha", 0.22))
 			_out.draw_rect(Rect2(Vector2(t) * ts + Vector2(0, ts * 0.08),
 					Vector2(ts, ts * 0.22)), glint)
 	for i in sides.size():
 		for j in range(i + 1, sides.size()):
-			_round_corner(_sd, t, sides[i], sides[j], ts, grass)
+			_round_corner(_out, t, sides[i], sides[j], ts, grass)
 
 
 func _static_river_coast(t: Vector2i, sides: Array, ts: float) -> void:
 	var base := _base_color("river")
 	var grass: Color = colors.get("grass", Color("#5ca046"))
-	var shallow := Color(base.lightened(_opt("river", "shallow_light", 0.20)), 0.72)
+	var shallow := Color(base.lightened(_opt("river", "shallow_light", 0.20)), 0.5)
 	for side: Vector2i in sides:
-		_shallow_strip(_sd, t, side, ts, shallow)
+		_shallow_strip(_out, t, side, ts, shallow)
 	for i in sides.size():
 		for j in range(i + 1, sides.size()):
-			_round_corner(_sd, t, sides[i], sides[j], ts, grass)
+			_round_corner(_out, t, sides[i], sides[j], ts, grass)
 
 
 ## Болото — ОРГАНИЧЕСКОЕ, кромка БЕЗ мель-пояса и скруглений (v1.39.3,
@@ -426,92 +458,111 @@ func _static_swamp_coast(t: Vector2i, sides: Array, ts: float) -> void:
 	for side: Vector2i in sides:
 		var p := Vector2(t) * ts
 		if side == Vector2i(0, -1):
-			_sd.draw_rect(Rect2(p, Vector2(ts, 3.0)), edge)
+			_out.draw_rect(Rect2(p, Vector2(ts, 3.0)), edge)
 		elif side == Vector2i(0, 1):
-			_sd.draw_rect(Rect2(p + Vector2(0, ts - 3.0), Vector2(ts, 3.0)), edge)
+			_out.draw_rect(Rect2(p + Vector2(0, ts - 3.0), Vector2(ts, 3.0)), edge)
 		elif side == Vector2i(-1, 0):
-			_sd.draw_rect(Rect2(p, Vector2(3.0, ts)), edge)
+			_out.draw_rect(Rect2(p, Vector2(3.0, ts)), edge)
 		else:
-			_sd.draw_rect(Rect2(p + Vector2(ts - 3.0, 0), Vector2(3.0, ts)), edge)
+			_out.draw_rect(Rect2(p + Vector2(ts - 3.0, 0), Vector2(3.0, ts)), edge)
 
 
-## Кочки и оконца болота — на тайлах топи (детерминировано).
-func _static_swamp_details(ts: float) -> void:
-	var puddle_c := Color(String(colors.get("water_tune", {}).get("swamp", {})
-			.get("puddle", "#28322a")))
-	var tussock_c := Color(String(colors.get("water_tune", {}).get("swamp", {})
-			.get("tussock", "#6a7548")))
-	for tk: Vector2i in _swamp_tiles:
-		var rect := Rect2(Vector2(tk) * ts, Vector2(ts, ts))
-		var hx: int = terrain._hash(tk.x * 3, tk.y * 7, 100)
-		if hx % 3 == 0:
-			var pc := rect.position + Vector2(6.0 + float(hx % int(ts - 14.0)),
-					6.0 + float((hx / 5) % int(ts - 14.0)))
-			_out.draw_circle(pc, ts * 0.16, puddle_c)
-			_out.draw_circle(pc + Vector2(-1.0, -1.0), ts * 0.07, puddle_c.lightened(0.35))
-		for i in 1 + hx % 2:
-			var h2: int = terrain._hash(tk.x * 7 + i, tk.y * 13 + i, 100)
-			var c := rect.position + Vector2(6.0 + float(h2 % int(ts - 12.0)),
-					6.0 + float((h2 / 5) % int(ts - 12.0)))
-			_out.draw_circle(c, 2.6 + float(h2 % 2), tussock_c)
-			_out.draw_circle(c + Vector2(-0.8, -0.8), 1.2, tussock_c.lightened(0.15))
-
-
-## Камыши (статичное положение; лёгкое качание — в живом слое поверх).
-func _static_swamp_reeds(ts: float) -> void:
-	var fill := _swamp_fill()
-	for tk: Vector2i in _swamp_tiles:
-		if terrain._hash(tk.x, tk.y * 3, 4) == 0:
-			_draw_reed_patch(Vector2(tk) * ts, ts, tk.x, tk.y, fill.lightened(0.1), Color(0, 0, 0, 0))
-	for t: Vector2i in _swamp_near:
-		if terrain._hash(t.x * 3, t.y * 5, 23) % 3 < 2:
-			_draw_reed_patch(Vector2(t) * ts, ts, t.x, t.y, Color("#4e6b34"), Color(0, 0, 0, 0))
-	# камыши в воде у берегов озера/реки (пучок растёт из тёмного плёса)
-	var chance := maxi(2, int(_opt("reed", "water_chance", 12.0)))
-	for c in _coast:
-		var t2: Vector2i = c["tile"]
-		var kind := _kind_at(t2)
-		if kind == "swamp":
-			continue
-		if terrain._hash(t2.x * 7, t2.y * 3, 100) % chance != 0:
-			continue
-		var origin := Vector2(t2) * ts
-		_out.draw_circle(origin + Vector2(ts * 0.5, ts * 0.72), ts * 0.20,
-				Color("#2c3f33", 0.55))
-		_draw_reed_patch(origin + Vector2(0, ts * 0.18), ts * 1.05, t2.x, t2.y,
-				Color("#3f5a2e"), _base_color(kind))
-
-
-## Брод: светлая вода, песчаное дно (искорки — живой слой).
+## Брод: светлая вода, песчаное дно (камешки и искорки — живой слой).
 func _static_fords(ts: float) -> void:
 	var base: Color = colors.get("water_river", Color("#57b2d4"))
 	for tk: Vector2i in _ford_tiles:
 		var rect := Rect2(Vector2(tk) * ts, Vector2(ts, ts))
 		_out.draw_rect(rect, Color(base, 0.55))
+
+
+## v1.79.14: мелкие детали воды — живой отрисовкой по ВИДИМЫМ тайлам
+## (в запечке 8px/тайл кочки/лужи/камешки/кувшинки растягивались в
+## квадраты — «пиксельный мусор на воде»). Детерминировано по хэшу
+## тайла — узор тот же, что раньше пёкся в статику.
+func _draw_water_details(ts: float) -> void:
+	var xf := get_viewport_transform()
+	var vis: Rect2 = (xf.affine_inverse() * get_viewport_rect()).grow(ts * 2.0)
+	var x0 := maxi(0, int(floor(vis.position.x / ts)))
+	var y0 := maxi(0, int(floor(vis.position.y / ts)))
+	var x1 := mini(map.w, int(ceil(vis.end.x / ts)))
+	var y1 := mini(map.h, int(ceil(vis.end.y / ts)))
+	var lilies := 0
+	for y in range(y0, y1):
+		for x in range(x0, x1):
+			var t := Vector2i(x, y)
+			var g: int = map.grid[y][x]
+			if g == map.TILE_WATER:
+				var kind := _kind_at(t)
+				if kind == "swamp":
+					_swamp_details_tile(t, ts)
+					if terrain._hash(x, y * 3, 4) == 0:
+						_draw_reed_patch(Vector2(t) * ts, ts, x, y,
+								_swamp_fill().lightened(0.1), Color(0, 0, 0, 0))
+				elif kind == "lake" and lilies < 3 \
+						and terrain._hash(x * 5, y * 9, 200) == 0:
+					lilies += 1
+					var base := _base_color("lake")
+					var c := Vector2(t) * ts + Vector2(
+							6.0 + float(terrain._hash(x, y, 13) % 14),
+							6.0 + float(terrain._hash(y, x, 13) % 14))
+					var r := 3.0 + float(terrain._hash(x, y, 3))
+					var col := Color("#4e7c3a").lightened(0.05 * float(r))
+					draw_circle(c, r, col)
+					draw_circle(c + Vector2(-r * 0.3, -r * 0.3), r * 0.45,
+							col.lightened(0.25))
+					draw_line(c, c + Vector2(r + 0.6, 0.6), Color(base, 0.5), 1.2)
+				# камыши в воде у берега (сосед-суша) — тёмный плёс + пучок
+				if kind != "swamp":
+					var land := false
+					for d in [Vector2i(0, -1), Vector2i(1, 0), Vector2i(0, 1), Vector2i(-1, 0)]:
+						var n: Vector2i = t + d
+						if map.in_bounds(n) and map.grid[n.y][n.x] != map.TILE_WATER:
+							land = true
+							break
+					var chance := maxi(2, int(_opt("reed", "water_chance", 12.0)))
+					if land and terrain._hash(x * 7, y * 3, 100) % chance == 0:
+						var origin := Vector2(t) * ts
+						draw_circle(origin + Vector2(ts * 0.5, ts * 0.72),
+								ts * 0.20, Color("#2c3f33", 0.55))
+						_draw_reed_patch(origin + Vector2(0, ts * 0.18),
+								ts * 1.05, x, y, Color("#3f5a2e"), _base_color(kind))
+			elif g == map.TILE_GRASS:
+				# камышовые пучки на берегу топи
+				if terrain._hash(x * 3, y * 5, 23) % 3 < 2 and _near_swamp8(t):
+					_draw_reed_patch(Vector2(t) * ts, ts, x, y,
+							Color("#4e6b34"), Color(0, 0, 0, 0))
+	# камешки бродов (бродов мало — прямой обход списка); v1.79.14:
+	# мягче и мельче — на тёмной воде яркий песок читался горохом
+	for tk: Vector2i in _ford_tiles:
+		var rect := Rect2(Vector2(tk) * ts, Vector2(ts, ts))
+		if not vis.intersects(rect):
+			continue
 		for i in 3:
 			var h2: int = terrain._hash(tk.x * 11 + i, tk.y * 7 + i, 100)
-			var c := rect.position + Vector2(4.0 + float(h2 % int(ts - 8.0)),
+			var c2 := rect.position + Vector2(4.0 + float(h2 % int(ts - 8.0)),
 					4.0 + float((h2 / 7) % int(ts - 8.0)))
-			_out.draw_circle(c, 2.0 + float(h2 % 2), Color("#c8b183", 0.65))
+			draw_circle(c2, 1.5 + float(h2 % 2) * 0.7, Color("#c8b183", 0.38))
 
 
-## Кувшинки: пара листьев с выемкой (тихая вода озера).
-func _static_lilies(ts: float) -> void:
-	var drawn := 0
-	for t: Vector2i in _inner:
-		if _kind_at(t) != "lake" or drawn >= 3:
-			continue
-		if terrain._hash(t.x * 5, t.y * 9, 200) != 0:
-			continue
-		drawn += 1
-		var base := _base_color("lake")
-		var c := Vector2(t) * ts + Vector2(6.0 + float(terrain._hash(t.x, t.y, 13) % 14),
-				6.0 + float(terrain._hash(t.y, t.x, 13) % 14))
-		var r := 3.0 + float(terrain._hash(t.x, t.y, 3))
-		var col := Color("#4e7c3a").lightened(0.05 * float(r))
-		_out.draw_circle(c, r, col)
-		_out.draw_circle(c + Vector2(-r * 0.3, -r * 0.3), r * 0.45, col.lightened(0.25))
-		_out.draw_line(c, c + Vector2(r + 0.6, 0.6), Color(base, 0.5), 1.2)
+## Кочки и оконца болота на ОДНОМ тайле (детерминировано, живая отрисовка).
+func _swamp_details_tile(tk: Vector2i, ts: float) -> void:
+	var puddle_c := Color(String(colors.get("water_tune", {}).get("swamp", {})
+			.get("puddle", "#28322a")))
+	var tussock_c := Color(String(colors.get("water_tune", {}).get("swamp", {})
+			.get("tussock", "#6a7548")))
+	var rect := Rect2(Vector2(tk) * ts, Vector2(ts, ts))
+	var hx: int = terrain._hash(tk.x * 3, tk.y * 7, 100)
+	if hx % 3 == 0:
+		var pc := rect.position + Vector2(6.0 + float(hx % int(ts - 14.0)),
+				6.0 + float((hx / 5) % int(ts - 14.0)))
+		draw_circle(pc, ts * 0.16, puddle_c)
+		draw_circle(pc + Vector2(-1.0, -1.0), ts * 0.07, puddle_c.lightened(0.35))
+	for i in 1 + hx % 2:
+		var h2: int = terrain._hash(tk.x * 7 + i, tk.y * 13 + i, 100)
+		var c := rect.position + Vector2(6.0 + float(h2 % int(ts - 12.0)),
+				6.0 + float((h2 / 5) % int(ts - 12.0)))
+		draw_circle(c, 2.6 + float(h2 % 2), tussock_c)
+		draw_circle(c + Vector2(-0.8, -0.8), 1.2, tussock_c.lightened(0.15))
 
 
 ## ==================== ЖИВОЕ (15 к/с) ====================
