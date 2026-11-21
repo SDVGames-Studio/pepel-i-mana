@@ -198,8 +198,16 @@ func _update_raid(dt: float, _day_len: float) -> void:
 	while i < raiders.size():
 		var r: Dictionary = raiders[i]
 		# v1.44: юниты улья живут вне жизненного цикла волны
+		# v1.80.7: засадные юниты тоже мимо тика рейда (двойной тик = двойное
+		# движение и A*; их ведёт _update_ambush_units)
+		if bool(r.get("ambush", false)):
+			i += 1
+			continue
 		if not String(r.get("role", "")).is_empty():
-			raiders.remove_at(i)
+			# v1.80.7: ПРОПУСК, а не удаление — комментарий v1.44 «юниты улья
+			# живут вне жизненного цикла волны», а код УДАЛЯЛ их каждый тик
+			# рейда: во время волны улей пуст («улей пропал», фидбек)
+			i += 1
 			continue
 		if not _raider_update(r, dt, tcfg):
 			raiders.remove_at(i)
@@ -622,9 +630,13 @@ func _drop_corpse(r: Dictionary) -> void:
 
 ## Сколько осталось участников ВОЛНЫ (юниты улья не считаются).
 func _wave_raiders_left() -> int:
+	# v1.80.7: засадные юниты (ambush) живут вне волн — раньше они
+	# считались волновыми, и рейд улья НЕ ЗАКАНЧИВАЛСЯ, пока жива хоть
+	# одна засада: raid_active зависал, юниты улья удалялись каждый тик
+	# («улей пропал», «мутанты рядом с данжом»)
 	var n := 0
 	for r in raiders:
-		if String(r.get("role", "")).is_empty():
+		if String(r.get("role", "")).is_empty() and not bool(r.get("ambush", false)):
 			n += 1
 	return n
 
