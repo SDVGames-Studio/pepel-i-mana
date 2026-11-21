@@ -81,16 +81,17 @@
     "wis_regen": 0.02,
     "train_kill_str": 0.25,
     "train_kill_agi": 0.15,
-    "train_swing": 0.06,
+    "train_swing": 0.1,
     "train_cast_int": 0.15,
     "train_cast_wis": 0.05,
     "train_mana_wis": 0.04,
     "train_hurt_end": 0.1,
-    "train_work_str": 0.1,
-    "train_work_end": 0.05,
+    "train_work_str": 0.25,
+    "train_work_end": 0.15,
     "enemy_dmg_per_str": 0.04,
     "enemy_dmg_per_int": 0.05,
-    "boss_mult": 2.2
+    "boss_mult": 2.2,
+    "_note_train": "v1.80.6: темпы прокачки ×2-3 (работа 0.25/0.15, удар 0.1) — рост виден за игровую сессию"
   },
   "rewards": {
     "coin_mult_per_nest_level": 0.25

@@ -52,6 +52,7 @@ var _notices = null             # донесения-письма (v1.53, спр
 var _menu_layer: CanvasLayer = null  # меню-оверлей (v1.54: Esc больше НЕ
                                      # пересоздаёт сцену — город под паузой)
 var _codex_panel = null         # кодекс и статистика (M14-K, клавиша K)
+var _view_redraw_accum := 0.0  # v1.80.6: кап перерисовки view 30 fps
 var _flora = null              # v1.80.2: живая трава/цветы/мотыльки
 var _ambience = null            # светлячки и огоньки (M14-C, T21/T23)
 var _weather_fx = null          # погода: дождь/снег/туман/буря (M14-J)
@@ -422,7 +423,12 @@ func _process(delta: float) -> void:
 				_sky_shadows.rebuild()    # кэш теней тоже устарел (v1.27)
 	else:
 		_terrain_redraw_accum = 0.0
-	view.queue_redraw()
+	# v1.80.6 (FPS): view — самый дорогой слой (сотни спрайтов); 30 fps
+	# перерисовки хватает для ходьбы жителей, CPU на кадр падает вдвое
+	_view_redraw_accum += delta
+	if _view_redraw_accum >= 1.0 / 30.0:
+		_view_redraw_accum = 0.0
+		view.queue_redraw()
 	# HUD (v1.21): refresh каждый кадр перелопачивал тексты лейблов и ронял
 	# FPS — обновляем панели 4 раза в секунду, подсказка у курсора — как раньше
 	_hud_refresh_accum += delta
