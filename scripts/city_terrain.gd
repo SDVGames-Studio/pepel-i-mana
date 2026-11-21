@@ -30,14 +30,20 @@ func _draw_tiles(region: Rect2i) -> void:
 			match tile:
 				map.TILE_GRASS, map.TILE_TREE:
 					if _biome_canvas != null:
-						# v1.79.5: земля = ЦЕЛОЕ ПОЛОТНО биома, замощение
-						# бесшовное по мировым координатам (без тайлов)
-						var cw := float(_biome_canvas.get_width())
-						var chh := float(_biome_canvas.get_height())
-						var wx := fposmod(float(x) * float(map.ts), cw)
-						var wy := fposmod(float(y) * float(map.ts), chh)
-						_drawer.draw_texture_rect_region(_biome_canvas, rect,
-								Rect2(wx, wy, float(map.ts), float(map.ts)))
+						# v1.79.12: земля-полотно в ЧАНКИ не запекается —
+						# запекание 8px/тайл сжимало пиксель полотна вчетверо
+						# (мыло и крупные квадраты). Полотно рисуется напрямую
+						# в _draw по мировым координатам (полный пиксель),
+						# чанки несут только надстройки поверх прозрачной
+						# земли. Исключение — режим сравнения TERRAIN_DIRECT
+						# (_drawer == self): полотно рисуется прямо здесь.
+						if _drawer == self:
+							var cw := float(_biome_canvas.get_width())
+							var chh := float(_biome_canvas.get_height())
+							var wx := fposmod(float(x) * ts, cw)
+							var wy := fposmod(float(y) * ts, chh)
+							_drawer.draw_texture_rect_region(_biome_canvas, rect,
+									Rect2(wx, wy, ts, ts))
 						# v1.79.10: мягкая тень скалы на полотне — края гряд
 						# не «квадраты», а плавный переход в землю
 						_draw_rock_shadow_edge(x, y, rect)

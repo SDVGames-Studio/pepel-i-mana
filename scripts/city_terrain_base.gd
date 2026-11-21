@@ -341,6 +341,7 @@ func _process(_delta: float) -> void:
 
 
 func _draw() -> void:
+	texture_repeat = CanvasItem.TEXTURE_REPEAT_ENABLED
 	if OS.get_environment("TERRAIN_DIRECT") != "":
 		# временная ветка сравнения (v1.21.5): рисуем тайлы напрямую, без духовки
 		var keep := _drawer
@@ -350,14 +351,26 @@ func _draw() -> void:
 		return
 	if map == null:
 		return
-	# v1.79.5: ПОЛОТНО биома — земля рисуется напрямую (1:1, пиксель
-	# полотна = пиксель мира), БЕЗ 8px-запечки: она мылила мелкий пиксель
-	# полотна вчетверо. Чанки поверх несут только скалы/руины/надстройки.
+	# v1.79.5: ПОЛОТНО биома — земля рисуется напрямую, БЕЗ 8px-запечки:
+	# она мылила мелкий пиксель полотна вчетверо. Чанки поверх несут
+	# только скалы/руины/надстройки.
 	if _biome_canvas != null:
-		texture_repeat = CanvasItem.TEXTURE_REPEAT_ENABLED
 		var xfc := get_viewport_transform()
 		var visc: Rect2 = (xfc.affine_inverse() * get_viewport_rect()).grow(float(map.ts) * 4.0)
-		draw_texture_rect(_biome_canvas, Rect2(visc.position, visc.size), false)
+		# v1.79.12: полотно привязано к МИРУ (пиксель полотна = пиксель мира,
+		# сетка повторов по мировым координатам, 1:1). Раньше весь холст
+		# натягивался на видимую область: земля «плыла» вместе с камерой,
+		# а масштаб рисунка менялся от зума.
+		var cw := float(_biome_canvas.get_width())
+		var chh := float(_biome_canvas.get_height())
+		var ix0 := int(floorf(visc.position.x / cw))
+		var iy0 := int(floorf(visc.position.y / chh))
+		var ix1 := int(ceili(visc.end.x / cw))
+		var iy1 := int(ceili(visc.end.y / chh))
+		for iy in range(iy0, iy1):
+			for ix in range(ix0, ix1):
+				draw_texture_rect(_biome_canvas, Rect2(
+						float(ix) * cw, float(iy) * chh, cw, chh), false)
 	# надстройки (зоны/дороги/плиты) поверх полотна
 	if _static_tex != null:
 		draw_texture_rect(_static_tex, Rect2(Vector2.ZERO, Vector2(map.w * map.ts, map.h * map.ts)), false)
@@ -377,8 +390,9 @@ func _draw() -> void:
 			var tex: Texture2D = _chunks.get(key)
 			if tex != null:
 				draw_texture_rect(tex, rect, false)
-			else:
-				# чанк ещё печётся — плоская земля без деталей
+			elif _biome_canvas == null:
+				# чанк ещё печётся — плоская земля без деталей (при полотне
+				# земля уже нарисована напрямую — чанк прозрачен)
 				draw_rect(rect, _grass_shades[0].darkened(0.05) if not _grass_shades.is_empty() 					else Color("#5d7a3a"))
 	if _static_tex != null:
 		draw_texture_rect(_static_tex, Rect2(Vector2.ZERO, Vector2(map.w * map.ts, map.h * map.ts)), false)
@@ -464,7 +478,15 @@ func _biome_tag() -> String:
 var _biome_grid: Array = []   # v1.78.8: НАРИСОВАННАЯ карта биома 20×20
                               # (композитор-рисовалка): город рисует её
 var _biome_canvas: Texture2D = null  # v1.79.5: ЦЕЛОЕ ПОЛОТНО биома —
-                              # земля города замощается им 1:1 без тайлов
+                              # земля города замощается им без тайлов
+const CANVAS_DENSITY := 3    # v1.79.12: полотно сжимается при загрузке в
+                             # CANVAS_DENSITY раз. Внутренний пиксель
+                             # ИИ-полотна грубый (~6-9 px), при замощении
+                             # 1:1 пучки травы выходили КРУПНЕЕ построек —
+                             # после сжатия узор и пиксель земли втрое
+                             # мельче (трава меньше фермы). Холст,
+                             # нарисованный заказчиком в композиторе
+                             # (user://), не трогаем — он рисован тайл в тайл.
 var _biome_canvas_tone := Color(0.3, 0.35, 0.2)  # v1.79.8: средний тон
                               # полотна — им красятся травяные площадки скал
 
@@ -516,18 +538,57 @@ func _load_grass_set() -> Array:
 		if cv != "":
 			var ct: Texture2D = Assets.tex(cv)
 			if ct != null:
+				# v1.79.12: сжатие полотна при загрузке (см. CANVAS_DENSITY):
+				# рисунок травы на земле города становится втрое мельче
+				var cim: Image = ct.get_image()
+				if cim != null and not cim.is_empty():
+					if cim.is_compressed():
+						cim.decompress()
+					var shrink := 1
+					if not cv.begins_with("user://"):
+						shrink = CANVAS_DENSITY
+					if shrink > 1 and cim.get_width() > 96 and cim.get_height() > 96:
+						cim.convert(Image.FORMAT_RGBA8)
+						cim.resize(
+								int(cim.get_width() / float(shrink)),
+								int(cim.get_height() / float(shrink)),
+								Image.INTERPOLATE_LANCZOS)
+						# v1.79.12: бесшовность — края сжатого полотна сливаются
+						# с противоположными (как make_tileable в нарезке),
+						# иначе на стыке замощения видна полоса-шов
+						var W := cim.get_width()
+						var H := cim.get_height()
+						var F := 8
+						var dup: Image = cim.duplicate()
+						for y in range(F):
+							var wy := 0.5 * (1.0 - float(y) / float(F))
+							var y2 := H - 1 - y
+							for x in range(W):
+								cim.set_pixel(x, y, dup.get_pixel(x, y)
+										.lerp(dup.get_pixel(x, y2), wy))
+								cim.set_pixel(x, y2, dup.get_pixel(x, y2)
+										.lerp(dup.get_pixel(x, y), wy))
+						for y in range(F, H - F):
+							for x in range(F):
+								var wx := 0.5 * (1.0 - float(x) / float(F))
+								var x2 := W - 1 - x
+								cim.set_pixel(x, y, dup.get_pixel(x, y)
+										.lerp(dup.get_pixel(x2, y), wx))
+								cim.set_pixel(x2, y, dup.get_pixel(x2, y)
+										.lerp(dup.get_pixel(x, y), wx))
+						ct = ImageTexture.create_from_image(cim)
 				_biome_canvas = ct
 				_grass_fills = []
 				# v1.79.8: средний тон полотна — им тонировать скалы/плато
-				var cim: Image = ct.get_image()
 				var acc := Vector3(0, 0, 0)
 				var n := 0
-				for yy in range(0, cim.get_height(), 16):
-					for xx in range(0, cim.get_width(), 16):
-						var c2 := cim.get_pixel(xx, yy)
-						if c2.a >= 0.5:
-							acc += Vector3(c2.r8, c2.g8, c2.b8)
-							n += 1
+				if cim != null and not cim.is_empty():
+					for yy in range(0, cim.get_height(), 8):
+						for xx in range(0, cim.get_width(), 8):
+							var c2 := cim.get_pixel(xx, yy)
+							if c2.a >= 0.5:
+								acc += Vector3(c2.r8, c2.g8, c2.b8)
+								n += 1
 				if n > 0:
 					_biome_canvas_tone = Color(acc.x / n / 255.0,
 							acc.y / n / 255.0, acc.z / n / 255.0)
