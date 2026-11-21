@@ -87,6 +87,9 @@ def cut_tiles(quad, max_tiles):
     return cells[::step][:max_tiles]
 
 
+SCALE = 2
+
+
 def main():
     if len(sys.argv) < 2:
         print(__doc__)
@@ -94,12 +97,16 @@ def main():
     src = sys.argv[1]
     max_tiles = 24
     for i, a in enumerate(sys.argv):
+        if a == "--scale" and i + 1 < len(sys.argv):
+            SCALE = max(1, int(sys.argv[i + 1]))
         if a == "--max" and i + 1 < len(sys.argv):
             max_tiles = int(sys.argv[i + 1])
     if not os.path.exists(src):
         print("!! нет атласа:", src)
         return
-    img = np.array(Image.open(src).convert("RGBA"))
+    srcim = Image.open(src).convert("RGBA")
+    srcim = srcim.resize((srcim.size[0] * SCALE, srcim.size[1] * SCALE), Image.NEAREST)
+    img = np.array(srcim)
     quads = cut_quadrants(img)
     # средние цвета квадрантов
     stats = {}

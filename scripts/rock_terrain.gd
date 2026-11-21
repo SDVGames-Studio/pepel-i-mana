@@ -84,7 +84,7 @@ func _is_rock(tk: Vector2i) -> bool:
 func _draw_rock_tile(tk: Vector2i, is_ore: bool, ts: float) -> void:
 	var x := float(tk.x * ts)
 	var y := float(tk.y * ts)
-	var grass_top: Color = t.colors.get("grass", Color("#5ca046"))
+	var grass_top: Color = t._biome_grass_color()
 	# ВЕРХ — лужайка: та же трава (текстура), чуть светлее — свет с СЗ
 	var tex: Texture2D = t._grass_texture_at(tk.x, tk.y)
 	if tex != null:
@@ -139,7 +139,7 @@ func _draw_east_face(tk: Vector2i, x: float, y: float, ts: float) -> void:
 func _draw_cliff_face(tk: Vector2i, x: float, y: float, ts: float) -> void:
 	var stone := base_color().lightened(opt("cut_light", 0.10))
 	var stone_dark := base_color().darkened(opt("cut_dark", 0.30))
-	var grass: Color = t.colors.get("grass", Color("#5ca046"))
+	var grass: Color = t._biome_grass_color()
 	var face_h := ts * opt("face_h", 0.58)
 	var lip_h := ts * EdgeLangC.LIP_H
 	var y0 := y + ts - face_h
@@ -222,7 +222,7 @@ func _draw_top_decor(tk: Vector2i, x: float, y: float, ts: float) -> void:
 	var h: int = t._hash(tk.x * 3, tk.y * 5, 100)
 	if h % 5 == 0:
 		# пучок травы
-		var grass: Color = t.colors.get("grass", Color("#5ca046"))
+		var grass: Color = t._biome_grass_color()
 		var bx := x + 6.0 + float(t._hash(tk.x, tk.y * 7, 100) % int(ts - 12.0))
 		var by := y + 8.0 + float(t._hash(tk.x * 7, tk.y, 100) % int(ts - 14.0))
 		for i in 3:
@@ -287,7 +287,7 @@ func _draw_skirt(tk: Vector2i, ts: float) -> void:
 		return
 	if t._hash(tk.x * 5, tk.y * 3, 100) >= int(opt("skirt_chance", 0.5) * 100.0):
 		return
-	var grass: Color = t.colors.get("grass", Color("#5ca046")).darkened(0.10)
+	var grass: Color = t._biome_grass_color().darkened(0.10)
 	var origin := Vector2(tk.x * ts, tk.y * ts)
 	var h: int = t._hash(tk.x, tk.y * 7, 100)
 	var bx := origin.x + 4.0 + float(h % int(ts - 8.0))

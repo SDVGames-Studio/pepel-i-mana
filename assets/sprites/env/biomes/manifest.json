@@ -30,7 +30,8 @@
   "trees": [
    "img:env/biomes/весна/tree_1.png"
   ],
-  "label": "весна"
+  "label": "весна",
+  "season": "spring"
  },
  "осень": {
   "grass": [

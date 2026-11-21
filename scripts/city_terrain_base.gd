@@ -465,6 +465,16 @@ var _biome_grid: Array = []   # v1.78.8: НАРИСОВАННАЯ карта б�
                               # (композитор-рисовалка): город рисует её
 var _biome_canvas: Texture2D = null  # v1.79.5: ЦЕЛОЕ ПОЛОТНО биома —
                               # земля города замощается им 1:1 без тайлов
+var _biome_canvas_tone := Color(0.3, 0.35, 0.2)  # v1.79.8: средний тон
+                              # полотна — им красятся травяные площадки скал
+
+
+## v1.79.8: цвет «травы» для скал/плато — тон полотна биома
+## (старый яркий зелёный не совпадал с мшистым полотном)
+func _biome_grass_color() -> Color:
+	if _biome_canvas != null:
+		return _biome_canvas_tone
+	return colors.get("grass", Color("#5ca046"))
 
 
 func _load_grass_set() -> Array:
@@ -480,6 +490,19 @@ func _load_grass_set() -> Array:
 			if ct != null:
 				_biome_canvas = ct
 				_grass_fills = []
+				# v1.79.8: средний тон полотна — им тонировать скалы/плато
+				var cim: Image = ct.get_image()
+				var acc := Vector3(0, 0, 0)
+				var n := 0
+				for yy in range(0, cim.get_height(), 16):
+					for xx in range(0, cim.get_width(), 16):
+						var c2 := cim.get_pixel(xx, yy)
+						if c2.a >= 0.5:
+							acc += Vector3(c2.r8, c2.g8, c2.b8)
+							n += 1
+				if n > 0:
+					_biome_canvas_tone = Color(acc.x / n / 255.0,
+							acc.y / n / 255.0, acc.z / n / 255.0)
 				return [ct]
 		# v1.78.0: собранные в композиторе — ЕДИНЫЙ рецепт на лету
 		if bool(mf.get("composed", false)):

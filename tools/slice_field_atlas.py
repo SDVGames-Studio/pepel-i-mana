@@ -28,6 +28,7 @@ GAME = os.path.dirname(HERE)
 BIOMES = os.path.join(GAME, "assets", "sprites", "env", "biomes")
 MANIFEST = os.path.join(BIOMES, "manifest.json")
 COLS, ROWS = 3, 4
+SCALE = 2
 
 # порядок блоков в атласе → тег биома
 ORDER = [
@@ -91,6 +92,7 @@ def main():
         print("!! нет атласа:", src)
         return
     at = Image.open(src).convert("RGBA")
+    at = at.resize((at.size[0] * SCALE, at.size[1] * SCALE), Image.NEAREST)
     W, H = at.size
     bw, bh = W // COLS, H // ROWS
     mf = {}
@@ -113,6 +115,8 @@ def main():
             field = block.crop(bb)
             bdir = os.path.join(BIOMES, tag)
             os.makedirs(bdir, exist_ok=True)
+            field = field.resize((field.size[0] * SCALE, field.size[1] * SCALE),
+                                 Image.NEAREST)
             field.save(os.path.join(bdir, "canvas.png"))
             # мини-тайлы для совместимости (композитор/стенд смотрят grass_*)
             fa = np.array(field)
