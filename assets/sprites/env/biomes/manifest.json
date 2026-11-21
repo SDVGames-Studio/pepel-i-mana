@@ -31,7 +31,7 @@
    "img:env/biomes/весна/tree_1.png"
   ],
   "label": "весна",
-  "season": "spring"
+  "canvas": "res://assets/sprites/env/biomes/весна/canvas.png"
  },
  "осень": {
   "grass": [
@@ -65,7 +65,8 @@
    "img:env/biomes/осень/tree_1.png"
   ],
   "season": "autumn",
-  "label": "осень"
+  "label": "осень",
+  "canvas": "res://assets/sprites/env/biomes/осень/canvas.png"
  },
  "зима": {
   "grass": [
@@ -103,7 +104,8 @@
    "img:env/biomes/зима/tree_5.png"
   ],
   "season": "winter",
-  "label": "зима"
+  "label": "зима",
+  "canvas": "res://assets/sprites/env/biomes/зима/canvas.png"
  },
  "болота": {
   "grass": [
@@ -130,23 +132,7 @@
    "res://assets/sprites/env/biomes/болота/grass_21.png",
    "res://assets/sprites/env/biomes/болота/grass_22.png",
    "res://assets/sprites/env/biomes/болота/grass_23.png",
-   "res://assets/sprites/env/biomes/болота/grass_24.png",
-   "res://assets/sprites/env/biomes/болота/grass_25.png",
-   "res://assets/sprites/env/biomes/болота/grass_26.png",
-   "res://assets/sprites/env/biomes/болота/grass_27.png",
-   "res://assets/sprites/env/biomes/болота/grass_28.png",
-   "res://assets/sprites/env/biomes/болота/grass_29.png",
-   "res://assets/sprites/env/biomes/болота/grass_30.png",
-   "res://assets/sprites/env/biomes/болота/grass_31.png",
-   "res://assets/sprites/env/biomes/болота/grass_32.png",
-   "res://assets/sprites/env/biomes/болота/grass_33.png",
-   "res://assets/sprites/env/biomes/болота/grass_34.png",
-   "res://assets/sprites/env/biomes/болота/grass_35.png",
-   "res://assets/sprites/env/biomes/болота/grass_36.png",
-   "res://assets/sprites/env/biomes/болота/grass_37.png",
-   "res://assets/sprites/env/biomes/болота/grass_38.png",
-   "res://assets/sprites/env/biomes/болота/grass_39.png",
-   "res://assets/sprites/env/biomes/болота/grass_40.png"
+   "res://assets/sprites/env/biomes/болота/grass_24.png"
   ],
   "water": "res://assets/sprites/env/biomes/болота/water.png",
   "trees": [
@@ -155,7 +141,9 @@
    "img:env/biomes/болота/tree_3.png",
    "img:env/biomes/болота/tree_4.png",
    "img:env/biomes/болота/tree_5.png"
-  ]
+  ],
+  "label": "болота",
+  "canvas": "res://assets/sprites/env/biomes/болота/canvas.png"
  },
  "берёзовая роща": {
   "grass": [
@@ -472,6 +460,7 @@
    "res://assets/sprites/env/biomes/лето/grass_24.png"
   ],
   "label": "лето",
-  "season": "summer"
+  "season": "summer",
+  "canvas": "res://assets/sprites/env/biomes/лето/canvas.png"
  }
 }

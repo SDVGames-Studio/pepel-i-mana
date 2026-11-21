@@ -158,8 +158,11 @@ def main():
         entry = mf.get(season, {})
         entry["grass"] = grass
         entry["label"] = season
-        entry["season"] = {"весна": "spring", "лето": "summer",
-                           "осень": "autumn", "зима": "winter"}[season]
+        # v1.79.8: весной города остаётся МОХ (полотно заказчика) —
+        # атласная весна season не получает
+        if season != "весна":
+            entry["season"] = {"лето": "summer", "осень": "autumn",
+                               "зима": "winter"}[season]
         mf[season] = entry
         print("%-8s тайлов=%d" % (season, len(tiles)))
     with open(MANIFEST, "w", encoding="utf-8", newline="\n") as fh:
