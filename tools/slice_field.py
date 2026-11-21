@@ -21,7 +21,7 @@ GAME = os.path.dirname(HERE)
 BIOMES = os.path.join(GAME, "assets", "sprites", "env", "biomes")
 MANIFEST = os.path.join(BIOMES, "manifest.json")
 TS = 32
-SCALE = 2
+SCALE = 1
 
 
 def make_tileable(tile, F=7):
@@ -59,7 +59,7 @@ def main():
     season = ""
     max_tiles = 24
     global SCALE
-    SCALE = 2
+    SCALE = 1
     for i, a in enumerate(sys.argv):
         if a == "--season" and i + 1 < len(sys.argv):
             season = sys.argv[i + 1]
@@ -71,8 +71,8 @@ def main():
         print("!! нет полотна:", src)
         return
     srcim = Image.open(src).convert("RGBA")
-    # v1.79.8: укрупнение пикселя земли (пиксель полотна = 2px мира,
-    # иначе земля мельче героя и «шумит»)
+    # v1.79.11: апскейл отменён (canvas рисуется напрямую 1:1 —
+    # пиксель земли = пиксель полотна, детально и реалистично)
     if SCALE > 1:
         srcim = srcim.resize((srcim.size[0] * SCALE, srcim.size[1] * SCALE),
                              Image.NEAREST)

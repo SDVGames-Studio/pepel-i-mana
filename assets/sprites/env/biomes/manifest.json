@@ -31,7 +31,8 @@
    "img:env/biomes/весна/tree_1.png"
   ],
   "label": "весна",
-  "canvas": "res://assets/sprites/env/biomes/весна/canvas.png"
+  "canvas": "res://assets/sprites/env/biomes/весна/canvas.png",
+  "season": "spring"
  },
  "осень": {
   "grass": [

@@ -87,7 +87,7 @@ def cut_tiles(quad, max_tiles):
     return cells[::step][:max_tiles]
 
 
-SCALE = 2
+SCALE = 1
 
 
 def main():
@@ -104,9 +104,7 @@ def main():
     if not os.path.exists(src):
         print("!! нет атласа:", src)
         return
-    srcim = Image.open(src).convert("RGBA")
-    srcim = srcim.resize((srcim.size[0] * SCALE, srcim.size[1] * SCALE), Image.NEAREST)
-    img = np.array(srcim)
+    img = np.array(Image.open(src).convert("RGBA"))
     quads = cut_quadrants(img)
     # средние цвета квадрантов
     stats = {}
