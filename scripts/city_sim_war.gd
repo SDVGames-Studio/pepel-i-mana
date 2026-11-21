@@ -972,7 +972,7 @@ func _update_ambush_units(dt: float, tcfg: Dictionary) -> void:
 			continue
 		r["ttl"] = float(r.get("ttl", 0.0)) - dt
 		var alive := int(r["hp"]) > 0 and float(r["ttl"]) > 0.0
-		if alive and _raider_update(r, dt, tcfg) == false:
+		if alive and not _ambush_unit_tick(r, dt):
 			alive = false
 		if not alive:
 			raiders.remove_at(i)
@@ -1014,3 +1014,32 @@ func _ambush_settle() -> void:
 			site["sprung"] = false
 			site["ids"] = []
 		i -= 1
+
+## Лёгкий тик засадного юнита (v1.80.2): БЕЗ _raider_update — тот на
+## герое «вдалеке» запускал A* через всю карту до центра города
+## (засада на дикой окраине = ФРИЗ, фидбек «игра опять зависла»).
+## Юнит ждёт в засаде; герой близко — преследует НАПРЯМУЮ и бьёт;
+## герой ушёл — стоит на месте (поле открытое, стены не мешают).
+func _ambush_unit_tick(r: Dictionary, dt: float) -> bool:
+	var p: Dictionary = r["p"]
+	r["atk_cd"] = maxf(0.0, float(r["atk_cd"]) - dt)
+	var mv := dt
+	if float(r.get("slow_left", 0.0)) > 0.0:
+		r["slow_left"] = maxf(0.0, float(r["slow_left"]) - dt)
+		mv = dt * 0.5
+	if not hero_alive:
+		return true
+	var to_hero: Vector2 = hero_pos - (r["pos"] as Vector2)
+	var hero_d: float = to_hero.length()
+	if hero_d > float(p.get("aggro", 220.0)) * 1.4:
+		return true   # ждёт в засаде
+	if hero_d <= float(p["attack_range"]) + 12.0:
+		if float(r["atk_cd"]) <= 0.0:
+			r["atk_cd"] = float(p["attack_cooldown"])
+			events.append({"type": "hero_hit", "dmg": maxi(1, int(round(float(p["damage"]))))})
+		return true
+	var step := float(p["speed"]) * mv
+	var next: Vector2 = (r["pos"] as Vector2) + to_hero.normalized() * step
+	if map.is_walkable(map.tile_of_px(next)):
+		r["pos"] = next
+	return true

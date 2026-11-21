@@ -52,6 +52,7 @@ var _notices = null             # донесения-письма (v1.53, спр
 var _menu_layer: CanvasLayer = null  # меню-оверлей (v1.54: Esc больше НЕ
                                      # пересоздаёт сцену — город под паузой)
 var _codex_panel = null         # кодекс и статистика (M14-K, клавиша K)
+var _flora = null              # v1.80.2: живая трава/цветы/мотыльки
 var _ambience = null            # светлячки и огоньки (M14-C, T21/T23)
 var _weather_fx = null          # погода: дождь/снег/туман/буря (M14-J)
 var _sky_shadows: Node2D = null # тени от солнца/луны (v1.27)
@@ -114,6 +115,11 @@ func _ready() -> void:
 	_water.setup(_terrain, _terrain.colors)
 	_water.reload_water(_btag)   # v1.76.1: вода по биому/сезону
 	add_child(_water)
+	# живая флора (v1.80.2): травинки/цветы на ветру, мотыльки — над
+	# землёй, под жителями
+	_flora = load("res://scripts/city_flora.gd").new()
+	_flora.setup(map)
+	add_child(_flora)
 	# тени солнечного цикла (v1.27): под объектами, над ландшафтом
 	_sky_shadows = SKY.new()
 	_sky_shadows.mode = "shadows"

@@ -552,10 +552,15 @@ func _on_hero_down() -> void:
 	if sim.raid_active:
 		sim.hero_alive = false
 	hud.toast(Loc.t("city.hero_down_toast"))
-	hero.dead = false
-	hero.hp = maxi(1, int(hero.p["hp"]) / 3)
-	hero.position = map.tile_center_px(map.spawn_tile)
-	hero.queue_redraw()
+	# v1.80.2: анимация смерти ДОИГРЫВАЕТСЯ на месте (как в данже) —
+	# раньше герой очухивался в тот же кадр и анимации не было видно
+	get_tree().create_timer(1.4).timeout.connect(func() -> void:
+		if hero == null or not is_instance_valid(hero):
+			return
+		hero.dead = false
+		hero.hp = maxi(1, int(hero.p["hp"]) / 3)
+		hero.position = map.tile_center_px(map.spawn_tile)
+		hero.queue_redraw())
 
 
 ## v1.48: сбор лута руин (кристаллы/руна) — тайл рядом с героем.

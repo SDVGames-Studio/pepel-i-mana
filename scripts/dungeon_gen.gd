@@ -243,13 +243,19 @@ func _carve_corridors() -> void:
 
 
 func _carve_h(x1: int, x2: int, y: int) -> void:
+	# v1.80.2: коридор в ДВА тайла — герой вырос до 44px, боссы Ø40px
+	# застревали в однотайловых проходах (фидбек заказчика)
 	for x in range(mini(x1, x2), maxi(x1, x2) + 1):
 		grid[y][x] = TILE_FLOOR
+		if y + 1 < grid.size():
+			grid[y + 1][x] = TILE_FLOOR
 
 
 func _carve_v(y1: int, y2: int, x: int) -> void:
 	for y in range(mini(y1, y2), maxi(y1, y2) + 1):
 		grid[y][x] = TILE_FLOOR
+		if x + 1 < (grid[0] as Array).size():
+			grid[y][x + 1] = TILE_FLOOR
 
 
 ## Старт — центр первой комнаты; выход — центр самой дальней комнаты.
