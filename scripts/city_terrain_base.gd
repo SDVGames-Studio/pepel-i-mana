@@ -503,6 +503,7 @@ var _biome_grid: Array = []   # v1.78.8: НАРИСОВАННАЯ карта б�
                               # (композитор-рисовалка): город рисует её
 var _biome_canvas: Texture2D = null  # v1.79.5: ЦЕЛОЕ ПОЛОТНО биома —
                               # земля города замощается им без тайлов
+static var _canvas_proc_cache := {}  # v1.80.3: путь → обработанное полотно
 const CANVAS_DENSITY := 3    # v1.79.12: полотно сжимается при загрузке в
                              # CANVAS_DENSITY раз. Внутренний пиксель
                              # ИИ-полотна грубый (~6-9 px), при замощении
@@ -562,8 +563,15 @@ func _load_grass_set() -> Array:
 		if cv != "":
 			var ct: Texture2D = Assets.tex(cv)
 			if ct != null:
-				# v1.79.12: сжатие полотна при загрузке (см. CANVAS_DENSITY):
-				# рисунок травы на земле города становится втрое мельче
+				# v1.80.3 (FPS): обработанное полотно (÷3 + бесшовные края)
+				# кэшируется СТАТИЧЕСКИ по пути — повторный вход в город/
+				# смена сезона не пересжимает 1254px LANCZOS'ом и не
+				# прогоняет 13k циклов кромок заново
+				if _canvas_proc_cache.has(cv):
+					var cached_tex: Texture2D = _canvas_proc_cache[cv]
+					_biome_canvas = cached_tex
+					_grass_fills = []
+					return [cached_tex]
 				var cim: Image = ct.get_image()
 				if cim != null and not cim.is_empty():
 					if cim.is_compressed():
@@ -601,6 +609,7 @@ func _load_grass_set() -> Array:
 								cim.set_pixel(x2, y, dup.get_pixel(x2, y)
 										.lerp(dup.get_pixel(x, y), wx))
 						ct = ImageTexture.create_from_image(cim)
+						_canvas_proc_cache[cv] = ct
 				_biome_canvas = ct
 				_grass_fills = []
 				# v1.79.8: средний тон полотна — им тонировать скалы/плато

@@ -196,7 +196,7 @@ func _draw() -> void:
 	var vis: Rect2 = (xfc.affine_inverse() * get_viewport_rect()).grow(ts * 2.0)
 	for c in _coast:
 		var t0: Vector2i = c["tile"]
-		if not vis.intersects(Rect2(Vector2(t0) * ts, Vector2(ts, ts))):
+		if vis.size != Vector2.ZERO and not vis.intersects(Rect2(Vector2(t0) * ts, Vector2(ts, ts))):
 			continue
 		match _kind_at(t0):
 			"lake":
@@ -205,8 +205,11 @@ func _draw() -> void:
 				_static_river_coast(t0, c["sides"], ts)
 			"swamp":
 				_static_swamp_coast(t0, c["sides"], ts)
+	var vis1 := _vis_rect(ts)
 	for c in _coast:
 		var t: Vector2i = c["tile"]
+		if vis1.size != Vector2.ZERO and not vis1.has_point(Vector2(t) * ts):
+			continue
 		match _kind_at(t):
 			"lake":
 				for side: Vector2i in c["sides"]:
@@ -613,7 +616,15 @@ func _draw_flow(t: Vector2i, ts: float) -> void:
 
 ## Рябь на тихой воде: двойные кольца, дышат радиусом (референс a602a024).
 func _draw_ripples(ts: float) -> void:
+	# v1.80.3 (FPS): vis-проверка ДО хэша, скип при отдалении (было:
+	# хэш по каждому внутреннему тайлу всей карты каждый живой кадр)
+	var vis0 := _vis_rect(ts)
+	if vis0.size == Vector2.ZERO:
+		return
 	for t: Vector2i in _inner:
+		var c0: Vector2 = Vector2(t) * ts
+		if not vis0.has_point(c0):
+			continue
 		if terrain._hash(t.x * 11, t.y * 7, 100) != 0:
 			continue
 		var base := _base_color(_kind_at(t))
@@ -641,9 +652,15 @@ func _draw_ford_sparks(ts: float) -> void:
 ## Камыши: качание по фазе — только поворот «шишки», основание статично
 ## (в запечке уже нарисованы стебли; здесь лёгкий живой штрих на конце).
 func _draw_reeds(ts: float) -> void:
+	# v1.80.3 (FPS): vis-проверка ДО хэша — берег всей карты не хэшируем
+	var vis0 := _vis_rect(ts)
+	if vis0.size == Vector2.ZERO:
+		return
 	var chance := maxi(2, int(_opt("reed", "water_chance", 12.0)))
 	for c in _coast:
 		var t: Vector2i = c["tile"]
+		if not vis0.has_point(Vector2(t) * ts):
+			continue
 		var kind := _kind_at(t)
 		if kind == "swamp":
 			continue
@@ -689,3 +706,17 @@ func _draw_reed_patch(origin: Vector2, ts: float, x: int, y: int,
 		var ph := fposmod(_time * 0.4 + float(terrain._hash(x, y, 9)) / 9.0, 1.0)
 		_out.draw_arc(origin + Vector2(ts * 0.5, ts * 0.62), ts * (0.3 + 0.25 * ph),
 				0.0, TAU, 12, Color(water.lightened(0.3), 0.28 * (1.0 - ph)), 1.1)
+
+
+## Видимая область в мировых координатах (для vis-first проверок живого
+## слоя); нулевой размер = отдаление, живые акценты не рисуем.
+func _vis_rect(ts: float) -> Rect2:
+	var xf := get_viewport_transform()
+	var vis: Rect2 = (xf.affine_inverse() * get_viewport_rect()).grow(ts * 2.0)
+	var x0 := maxi(0, int(floor(vis.position.x / ts)))
+	var y0 := maxi(0, int(floor(vis.position.y / ts)))
+	var x1 := mini(map.w, int(ceil(vis.end.x / ts)))
+	var y1 := mini(map.h, int(ceil(vis.end.y / ts)))
+	if (x1 - x0) * (y1 - y0) > 1500:
+		return Rect2()
+	return Rect2(Vector2(x0, y0) * ts, Vector2(x1 - x0, y1 - y0) * ts)

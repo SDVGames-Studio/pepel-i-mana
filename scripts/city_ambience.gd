@@ -34,6 +34,7 @@ var _street_lights: Array = []  # PointLight2D у домов
 var _fire_light: PointLight2D = null  # PointLight2D костра
 var _fire_pos := Vector2.ZERO
 var _bld_seen := -1         # число зданий на последней сборке уличных огней
+var _bld_check := 1.0       # v1.80.3: таймер проверки зданий (1с)
 var _time := 0.0
 var _seed := 20261020
 
@@ -196,8 +197,12 @@ func _glow_texture() -> GradientTexture2D:
 func _process(delta: float) -> void:
 	_time += delta
 	# дома перестраиваются — уличные огни следят за списком зданий
-	if _sim != null and (_sim.get("buildings") as Array).size() != _bld_seen:
-		_build_street(_sim.map.spawn_tile)
+	# (v1.80.3: проверка раз в секунду, не каждый кадр)
+	_bld_check -= delta
+	if _bld_check <= 0.0:
+		_bld_check = 1.0
+		if _sim != null and (_sim.get("buildings") as Array).size() != _bld_seen:
+			_build_street(_sim.map.spawn_tile)
 	if night <= 0.01:
 		for l in _lights:
 			if l.enabled:

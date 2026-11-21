@@ -37,7 +37,13 @@ func _wr_hash(x: int, y: int) -> int:
 
 func _process(delta: float) -> void:
 	_time += delta
-	queue_redraw()
+	# v1.80.3 (FPS): 15 fps достаточно для покачивания (было: каждый кадр)
+	_anim_accum += delta
+	if _anim_accum >= 1.0 / 15.0:
+		_anim_accum = 0.0
+		queue_redraw()
+
+var _anim_accum := 0.0
 
 
 func _draw() -> void:
