@@ -477,6 +477,34 @@ func _biome_grass_color() -> Color:
 	return colors.get("grass", Color("#5ca046"))
 
 
+## v1.79.10: тень скалы на полотне — тайл травы, соседний со скалой/
+## мёртвой породой/рудой/руинами, получает полупрозрачную тёмную
+## кромку с той стороны (границы гряд не читаются «квадратами»)
+func _draw_rock_shadow_edge(x: int, y: int, rect: Rect2) -> void:
+	var ts := float(map.ts)
+	var half := ts * 0.5
+	for d: Vector2i in [Vector2i(0, -1), Vector2i(1, 0), Vector2i(0, 1), Vector2i(-1, 0)]:
+		var np: Vector2i = Vector2i(x, y) + d
+		if not map.in_bounds(np):
+			continue
+		var nt: int = map.grid[np.y][np.x]
+		if nt != map.TILE_ROCK and nt != map.TILE_DEADROCK and nt != map.TILE_ORE 				and nt != map.TILE_RUIN:
+			continue
+		var col := Color(0.05, 0.06, 0.04, 0.30)
+		var band := Rect2(rect.position, Vector2(ts, ts))
+		if d == Vector2i(0, -1):
+			band.size.y = half
+		elif d == Vector2i(0, 1):
+			band.position.y += half
+			band.size.y = half
+		elif d == Vector2i(-1, 0):
+			band.size.x = half
+		elif d == Vector2i(1, 0):
+			band.position.x += half
+			band.size.x = half
+		_drawer.draw_rect(band, col)
+
+
 func _load_grass_set() -> Array:
 	var tag := _biome_tag()
 	if tag != "" and Assets.biome_manifest().has(tag):

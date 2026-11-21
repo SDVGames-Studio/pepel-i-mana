@@ -38,6 +38,9 @@ func _draw_tiles(region: Rect2i) -> void:
 						var wy := fposmod(float(y) * float(map.ts), chh)
 						_drawer.draw_texture_rect_region(_biome_canvas, rect,
 								Rect2(wx, wy, float(map.ts), float(map.ts)))
+						# v1.79.10: мягкая тень скалы на полотне — края гряд
+						# не «квадраты», а плавный переход в землю
+						_draw_rock_shadow_edge(x, y, rect)
 						continue
 					var tex: Texture2D = _grass_texture_at(x, y)
 					if tex != null:
