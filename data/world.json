@@ -136,16 +136,16 @@
       5
     ],
     "settlement": [
+      16,
+      28
+    ],
+    "caravan": [
       10,
       20
     ],
-    "caravan": [
-      8,
-      18
-    ],
     "trade_camp": [
-      6,
-      14
+      8,
+      16
     ],
     "dungeon": [
       12,

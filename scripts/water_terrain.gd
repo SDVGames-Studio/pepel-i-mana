@@ -289,20 +289,28 @@ func _draw_fm_water() -> void:
 	# Раньше 6 фаз циклично сменяли друг друга (int(_time*_fps())%6):
 	# фазы нарезаны диагональными кусками СТАТИЧНОГО полотна — это не
 	# анимация, а «постоянно меняющиеся разные картинки».
-	for t: Vector2i in _water_tiles:
-		var px := Vector2(t) * ts
-		if not vis.grow_individual(0, 0, ts, ts).has_point(px):
-			continue
-		var variant: int = absi(t.y) % 3
-		var h: int = terrain._hash(t.x, t.y, 33)
-		var src := Rect2(float(h % 6) * 32.0, float(variant) * 32.0, 32.0, 32.0)
-		var mod := Color(1, 1, 1)          # озеро: полотно как есть
-		match _kind_at(t):
-			"river":
-				mod = Color(1.06, 1.06, 1.06)   # река чуть светлее
-			"swamp":
-				mod = Color(0.78, 0.82, 0.62)   # мутная зелёная топь
-		draw_texture_rect_region(_fm_water, Rect2(px, Vector2(ts, ts)), src, mod)
+	# v1.80.1 (FPS): перебор ВИДИМОГО диапазона тайлов, а не всего
+	# _water_tiles (10-15k на большой карте) каждый живой кадр
+	var x0 := maxi(0, int(floor(vis.position.x / ts)))
+	var y0 := maxi(0, int(floor(vis.position.y / ts)))
+	var x1 := mini(map.w, int(ceil(vis.end.x / ts)))
+	var y1 := mini(map.h, int(ceil(vis.end.y / ts)))
+	for y in range(y0, y1):
+		for x in range(x0, x1):
+			if int(map.grid[y][x]) != map.TILE_WATER:
+				continue
+			var t := Vector2i(x, y)
+			var px := Vector2(t) * ts
+			var variant: int = absi(t.y) % 3
+			var h: int = terrain._hash(t.x, t.y, 33)
+			var src := Rect2(float(h % 6) * 32.0, float(variant) * 32.0, 32.0, 32.0)
+			var mod := Color(1, 1, 1)          # озеро: полотно как есть
+			match _kind_at(t):
+				"river":
+					mod = Color(1.06, 1.06, 1.06)   # река чуть светлее
+				"swamp":
+					mod = Color(0.78, 0.82, 0.62)   # мутная зелёная топь
+			draw_texture_rect_region(_fm_water, Rect2(px, Vector2(ts, ts)), src, mod)
 
 
 ## ==================== СТАТИКА (запечка) ====================
@@ -486,6 +494,10 @@ func _draw_water_details(ts: float) -> void:
 	var y0 := maxi(0, int(floor(vis.position.y / ts)))
 	var x1 := mini(map.w, int(ceil(vis.end.x / ts)))
 	var y1 := mini(map.h, int(ceil(vis.end.y / ts)))
+	# v1.80.1 (FPS): при отдалении видимых тайлов тысячи — детали
+	# неразличимы, пропускаем (иначе ~100k итераций на живой кадр)
+	if (x1 - x0) * (y1 - y0) > 1500:
+		return
 	var lilies := 0
 	for y in range(y0, y1):
 		for x in range(x0, x1):

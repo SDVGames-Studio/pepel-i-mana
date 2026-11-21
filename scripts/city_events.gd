@@ -212,6 +212,15 @@ func _process_events() -> void:
 				hud.toast(Loc.t("city.birth_toast") % String(ev["name"]))
 			"grown":
 				hud.toast(Loc.t("city.grown_toast") % [String(ev["name"]), _prof_name(String(ev["prof"]))])
+			# v1.80.1: засады на карте города
+			"ambush_staged":
+				hud.toast(Loc.t("city.ambush_staged") % Loc.t("city.ambush_kind_" + String(ev["kind"])))
+			"ambush_sprung":
+				hud.toast(Loc.t("city.ambush_sprung") % Loc.t("city.ambush_kind_" + String(ev["kind"])))
+				SfxLib.play("raid_warn")
+			"ambush_cleared":
+				Game.coins += int(ev.get("coins", 0))
+				hud.toast(Loc.t("city.ambush_cleared") % int(ev.get("coins", 0)))
 			"died":
 				hud.toast(Loc.t("city.died_toast") % String(ev["name"]))
 			"wounded":

@@ -288,10 +288,6 @@ func _update_travel(delta: float) -> void:
 	while int(travel["day_mark"]) < day_now and int(travel["day_mark"]) < int(travel["days"]):
 		travel["day_mark"] = int(travel["day_mark"]) + 1
 		_advance_world_day()
-	# v1.80: вошли в тайл заслона засады — бой в сцене данжа
-	if sim.has_ambush_at(hero_tile):
-		_enter_ambush(hero_tile)
-		return
 	if path.size() <= 1:
 		_finish_travel()
 
@@ -418,28 +414,18 @@ func _tile_biome() -> String:
 	return "plains"
 
 
-## Заложить засаду-заслон на 2-4 тайла впереди по пути героя.
+## v1.80.1: засада происходит НА КАРТЕ ГОРОДА (фидбек заказчика) —
+## бандиты подбираются к городу, заслон появится на городской окраине.
 func _stage_ambush() -> void:
-	var path: Array = travel.get("path", [])
-	var t: Vector2i = sim.stage_ambush_site(path, _tile_biome())
-	if t.x < 0:
-		return   # места под заслон нет — встречи не будет (не спамим)
-	_reveal(t)
-	hud.toast(Loc.t("enc.ambush_staged") % Loc.t("enc.stage_" + _tile_biome()))
-	_chron("chron.ambush_staged")
-
-
-## Герой вошёл в тайл заслона — бой в сцене данжа.
-func _enter_ambush(t: Vector2i) -> void:
-	travel = {}   # маршрут прерван боем
-	Game.ambush_site = t
-	Game.return_scene = "res://scenes/world.tscn"
-	Game.world_hero_tile = map.tile_of_px(hero_px)
-	Game.poi_id = -1
-	Game.forced_biome = "bandit_camp"
-	Game.dungeon_scale = sim.encounter_ambush_scale()
-	Game.poi_coins = sim.encounter_ambush_coins()
-	get_tree().change_scene_to_file(DUNGEON_SCENE)
+	if Game.city_sim == null:
+		return
+	if Game.city_sim.ambush_stage_now():
+		var sites: Array = Game.city_sim.ambush_sites
+		var kind := "bandits"
+		if not sites.is_empty():
+			kind = String(sites[sites.size() - 1]["kind"])
+		hud.toast(Loc.t("world.enc_city") % Loc.t("city.ambush_kind_" + kind))
+		_chron("chron.ambush_staged")
 
 
 func _open_encounter(kind: String) -> void:

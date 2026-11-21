@@ -492,10 +492,6 @@ func _check_dungeon_cleared() -> void:
 		for ev: Dictionary in Game.world_sim.mark_cleared(Game.poi_id):
 			hud.toast(Loc.t("world." + String(ev["type"])))
 		Game.poi_id = 0
-	# v1.80: засада-заслон на карте мира зачищена — снята с карты
-	if Game.world_sim != null and Game.ambush_site.x >= 0:
-		Game.world_sim.clear_ambush_site(Game.ambush_site)
-		Game.ambush_site = Vector2i(-1, -1)
 
 
 ## Смерть героя: потеря половины лута и выброс, игра продолжается.
@@ -503,8 +499,6 @@ func _check_dungeon_cleared() -> void:
 func _on_hero_died() -> void:
 	Game.last_run_death = true
 	Game.lose_half_loot()
-	# v1.80: флаг засады сброшен (сам заслон на карте остаётся — герой бежал)
-	Game.ambush_site = Vector2i(-1, -1)
 	# v1.79.1: анимация смерти доигрывается на месте (6 кадров @ 7fps ≈ 0.86с
 	# + пауза 0.5с), и только потом телепорт домой — «не сразу телепортировало»
 	get_tree().create_timer(1.4).timeout.connect(func() -> void:

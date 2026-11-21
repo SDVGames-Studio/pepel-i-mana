@@ -1431,5 +1431,13 @@
 	"enc.stage_plains": "из кольев и телег",
 	"enc.stage_road": "из телег и брёвен на тракте",
 	"giant.calmed": "%s выдохнулся и вернулся к своим делам",
-	"poi.hint_loot": "добыча: монеты и снаряжение, у босса — реликвия"
+	"poi.hint_loot": "добыча: монеты и снаряжение, у босса — реликвия",
+	"world.enc_city": "Разведка донесла: %s устроили засаду у вашего города",
+	"city.ambush_staged": "У окраины замечен заслон — %s в засаде. Герой может проверить",
+	"city.ambush_sprung": "Засада! %s встают из заслона",
+	"city.ambush_cleared": "Засада разогнана: +%d монет",
+	"city.ambush_kind_bandits": "бандиты",
+	"city.ambush_kind_mutants": "мутанты",
+	"city.ambush_kind_wolves": "волки",
+	"city.ambush_kind_undead": "мертвецы"
 }

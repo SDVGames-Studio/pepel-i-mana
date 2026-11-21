@@ -681,49 +681,6 @@ func encounter_ambush_scale() -> float:
 	return float(cfg.get("encounters", {}).get("kinds", {}).get("ambush", {}).get("scale", 0.7))
 
 
-# --- засада-заслон на карте (v1.80, фидбек: «засада должна происходить на
-# карте: поваленные деревья, заслоны или узкий проход между скал») ---------
-
-var ambush_sites: Array = []   # {tile: Vector2i, biome: String} — до зачистки
-
-
-## Заложить засаду на тайле ПУТИ героя (2-5 тайлов впереди): герой в неё
-## войдёт — или обойдёт, перестроив маршрут; засада остаётся на карте.
-func stage_ambush_site(path: Array, biome: String) -> Vector2i:
-	if map == null:
-		return Vector2i(-1, -1)
-	for i in range(2, mini(path.size(), 6)):
-		var t: Vector2i = path[i]
-		if not map.in_bounds(t) or not map.is_walkable(t):
-			continue
-		var near := false
-		for s in ambush_sites:
-			if Vector2((s["tile"] as Vector2i) - t).length() < 6.0:
-				near = true
-				break
-		if near:
-			continue
-		ambush_sites.append({"tile": t, "biome": biome})
-		return t
-	return Vector2i(-1, -1)
-
-
-func has_ambush_at(t: Vector2i) -> bool:
-	for s in ambush_sites:
-		if (s["tile"] as Vector2i) == t:
-			return true
-	return false
-
-
-## Засада зачищена (победа в сцене данжа) — заслон снят.
-func clear_ambush_site(t: Vector2i) -> bool:
-	for i in ambush_sites.size():
-		if (ambush_sites[i]["tile"] as Vector2i) == t:
-			ambush_sites.remove_at(i)
-			return true
-	return false
-
-
 # --- зачистка и осмотр локаций ---------------------------------------------
 
 ## Локация зачищена (вызов из данжа). Возвращает события для тостов:

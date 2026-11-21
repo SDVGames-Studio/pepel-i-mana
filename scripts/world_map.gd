@@ -355,25 +355,36 @@ func tile_of_px(px: Vector2) -> Vector2i:
 
 # --- старые дороги ---------------------------------------------------------
 
-## Дороги от города к поселениям (L-образные старые тракты; вода прерывает).
+## Дороги от города к БЛИЖНИМ поселениям (L-образные старые тракты; вода
+## прерывает). v1.80.1 «дикий мир» (фидбек: города близко и все с
+## дорогами — «у нас мир после апокалипсиса»): тракты ведут только к
+## поселениям в 16 тайлах, и они РАЗОРВАННЫЕ — апокалипсис сожрал
+## дороги, заросшие участки пропадают.
 func _draw_roads() -> void:
 	for poi in pois:
 		if String(poi["kind"]) != "settlement":
+			continue
+		if Vector2((poi["tile"] as Vector2i) - city_tile).length() > 16.0:
 			continue
 		_road_l(city_tile, poi["tile"])
 
 
 func _road_l(from: Vector2i, to: Vector2i) -> void:
 	var p := from
+	var r := RandomNumberGenerator.new()
+	r.seed = hash(str(from)) ^ hash(str(to))
 	while p.x != to.x:
 		p.x += 1 if to.x > p.x else -1
-		_set_road(p)
+		_set_road(p, r)
 	while p.y != to.y:
 		p.y += 1 if to.y > p.y else -1
-		_set_road(p)
+		_set_road(p, r)
 
 
-func _set_road(p: Vector2i) -> void:
+func _set_road(p: Vector2i, r: RandomNumberGenerator = null) -> void:
 	# v2: через реку дорога не кладётся (переправа — не тракт)
+	# v1.80.1: разрывы тракта — заросшие участки
+	if r != null and r.randf() < 0.25:
+		return
 	if in_bounds(p) and is_walkable(p) and p != city_tile and not river.has(p):
 		grid[p.y][p.x] = TILE_ROAD

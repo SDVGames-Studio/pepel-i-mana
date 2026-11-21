@@ -165,14 +165,6 @@ func _draw() -> void:
 			if not map.is_explored(t):
 				continue
 			_draw_track(t, Vector2i(sim.tracks[t]["dir"]), ts)
-	# v1.80: засады-заслоны на карте — поваленные деревья / скальный
-	# проход / хворост в топи (сценарий заказчика). Видны только на
-	# исследованной земле.
-	if sim != null and sim.get("ambush_sites") != null:
-		for s in sim.ambush_sites:
-			var st: Vector2i = s["tile"]
-			if map.is_explored(st):
-				_draw_ambush_site(st, String(s["biome"]), ts)
 	# фауна (M14-C/T01): звери видны рядом с героем
 	var fauna = get_parent().get("fauna") if get_parent() != null else null
 	if fauna != null and fauna.fauna != null:
@@ -644,43 +636,6 @@ func _draw_track(tile: Vector2i, dir: Vector2i, ts: float) -> void:
 	draw_circle(pos - v * (ts * 0.12) - side * (ts * 0.14), 1.8, col)
 
 
-## Засада-заслон (v1.80): сцена на карте мира по биому — поваленные
-## деревья (лес/пустошь), узкий проход между скал (холмы), хворост в
-## топи (болото). Плюс вешка с красным лоскутом — «здесь не проехать».
-func _draw_ambush_site(tile: Vector2i, biome: String, ts: float) -> void:
-	var c: Vector2 = map.tile_center_px(tile)
-	var wood := Color(0.32, 0.24, 0.15, 0.95)
-	var wood_l := Color(0.45, 0.35, 0.22, 0.95)
-	match biome:
-		"hills":
-			# узкий проход между скал: два валуна и щебень
-			draw_circle(c + Vector2(-ts * 0.30, -ts * 0.18), ts * 0.30, Color(0.42, 0.42, 0.46, 0.95))
-			draw_circle(c + Vector2(-ts * 0.30, -ts * 0.18), ts * 0.18, Color(0.55, 0.55, 0.6, 0.9))
-			draw_circle(c + Vector2(-ts * 0.28, ts * 0.30), ts * 0.26, Color(0.4, 0.4, 0.44, 0.95))
-			draw_circle(c + Vector2(ts * 0.30, ts * 0.12), ts * 0.24, Color(0.44, 0.44, 0.48, 0.95))
-			draw_line(c + Vector2(-ts * 0.1, -ts * 0.1), c + Vector2(ts * 0.22, ts * 0.3), Color(0.3, 0.3, 0.33, 0.8), 2.0)
-		"swamp":
-			# хворост в топи: кочки и жерди крест-накрест
-			draw_circle(c, ts * 0.42, Color(0.16, 0.2, 0.14, 0.7))
-			draw_line(c + Vector2(-ts * 0.3, -ts * 0.22), c + Vector2(ts * 0.3, ts * 0.1), wood, 3.0)
-			draw_line(c + Vector2(-ts * 0.28, ts * 0.2), c + Vector2(ts * 0.26, -ts * 0.18), wood_l, 2.4)
-			draw_circle(c + Vector2(ts * 0.1, -ts * 0.3), ts * 0.10, Color(0.2, 0.28, 0.18, 0.9))
-			draw_circle(c + Vector2(-ts * 0.22, ts * 0.32), ts * 0.08, Color(0.24, 0.3, 0.2, 0.9))
-		_:
-			# лес/пустошь/поля: поваленные деревья поперёк пути
-			draw_line(c + Vector2(-ts * 0.42, -ts * 0.14), c + Vector2(ts * 0.30, ts * 0.12), wood, 5.0)
-			draw_circle(c + Vector2(ts * 0.30, ts * 0.12), ts * 0.10, wood_l)
-			draw_line(c + Vector2(-ts * 0.30, ts * 0.30), c + Vector2(ts * 0.36, ts * 0.02), Color(0.36, 0.28, 0.18, 0.9), 3.4)
-			draw_circle(c + Vector2(-ts * 0.42, -ts * 0.14), ts * 0.08, Color(0.25, 0.34, 0.16, 0.9))
-	# вешка с красным лоскутом — предупреждение путнику
-	draw_line(c + Vector2(ts * 0.34, ts * 0.42), c + Vector2(ts * 0.34, ts * 0.02), wood, 1.6)
-	draw_polygon(PackedVector2Array([
-		c + Vector2(ts * 0.34, ts * 0.02), c + Vector2(ts * 0.34, ts * 0.18),
-		c + Vector2(ts * 0.12, ts * 0.10)]), [Color(0.75, 0.2, 0.15, 0.9)])
-
-
-## Гигант (M14-E/T19): крупный маркер с ореолом; кольцо — настроение
-## (красный — разгневан, зелёный — дружелюбен).
 func _draw_giant(g: Dictionary, contact_px: float) -> void:
 	var pos: Vector2 = g["px"]
 	var def: Dictionary = g["def"]

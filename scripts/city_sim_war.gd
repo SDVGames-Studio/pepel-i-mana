@@ -98,6 +98,7 @@ func _update_threat(dt: float, day_len: float) -> void:
 		return
 	_update_hive(dt, day_len)
 	_update_hive_units(dt, tcfg)
+	_update_ambush_units(dt, tcfg)   # v1.80.1: засады на карте города
 	if hero_alive and not hive.is_empty():
 		# следы героя: скауты улья читают цепочку (прототип TrackManager)
 		hero_tracks = HiveSim.push_track(hero_tracks, hero_pos, float(time),
@@ -842,3 +843,174 @@ func _roll_hunter() -> void:
 		events.append({"type": "hunter_trained", "name": String(r["name"])})
 		_assign_jobs()
 		return
+
+
+## ==================== ЗАСАДЫ НА КАРТЕ ГОРОДА (v1.80.1) ====================
+## Фидбек заказчика: «засады должны происходить на карте города, не
+## глобальной карты. Могут быть меньше по размеру, но разнообразнее».
+## Засада = заслон на дикой окраине города (зема-слой рисует сценку по
+## kind): бандиты — поваленные деревья и телеги, мутанты — скальный
+## проход, волки — заросли, мертвецы — костяная ограда. Герой подошёл —
+## враги встают из заслона (общая система рейдеров: героя бьют, герой
+## бьёт), всех уложил — монеты и снятие заслона.
+
+var ambush_sites: Array = []   # {tile: Vector2i, kind: String, n: int, sprung: bool, ids: Array}
+var _ambush_day := 0            # день последнего броска засады (v1.80.1)
+const AMBUSH_POOLS := {
+	"bandits": ["bandit", "bandit", "bandit_archer"],
+	"mutants": ["mutant", "mutant", "brute", "spitter"],
+	"wolves": ["wolf", "wolf", "crawler"],
+	"undead": ["skeleton", "skeleton", "ghoul"],
+}
+
+
+## Ежедневный бросок: шанс засады на дикой окраине (не более 2 активных).
+func ambush_tick_day() -> void:
+	if map == null or ambush_sites.size() >= 2:
+		return
+	if _event_rng.randf() > 0.2:
+		return
+	ambush_stage_now()
+
+
+## Принудительно заложить засаду (бросок дня пути на карте мира: «бандиты
+## подбираются к городу»). false — не нашлось места.
+func ambush_stage_now() -> bool:
+	if map == null or ambush_sites.size() >= 2:
+		return false
+	var t := _ambush_tile()
+	if t == Vector2i(-1, -1):
+		return false
+	var kinds: Array = AMBUSH_POOLS.keys()
+	var kind: String = kinds[_event_rng.randi_range(0, kinds.size() - 1)]
+	ambush_sites.append({"tile": t, "kind": kind,
+			"n": 2 + _event_rng.randi_range(0, 2), "sprung": false, "ids": []})
+	events.append({"type": "ambush_staged", "kind": kind})
+	return true
+
+
+func _ambush_tile() -> Vector2i:
+	for attempt in 60:
+		var ang := TAU * _event_rng.randf()
+		var rr := 22.0 + _event_rng.randf() * 38.0
+		var t: Vector2i = map.spawn_tile + Vector2i(
+				int(round(cos(ang) * rr)), int(round(sin(ang) * rr)))
+		if not map.in_bounds(t) or not map.is_walkable(t):
+			continue
+		if int(map.grid[t.y][t.x]) != map.TILE_GRASS:
+			continue
+		var ok := true
+		for b in buildings:
+			if _active(b) and Vector2((b["tile"] as Vector2i) - t).length() < 4.0:
+				ok = false
+				break
+		if not ok:
+			continue
+		for s in ambush_sites:
+			if Vector2((s["tile"] as Vector2i) - t).length() < 10.0:
+				ok = false
+				break
+		if ok:
+			return t
+	return Vector2i(-1, -1)
+
+
+## Герой подошёл к заслону — враги встают из засады.
+func spring_ambush(site: Dictionary) -> void:
+	if bool(site.get("sprung", false)) or map == null:
+		return
+	site["sprung"] = true
+	var pool: Array = AMBUSH_POOLS.get(String(site["kind"]), ["bandit"])
+	var ids: Array = []
+	for i in int(site["n"]):
+		var def_id: String = pool[_event_rng.randi_range(0, pool.size() - 1)]
+		var def := {}
+		if _enemies_cfg.is_empty():
+			var ed: Variant = _read_json_file("res://data/enemies.json")
+			_enemies_cfg = ed if ed is Array else []
+		for d2 in _enemies_cfg:
+			if String(d2["id"]) == def_id:
+				def = d2
+				break
+		if def.is_empty():
+			continue
+		var pos: Vector2 = map.tile_center_px(site["tile"] as Vector2i)
+		for attempt in 10:
+			var off := Vector2i(_event_rng.randi_range(-2, 2), _event_rng.randi_range(-2, 2))
+			var t2: Vector2i = (site["tile"] as Vector2i) + off
+			if map.is_walkable(t2):
+				pos = map.tile_center_px(t2)
+				break
+		raiders.append({
+			"id": _next_id, "type": def_id, "p": def,
+			"hp": int(def["hp"]), "max_hp": int(def["hp"]),
+			"pos": pos, "target": Vector2i(-1, -1), "path": PackedVector2Array(),
+			"atk_cd": 0.0, "mode": "", "ambush": true,
+			"site_tile": site["tile"], "ttl": float(cfg["day_length"]) * 0.6,
+		})
+		ids.append(_next_id)
+		_next_id += 1
+	site["ids"] = ids
+	events.append({"type": "ambush_sprung", "kind": String(site["kind"])})
+	_chron("chron.ambush_sprung")
+
+
+## Тик засадных юнитов (вне волн улья; герой далеко — ждут в засаде).
+func _update_ambush_units(dt: float, tcfg: Dictionary) -> void:
+	# раз в игровой день — бросок засады (проверка здесь, в nature: выше
+	# по extends-цепочке (city_sim_tick) члены природы не видны парсеру)
+	if int(day) != int(_ambush_day) and int(day) > 1:
+		_ambush_day = int(day)
+		ambush_tick_day()
+	if ambush_sites.is_empty():
+		return
+	var i := 0
+	while i < raiders.size():
+		var r: Dictionary = raiders[i]
+		if not bool(r.get("ambush", false)):
+			i += 1
+			continue
+		r["ttl"] = float(r.get("ttl", 0.0)) - dt
+		var alive := int(r["hp"]) > 0 and float(r["ttl"]) > 0.0
+		if alive and _raider_update(r, dt, tcfg) == false:
+			alive = false
+		if not alive:
+			raiders.remove_at(i)
+			continue
+		i += 1
+	_ambush_settle()
+
+
+## Итоги: все юниты засады мертвы — заслон снят, монеты герою; юниты
+## растаяли по времени — засада снова в заслоне (можно прийти снова).
+func _ambush_settle() -> void:
+	var i := ambush_sites.size() - 1
+	while i >= 0:
+		var site: Dictionary = ambush_sites[i]
+		if not bool(site.get("sprung", false)):
+			i -= 1
+			continue
+		var left := 0
+		var expired := 0
+		for uid: int in (site["ids"] as Array):
+			var found := false
+			for r in raiders:
+				if int(r["id"]) == uid:
+					found = true
+					left += 1
+					break
+			if not found:
+				expired += 1
+		if left == 0 and expired > 0:
+			# убиты героем — засада разогнана
+			if coins_sink.is_valid():
+				coins_sink.call(6 + 4 * expired)
+			events.append({"type": "ambush_cleared", "kind": String(site["kind"]),
+					"coins": 6 + 4 * expired})
+			_chron("chron.ambush_cleared")
+			ambush_sites.remove_at(i)
+		elif left == 0:
+			# растаяли по времени — заслон снова ждёт
+			site["sprung"] = false
+			site["ids"] = []
+		i -= 1

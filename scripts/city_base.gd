@@ -435,6 +435,11 @@ func _process(delta: float) -> void:
 	_hero_till = {} if guest else sim.hero_till_near(hero.position)
 	_hero_haul = {} if guest else sim.hero_haul_near(hero.position)
 	_hero_repair_bld = {} if guest else sim.hero_repair_near(hero.position)
+	# v1.80.1: герой подошёл к заслону засады — враги встают из засады
+	if not guest and sim.get("ambush_sites") != null:
+		for site in sim.ambush_sites:
+			if not bool(site.get("sprung", false)) and hero.position.distance_to(map.tile_center_px(site["tile"] as Vector2i)) < float(map.ts) * 1.6:
+				sim.spring_ambush(site)
 	if _near_map_border():
 		hud.set_hint(Loc.t("city.exit_world"))
 	elif _near_anomaly:

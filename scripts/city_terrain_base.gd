@@ -372,19 +372,34 @@ func _draw() -> void:
 		# а масштаб рисунка менялся от зума.
 		var cw := float(_biome_canvas.get_width())
 		var chh := float(_biome_canvas.get_height())
-		var ix0 := int(floorf(visc.position.x / cw))
-		var iy0 := int(floorf(visc.position.y / chh))
-		var ix1 := int(ceili(visc.end.x / cw))
-		var iy1 := int(ceili(visc.end.y / chh))
+		# v1.80.1 (FPS, «сильно падает фпс»): при отдалении сетка повторов
+		# 1:1 давала до ~250 квадов (~44 Мпикс перерисовки КАЖДЫЙ кадр при
+		# движении камеры). Укрупняем период так, чтобы квадов было ≤ 48:
+		# привязка к миру сохраняется, пиксель вдали крупнее, но рисунок
+		# на таком отдалении нечитаем
+		var k := 1
+		while _canvas_grid_count(visc, cw * k, chh * k) > 48:
+			k += 1
+		var pw := cw * k
+		var ph := chh * k
+		var ix0 := int(floorf(visc.position.x / pw))
+		var iy0 := int(floorf(visc.position.y / ph))
+		var ix1 := int(ceili(visc.end.x / pw))
+		var iy1 := int(ceili(visc.end.y / ph))
 		for iy in range(iy0, iy1):
 			for ix in range(ix0, ix1):
 				draw_texture_rect(_biome_canvas, Rect2(
-						float(ix) * cw, float(iy) * chh, cw, chh), false)
+						float(ix) * pw, float(iy) * ph, pw, ph), false)
 	# надстройки (зоны/дороги/плиты) поверх полотна
 	if _static_tex != null:
 		draw_texture_rect(_static_tex, Rect2(Vector2.ZERO, Vector2(map.w * map.ts, map.h * map.ts)), false)
 	if map == null:
 		return
+	# v1.80.1: засады на карте города — сцена заслона (над чанками, под
+	# жителями: слой terrain ниже view)
+	if sim != null and sim.get("ambush_sites") != null:
+		for site in sim.ambush_sites:
+			_draw_ambush_site(site["tile"] as Vector2i, String(site["kind"]))
 	# v1.50 (FPS): рисуем только чанки в видимой области — при большом
 	# зуме-отдалении и так все видны, вблизи экономит десятки квадов
 	var xf := get_viewport_transform()
@@ -651,3 +666,44 @@ func _load_default_grass() -> Array:
 	_grass_fills = []
 	return out
 
+## Засада-заслон на карте города (v1.80.1): сцена по kind — бандиты
+## (поваленное дерево и телега), мутанты (скальный проход), волки
+## (заросли), мертвецы (костяная ограда). Плюс вешка с лоскутом.
+func _draw_ambush_site(t: Vector2i, kind: String) -> void:
+	var ts := float(map.ts)
+	var c: Vector2 = map.tile_center_px(t)
+	var wood := Color(0.32, 0.24, 0.15, 0.95)
+	var wood_l := Color(0.45, 0.35, 0.22, 0.95)
+	match kind:
+		"mutants":
+			draw_circle(c + Vector2(-ts * 0.30, -ts * 0.18), ts * 0.30, Color(0.42, 0.42, 0.46, 0.95))
+			draw_circle(c + Vector2(-ts * 0.30, -ts * 0.18), ts * 0.18, Color(0.55, 0.55, 0.6, 0.9))
+			draw_circle(c + Vector2(-ts * 0.28, ts * 0.30), ts * 0.26, Color(0.4, 0.4, 0.44, 0.95))
+			draw_circle(c + Vector2(ts * 0.30, ts * 0.12), ts * 0.24, Color(0.44, 0.44, 0.48, 0.95))
+			draw_line(c + Vector2(-ts * 0.1, -ts * 0.1), c + Vector2(ts * 0.22, ts * 0.3), Color(0.3, 0.3, 0.33, 0.8), 2.0)
+		"wolves":
+			draw_circle(c, ts * 0.42, Color(0.16, 0.2, 0.14, 0.7))
+			draw_line(c + Vector2(-ts * 0.3, -ts * 0.22), c + Vector2(ts * 0.3, ts * 0.1), wood, 3.0)
+			draw_line(c + Vector2(-ts * 0.28, ts * 0.2), c + Vector2(ts * 0.26, -ts * 0.18), wood_l, 2.4)
+			draw_circle(c + Vector2(ts * 0.1, -ts * 0.3), ts * 0.10, Color(0.2, 0.28, 0.18, 0.9))
+			draw_circle(c + Vector2(-ts * 0.22, ts * 0.32), ts * 0.08, Color(0.24, 0.3, 0.2, 0.9))
+		"undead":
+			for i in 5:
+				var px := c + Vector2(-ts * 0.35 + ts * 0.17 * i, -ts * 0.1 + ts * 0.06 * (i % 2))
+				draw_line(px, px + Vector2(0, -ts * 0.22), Color(0.85, 0.82, 0.72, 0.9), 2.0)
+				draw_circle(px + Vector2(0, -ts * 0.24), 1.6, Color(0.9, 0.88, 0.8, 0.95))
+		_:
+			draw_line(c + Vector2(-ts * 0.42, -ts * 0.14), c + Vector2(ts * 0.30, ts * 0.12), wood, 5.0)
+			draw_circle(c + Vector2(ts * 0.30, ts * 0.12), ts * 0.10, wood_l)
+			draw_circle(c + Vector2(ts * 0.2, ts * 0.3), ts * 0.16, wood)
+			draw_circle(c + Vector2(ts * 0.2, ts * 0.3), ts * 0.07, Color(0.5, 0.4, 0.26, 0.9))
+			draw_line(c + Vector2(ts * 0.2, ts * 0.3), c + Vector2(-ts * 0.05, ts * 0.05), wood, 2.4)
+	draw_line(c + Vector2(ts * 0.34, ts * 0.42), c + Vector2(ts * 0.34, ts * 0.02), wood, 1.6)
+	draw_polygon(PackedVector2Array([
+		c + Vector2(ts * 0.34, ts * 0.02), c + Vector2(ts * 0.34, ts * 0.18),
+		c + Vector2(ts * 0.12, ts * 0.10)]), [Color(0.75, 0.2, 0.15, 0.9)])
+
+
+## Число квадов сетки повторов полотна на видимой области (для кэпа FPS).
+func _canvas_grid_count(visc: Rect2, pw: float, ph: float) -> int:
+	return (int(ceili(visc.end.x / pw)) - int(floorf(visc.position.x / pw))) * (int(ceili(visc.end.y / ph)) - int(floorf(visc.position.y / ph)))
