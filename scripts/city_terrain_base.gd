@@ -142,6 +142,7 @@ func setup(city_map, city_cfg: Dictionary, city_sim = null, cache_key := "") -> 
 var _cache_key_in := ""
 var _new_brushes_this_frame := 0   # v1.48.1: лимит кистей/кадр (рендер в конце кадра)
 var _full_drawer: Node2D = null   # холст полного слоя (для возврата из кисти)
+var _last_draw_vt := Transform2D()  # v1.79.12: transform камеры на последнем _draw
 
 
 func _game():
@@ -284,6 +285,14 @@ func rebake(heavy := false, grid_ver := -1, edited: Array = []) -> void:
 func _process(_delta: float) -> void:
 	if not is_inside_tree():
 		return
+	# v1.79.12: земля-полотно рисуется НАПРЯМУЮ по видимой области — при
+	# движении камеры нужен пере-draw, иначе за краем последней отрисовки
+	# остаётся «серое ничто» (чанки на траве прозрачны, подстилать нечем).
+	# Раньше чанки несли землю в себе — свежесть _draw не была критична.
+	var xfc := get_viewport_transform()
+	if _last_draw_vt != xfc:
+		_last_draw_vt = xfc
+		queue_redraw()
 	var done_all := _chunk_queue.is_empty() and _chunks.size() >= _chunk_count()
 	# v1.59: пока карта не допечена — это «экран загрузки», бюджет шире
 	var budget_ms := 24.0 if not done_all else 10.0
