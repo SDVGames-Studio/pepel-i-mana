@@ -39,7 +39,7 @@ func draw_plateaus(ts: float, region := Rect2i()) -> void:
 			var lv: int = t.map.height_at(Vector2i(x, y))
 			if lv <= 0:
 				continue
-			var a := opt("top_light", 0.06) if lv == 1 else opt("top_light2", 0.10)
+			var a := opt("top_light", 0.10) if lv == 1 else opt("top_light2", 0.16)
 			t._drawer.draw_rect(Rect2(x * ts, y * ts, ts, ts),
 					Color(1.0, 0.97, 0.82, a))
 	# 2) мягкая тень на траве у подножия южных кромок
@@ -68,23 +68,33 @@ func _nb_lv(p: Vector2i, d: Vector2i) -> int:
 	return t.map.height_at(n)
 
 
+## v1.80.5: холмы на ПОЛОТНЕ — кромки в тон мха (ярко-зелёные линейки и
+## чистый серый камень читались прямоугольными коробками), высота губы
+## дрожит по хэшу тайла — контур органический, не линейка.
+func _moss() -> Color:
+	return t._biome_grass_color()
+
+
+func _jit(p: Vector2i, salt: int) -> float:
+	return float(t._hash(p.x, p.y, salt) % 100) / 100.0
+
+
 func _draw_rims(p: Vector2i, lv: int, ts: float) -> void:
-	var x := float(p.x * ts)
-	var y := float(p.y * ts)
-	var grass: Color = t.colors.get("grass", Color("#5ca046"))
-	var stone := col("stone", "#8a8072")
-	# север ниже — солнечная кромка (свет с СЗ)
-	if _nb_lv(p, Vector2i(0, -1)) < lv:
-		t._drawer.draw_rect(Rect2(x, y, ts, ts * 0.10),
-				grass.lightened(0.16))
-	# запад ниже — светлое ребро камня
-	if _nb_lv(p, Vector2i(-1, 0)) < lv:
-		t._drawer.draw_rect(Rect2(x, y, ts * 0.08, ts),
-				stone.lightened(0.10))
-	# восток ниже — тёмное ребро (объём)
-	if _nb_lv(p, Vector2i(1, 0)) < lv:
-		t._drawer.draw_rect(Rect2(x + ts * 0.92, y, ts * 0.08, ts),
-				stone.darkened(0.22))
+	# v1.80.5: на полотне холм читается светом и тенью — камни только
+	# редкими акцентами (каждый 2-3-й тайл кромки, по хэшу)
+	if t._biome_canvas == null:
+		return
+	var moss: Color = _moss()
+	var stone := col("stone", "#8a8072").lerp(moss, 0.3)
+	var edge := _nb_lv(p, Vector2i(-1, 0)) < lv or _nb_lv(p, Vector2i(1, 0)) < lv
+	if not edge or t._hash(p.x, p.y, 61) % 3 != 0:
+		return
+	var c1 := Vector2(p.x * ts + ts * (0.2 + 0.6 * _jit(p, 63)),
+			p.y * ts + ts * (0.2 + 0.6 * _jit(p, 65)))
+	t._drawer.draw_circle(c1, ts * (0.09 + 0.06 * _jit(p, 67)),
+			stone.lightened(0.05 + 0.14 * _jit(p, 69)))
+	t._drawer.draw_circle(c1 + Vector2(-2, -2), ts * 0.05,
+			stone.lightened(0.18))
 
 
 ## Южный срез — «лицо» утёса: губа травы, три тона камня, напластования,
@@ -97,41 +107,41 @@ func _draw_south_face(p: Vector2i, lv: int, ts: float) -> void:
 	var y := float(p.y * ts)
 	var face_h := ts * (opt("face_h2", 0.60) if diff >= 2 else opt("face_h1", 0.38))
 	if lv == 2 and diff == 1:
-		# срез террасы повыше кромки плато — два уровня читаются сразу
 		face_h *= opt("terrace_face_mult", 1.3)
+	face_h *= 0.9 + 0.2 * _jit(p, 15)
 	var y0 := y + ts - face_h
-	var stone := col("stone", "#8a8072")
-	var stone_dark := col("stone_dark", "#5d574c")
-	var lip_c: Color = t.colors.get("grass", Color("#5ca046")).darkened(opt("lip_dark", 0.24))
+	var moss: Color = _moss()
+	var stone := col("stone", "#8a8072").lerp(moss, 0.3)
 	var lip_h := ts * 0.12
-	# тело среза: тон камня слегка дышит по тайлам (как фасеты гряды)
-	var tone := 1.0 + 0.05 * float(t._hash(p.x, p.y, 3) - 1) / 10.0
-	t._drawer.draw_rect(Rect2(x, y0 + lip_h, ts, face_h - lip_h),
-			stone.lightened((tone - 1.0) * 0.5))
-	# губа кромки — тёмная трава нависает над срезом
-	t._drawer.draw_rect(Rect2(x, y0, ts, lip_h), lip_c)
 	if t.map.is_stair(p):
-		_draw_stairs(p, x, y0 + lip_h, ts, face_h - lip_h, stone, stone_dark)
-	else:
-		# три тона: светлая верхняя полоса, тёмное основание, линия контакта
-		t._drawer.draw_rect(Rect2(x, y0 + lip_h, ts, ts * 0.08),
-				stone.lightened(0.14))
-		t._drawer.draw_rect(Rect2(x, y + ts - ts * 0.10, ts, ts * 0.10),
-				stone_dark)
-		# напластования: 1–2 горизонтальные трещины по хэшу тайла
-		var n_cracks: int = 1 + t._hash(p.x * 3, p.y * 7, 2)
-		for i in n_cracks:
-			var cy := y0 + lip_h + (face_h - lip_h) * (0.45 + 0.25 * float(i))
-			t._drawer.draw_line(Vector2(x + 3.0, cy), Vector2(x + ts - 3.0, cy),
-					Color(stone_dark, 0.55), 1.4)
-	# контактная тень у подножия среза
+		var stone0 := col("stone", "#8a8072")
+		var stone_d0 := col("stone_dark", "#5d574c")
+		t._drawer.draw_rect(Rect2(x, y0 + lip_h, ts, face_h - lip_h),
+				stone0.lightened(0.05))
+		t._drawer.draw_rect(Rect2(x, y0, ts, lip_h), moss.darkened(0.24))
+		_draw_stairs(p, x, y0 + lip_h, ts, face_h - lip_h, stone0, stone_d0)
+		return
+	# v1.80.5: срез = мягкая тёмная масса (холм читается тенью, не линией)
+	t._drawer.draw_rect(Rect2(x, y0 + lip_h, ts, face_h - lip_h),
+			Color(moss.darkened(0.5), 0.5))
+	# губа мха нависает
+	t._drawer.draw_rect(Rect2(x, y0, ts, lip_h), moss.darkened(0.24))
+	# редкие валуны-акценты (каждый 2-й тайл)
+	if t._hash(p.x, p.y, 71) % 2 == 0:
+		var bx := x + ts * (0.2 + 0.6 * _jit(p, 73))
+		var by := y0 + lip_h + (face_h - lip_h) * (0.3 + 0.5 * _jit(p, 75))
+		var br := ts * (0.09 + 0.09 * _jit(p, 77))
+		t._drawer.draw_circle(Vector2(bx, by), br,
+				stone.lightened(0.05 + 0.14 * _jit(p, 79)))
+		t._drawer.draw_circle(Vector2(bx - br * 0.3, by - br * 0.35),
+				br * 0.4, stone.lightened(0.2))
+	# контактная тень у подножия
 	t._drawer.draw_line(Vector2(x, y + ts - 1.0), Vector2(x + ts, y + ts - 1.0),
-			Color(stone_dark.darkened(0.2), 0.8), 2.0)
-	# столбики на выпуклых углах кромки (юг+восток / юг+запад) — как в Hills
+			Color(moss.darkened(0.55), 0.7), 2.0)
 	if _nb_lv(p, Vector2i(1, 0)) < lv:
-		_post(x + ts - 3.0, y0 - 2.0, face_h + 2.0, stone_dark)
+		_post(x + ts - 3.0, y0 - 2.0, face_h + 2.0, moss.darkened(0.45))
 	if _nb_lv(p, Vector2i(-1, 0)) < lv:
-		_post(x, y0 - 2.0, face_h + 2.0, stone_dark)
+		_post(x, y0 - 2.0, face_h + 2.0, moss.darkened(0.45))
 
 
 ## Ступени-лестница в срезе: 3 каменные ступени с тенью подступёнка.
