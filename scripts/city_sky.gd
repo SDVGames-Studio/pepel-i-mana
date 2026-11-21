@@ -206,11 +206,11 @@ static func night_color(mood: int) -> Color:
 static func shadow_alpha(mood: int) -> float:
 	match mood:
 		MOOD_CLEAR:
-			return 0.24
+			return 0.34   # v1.80.4: 0.24 тонул в тёмном мшистом полотне
 		MOOD_GOLDEN:
-			return 0.30
+			return 0.40
 		MOOD_ROSY:
-			return 0.20
+			return 0.30
 		MOOD_FOGGY:
 			return 0.10
 		MOOD_OVERCAST:

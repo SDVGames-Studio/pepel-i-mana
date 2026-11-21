@@ -257,8 +257,10 @@ func _draw_field_live() -> void:
 			if not filled:
 				# полоса обустройства: живая, двигается с каждым ударом лопаты
 				var frac := clampf(float(progress[i]) / maxf(0.1, fill_work), 0.0, 1.0)
+				# v1.80.4: борозда тёмно-землистая (ярко-жёлтая полоса
+				# читалась «жёлтыми прямоугольниками» на весь экран)
 				draw_rect(Rect2(rect.position + Vector2(4, map.ts - 8), Vector2((map.ts - 8) * frac, 4)),
-						Color("#ffe082"))
+						Color("#6b5636"))
 				continue
 			if not is_field or i >= crops.size() or (crops[i] as Dictionary).is_empty():
 				continue

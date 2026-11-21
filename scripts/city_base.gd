@@ -163,6 +163,27 @@ func _ready() -> void:
 	hero.died.connect(_on_hero_down)
 	if not guest:
 		_deposit_loot()   # лут из данжа выгружается только в своём городе
+	# v1.80.4: диагностика ассетов города (как composer_diag.txt) — если у
+	# заказчика «жители квадратами»/пропал арт, файл скажет, что не
+	# загрузилось в его билде
+	var diag := "city_diag v1 | биом %s
+" % [_btag]
+	var vp: Dictionary = Assets.VILLAGER_PROF
+	var seen := {}
+	for prof in vp:
+		var base: String = vp[prof]
+		if seen.has(base):
+			continue
+		seen[base] = true
+		var sheet: Texture2D = Assets.tex("res://assets/sprites/villagers/%s.png" % base)
+		diag += "villager %s = %s
+" % [base, "ok" if sheet != null else "NULL"]
+	diag += "canvas = %s
+" % ("ok" if _terrain.get("_biome_canvas") != null else "NULL")
+	var f := FileAccess.open("user://city_diag.txt", FileAccess.WRITE)
+	if f != null:
+		f.store_string(diag)
+		f.close()
 	# панель экипировки (M14-B, клавиша I): в городе ещё и крафт у мастеровых
 	_equip_panel = load("res://scripts/equipment_panel.gd").new()
 	_equip_panel.hero_cb = func(): return hero

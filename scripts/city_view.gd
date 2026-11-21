@@ -18,13 +18,33 @@ func _draw_building(b: Dictionary) -> void:
 	var col: Color = _bld_fill.get(type_id, Color(0.91, 0.85, 0.62))
 	var anchor: Vector2 = Vector2(rect.get_center().x, rect.end.y - 2.0)
 	if not b["done"]:
-		# стройплощадка: призрачная заливка, каркас и полоса прогресса
-		draw_rect(rect.grow(-3), Color(col.r, col.g, col.b, 0.22))
-		draw_rect(rect.grow(-3), col.darkened(0.2), false, 2.0)
+		# v1.80.4: стройплощадка = НАСТОЯЩАЯ стройка (фидбек «что за желтые
+		# прямоугольники»): грунт, каркас-леса из брёвен, куча досок и
+		# камня, тонкая верёвочная ограда. Голой жёлтой рамки больше нет.
+		draw_rect(rect.grow(-3), Color(0.24, 0.2, 0.15, 0.55))
+		var t2 := float(map.ts)
+		var post := Color(0.42, 0.31, 0.2)
+		var post_l := Color(0.55, 0.42, 0.28)
+		for corner in [rect.position + Vector2(3, 3),
+				rect.position + Vector2(rect.size.x - 9, 3),
+				rect.position + Vector2(3, rect.size.y - 9),
+				rect.position + Vector2(rect.size.x - 9, rect.size.y - 9)]:
+			draw_line(corner, corner + Vector2(0, -t2 * 0.8), post, 3.0)
+			draw_circle(corner + Vector2(0, -t2 * 0.8), 1.8, post_l)
+		draw_line(rect.position + Vector2(3, -t2 * 0.8 + 3),
+				rect.position + Vector2(rect.size.x - 6, -t2 * 0.8 + 3), post_l, 2.0)
+		# куча досок и камней у угла
+		var mp := rect.position + Vector2(rect.size.x * 0.5, rect.size.y * 0.62)
+		draw_rect(Rect2(mp + Vector2(-t2 * 0.3, -3), Vector2(t2 * 0.6, 5)), Color(0.52, 0.4, 0.26))
+		draw_line(mp + Vector2(-t2 * 0.3, -1), mp + Vector2(t2 * 0.3, -1), Color(0.62, 0.5, 0.34), 1.4)
+		draw_circle(mp + Vector2(t2 * 0.34, 1), 3.2, Color(0.45, 0.45, 0.44))
+		draw_circle(mp + Vector2(t2 * 0.42, 2), 2.4, Color(0.38, 0.38, 0.37))
+		# верёвочная ограда по периметру (тонкая, вместо жёлтой рамки)
+		draw_rect(rect.grow(-2), Color(0.75, 0.68, 0.55, 0.5), false, 1.0)
 		var work: float = _build_work(type_id)
 		var frac := clampf(float(b["progress"]) / work, 0.0, 1.0) if work > 0.0 else 0.0
 		draw_rect(Rect2(rect.position + Vector2(4, rect.size.y - 9),
-				Vector2((rect.size.x - 8) * frac, 5)), Color("#ffe082"))
+				Vector2((rect.size.x - 8) * frac, 4)), Color("#c9b37e"))
 		_draw_bld_label(b, rect)
 	elif bool(b.get("razed", false)):
 		# руины (этап 2, аспект 5): тёмные обломки цвета категории, трещины
