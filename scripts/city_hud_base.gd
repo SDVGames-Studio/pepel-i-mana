@@ -455,3 +455,58 @@ func _set_rect(control: Control, pos: Vector2, size: Vector2) -> void:
 
 func res_icon(id: String) -> ImageTexture:
 	return null
+
+
+# --- диалог выбора (v1.81: староста «Память мира», док 18) ------------------
+# Ленивая конструкция: панель строится при первом открытии, порядок сборки
+# UI не трогаем.
+var _choice_panel: PanelContainer = null
+var _choice_title: Label = null
+var _choice_info: RichTextLabel = null
+var _choice_box: VBoxContainer = null
+
+
+func open_choice(title: String, lines: Array, choices: Array) -> void:
+	if _choice_panel == null:
+		_choice_panel = PanelContainer.new()
+		_choice_panel.position = Vector2(660, 260)
+		_choice_panel.custom_minimum_size = Vector2(600, 0)
+		_choice_panel.visible = false
+		add_child(_choice_panel)
+		var col := VBoxContainer.new()
+		col.add_theme_constant_override("separation", 8)
+		_choice_panel.add_child(col)
+		_choice_title = _label(22)
+		_choice_title.add_theme_color_override("font_color", Color("#ffe082"))
+		col.add_child(_choice_title)
+		_choice_info = RichTextLabel.new()
+		_choice_info.fit_content = true
+		_choice_info.bbcode_enabled = true
+		_choice_info.custom_minimum_size = Vector2(560, 40)
+		col.add_child(_choice_info)
+		_choice_box = VBoxContainer.new()
+		_choice_box.add_theme_constant_override("separation", 4)
+		col.add_child(_choice_box)
+	_choice_title.text = title
+	_choice_info.text = "\n".join(PackedStringArray(lines))
+	for child in _choice_box.get_children():
+		child.queue_free()
+	for c in choices:
+		var btn := Button.new()
+		btn.text = String(c["text"])
+		btn.disabled = bool(c.get("disabled", false))
+		btn.focus_mode = Control.FOCUS_NONE
+		btn.pressed.connect(func() -> void:
+			close_choice()
+			(c["action"] as Callable).call())
+		_choice_box.add_child(btn)
+	_choice_panel.visible = true
+
+
+func close_choice() -> void:
+	if _choice_panel != null:
+		_choice_panel.visible = false
+
+
+func choice_visible() -> bool:
+	return _choice_panel != null and _choice_panel.visible

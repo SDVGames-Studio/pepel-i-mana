@@ -969,11 +969,13 @@ func spring_ambush(site: Dictionary) -> void:
 
 ## Тик засадных юнитов (вне волн улья; герой далеко — ждут в засаде).
 func _update_ambush_units(dt: float, tcfg: Dictionary) -> void:
-	# раз в игровой день — бросок засады (проверка здесь, в nature: выше
-	# по extends-цепочке (city_sim_tick) члены природы не видны парсеру)
+	# раз в игровой день — бросок засады и тик памяти мира (проверка
+	# здесь, в nature: выше по extends-цепочке (city_sim_tick) члены
+	# природы не видны парсеру)
 	if int(day) != int(_ambush_day) and int(day) > 1:
 		_ambush_day = int(day)
 		ambush_tick_day()
+		memory_daily()
 	if ambush_sites.is_empty():
 		return
 	var i := 0
@@ -1055,3 +1057,44 @@ func _ambush_unit_tick(r: Dictionary, dt: float) -> bool:
 	if map.is_walkable(map.tile_of_px(next)):
 		r["pos"] = next
 	return true
+
+
+## ==================== ПАМЯТЬ МИРА (v1.81, док 18) ==========================
+## Староста-голем даёт задания на поиск утраченной памяти мира: осколки
+## падают с боссов данжей. Данные сдаются старосте, он СКАНИРУЕТ их
+## несколько дней (сам называет срок), потом награда и следующая стадия.
+## После третьей стадии — ОТКРОВЕНИЕ: эпицентр аномалии на карте мира
+## должен быть уничтожен (цель кампании, док 18).
+
+var memory_stage := 0          # 0 — не начали; 1..3 — стадии; 4 — откровение
+var memory_brought := 0        # осколков сдано на текущей стадии
+var memory_crystals_ready := false  # стадия 2: кристаллы сданы
+var memory_scan_left := 0.0    # дней до конца сканирования
+var memory_shards_in_scan := 0
+const MEMORY_STAGES := [
+	{"shards": 2, "scan": 1.5, "coins": 30},
+	{"shards": 3, "crystals": 8, "scan": 2.0, "coins": 45},
+	{"shards": 4, "scan": 2.5, "coins": 80},
+]
+
+
+## Раз в игровой день (вызывается из тика засад): сканирование идёт днями.
+func memory_daily() -> void:
+	if memory_scan_left > 0.0:
+		memory_scan_left = maxf(0.0, memory_scan_left - 1.0)
+		if memory_scan_left <= 0.0:
+			_memory_scan_done()
+
+
+func _memory_scan_done() -> void:
+	var st: Dictionary = MEMORY_STAGES[clampi(memory_stage - 1, 0, MEMORY_STAGES.size() - 1)]
+	var coins: int = int(st.get("coins", 30))
+	if coins_sink.is_valid():
+		coins_sink.call(coins)
+	events.append({"type": "memory_scan_done", "stage": memory_stage,
+			"coins": coins})
+	memory_stage += 1
+	if memory_stage > MEMORY_STAGES.size():
+		memory_stage = 4   # вся память собрана — откровение
+		events.append({"type": "memory_revealed"})
+		_chron("chron.memory_revealed")

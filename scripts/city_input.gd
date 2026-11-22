@@ -46,6 +46,10 @@ func _unhandled_input(event: InputEvent) -> void:
 			if _near_temple:
 				_pray_at_temple()
 				return
+			# v1.81: староста-голем — диалог «Память мира» (док 18)
+			if _near_elder:
+				_open_elder_dialog()
+				return
 			# ручной труд героя (правки v1.12.2): стройка/дерево/скала
 			if _hero_act():
 				return

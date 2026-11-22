@@ -414,6 +414,9 @@ func _on_boss_died(enemy) -> void:
 	if boss_drop != "":
 		_spawn_pickup("item", boss_drop, enemy.position + Vector2(0, -18))
 	# v1.67: реликвия архибоссов — permanent +1 стат (герой подберёт сам)
+	# v1.81: осколок памяти мира — староста сканирует их (док 18)
+	Game.add_item("memory_shard", 1)
+	hud.toast(Loc.t("dungeon.memory_shard"))
 	var boss_id := String(enemy.p.get("id", ""))
 	var relic_stat := String(Game.magic.cfg.get("relic_stats", {}).get(boss_id, ""))
 	if relic_stat == "":

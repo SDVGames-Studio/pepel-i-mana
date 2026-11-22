@@ -59,6 +59,7 @@ var _weather_fx = null          # погода: дождь/снег/туман/�
 var _sky_shadows: Node2D = null # тени от солнца/луны (v1.27)
 var _sky: Node2D = null         # небо: солнце/луна/звёзды, характер дня (v1.27)
 var _near_temple := false       # храм рядом — E: молитва (M14-H)
+var _near_elder := false        # v1.81: староста-голем рядом — E: Память мира
 var _hero_tree: Dictionary = {} # дерево у ног героя (E — рубить, правки v1.12.2)
 var _hero_rock: Dictionary = {} # скала/руда рядом (E — добыть)
 var _hero_crop: Dictionary = {} # спелая грядка рядом (E — собрать, этап 2, аспект 3)
@@ -457,6 +458,13 @@ func _process(delta: float) -> void:
 			and hero.position.distance_to(map.tile_center_px(map.anomaly_tile)) < map.ts * 1.7
 	_near_armory = {} if guest else _armory_near_hero()
 	_near_temple = not guest and _near_building_kind("temple")
+	# v1.81: староста-голем рядом — диалог «Память мира»
+	_near_elder = false
+	if not guest:
+		for r in sim.residents:
+			if bool(r.get("golem", false)):
+				_near_elder = hero.position.distance_to(r["pos"] as Vector2) < float(map.ts) * 1.7
+				break
 	# ручной труд героя (правки v1.12.2): что можно потрогать по E
 	# (в чужом поселении герой не работает — «Мир v2», этап 3)
 	_hero_work_cd = maxf(0.0, _hero_work_cd - delta)
@@ -482,6 +490,8 @@ func _process(delta: float) -> void:
 			hud.set_hint(Loc.t("city.dungeon_locked_hint") % (Game.dungeon_lock_day - sim.day_number()))
 	elif not _near_armory.is_empty():
 		hud.set_hint(Loc.t("city.armory_hint") % int(cfg.get("hero_kit", {}).get("cost_metal", 3)))
+	elif _near_elder:
+		hud.set_hint(Loc.t("elder.mem_hint"))
 	elif _near_temple:
 		hud.set_hint(Loc.t("city.temple_hint"))
 	elif not _hero_site.is_empty():

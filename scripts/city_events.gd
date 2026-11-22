@@ -221,6 +221,11 @@ func _process_events() -> void:
 			"ambush_cleared":
 				Game.coins += int(ev.get("coins", 0))
 				hud.toast(Loc.t("city.ambush_cleared") % int(ev.get("coins", 0)))
+			"memory_scan_done":
+				Game.coins += int(ev.get("coins", 0))
+				hud.toast(Loc.t("elder.mem_scan_done") % int(ev.get("coins", 0)))
+			"memory_revealed":
+				_letter("memory", Loc.t("elder.mem_revealed"))
 			"died":
 				hud.toast(Loc.t("city.died_toast") % String(ev["name"]))
 			"wounded":
@@ -588,3 +593,92 @@ func _try_ruin_loot() -> bool:
 		return true
 	return false
 
+
+
+## ==================== ПАМЯТЬ МИРА (v1.81, док 18) ==========================
+## Староста-голем (он же «доска контрактов»): задания на поиск утраченной
+## памяти мира. Осколки падают с боссов данжей. Сданные осколки староста
+## СКАНИРУЕТ несколько дней (сам называет срок), затем награда и след
+## стадия; после третьей — откровение про эпицентр.
+
+func _elder_pos() -> Vector2:
+	for r in sim.residents:
+		if bool(r.get("golem", false)):
+			return r["pos"] as Vector2
+	return map.tile_center_px(map.spawn_tile)
+
+
+func _open_elder_dialog() -> void:
+	var lines: Array = []
+	var choices: Array = []
+	var shard_n: int = Game.count_item("memory_shard")
+	var stage: int = int(sim.get("memory_stage"))
+	match stage:
+		0:
+			lines.append(Loc.t("elder.mem_intro"))
+			lines.append(Loc.t("elder.mem_task") % 2)
+			choices.append({"text": Loc.t("elder.mem_accept"),
+					"action": func() -> void: sim.set("memory_stage", 1)})
+		4:
+			lines.append(Loc.t("elder.mem_done"))
+		_:
+			var st: Dictionary = sim.MEMORY_STAGES[clampi(stage - 1, 0, 2)]
+			var need: int = int(st.get("shards", 2))
+			var brought: int = int(sim.get("memory_brought"))
+			if float(sim.get("memory_scan_left")) > 0.0:
+				# сканирование идёт: староста сам называет срок
+				lines.append(Loc.t("elder.mem_scanning") % [
+						maxi(1, int(ceil(float(sim.get("memory_scan_left"))))),
+						int(sim.get("memory_shards_in_scan"))])
+			elif brought >= need:
+				# осколки сданы — стадия 2 требует ещё и кристаллы
+				var need_cr: int = int(st.get("crystals", 0))
+				if need_cr > 0 and not bool(sim.get("memory_crystals_ready")):
+					lines.append(Loc.t("elder.mem_shards_ok") % need)
+					lines.append(Loc.t("elder.mem_crystals") % [
+							int(float(sim.res.get("crystal", 0.0))), need_cr])
+					choices.append({"text": Loc.t("elder.mem_give_crystals") % need_cr,
+							"action": func() -> void: _elder_give_crystals(st)})
+				else:
+					_start_memory_scan(st)
+			else:
+				lines.append(Loc.t("elder.mem_progress") % [brought, need])
+				var left: int = need - brought
+				lines.append(Loc.t("elder.mem_in_bag") % shard_n)
+				if shard_n > 0:
+					choices.append({"text": Loc.t("elder.mem_give") % mini(shard_n, left),
+							"action": func() -> void: _elder_take_shards(mini(shard_n, left))})
+				if shard_n < left:
+					lines.append(Loc.t("elder.mem_need_more") % left)
+	choices.append({"text": Loc.t("elder.mem_close"),
+			"action": func() -> void: pass})
+	hud.open_choice(Loc.t("elder.mem_title"), lines, choices)
+
+
+func _elder_take_shards(n: int) -> void:
+	Game.remove_item("memory_shard", n)
+	sim.set("memory_brought", int(sim.get("memory_brought")) + n)
+	hud.toast(Loc.t("elder.mem_gave") % n)
+	_open_elder_dialog()   # обновить диалог — можно сразу докладывать дальше
+
+
+func _elder_give_crystals(st: Dictionary) -> void:
+	var need_cr: int = int(st.get("crystals", 0))
+	if float(sim.res.get("crystal", 0.0)) < float(need_cr):
+		hud.toast(Loc.t("elder.mem_need_crystals") % need_cr)
+		return
+	sim.res["crystal"] = maxf(0.0, float(sim.res.get("crystal", 0.0)) - float(need_cr))
+	sim.set("memory_crystals_ready", true)
+	_start_memory_scan(st)
+
+
+func _start_memory_scan(st: Dictionary) -> void:
+	var days: float = float(st.get("scan", 1.5))
+	var need: int = int(st.get("shards", 2))
+	sim.set("memory_shards_in_scan", need)
+	sim.set("memory_scan_left", days)
+	sim.set("memory_brought", 0)
+	sim.set("memory_crystals_ready", false)
+	# староста сам называет срок (фидбек: «он говорит сколько будет изучать»)
+	hud.toast(Loc.t("elder.mem_scan_start") % [
+			String.num(days, 1), need])

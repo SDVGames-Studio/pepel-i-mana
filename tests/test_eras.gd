@@ -728,7 +728,8 @@ func _test_m9() -> void:
 			or String(vdata.get("stage", "")).begins_with("Жители кита")
 			or String(vdata.get("stage", "")).begins_with("Монстры и герой")
 			or String(vdata.get("stage", "")).begins_with("Композитор биомов")
-			or String(vdata.get("stage", "")).begins_with("Сезоны и вода")),
+			or String(vdata.get("stage", "")).begins_with("Сезоны и вода")
+			or String(vdata.get("stage", "")).begins_with("Память мира")),
 			"проект в программе «Мир v2/Новый мир v2/Живая земля» (версия %s)" % (String(vdata.get("version", "?")) if vdata is Dictionary else "?"))
 
 
