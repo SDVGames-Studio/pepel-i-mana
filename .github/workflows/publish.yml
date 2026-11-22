@@ -95,7 +95,7 @@ jobs:
             build/linux/PepelIMana.x86_64 \
             build/PepelIMana-web.zip \
             --repo "$GITHUB_REPOSITORY" \
-            --title "Пепел и Мана — v${{ steps.version.outputs.version }}" \
+            --title "Пепел и Благодать — v${{ steps.version.outputs.version }}" \
             --target "$GITHUB_SHA" \
             --notes "Автосборка из main (v${{ steps.version.outputs.version }}, коммит $GITHUB_SHA).
 
@@ -118,7 +118,7 @@ jobs:
         run: |
           gh release delete "v$V"             --repo "$GITHUB_REPOSITORY"             --cleanup-tag             --yes 2>/dev/null || true
 
-          gh release create "v$V"             build/PepelIMana.exe             build/linux/PepelIMana.x86_64             build/PepelIMana-web.zip             --repo "$GITHUB_REPOSITORY"             --title "Пепел и Мана — v$V"             --target "$GITHUB_SHA"             --notes "Версия v$V — все платформы из одного коммита.
+          gh release create "v$V"             build/PepelIMana.exe             build/linux/PepelIMana.x86_64             build/PepelIMana-web.zip             --repo "$GITHUB_REPOSITORY"             --title "Пепел и Благодать — v$V"             --target "$GITHUB_SHA"             --notes "Версия v$V — все платформы из одного коммита.
 
           - **Windows**: PepelIMana.exe — скачать и запустить.
           - **Linux**: PepelIMana.x86_64 — chmod +x && ./PepelIMana.x86_64.
