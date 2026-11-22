@@ -77,6 +77,7 @@ var hero_alive := false         # герой в городе и на ногах
 var animals: Array = []         # дикие животные для охоты: {id, pos, target, path, idle}
 var livestock: Array = []       # скот на пастбищах (M10): {id, kind, pasture, pos, target, path, idle, adult, age}
 var caravans_out: Array = []    # отправленные караваны (M10): {res, amount, left, coins, dest}
+var trader_support := 0         # v1.83: спасённые караваны — обоз с подмогой при волне
 var caravan_here := false       # пришёл торговый караван в город (M10, рынок)
 var _last_caravan_day := -99
 # торговые палатки (этап 2, аспект 4): бродячие торговцы-нейтралы у палаток

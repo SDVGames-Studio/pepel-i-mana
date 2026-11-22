@@ -631,7 +631,7 @@ func roll_encounter(biome := "") -> String:
 			return String(k)
 	return ""
 
-var _enc_lull := 0   # v1.80: дней затишья после встречи
+var _enc_lull := 0   # (v1.83 рядом с ней живёт bandit_heat — последствия караванов)   # v1.80: дней затишья после встречи
 
 
 ## Раненый путник: помочь едой из пула города (+репутация торговцев).
@@ -886,3 +886,6 @@ func _read_json_file(path: String) -> Variant:
 	if f == null:
 		return {}
 	return JSON.parse_string(f.get_as_text())
+
+
+var bandit_heat := 0   # v1.83: последствия игнорированных караванов (лагеря крепнут)

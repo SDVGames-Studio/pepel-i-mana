@@ -46,6 +46,7 @@ var dungeon_scale := 1.0         # масштаб локации (руины/л�
 var poi_id := 0                  # id точки интереса, из которой вошли (0 — город)
 var poi_coins := 0               # монеты за зачистку лагеря/руин (M8)
 var dungeon_no_boss := false     # v1.82: данж без босса (сокровищница/поверхностные руины)
+var dungeon_kind := ""           # v1.83: тип данжа "" / vault / archive / den (док 18)
 var ruin_gate_locks := {}        # v1.82: тайл руин-ворот -> день, когда дверь снова откроется
 var world_hero_tile := Vector2i(-1, -1)   # тайл героя на карте мира
 var city_return_tile := Vector2i(-1, -1)  # тайл героя при возврате в город

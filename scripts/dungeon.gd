@@ -201,8 +201,29 @@ func _nearest_chest(radius: float):
 	return best
 
 
+func _ready() -> void:
+	super._ready()
+	# v1.83: тост типа данжа (сокровищница/архив/логово — руинные ворота)
+	match Game.dungeon_kind:
+		"vault":
+			hud.toast(Loc.t("dungeon.kind_vault"))
+		"archive":
+			hud.toast(Loc.t("dungeon.kind_archive"))
+		"den":
+			hud.toast(Loc.t("dungeon.kind_den"))
+
+
 func _try_interact() -> void:
+	# v1.83: рычаги-загадки (док 18): главный отпирает выход, рычаг
+	# риска открывает кладку и поднимает засаду
+	var lever = _nearest_lever(float(ts) * 1.5)
+	if lever != null:
+		_pull_lever(lever)
+		return
 	if _near_ladder():
+		if _exit_locked:
+			hud.toast(Loc.t("dungeon.exit_sealed"))
+			return
 		if _exit_arm > 0.0:
 			_leave_dungeon()
 			return
@@ -530,6 +551,7 @@ func _clear_location_context() -> void:
 	Game.forced_biome = ""
 	Game.dungeon_scale = 1.0
 	Game.dungeon_no_boss = false
+	Game.dungeon_kind = ""
 
 
 func _item_by_id(item_id: String) -> Dictionary:
@@ -567,3 +589,77 @@ func _tick_escape(delta: float) -> bool:
 		get_tree().change_scene_to_file(_return_scene())
 		return true
 	return false
+
+
+## ==================== ЗАГАДКИ ДАНЖА (v1.83, док 18) ========================
+## Обычный данж с боссом в половине случаев запирает выход: главный рычаг
+## стоит в предпоследнем зале. Второй рычаг (риск/награда) открывает
+## бонусную кладку — и поднимает засаду вокруг неё.
+
+var _exit_locked := false
+var _levers_placed := false
+
+
+func _setup_puzzle() -> void:
+	if Game.dungeon_kind != "" or biome.get("boss", "") == "":
+		return   # загадка только в полноценных данжах с боссом
+	if randf() > 0.5:
+		return
+	_exit_locked = true
+	var rooms: Array = gen.rooms
+	if rooms.size() < 3:
+		_exit_locked = false
+		return
+	# главный рычаг — предпоследний зал (дальний от входа)
+	var c_main: Vector2i = gen.room_center(rooms[rooms.size() - 2])
+	_spawn_lever("main", _tile_to_pos(c_main) + Vector2(float(ts) * 0.5, 0))
+	# рычаг риска — второй зал от входа
+	if rooms.size() >= 4:
+		var c_bonus: Vector2i = gen.room_center(rooms[1])
+		_spawn_lever("bonus", _tile_to_pos(c_bonus) + Vector2(float(ts) * 0.5, 0))
+	hud.toast(Loc.t("dungeon.puzzle_hint"))
+	_levers_placed = true
+
+
+func _spawn_lever(id: String, pos: Vector2) -> void:
+	var lever = load("res://scripts/dungeon_lever.gd").new()
+	lever.lever_id = id
+	lever.position = pos
+	add_child(lever)
+
+
+func _nearest_lever(radius: float):
+	var best = null
+	var best_d := radius
+	for l in get_tree().get_nodes_in_group("levers"):
+		if l.pulled:
+			continue
+		var d: float = l.global_position.distance_to(hero.global_position)
+		if d < best_d:
+			best_d = d
+			best = l
+	return best
+
+
+func _pull_lever(l) -> void:
+	l.pulled = true
+	l.queue_redraw()
+	SfxLib.play("rune")
+	if String(l.lever_id) == "main":
+		_exit_locked = false
+		hud.toast(Loc.t("dungeon.lever_main"))
+		_add_fx("ring", Color(0.6, 0.9, 1.0), 60.0, 0.9, l.global_position)
+	else:
+		# риск/награда: бонусная кладка + засада из трёх тварей
+		var chest = ChestScript.new()
+		chest.position = l.global_position + Vector2(0, float(ts) * 0.6)
+		chest.add_to_group("chests")
+		add_child(chest)
+		for i in 3:
+			var enemy = EnemyScript.new()
+			enemy.setup(_scaled_enemy(_pick_enemy_data()))
+			enemy.position = l.global_position + Vector2.from_angle(TAU * float(i) / 3.0) * float(ts) * 1.4
+			enemy.hero = hero
+			enemy.died.connect(_on_enemy_died)
+			add_child(enemy)
+		hud.toast(Loc.t("dungeon.lever_bonus"))

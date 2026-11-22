@@ -451,6 +451,14 @@ func _open_encounter(kind: String) -> void:
 		"pilgrim":
 			lines.append(Loc.t("enc.pilgrim.text"))
 			choices.append({"text": Loc.t("enc.pilgrim.donate"), "action": func() -> void: _enc_pilgrim()})
+		"caravan_attack":
+			# v1.82: последствия — защитил (бой + репутация торговцев) или
+			# прошёл мимо (караван разграбят, торговцы запомнят)
+			lines.append(Loc.t("enc.caravan_attack.text"))
+			choices.append({"text": Loc.t("enc.caravan_attack.defend"),
+					"action": func() -> void: _enc_caravan_defend()})
+			choices.append({"text": Loc.t("enc.caravan_attack.ignore"),
+					"action": func() -> void: _enc_caravan_ignore()})
 		_:
 			travel["hold"] = false
 			return
@@ -461,6 +469,36 @@ func _open_encounter(kind: String) -> void:
 func _enc_resume() -> void:
 	if not travel.is_empty():
 		travel["hold"] = false
+
+
+## Караван под атакой: защитить — бой в лагере бандитов + репутация.
+func _enc_caravan_defend() -> void:
+	Game.return_scene = "res://scenes/world.tscn"
+	Game.world_hero_tile = map.tile_of_px(hero_px)
+	Game.poi_id = -1
+	Game.forced_biome = "bandit_camp"
+	Game.dungeon_scale = 0.8
+	Game.poi_coins = sim.encounter_ambush_coins()
+	sim.add_rep("traders", 10)
+	# v1.83: последствия — торговцы пришлют обоз с подмогой при следующей волне
+	if Game.city_sim != null:
+		Game.city_sim.trader_support += 1
+	_chron("chron.caravan_defended")
+	travel = {}
+	get_tree().change_scene_to_file(DUNGEON_SCENE)
+
+
+## Прошёл мимо: караван разграбят — торговцы запомнят (последствия).
+func _enc_caravan_ignore() -> void:
+	sim.add_rep("traders", -6)
+	# v1.83: последствия — бандиты крепнут: лагеря набирают силу
+	sim.bandit_heat += 1
+	for poi in Game.world_map.pois:
+		if String(poi["kind"]) == "camp":
+			poi["strength"] = float(poi["strength"]) + 1.5
+	hud.toast(Loc.t("enc.caravan_attack.bands_grew"))
+	_chron("chron.caravan_ignored")
+	_enc_resume()
 
 
 ## Засада: мини-бой в сцене данжа, обратно на карту в ту же точку.

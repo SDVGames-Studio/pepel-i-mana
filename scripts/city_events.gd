@@ -221,6 +221,8 @@ func _process_events() -> void:
 			"ambush_cleared":
 				Game.coins += int(ev.get("coins", 0))
 				hud.toast(Loc.t("city.ambush_cleared") % int(ev.get("coins", 0)))
+			"trader_support_arrived":
+				hud.toast(Loc.t("city.trader_support"))
 			"memory_scan_done":
 				Game.coins += int(ev.get("coins", 0))
 				hud.toast(Loc.t("elder.mem_scan_done") % int(ev.get("coins", 0)))
@@ -714,9 +716,13 @@ func _try_ruin_gate() -> bool:
 	Game.return_scene = "res://scenes/city.tscn"
 	Game.forced_biome = "ruins"
 	Game.dungeon_scale = 0.55
-	Game.dungeon_no_boss = true   # сокровищница: босса нет, лут и осколки знаний
+	Game.dungeon_no_boss = true   # все три варианта — без босса (док 18)
+	# v1.83: тип подземелья за дверью — по тайлу (сокровищница/архив/логово)
+	var gh := absi((t.x * 92837111) ^ (t.y * 689287499)) % 100
+	Game.dungeon_kind = "vault" if gh < 40 else ("archive" if gh < 70 else "den")
 	Game.poi_coins = 8 + randi() % 7
 	Game.poi_id = 0
+	hud.toast(Loc.t("city.gate_kind_" + Game.dungeon_kind))
 	Game.ruin_gate_locks[t] = int(sim.day_number()) + 4
 	sim.speed = 1
 	sim.paused = false

@@ -116,6 +116,7 @@ func _ready() -> void:
 	_build_walls()
 	_build_exit()
 	_build_chests()
+	_build_archive()
 	_build_crystals()
 	_build_hero()
 	_build_enemies()
@@ -376,6 +377,11 @@ func _build_hero() -> void:
 
 func _apply_equipment() -> void:
 	pass
+
+## v1.83: архив знаний — пьедесталы памяти (заглушка; тело в dungeon_build).
+func _build_archive() -> void:
+	pass
+
 
 func _build_enemies() -> void:
 	pass

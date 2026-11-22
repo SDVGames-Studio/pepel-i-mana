@@ -52,6 +52,42 @@ func _build_chests() -> void:
 		chest.position = _tile_to_pos(tile)
 		chest.add_to_group("chests")
 		add_child(chest)
+	# v1.83: сокровищница — два дополнительных сундука в случайных залах
+	if Game.dungeon_kind == "vault":
+		var placed := 0
+		var guard := 0
+		while placed < 2 and guard < 120:
+			guard += 1
+			var t := Vector2i(
+					int(randf_range(2.0, float(gen.w) - 2.0)),
+					int(randf_range(2.0, float(gen.h) - 2.0)))
+			if gen.is_floor(t):
+				var chest2 = ChestScript.new()
+				chest2.position = _tile_to_pos(t)
+				chest2.add_to_group("chests")
+				add_child(chest2)
+				placed += 1
+
+
+## v1.83: «архив знаний» — пьедесталы памяти (осколки без боя), свитки-декор.
+func _build_archive() -> void:
+	if Game.dungeon_kind != "archive":
+		return
+	var placed := 0
+	var guard := 0
+	while placed < 3 and guard < 200:
+		guard += 1
+		var t := Vector2i(
+				int(randf_range(2.0, float(gen.w) - 2.0)),
+				int(randf_range(2.0, float(gen.h) - 2.0)))
+		if not gen.is_floor(t):
+			continue
+		var pos := _tile_to_pos(t)
+		_spawn_pickup("item", "memory_shard", pos)
+		# пьедестал-декор: постамент знания (рисуется пикапом сверху — ок)
+		placed += 1
+	if placed > 0 and hud != null:
+		hud.toast(Loc.t("dungeon.archive_hint"))
 
 
 func _build_crystals() -> void:
@@ -129,17 +165,23 @@ func _scaled_enemy(data: Dictionary) -> Dictionary:
 
 
 func _build_enemies() -> void:
-	for i in gen.enemy_spawns.size():
-		var enemy = EnemyScript.new()
-		enemy.setup(_scaled_enemy(_pick_enemy_data()))
-		enemy.position = _tile_to_pos(gen.enemy_spawns[i])
-		enemy.hero = hero
-		enemy.died.connect(_on_enemy_died)
-		# стража гнезда патрулирует (M12): в лагере бандитов часть врагов
-		# обходит точки рядом со своим постом, пока герой далеко
-		if Game.forced_biome == "bandit_camp" and i % 2 == 0:
-			enemy.patrol = _patrol_points(gen.enemy_spawns[i])
-		add_child(enemy)
+	# v1.83: архив знаний — совсем без боя (только память и ловушки);
+	# логово — врагов вдвое больше, но босса нет
+	if Game.dungeon_kind == "archive":
+		return
+	var rounds := 2 if Game.dungeon_kind == "den" else 1
+	for r in rounds:
+		for i in gen.enemy_spawns.size():
+			var enemy = EnemyScript.new()
+			enemy.setup(_scaled_enemy(_pick_enemy_data()))
+			enemy.position = _tile_to_pos(gen.enemy_spawns[i])
+			enemy.hero = hero
+			enemy.died.connect(_on_enemy_died)
+			# стража гнезда патрулирует (M12): в лагере бандитов часть врагов
+			# обходит точки рядом со своим постом, пока герой далеко
+			if Game.forced_biome == "bandit_camp" and i % 2 == 0:
+				enemy.patrol = _patrol_points(gen.enemy_spawns[i])
+			add_child(enemy)
 
 
 ## Точки патруля: до 3 свободных тайлов в радиусе 3 от поста.
@@ -241,8 +283,8 @@ func _build_traps() -> void:
 ## Босс биома (M7): один, в дальней комнате у выхода, гарантированный лут.
 func _build_boss() -> void:
 	var boss_id := String(biome.get("boss", ""))
-	# v1.82: данж без босса (сокровищницы, поверхностные руины)
-	if Game.dungeon_no_boss:
+	# v1.82/83: данж без босса — сокровищницы, архив, логово, руинные ворота
+	if Game.dungeon_no_boss or Game.dungeon_kind != "":
 		return
 	if boss_id == "":
 		return
