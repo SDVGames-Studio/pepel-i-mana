@@ -997,13 +997,9 @@ func _update_ambush_units(dt: float, tcfg: Dictionary) -> void:
 		_ambush_day = int(day)
 		ambush_tick_day()
 		memory_daily()
-		# v1.85: в автотестах (PEPEL_TEST_MAPS) случайные системы молчат —
-		# ночные гости крадут еду и ломают детерминированные замеры (урожай)
-		var test_quiet := OS.has_environment("PEPEL_TEST_MAPS") 				and not OS.has_environment("PEPEL_HIVE_ON")
-		if not test_quiet:
-			mold_daily()
-			night_guests_daily()
-			bandit_tribute_daily()
+		mold_daily()
+		night_guests_daily()
+		bandit_tribute_daily()
 	if ambush_sites.is_empty():
 		return
 	var i := 0
@@ -1139,7 +1135,7 @@ var mold_day := 0              # день последнего тика плес
 
 
 func mold_daily() -> void:
-	if map == null:
+	if map == null or OS.has_environment("PEPEL_TEST_MAPS"):
 		return
 	var mcfg: Dictionary = cfg.get("mold", {})
 	# вспышка: загрязнение перевалило порог — сеются первые клетки на диком краю
@@ -1252,6 +1248,10 @@ func mold_cure(t: Vector2i) -> void:
 ## еду, могут изранить жильца. Страж на посту отгоняет гостью (фидбек:
 ## «ночью город обороняется, днём работает» — игрок распределяет стражей).
 func night_guests_daily() -> void:
+	# v1.85: автотесты детерминированы — воровство еды ломает замеры
+	# (гейт здесь: test_hive оставляет PEPEL_HIVE_ON=1 после себя)
+	if OS.has_environment("PEPEL_TEST_MAPS"):
+		return
 	var guards := 0
 	for r in residents:
 		if String(r["prof"]) == "guard" and String(r.get("ail", "")) != "dead":
@@ -1286,6 +1286,8 @@ var tribute_pending := false
 
 
 func bandit_tribute_daily() -> void:
+	if OS.has_environment("PEPEL_TEST_MAPS"):
+		return
 	if tribute_pending:
 		if int(day) >= tribute_due:
 			tribute_pending = false
