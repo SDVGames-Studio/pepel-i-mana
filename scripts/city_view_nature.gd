@@ -70,6 +70,7 @@ func _draw_world_sorted() -> void:
 	dyn.sort_custom(func(a, b) -> bool: return float(a[0]) < float(b[0]))
 	_draw_campfire()
 	_draw_founded_cemetery()   # могилы кладбища без здания (v1.23)
+	_draw_ruin_gates(ts)       # v1.82: двери закрытых руин
 	# слияние двух отсортированных списков: O(n+m) вместо sort всей карты.
 	# v1.50 (FPS): статика отсортирована по y — стартуем двоичным поиском
 	# с первой видимой строки и выходим, как только ушли ниже экрана
@@ -534,3 +535,33 @@ func _draw_world_exit() -> void:
 ## аспект 1) + прямоугольник 2×2 с входом (этап 2, аспект 2): заливка
 ## цвета категории, тёмная кайма, дверной проём у входа, окно светится,
 ## если кто-то спит внутри. Игровые метки сохранены.
+
+
+## v1.82: дверь на «закрытых руинах» — вход в поверхностный данж-
+## сокровищницу. Запечатанная дверь светится кулоном-печатью.
+func _draw_ruin_gates(ts: float) -> void:
+	var x0 := clampi(int(_vis.position.x / ts) - 1, 0, map.w - 1)
+	var y0 := clampi(int(_vis.position.y / ts) - 1, 0, map.h - 1)
+	var x1 := clampi(int(_vis.end.x / ts) + 1, 0, map.w - 1)
+	var y1 := clampi(int(_vis.end.y / ts) + 1, 0, map.h - 1)
+	for y in range(y0, y1 + 1):
+		for x in range(x0, x1 + 1):
+			var t := Vector2i(x, y)
+			if not map.is_gate_ruin(t):
+				continue
+			var c: Vector2 = map.tile_center_px(t)
+			# v1.82: вид не видит методы city-цепочки — печать прямо из сейва
+			var locked: bool = int(Game.ruin_gate_locks.get(t, 0)) > int(sim.day_number())
+			# косяки и перекладина двери
+			draw_rect(Rect2(c + Vector2(-ts * 0.30, -ts * 0.36), Vector2(ts * 0.09, ts * 0.5)), Color("#6d6455"))
+			draw_rect(Rect2(c + Vector2(ts * 0.21, -ts * 0.36), Vector2(ts * 0.09, ts * 0.5)), Color("#6d6455"))
+			draw_rect(Rect2(c + Vector2(-ts * 0.34, -ts * 0.44), Vector2(ts * 0.68, ts * 0.1)), Color("#7a7161"))
+			if locked:
+				# печать-кулон: дверь запечатана
+				var pulse: float = 0.5 + 0.5 * sin(_anim_time * 2.4)
+				draw_circle(c, ts * 0.14, Color(0.5, 0.85, 0.9, 0.35 + 0.2 * pulse))
+				draw_circle(c, ts * 0.07, Color(0.85, 0.95, 1.0, 0.9))
+			else:
+				# открытая дверь в темноту — зовёт внутрь
+				draw_rect(Rect2(c + Vector2(-ts * 0.22, -ts * 0.3), Vector2(ts * 0.44, ts * 0.44)), Color(0.04, 0.03, 0.02, 0.95))
+				draw_circle(c + Vector2(0, -ts * 0.08), ts * 0.09, Color(1.0, 0.75, 0.35, 0.5 + 0.2 * sin(_anim_time * 3.0)))

@@ -152,3 +152,11 @@ func _plant_swamp_trees(centers: Array, rng: RandomNumberGenerator) -> void:
 func _near_swamp_water(p: Vector2i) -> bool:
 	return false
 
+
+## v1.82: «закрытые руины» — каждый третий руинный тайл имеет дверь в
+## поверхностный данж-сокровищницу (детерминировано по тайлу).
+func is_gate_ruin(t: Vector2i) -> bool:
+	if not in_bounds(t) or int(grid[t.y][t.x]) != TILE_RUIN:
+		return false
+	var h := absi((t.x * 73856093) ^ (t.y * 19349663))
+	return h % 3 == 0

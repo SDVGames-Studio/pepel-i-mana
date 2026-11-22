@@ -241,6 +241,9 @@ func _build_traps() -> void:
 ## Босс биома (M7): один, в дальней комнате у выхода, гарантированный лут.
 func _build_boss() -> void:
 	var boss_id := String(biome.get("boss", ""))
+	# v1.82: данж без босса (сокровищницы, поверхностные руины)
+	if Game.dungeon_no_boss:
+		return
 	if boss_id == "":
 		return
 	var boss_data := _enemy_by_id(boss_id)

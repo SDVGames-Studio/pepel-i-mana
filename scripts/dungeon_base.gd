@@ -174,6 +174,10 @@ func _process(delta: float) -> void:
 	if get_tree().paused or hero.dead:
 		return
 	_zone_time += delta
+	# v1.82: обвал после смерти босса — «из последней комнаты надо быстро
+	# выбираться» (док 18); тело тика в dungeon.gd
+	if _tick_escape(delta):
+		return
 	_update_zones()
 	_update_fog()
 	_update_mana_hunger(delta)
@@ -431,3 +435,9 @@ func _read_json(path: String) -> Variant:
 func _add_fx(kind: String, col: Color, radius: float, duration: float,
 		pos: Vector2, points: PackedVector2Array = PackedVector2Array()) -> void:
 	pass
+
+
+## v1.82: тик обвала после босса — true = сцена сменилась (дальше не тикать).
+## Заглушка для парсера; тело в dungeon.gd.
+func _tick_escape(delta: float) -> bool:
+	return false

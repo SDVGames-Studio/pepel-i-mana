@@ -682,3 +682,43 @@ func _start_memory_scan(st: Dictionary) -> void:
 	# староста сам называет срок (фидбек: «он говорит сколько будет изучать»)
 	hud.toast(Loc.t("elder.mem_scan_start") % [
 			String.num(days, 1), need])
+
+
+## v1.82: закрытые руины НА ПОВЕРХНОСТИ (док 18, волна 2): дверь в стене
+## руин ведёт в небольшой данж-сокровищницу без босса. После спуска дверь
+## запечатывается на 4 дня (один заход за раз).
+func _near_gate_ruin() -> Vector2i:
+	var t: Vector2i = map.tile_of_px(hero.position)
+	for d in [Vector2i(0, 0), Vector2i(1, 0), Vector2i(-1, 0),
+			Vector2i(0, 1), Vector2i(0, -1)]:
+		var n: Vector2i = t + d
+		if map.is_gate_ruin(n):
+			return n
+	return Vector2i(-1, -1)
+
+
+func _gate_locked_left(t: Vector2i) -> int:
+	var until: int = int(Game.ruin_gate_locks.get(t, 0))
+	return maxi(0, until - int(sim.day_number()))
+
+
+func _try_ruin_gate() -> bool:
+	var t := _near_gate_ruin()
+	if t == Vector2i(-1, -1):
+		return false
+	var left := _gate_locked_left(t)
+	if left > 0:
+		hud.toast(Loc.t("city.gate_sealed") % left)
+		return true
+	Game.city_return_tile = map.tile_of_px(hero.position)
+	Game.return_scene = "res://scenes/city.tscn"
+	Game.forced_biome = "ruins"
+	Game.dungeon_scale = 0.55
+	Game.dungeon_no_boss = true   # сокровищница: босса нет, лут и осколки знаний
+	Game.poi_coins = 8 + randi() % 7
+	Game.poi_id = 0
+	Game.ruin_gate_locks[t] = int(sim.day_number()) + 4
+	sim.speed = 1
+	sim.paused = false
+	get_tree().change_scene_to_file(DUNGEON_SCENE)
+	return true

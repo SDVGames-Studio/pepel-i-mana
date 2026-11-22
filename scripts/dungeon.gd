@@ -417,6 +417,10 @@ func _on_boss_died(enemy) -> void:
 	# v1.81: осколок памяти мира — староста сканирует их (док 18)
 	Game.add_item("memory_shard", 1)
 	hud.toast(Loc.t("dungeon.memory_shard"))
+	# v1.82: ОБВАЛ — из последней комнаты нужно быстро выбираться (док 18)
+	_escape_left = 40.0
+	SfxLib.play("raid_warn")
+	hud.toast(Loc.t("dungeon.collapse"))
 	var boss_id := String(enemy.p.get("id", ""))
 	var relic_stat := String(Game.magic.cfg.get("relic_stats", {}).get(boss_id, ""))
 	if relic_stat == "":
@@ -525,6 +529,7 @@ func _clear_location_context() -> void:
 	Game.return_scene = ""
 	Game.forced_biome = ""
 	Game.dungeon_scale = 1.0
+	Game.dungeon_no_boss = false
 
 
 func _item_by_id(item_id: String) -> Dictionary:
@@ -536,3 +541,29 @@ func _item_by_id(item_id: String) -> Dictionary:
 
 func _read_json(path: String) -> Variant:
 	return JSON.parse_string(FileAccess.open(path, FileAccess.READ).get_as_text())
+
+
+## v1.82: обвал данжа после смерти босса: 40 секунд на побег к выходу.
+## Успел — весь лут; не успел — половина лута потеряна, героя выбрасывает.
+var _escape_left := -1.0
+var _escape_last := -1
+
+
+func _tick_escape(delta: float) -> bool:
+	if _escape_left < 0.0:
+		return false
+	_escape_left = maxf(0.0, _escape_left - delta)
+	var remain := int(ceil(_escape_left))
+	if remain != _escape_last:
+		_escape_last = remain
+		hud.set_hint(Loc.t("dungeon.escape_hint") % maxi(1, remain))
+		if remain <= 10 and remain > 0:
+			SfxLib.play("alarm")
+	if _escape_left <= 0.0:
+		_escape_left = -1.0
+		Game.lose_half_loot()
+		hud.toast(Loc.t("dungeon.escape_failed"))
+		_clear_location_context()
+		get_tree().change_scene_to_file(_return_scene())
+		return true
+	return false

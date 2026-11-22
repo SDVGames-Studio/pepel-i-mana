@@ -60,6 +60,7 @@ var _sky_shadows: Node2D = null # тени от солнца/луны (v1.27)
 var _sky: Node2D = null         # небо: солнце/луна/звёзды, характер дня (v1.27)
 var _near_temple := false       # храм рядом — E: молитва (M14-H)
 var _near_elder := false        # v1.81: староста-голем рядом — E: Память мира
+var _near_gate := Vector2i(-1, -1)  # v1.82: тайл закрытых руин-ворот рядом
 var _hero_tree: Dictionary = {} # дерево у ног героя (E — рубить, правки v1.12.2)
 var _hero_rock: Dictionary = {} # скала/руда рядом (E — добыть)
 var _hero_crop: Dictionary = {} # спелая грядка рядом (E — собрать, этап 2, аспект 3)
@@ -465,6 +466,15 @@ func _process(delta: float) -> void:
 			if bool(r.get("golem", false)):
 				_near_elder = hero.position.distance_to(r["pos"] as Vector2) < float(map.ts) * 1.7
 				break
+	# v1.82: закрытые руины-ворота рядом (дверь в поверхностный данж)
+	_near_gate = Vector2i(-1, -1)
+	if not guest:
+		var gt: Vector2i = map.tile_of_px(hero.position)
+		for d in [Vector2i(0, 0), Vector2i(1, 0), Vector2i(-1, 0),
+				Vector2i(0, 1), Vector2i(0, -1)]:
+			if map.is_gate_ruin(gt + d):
+				_near_gate = gt + d
+				break
 	# ручной труд героя (правки v1.12.2): что можно потрогать по E
 	# (в чужом поселении герой не работает — «Мир v2», этап 3)
 	_hero_work_cd = maxf(0.0, _hero_work_cd - delta)
@@ -490,6 +500,10 @@ func _process(delta: float) -> void:
 			hud.set_hint(Loc.t("city.dungeon_locked_hint") % (Game.dungeon_lock_day - sim.day_number()))
 	elif not _near_armory.is_empty():
 		hud.set_hint(Loc.t("city.armory_hint") % int(cfg.get("hero_kit", {}).get("cost_metal", 3)))
+	elif _near_gate != Vector2i(-1, -1):
+		var gl: int = maxi(0, int(Game.ruin_gate_locks.get(_near_gate, 0)) - int(sim.day_number()))
+		hud.set_hint(Loc.t("city.gate_hint") if gl <= 0
+				else Loc.t("city.gate_hint_sealed") % gl)
 	elif _near_elder:
 		hud.set_hint(Loc.t("elder.mem_hint"))
 	elif _near_temple:

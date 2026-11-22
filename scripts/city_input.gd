@@ -33,6 +33,9 @@ func _unhandled_input(event: InputEvent) -> void:
 		# v1.48: руины городской карты — лут-тайл рядом (кристаллы/руна)
 		if _try_ruin_loot():
 			return
+		# v1.82: дверь закрытых руин — небольшой данж-сокровищница наверху
+		if _try_ruin_gate():
+			return
 		if not guest:
 			if _near_anomaly:
 				if Game.dungeon_available(sim.day_number()):
