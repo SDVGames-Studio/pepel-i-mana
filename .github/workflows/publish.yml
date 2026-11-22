@@ -107,6 +107,23 @@ jobs:
 
           echo "asset: PepelIMana.exe (GitHub не принимает кириллицу в именах ассетов)" >> "$GITHUB_STEP_SUMMARY"
 
+      # v1.80.7-инфра: версионный релиз — все три платформы (exe/linux/web)
+      # из ОДНОГО коммита под тегом v<версия>. Rolling "latest" остаётся,
+      # но каждая версия теперь закреплена: смешивать билды не получится.
+      - name: Create versioned release (v${{ steps.version.outputs.version }})
+        if: github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          V: ${{ steps.version.outputs.version }}
+        run: |
+          gh release delete "v$V"             --repo "$GITHUB_REPOSITORY"             --cleanup-tag             --yes 2>/dev/null || true
+
+          gh release create "v$V"             build/PepelIMana.exe             build/linux/PepelIMana.x86_64             build/PepelIMana-web.zip             --repo "$GITHUB_REPOSITORY"             --title "Пепел и Мана — v$V"             --target "$GITHUB_SHA"             --notes "Версия v$V — все платформы из одного коммита.
+
+          - **Windows**: PepelIMana.exe — скачать и запустить.
+          - **Linux**: PepelIMana.x86_64 — chmod +x && ./PepelIMana.x86_64.
+          - **Браузер**: PepelIMana-web.zip или GitHub Pages (всегда последняя версия)."
+
   pages:
     name: Deploy web game to GitHub Pages
     needs: publish
