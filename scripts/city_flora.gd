@@ -6,13 +6,15 @@ extends Node2D
 ## слой». Слойterrain-порядка: над землёй, под жителями и деревьями.
 
 var map = null
+var sim = null               # v1.84: серая плесень рисуется в этом же слое
 var _time := 0.0
 var _seed := 20261121
 var _butterflies: Array = []   # {base: Vector2, phase: float}
 
 
-func setup(city_map) -> void:
+func setup(city_map, sim_ref = null) -> void:
 	map = city_map
+	sim = sim_ref
 	_butterflies = []
 	for i in 3:
 		var t: Vector2i = city_map.spawn_tile + Vector2i(_wr(50) - 25, _wr(50) - 25)
@@ -84,6 +86,27 @@ func _draw() -> void:
 				if h2 == 2:
 					draw_line(base + Vector2(2.5, 0), base + Vector2(2.5 - sway, -5.0),
 							Color(0.5, 0.62, 0.34, 0.8), 1.1)
+	# v1.84: СЕРАЯ ПЛЕСЕНЬ — серые мшистые кляксы с болезненным отливом,
+	# дышат медленно; живёт на симуляции (sim.mold), лечится магией героя
+	if sim != null and sim.get("mold") != null:
+		var mold: Dictionary = sim.mold
+		if not mold.is_empty():
+			var pulse: float = 0.5 + 0.5 * sin(_time * 1.1)
+			for t2: Vector2i in mold.keys():
+				var c2: Vector2 = map.tile_center_px(t2)
+				if not vis.has_point(c2):
+					continue
+				var age: float = float(mold[t2])
+				for i2 in 4:
+					var ang := TAU * (float(i2) / 4.0 + 0.2 * pulse)
+					var r2: float = ts * (0.16 + 0.07 * float(i2 % 2))
+					var cc: Vector2 = c2 + Vector2(cos(ang), sin(ang)) * ts * (0.14 + 0.05 * float(i2 % 3))
+					draw_circle(cc, r2, Color(0.545, 0.565, 0.515, 0.55))
+				draw_circle(c2, ts * (0.10 + 0.03 * pulse), Color(0.62, 0.60, 0.48, 0.6))
+				if age > 2.0:
+					# старая плесень выпускает споры-точки
+					draw_circle(c2 + Vector2(0, -ts * 0.3), 1.4,
+							Color(0.72, 0.74, 0.6, 0.5 + 0.3 * pulse))
 	# мотыльки: порхают у земли (ночью читаются как мотыльки у фонарей)
 	for b in _butterflies:
 		var pos: Vector2 = (b["base"] as Vector2) + Vector2(

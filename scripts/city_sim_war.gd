@@ -139,6 +139,13 @@ func _spawn_raid(size: int, siege: bool) -> void:
 	_raid_kind = "mutant"
 	raid_count += 1
 	razed_this_raid = 0
+	# v1.83: спасённый караван — торговцы присылают обоз с подмогой
+	if trader_support > 0:
+		trader_support -= 1
+		_add_resource_capped("food", 12.0)
+		_add_resource_capped("wood", 10.0)
+		_add_resource_capped("stone", 10.0)
+		events.append({"type": "trader_support_arrived"})
 	# каждая следующая волна чуть крепче (заказчик), но размер жёстко ограничен —
 	# мутанты из данжа ослаблены (2026-10-21): без выхода размера за потолок
 	var wave_no := raid_count - 1
@@ -976,6 +983,7 @@ func _update_ambush_units(dt: float, tcfg: Dictionary) -> void:
 		_ambush_day = int(day)
 		ambush_tick_day()
 		memory_daily()
+		mold_daily()
 	if ambush_sites.is_empty():
 		return
 	var i := 0
@@ -1098,3 +1106,122 @@ func _memory_scan_done() -> void:
 		memory_stage = 4   # вся память собрана — откровение
 		events.append({"type": "memory_revealed"})
 		_chron("chron.memory_revealed")
+
+
+## ==================== СЕРАЯ ПЛЕСЕНЬ (v1.84) ================================
+## «Пепел» — живая серая плесень (фидбек заказчика): при загрязнении она
+## заражает дикие травяные тайлы, расползается по соседям, плодит тварей.
+## Лечится магией героя: E на заражённой земле — 10 маны (см. city_events).
+## Параметры — city.json → "mold".
+
+var mold: Dictionary = {}      # Vector2i -> возраст в днях
+var mold_day := 0              # день последнего тика плесени
+
+
+func mold_daily() -> void:
+	if map == null:
+		return
+	var mcfg: Dictionary = cfg.get("mold", {})
+	# вспышка: загрязнение перевалило порог — сеются первые клетки на диком краю
+	if mold.is_empty():
+		if float(pollution) < float(mcfg.get("start_pollution", 25.0)):
+			return
+		var seeded := _mold_seed()
+		for t in seeded:
+			mold[t] = 1
+		if not seeded.is_empty():
+			events.append({"type": "mold_started", "count": seeded.size()})
+			_chron("chron.mold_started")
+		return
+	# распространение: соседние травяные тайлы, шанс растёт от загрязнения
+	var spread: float = float(mcfg.get("spread_chance", 0.10)) + float(pollution) / 400.0
+	var news: Array = []
+	for t in mold.keys():
+		mold[t] = int(mold[t]) + 1
+		if mold.size() >= int(mcfg.get("max_tiles", 45)):
+			continue
+		if _event_rng.randf() > spread:
+			continue
+		var dirs := [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]
+		var n: Vector2i = t + dirs[_event_rng.randi_range(0, 3)]
+		if map.in_bounds(n) and map.is_walkable(n) 				and int(map.grid[n.y][n.x]) == map.TILE_GRASS 				and not mold.has(n) and not _mold_near_bld(n):
+			news.append(n)
+	for n2 in news:
+		mold[n2] = 1
+	if not news.is_empty():
+		events.append({"type": "mold_spread", "count": news.size()})
+	# твари из плесени: при большой площади каждые 3 дня выползает тварь
+	if mold.size() >= 6 and int(day) % 3 == 0:
+		_mold_spawn_critter()
+
+
+func _mold_near_bld(t: Vector2i) -> bool:
+	for b in buildings:
+		if _active(b) and Vector2((b["tile"] as Vector2i) - t).length() < 3.0:
+			return true
+	return false
+
+
+func _mold_seed() -> Array:
+	var out: Array = []
+	for attempt in 60:
+		var ang := TAU * _event_rng.randf()
+		var rr := 34.0 + _event_rng.randf() * 30.0
+		var t: Vector2i = map.spawn_tile + Vector2i(
+				int(round(cos(ang) * rr)), int(round(sin(ang) * rr)))
+		if not map.in_bounds(t) or not map.is_walkable(t):
+			continue
+		if int(map.grid[t.y][t.x]) != map.TILE_GRASS or mold.has(t):
+			continue
+		if _mold_near_bld(t):
+			continue
+		out.append(t)
+		if out.size() >= 3:
+			break
+	return out
+
+
+func _mold_spawn_critter() -> void:
+	if _enemies_cfg.is_empty():
+		var ed: Variant = _read_json_file("res://data/enemies.json")
+		_enemies_cfg = ed if ed is Array else []
+	var pool := ["crawler", "ghoul", "crawler"]
+	var def_id: String = pool[_event_rng.randi_range(0, pool.size() - 1)]
+	var def := {}
+	for d2 in _enemies_cfg:
+		if String(d2["id"]) == def_id:
+			def = d2
+			break
+	if def.is_empty():
+		return
+	var tiles := mold.keys()
+	var src: Vector2i = tiles[_event_rng.randi_range(0, tiles.size() - 1)]
+	var pos: Vector2 = map.tile_center_px(src)
+	for attempt in 8:
+		var off := Vector2i(_event_rng.randi_range(-1, 1), _event_rng.randi_range(-1, 1))
+		var t2: Vector2i = src + off
+		if map.is_walkable(t2):
+			pos = map.tile_center_px(t2)
+			break
+	raiders.append({
+		"id": _next_id, "type": def_id, "p": def,
+		"hp": int(def["hp"]), "max_hp": int(def["hp"]),
+		"pos": pos, "target": Vector2i(-1, -1), "path": PackedVector2Array(),
+		"atk_cd": 0.0, "mode": "", "ambush": true,
+		"site_tile": src, "ttl": float(cfg["day_length"]) * 0.6,
+	})
+	_next_id += 1
+	events.append({"type": "mold_critter", "kind": def_id})
+
+
+func mold_cure(t: Vector2i) -> void:
+	# магия героя выжигает плесень: клетка + соседей с шансом
+	mold.erase(t)
+	var cured := 1
+	for d in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
+		var n: Vector2i = t + d
+		if mold.has(n) and _event_rng.randf() < 0.6:
+			mold.erase(n)
+			cured += 1
+	if cured > 1:
+		events.append({"type": "mold_cured", "count": cured})

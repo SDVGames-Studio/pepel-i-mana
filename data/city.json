@@ -1456,5 +1456,11 @@
 		"variety_mood": 0.5
 	},
 	"alcohol_mood": 1.5,
-	"alcohol_mood_winter": 2.5
+	"alcohol_mood_winter": 2.5,
+	"mold": {
+		"start_pollution": 25.0,
+		"max_tiles": 45,
+		"spread_chance": 0.1,
+		"_note": "v1.84: серая плесень — заражает землю (травяные тайлы), расползается от загрязнения, плодит тварей; лечится магией героя (E, 10 маны)"
+	}
 }

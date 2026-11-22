@@ -49,6 +49,10 @@ func _unhandled_input(event: InputEvent) -> void:
 			if _near_temple:
 				_pray_at_temple()
 				return
+			# v1.84: серая плесень — выжечь магией (10 маны героя)
+			if _near_mold != Vector2i(-1, -1):
+				_mold_cure_action(_near_mold)
+				return
 			# v1.81: староста-голем — диалог «Память мира» (док 18)
 			if _near_elder:
 				_open_elder_dialog()

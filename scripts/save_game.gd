@@ -211,6 +211,19 @@ static func _build_city(cd: Variant, seed_value := 0, hydro := {}):
 	sim.res = _num_dict(sd.get("res", {}))
 	# v1.44: улей (состояние у аномалии)
 	sim.hive = _dec(cd.get("hive", {}))
+	# v1.84: плесень, память мира, поддержка торговцев
+	sim.mold = {}
+	for e3 in (cd.get("mold", []) as Array):
+		var marr: Array = e3
+		if marr.size() >= 3:
+			sim.mold[Vector2i(int(marr[0]), int(marr[1]))] = int(marr[2])
+	var mem: Dictionary = _dec(cd.get("memory", {}))
+	sim.memory_stage = int(mem.get("stage", 0))
+	sim.memory_brought = int(mem.get("brought", 0))
+	sim.memory_crystals_ready = bool(mem.get("crystals_ready", false))
+	sim.memory_scan_left = float(mem.get("scan_left", 0.0))
+	sim.memory_shards_in_scan = int(mem.get("shards_in_scan", 0))
+	sim.trader_support = int(cd.get("trader_support", 0))
 	# v1.21: новые ресурсы (gems) и всё, что могло не попасть в старый сейв, —
 	# ключи должны существовать: _add_resource_capped читает их напрямую
 	for key in sim.RESOURCES:

@@ -223,6 +223,14 @@ func _process_events() -> void:
 				hud.toast(Loc.t("city.ambush_cleared") % int(ev.get("coins", 0)))
 			"trader_support_arrived":
 				hud.toast(Loc.t("city.trader_support"))
+			"mold_started":
+				hud.toast(Loc.t("city.mold_started"))
+			"mold_spread":
+				hud.toast(Loc.t("city.mold_spread") % int(ev.get("count", 1)))
+			"mold_critter":
+				hud.toast(Loc.t("city.mold_critter"))
+			"mold_cured":
+				hud.toast(Loc.t("city.mold_cured") % int(ev.get("count", 1)))
 			"memory_scan_done":
 				Game.coins += int(ev.get("coins", 0))
 				hud.toast(Loc.t("elder.mem_scan_done") % int(ev.get("coins", 0)))
@@ -728,3 +736,15 @@ func _try_ruin_gate() -> bool:
 	sim.paused = false
 	get_tree().change_scene_to_file(DUNGEON_SCENE)
 	return true
+
+
+## v1.84: магия героя выжигает серую плесень (10 маны): клетка + соседей
+## с шансом 60%. Плесень растёт от загрязнения и плодит тварей (док 18).
+func _mold_cure_action(t: Vector2i) -> void:
+	if hero.mana < 10:
+		hud.toast(Loc.t("city.mold_no_mana"))
+		return
+	hero.mana -= 10
+	sim.mold_cure(t)
+	hero.play_anim("cast")
+	hud.toast(Loc.t("city.mold_cured_toast"))

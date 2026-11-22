@@ -145,6 +145,21 @@ static func _city_block(sim, include_map := true) -> Dictionary:
 	out["residents"] = _residents_save(sim)
 	out["sim"] = _city_sim_block(sim)
 	out["hive"] = _hive_block(sim)
+	# v1.84: плесень, память мира, поддержка торговцев
+	# (Object.get в Godot принимает только ключ — дефолт вручную)
+	var mold_d: Dictionary = sim.get("mold") if sim.get("mold") != null else {}
+	var mold_arr: Array = []
+	for mt: Vector2i in mold_d:
+		mold_arr.append([int(mt.x), int(mt.y), int(mold_d[mt])])
+	out["mold"] = mold_arr
+	out["memory"] = {
+		"stage": int(sim.get("memory_stage")),
+		"brought": int(sim.get("memory_brought")),
+		"crystals_ready": bool(sim.get("memory_crystals_ready")),
+		"scan_left": float(sim.get("memory_scan_left")),
+		"shards_in_scan": int(sim.get("memory_shards_in_scan")),
+	}
+	out["trader_support"] = int(sim.get("trader_support"))
 	return out
 
 

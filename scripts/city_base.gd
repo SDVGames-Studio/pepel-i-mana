@@ -61,6 +61,7 @@ var _sky: Node2D = null         # небо: солнце/луна/звёзды, 
 var _near_temple := false       # храм рядом — E: молитва (M14-H)
 var _near_elder := false        # v1.81: староста-голем рядом — E: Память мира
 var _near_gate := Vector2i(-1, -1)  # v1.82: тайл закрытых руин-ворот рядом
+var _near_mold := Vector2i(-1, -1)  # v1.84: заражённая плесенью клетка рядом
 var _hero_tree: Dictionary = {} # дерево у ног героя (E — рубить, правки v1.12.2)
 var _hero_rock: Dictionary = {} # скала/руда рядом (E — добыть)
 var _hero_crop: Dictionary = {} # спелая грядка рядом (E — собрать, этап 2, аспект 3)
@@ -121,7 +122,7 @@ func _ready() -> void:
 	# живая флора (v1.80.2): травинки/цветы на ветру, мотыльки — над
 	# землёй, под жителями
 	_flora = load("res://scripts/city_flora.gd").new()
-	_flora.setup(map)
+	_flora.setup(map, sim)
 	add_child(_flora)
 	# тени солнечного цикла (v1.27): под объектами, над ландшафтом
 	_sky_shadows = SKY.new()
@@ -475,6 +476,15 @@ func _process(delta: float) -> void:
 			if map.is_gate_ruin(gt + d):
 				_near_gate = gt + d
 				break
+	# v1.84: серая плесень рядом — E лечит магией (10 маны)
+	_near_mold = Vector2i(-1, -1)
+	if not guest and sim.get("mold") != null and not (sim.mold as Dictionary).is_empty():
+		var mt: Vector2i = map.tile_of_px(hero.position)
+		for d2 in [Vector2i(0, 0), Vector2i(1, 0), Vector2i(-1, 0),
+				Vector2i(0, 1), Vector2i(0, -1)]:
+			if (sim.mold as Dictionary).has(mt + d2):
+				_near_mold = mt + d2
+				break
 	# ручной труд героя (правки v1.12.2): что можно потрогать по E
 	# (в чужом поселении герой не работает — «Мир v2», этап 3)
 	_hero_work_cd = maxf(0.0, _hero_work_cd - delta)
@@ -500,6 +510,8 @@ func _process(delta: float) -> void:
 			hud.set_hint(Loc.t("city.dungeon_locked_hint") % (Game.dungeon_lock_day - sim.day_number()))
 	elif not _near_armory.is_empty():
 		hud.set_hint(Loc.t("city.armory_hint") % int(cfg.get("hero_kit", {}).get("cost_metal", 3)))
+	elif _near_mold != Vector2i(-1, -1):
+		hud.set_hint(Loc.t("city.mold_hint"))
 	elif _near_gate != Vector2i(-1, -1):
 		var gl: int = maxi(0, int(Game.ruin_gate_locks.get(_near_gate, 0)) - int(sim.day_number()))
 		hud.set_hint(Loc.t("city.gate_hint") if gl <= 0
