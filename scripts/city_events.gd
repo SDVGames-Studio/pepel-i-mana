@@ -223,6 +223,21 @@ func _process_events() -> void:
 				hud.toast(Loc.t("city.ambush_cleared") % int(ev.get("coins", 0)))
 			"trader_support_arrived":
 				hud.toast(Loc.t("city.trader_support"))
+			"night_guest":
+				SfxLib.play("raid_warn")
+				if String(ev.get("who", "")) != "":
+					hud.toast(Loc.t("city.night_guest_who") % [
+							int(ev.get("food", 0)), String(ev["who"])])
+				else:
+					hud.toast(Loc.t("city.night_guest") % int(ev.get("food", 0)))
+			"bandit_message":
+				# послание бандитов — письмом (фидбек: «прийти с посланием»)
+				_letter("bandit_tribute", Loc.t("city.bandit_letter") % [
+						int(ev.get("food", 0)), int(ev.get("due", 0)) - int(sim.day)])
+			"tribute_paid":
+				hud.toast(Loc.t("city.tribute_paid") % int(ev.get("food", 0)))
+			"fields_burned":
+				hud.toast(Loc.t("city.fields_burned") % int(ev.get("crops", 0)))
 			"mold_started":
 				hud.toast(Loc.t("city.mold_started"))
 			"mold_spread":
@@ -660,6 +675,19 @@ func _open_elder_dialog() -> void:
 							"action": func() -> void: _elder_take_shards(mini(shard_n, left))})
 				if shard_n < left:
 					lines.append(Loc.t("elder.mem_need_more") % left)
+	# v1.85: дань бандитам платится через старосту — он ведёт дела с окрестностью
+	if bool(sim.get("tribute_pending")):
+		var tf: int = int(sim.get("tribute_food"))
+		lines.append(Loc.t("city.bandit_pending") % [tf,
+				maxi(1, int(sim.get("tribute_due")) - int(sim.day))])
+		choices.append({"text": Loc.t("city.tribute_pay") % tf,
+				"action": func() -> void:
+					var err: String = sim.pay_tribute()
+					if err == "no_food":
+						hud.toast(Loc.t("city.tribute_no_food") % tf)
+					elif err == "":
+						pass   # тост покажет событие tribute_paid
+					_open_elder_dialog()})
 	choices.append({"text": Loc.t("elder.mem_close"),
 			"action": func() -> void: pass})
 	hud.open_choice(Loc.t("elder.mem_title"), lines, choices)

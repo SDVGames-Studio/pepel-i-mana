@@ -655,6 +655,20 @@ func _raid_end(defended: bool) -> void:
 	var kind := _raid_kind
 	raid_active = false
 	raid_breached = false
+	# v1.85: бандиты (не заплатили дань) — жгут поля: посевы теряют стадии
+	if kind == "bandit":
+		var burned := 0
+		for z in zones:
+			if String(z.get("type", "")) != "field":
+				continue
+			for crop in (z.get("crops", []) as Array):
+				if (crop as Dictionary).is_empty():
+					continue
+				if bool(crop.get("ripe", false)):
+					crop["ripe"] = false
+					burned += 1
+				crop["stage"] = maxi(0, int(crop.get("stage", 0)) - 2)
+		events.append({"type": "fields_burned", "crops": burned})
 	# v1.44: юнитов улья не вычищаем — они живут вне волны
 	raiders = raiders.filter(func(r): return not String(r.get("role", "")).is_empty())
 	var tcfg: Dictionary = cfg.get("threat", {})
@@ -983,7 +997,13 @@ func _update_ambush_units(dt: float, tcfg: Dictionary) -> void:
 		_ambush_day = int(day)
 		ambush_tick_day()
 		memory_daily()
-		mold_daily()
+		# v1.85: в автотестах (PEPEL_TEST_MAPS) случайные системы молчат —
+		# ночные гости крадут еду и ломают детерминированные замеры (урожай)
+		var test_quiet := OS.has_environment("PEPEL_TEST_MAPS") 				and not OS.has_environment("PEPEL_HIVE_ON")
+		if not test_quiet:
+			mold_daily()
+			night_guests_daily()
+			bandit_tribute_daily()
 	if ambush_sites.is_empty():
 		return
 	var i := 0
@@ -1225,3 +1245,103 @@ func mold_cure(t: Vector2i) -> void:
 			cured += 1
 	if cured > 1:
 		events.append({"type": "mold_cured", "count": cured})
+
+
+## ==================== НОЧЬ НЕЧИСТИ (v1.85) ================================
+## Ночница/кикимора приходят к спящим, если в городе нет стражей: крадут
+## еду, могут изранить жильца. Страж на посту отгоняет гостью (фидбек:
+## «ночью город обороняется, днём работает» — игрок распределяет стражей).
+func night_guests_daily() -> void:
+	var guards := 0
+	for r in residents:
+		if String(r["prof"]) == "guard" and String(r.get("ail", "")) != "dead":
+			guards += 1
+	var chance := clampf(0.45 - 0.15 * float(mini(guards, 2)), 0.05, 0.45)
+	if _event_rng.randf() >= chance:
+		return
+	var stolen: float = 4.0 + _event_rng.randf() * 8.0
+	res["food"] = maxf(0.0, float(res["food"]) - stolen)
+	var victim: Dictionary = {}
+	var sleepers: Array = residents.filter(func(r):
+		return String(r.get("state", "")) in ["sleep", "rest"] 				and String(r.get("ail", "")) != "dead")
+	if sleepers.is_empty():
+		sleepers = residents
+	if not sleepers.is_empty():
+		victim = sleepers[_event_rng.randi_range(0, sleepers.size() - 1)]
+		if _event_rng.randf() < 0.4:
+			_make_ail(victim, "wounded", "chron.wounded")
+	events.append({"type": "night_guest", "food": int(stolen),
+			"who": String(victim.get("name", ""))})
+
+
+## ==================== ДАНЬ БАНДИТОВ (v1.85) ================================
+## Бандиты приходят С ПОСЛАНИЕМ (фидбек заказчика): требуют долю еды,
+## срок 2 дня. Платишь — отступают на срок (растёт с каждой выплатой);
+## не платишь — рейд бандитов (отдельный от мутантов) и поля горят.
+var tribute_food := 0
+var tribute_due := 0
+var tribute_paid := 0
+var tribute_next_day := 8
+var tribute_pending := false
+
+
+func bandit_tribute_daily() -> void:
+	if tribute_pending:
+		if int(day) >= tribute_due:
+			tribute_pending = false
+			_spawn_bandit_raid()
+		return
+	if int(day) < tribute_next_day:
+		return
+	tribute_food = 8 + tribute_paid * 4
+	tribute_due = int(day) + 2
+	tribute_pending = true
+	events.append({"type": "bandit_message", "food": tribute_food,
+			"due": tribute_due})
+
+
+## Заплатить дань (кнопка у старосты — он ведёт дела с окрестностью).
+## "" — заплатили, иначе ключ ошибки.
+func pay_tribute() -> String:
+	if not tribute_pending:
+		return ""
+	if float(res["food"]) < float(tribute_food):
+		return "no_food"
+	res["food"] = maxf(0.0, float(res["food"]) - float(tribute_food))
+	tribute_paid += 1
+	tribute_pending = false
+	tribute_next_day = int(day) + 4 + tribute_paid * 2
+	events.append({"type": "tribute_paid", "food": tribute_food})
+	return ""
+
+
+## Рейд бандитов: 2+выплаты тварей-грабителей с краю карты; по окончании
+## поля горят (см. _raid_end).
+func _spawn_bandit_raid() -> void:
+	if _enemies_cfg.is_empty():
+		var ed: Variant = _read_json_file("res://data/enemies.json")
+		_enemies_cfg = ed if ed is Array else []
+	var pool := ["bandit", "bandit", "bandit_archer"]
+	raid_active = true
+	raid_siege = false
+	_raid_kind = "bandit"
+	razed_this_raid = 0
+	var n := 2 + mini(tribute_paid, 3)
+	for i in n:
+		var def_id: String = pool[_event_rng.randi_range(0, pool.size() - 1)]
+		var def := {}
+		for d2 in _enemies_cfg:
+			if String(d2["id"]) == def_id:
+				def = d2
+				break
+		if def.is_empty():
+			continue
+		raiders.append({
+			"id": _next_id, "type": def_id, "p": def,
+			"hp": int(def["hp"]), "max_hp": int(def["hp"]),
+			"pos": _spawn_tile_near_anomaly(), "target": Vector2i(-1, -1),
+			"path": PackedVector2Array(), "atk_cd": 0.0, "mode": "",
+			"ttl": float(cfg["day_length"]) * 0.7,
+		})
+		_next_id += 1
+	_update_gates()
