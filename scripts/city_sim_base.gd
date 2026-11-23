@@ -351,6 +351,11 @@ func _spawn_golem() -> void:
 	g["race"] = "human"    # v1.72.1: староста-гуманоид (спрайт KitElder без
 	g["age_days"] = -1.0   # перекраса случайной расой; не стареет
 	g["origin"] = "golem"  # v1.90: биография — слеплен из глины и памяти
+	g["past_prof"] = ""   # v1.91: у слепленного нет прошлого, страха и
+	g["fear"] = ""        # граней души — только память города
+	g["like"] = ""
+	g["dislike"] = ""
+	g["habit"] = ""
 	residents.append(g)
 	_next_id += 1
 	_chron("chron.golem_awakens", GOLEM_NAME)
