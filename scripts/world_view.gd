@@ -536,6 +536,14 @@ func _draw_poi(poi: Dictionary, ts: float) -> void:
 		draw_colored_polygon(PackedVector2Array([
 				pole + Vector2(0, -ts * 0.8), pole + Vector2(ts * 0.55, -ts * 0.62),
 				pole + Vector2(0, -ts * 0.44)]), gc)
+	# v1.88: улей мутантов (гнездо 1-3 уровней) — спрайт из листа «грибной
+	# улей и пепел» вместо маркера; уровень виден по размеру улья
+	if String(poi["kind"]) == "camp" and int(poi.get("nest_level", 0)) > 0:
+		Assets.draw_ref(self, "e:hive_%d" % clampi(int(poi["nest_level"]), 1, 3),
+				pos + Vector2(0, -ts * 0.35), ts * 2.8)
+		if poi["tile"] == selected_tile:
+			draw_rect(Rect2(pos - Vector2(16, 16), Vector2(32, 32)), Color("#ffffff"), false, 2.0)
+		return
 	var ref: String = KIND_SPRITES.get(String(poi["kind"]), "")
 	if ref != "":
 		var fallen := String(poi["kind"]) == "settlement" and String(poi["state"]) == "fallen"

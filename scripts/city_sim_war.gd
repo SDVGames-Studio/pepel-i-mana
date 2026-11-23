@@ -1132,6 +1132,7 @@ func _memory_scan_done() -> void:
 
 var mold: Dictionary = {}      # Vector2i -> возраст в днях
 var mold_day := 0              # день последнего тика плесени
+var mold_burned: Dictionary = {}  # v1.88: выжженные магией клетки (след)
 
 
 func mold_daily() -> void:
@@ -1233,11 +1234,13 @@ func _mold_spawn_critter() -> void:
 func mold_cure(t: Vector2i) -> void:
 	# магия героя выжигает плесень: клетка + соседей с шансом
 	mold.erase(t)
+	mold_burned[t] = 1   # v1.88: след — выжженная земля
 	var cured := 1
 	for d in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
 		var n: Vector2i = t + d
 		if mold.has(n) and _event_rng.randf() < 0.6:
 			mold.erase(n)
+			mold_burned[n] = 1
 			cured += 1
 	if cured > 1:
 		events.append({"type": "mold_cured", "count": cured})

@@ -217,6 +217,12 @@ static func _build_city(cd: Variant, seed_value := 0, hydro := {}):
 		var marr: Array = e3
 		if marr.size() >= 3:
 			sim.mold[Vector2i(int(marr[0]), int(marr[1]))] = int(marr[2])
+	# v1.88: выжженные магией клетки
+	sim.mold_burned = {}
+	for e4 in (cd.get("mold_burned", []) as Array):
+		var barr: Array = e4
+		if barr.size() >= 2:
+			sim.mold_burned[Vector2i(int(barr[0]), int(barr[1]))] = 1
 	var mem: Dictionary = _dec(cd.get("memory", {}))
 	sim.memory_stage = int(mem.get("stage", 0))
 	sim.memory_brought = int(mem.get("brought", 0))

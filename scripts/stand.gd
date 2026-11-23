@@ -135,12 +135,22 @@ func _prepare_wave_rows() -> void:
 		["e:stump_split", "расколот"], ["e:snag_bent", "коряга"],
 		["e:logs_stack", "поленница"], ["e:log_mossy", "мшистое"],
 		["e:log_big", "бревно"]]})
+	_wave_rows.append({"title": Loc.t("stand.row_wave_hive"), "h": 92.0,
+			"gap": 170.0, "items": [
+		["e:hive_1", "улей ур1"], ["e:hive_2", "улей ур2"],
+		["e:hive_3", "улей ур3"], ["e:hive_cocoon", "кокон"],
+		["e:hive_eggs", "кладка"], ["e:hive_sporocarp", "спороносец"],
+		["e:hive_bones", "кости"], ["e:mold_1", "плесень 1"],
+		["e:mold_2", "плесень 2"], ["e:mold_3", "плесень 3"],
+		["e:mold_4", "плесень 4"], ["e:mold_burned_1", "выжжено"]]})
 	_wave_rows.append({"title": Loc.t("stand.row_wave_animals"), "h": 42.0,
 			"gap": 120.0, "items": [
 		["e:an_deer_1", "олень"], ["e:an_boar_1", "кабан"],
 		["e:an_wolf_1", "волк"], ["e:an_fox_1", "лиса"],
 		["e:an_hare_1", "заяц"], ["e:an_bird_1", "птица"],
-		["e:an_fish_1", "рыба"], ["e:an_toad_1", "жаба"]]})
+		["e:an_fish_1", "рыба"], ["e:an_toad_1", "жаба"],
+		["e:an_bear_1", "медведь"], ["e:an_elk_1", "лось"],
+		["e:wendigo_1", "виндиго"]]})
 
 
 func _read_json(path: String) -> Variant:

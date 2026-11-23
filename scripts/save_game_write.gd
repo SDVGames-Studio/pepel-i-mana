@@ -152,6 +152,12 @@ static func _city_block(sim, include_map := true) -> Dictionary:
 	for mt: Vector2i in mold_d:
 		mold_arr.append([int(mt.x), int(mt.y), int(mold_d[mt])])
 	out["mold"] = mold_arr
+	# v1.88: выжженные магией клетки — след плесени после лечения
+	var burn_d: Dictionary = sim.get("mold_burned") if sim.get("mold_burned") != null else {}
+	var burn_arr: Array = []
+	for bt: Vector2i in burn_d:
+		burn_arr.append([int(bt.x), int(bt.y)])
+	out["mold_burned"] = burn_arr
 	out["memory"] = {
 		"stage": int(sim.get("memory_stage")),
 		"brought": int(sim.get("memory_brought")),

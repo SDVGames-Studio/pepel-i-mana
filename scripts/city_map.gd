@@ -269,8 +269,14 @@ func _random_inner_tile(rng: RandomNumberGenerator) -> Vector2i:
 
 ## Озеро (v1.29.4): почти круглый овал — вертикальный радиус выводится из
 ## горизонтального (отношение ≤ 1.4), случайный поворот осей.
+## v1.88 (заказчик): три размерных класса — малые/средние/большие.
 func _lake_blob(center: Vector2i, rng: RandomNumberGenerator) -> void:
-	var rx := rng.randf_range(3.4, 4.6)
+	var roll := rng.randf()
+	var rx := rng.randf_range(3.2, 4.6)   # среднее (45%)
+	if roll < 0.30:
+		rx = rng.randf_range(1.8, 2.6)    # малое
+	elif roll > 0.75:
+		rx = rng.randf_range(5.2, 6.8)    # большое
 	_smooth_water_blob(center, rng, rx, rx / rng.randf_range(1.15, 1.4))
 
 
@@ -376,9 +382,10 @@ func _blob(center: Vector2i, radius: int, kind: int) -> void:
 
 ## Река (v1.29.3): вертикальный меандр с севера на юг — синусоида с
 ## ограниченным наклоном. Русло рисуется РАССТОЯНИЕМ до кривой (клетка
-## заливается, если её центр ближе 1.0 к оси): берега ступают по диагонали
-## плавно, без «пилы» целых столбцов; ширина стабильно 2 тайла — мост
-## перекрывает. Городское ядро без реки: старт/аномалия/выход + стены.
+## заливается, если её центр ближе half к оси): берега ступают по диагонали
+## плавно, без «пилы» целых столбцов. v1.88 (заказчик): ширина реки
+## случайна, от 1 до 5 тайлов. Городское ядро без реки: старт/аномалия/
+## выход + стены.
 func _generate_river(rng: RandomNumberGenerator) -> void:
 	# v1.31.2: коридор русла с запасом от края (раньше амплитуда заводила
 	# реку за карту — на части сидов она вырождалась и исчезала)
@@ -390,12 +397,14 @@ func _generate_river(rng: RandomNumberGenerator) -> void:
 	var sx := w / 2
 	var sy := h / 2
 	var last_cx := -99.0
+	# v1.88 (заказчик): полуширина русла 0.5..2.5 — река от 1 до 5 клеток
+	var half := 0.5 + 0.5 * float(rng.randi_range(0, 4))
 	for y in h:
 		var cx := base_x + sin(float(y) / period * TAU + phase) * amp
 		# наклон русла ограничен — река течёт плавно, без ступенек
 		cx = clampf(cx, last_cx - 0.6, last_cx + 0.6) if last_cx > -90.0 else cx
 		last_cx = cx
-		for x in range(maxi(1, int(cx) - 2), mini(w - 1, int(cx) + 3)):
+		for x in range(maxi(1, int(cx) - 3), mini(w - 1, int(cx) + 4)):
 			# городское ядро без реки: старт/аномалия/выход + кольцо стен
 			if absi(x - sx) <= core and absi(y - sy) <= core:
 				continue
@@ -403,7 +412,7 @@ func _generate_river(rng: RandomNumberGenerator) -> void:
 				continue
 			if x <= 3 and absi(y - sy) <= 3:
 				continue
-			if absf(float(x) + 0.5 - cx) <= 1.0:
+			if absf(float(x) + 0.5 - cx) <= half:
 				grid[y][x] = TILE_WATER
 				river_origin[Vector2i(x, y)] = true
 

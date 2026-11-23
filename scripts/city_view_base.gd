@@ -268,15 +268,15 @@ func _draw_field_live() -> void:
 			var stage := int(crop.get("stage", 0)) + (1 if bool(crop.get("ripe", false)) else 0)
 			var base := rect.get_center() + Vector2(0.0, map.ts * 0.22)
 			var tex := _crop_sprite(crop_vis, clampi(stage, 0, 4))
-			draw_texture_rect(tex, Rect2(base - Vector2(11.0, 17.0), Vector2(22.0, 22.0)), false)
+			draw_texture_rect(tex, Rect2(base - Vector2(13.0, 21.0), Vector2(26.0, 26.0)), false)
 			if bool(crop.get("ripe", false)):
 				var glow := Color(1.0, 0.95, 0.6, 0.25 + 0.12 * sin(_anim_time * 3.0))
 				draw_circle(base + Vector2(0, -6), 7.5, glow)
 
 
-## Печёные спрайты растений (v1.21.5, возвращены в живой слой в v1.22):
-## стадия культуры — маленькая текстура в кэше; вид 3 — золотой колос
-## пшеницы (сезонная культура v1.22).
+## Печёные спрайты растений (v1.21.5): с v1.88 — лист заказчика
+## «стадии роста растений»; вид культуры -> имя файла нарезки.
+const CROP_VIS_NAMES := {1: "turnip", 2: "pumpkin", 3: "wheat", 4: "hops", 5: "grapes"}
 var _crop_sprites: Dictionary = {}
 var _crop_vis_cache: Dictionary = {}
 
@@ -292,60 +292,19 @@ func _px_circle(img: Image, c: Vector2, r: float, col: Color) -> void:
 				img.set_pixel(px, py, col)
 
 
-func _crop_sprite(crop_vis: int, stage: int) -> ImageTexture:
+func _crop_sprite(crop_vis: int, stage: int) -> Texture2D:
+	# v1.88: лист заказчика «стадии роста растений» (6 культур × 5 стадий,
+	# tools/wire_wave24.py) вместо процедурных кружков v1.21.5
 	var key := "%d|%d" % [crop_vis, stage]
 	if _crop_sprites.has(key):
 		return _crop_sprites[key]
-	var leaf := Color("#5fae4a")
-	var leaf_dark := Color("#3f7a33")
-	var stem := Color("#4c8a3c")
-	var fruit := Color("#c9a8e8")
-	var fruit_r := 3.4
-	if crop_vis == 2:
-		fruit = Color("#e8892c")
-		fruit_r = 4.2
-	elif crop_vis == 4:
-		# хмель: светло-зелёные шишки
-		fruit = Color("#a8c860")
-		fruit_r = 2.6
-	elif crop_vis == 5:
-		# виноград: фиолетовые грозди
-		fruit = Color("#9a5ab0")
-		fruit_r = 2.6
-	elif crop_vis == 3:
-		# пшеница (v1.22): золотой колос
-		leaf = Color("#b7a44a")
-		leaf_dark = Color("#93803a")
-		stem = Color("#a89a4e")
-		fruit = Color("#e8cf6d")
-		fruit_r = 3.8
-	var img := Image.create(22, 22, false, Image.FORMAT_RGBA8)
-	var base := Vector2(11.0, 17.0)
-	match clampi(stage, 0, 4):
-		0:
-			_px_circle(img, base + Vector2(-2, -4), 1.6, leaf)
-			_px_circle(img, base + Vector2(2, -4), 1.6, leaf)
-			_px_circle(img, base + Vector2(0, -2), 1.0, stem)
-		1:
-			_px_circle(img, base + Vector2(-3, -7), 2.4, leaf)
-			_px_circle(img, base + Vector2(3, -7), 2.4, leaf)
-			_px_circle(img, base + Vector2(0, -10), 2.0, leaf_dark)
-			_px_circle(img, base + Vector2(0, -4), 1.2, stem)
-		2:
-			_px_circle(img, base + Vector2(-4, -9), 3.2, leaf)
-			_px_circle(img, base + Vector2(4, -9), 3.2, leaf)
-			_px_circle(img, base + Vector2(0, -12), 3.0, leaf_dark)
-			_px_circle(img, base + Vector2(0, -6), 2.2, leaf)
-			_px_circle(img, base + Vector2(0, -3), 1.2, stem)
-		_:
-			_px_circle(img, base + Vector2(-4, -9), 3.0, leaf)
-			_px_circle(img, base + Vector2(4, -9), 3.0, leaf)
-			_px_circle(img, base + Vector2(0, -5), fruit_r, fruit)
-			_px_circle(img, base + Vector2(-1, -6), 1.2, fruit.lightened(0.35))
-			_px_circle(img, base + Vector2(0, -3), 1.2, stem)
-	var tex := ImageTexture.create_from_image(img)
-	_crop_sprites[key] = tex
-	return tex
+	var cname := String(CROP_VIS_NAMES.get(crop_vis, "wheat"))
+	var t: Texture2D = Assets.tex("res://assets/sprites/env/crop_%s_%d.png"
+			% [cname, clampi(stage, 0, 4) + 1])
+	if t == null:
+		t = Assets.tex("res://assets/sprites/env/crop_wheat_5.png")
+	_crop_sprites[key] = t
+	return t
 
 
 var _anim_time := 0.0

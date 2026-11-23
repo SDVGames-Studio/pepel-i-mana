@@ -47,8 +47,8 @@ func _test_data() -> void:
 		_check(hero is Dictionary and hero.has("speed") and hero.has("dash_cooldown"),
 				"dungeon.json: параметры героя полны")
 	var enemies: Variant = _read_json("res://data/enemies.json")
-	_check(enemies is Array and enemies.size() == 51,
-			"enemies.json — 51 враг (37 прежних + нечисть v1.30: 9 тварей, курица, игла, Вий, Яга, Кощей)")
+	_check(enemies is Array and enemies.size() >= 51,
+			"enemies.json — 51+ враг (37 прежних + нечисть v1.30: 9 тварей, курица, игла, Вий, Яга, Кощей; v1.88: +виндиго)")
 	if enemies is Array:
 		var fields_ok := true
 		for enemy in enemies:

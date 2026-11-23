@@ -40,6 +40,28 @@
 			]
 		},
 		{
+			"id": "bear",
+			"loc": "fauna.bear",
+			"biomes": ["forest", "hills"],
+			"behavior": "hunt",
+			"speed": 55.0,
+			"size": 1.25,
+			"color": "#5a4638",
+			"drop": [{"id": "meat"}, {"id": "hide"}, {"id": "meat"}],
+			"art": {"frames": ["e:an_bear_1", "e:an_bear_2", "e:an_bear_3", "e:an_bear_4", "e:an_bear_5", "e:an_bear_6", "e:an_bear_7"], "idle_n": 2, "h": 30.0}
+		},
+		{
+			"id": "elk",
+			"loc": "fauna.elk",
+			"biomes": ["forest", "plains"],
+			"behavior": "flee",
+			"speed": 70.0,
+			"size": 1.15,
+			"color": "#7a6a52",
+			"drop": [{"id": "meat"}, {"id": "hide"}, {"id": "meat"}],
+			"art": {"frames": ["e:an_elk_1", "e:an_elk_2", "e:an_elk_3", "e:an_elk_4", "e:an_elk_5", "e:an_elk_6", "e:an_elk_7"], "idle_n": 2, "h": 30.0}
+		},
+		{
 			"id": "boar",
 			"loc": "fauna.boar",
 			"biomes": [

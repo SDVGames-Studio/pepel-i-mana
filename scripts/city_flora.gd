@@ -86,8 +86,9 @@ func _draw() -> void:
 				if h2 == 2:
 					draw_line(base + Vector2(2.5, 0), base + Vector2(2.5 - sway, -5.0),
 							Color(0.5, 0.62, 0.34, 0.8), 1.1)
-	# v1.84: СЕРАЯ ПЛЕСЕНЬ — серые мшистые кляксы с болезненным отливом,
-	# дышат медленно; живёт на симуляции (sim.mold), лечится магией героя
+	# v1.84: СЕРАЯ ПЛЕСЕНЬ — с v1.88 спрайты листа «грибной улей и пепел»
+	# (4 стадии по возрасту клетки), выжженное магией — отдельный тайл;
+	# процедурные кляксы — запасной путь, если текстуры не нарезаны
 	if sim != null and sim.get("mold") != null:
 		var mold: Dictionary = sim.mold
 		if not mold.is_empty():
@@ -97,6 +98,15 @@ func _draw() -> void:
 				if not vis.has_point(c2):
 					continue
 				var age: float = float(mold[t2])
+				var mtex: Texture2D = Assets.tex("res://assets/sprites/env/mold_%d.png"
+						% clampi(int(age), 1, 4))
+				if mtex != null:
+					draw_texture_rect(mtex, Rect2(c2 - Vector2(ts, ts) * 0.62,
+							Vector2(ts, ts) * 1.24), false)
+					if age > 2.0:
+						draw_circle(c2 + Vector2(0, -ts * 0.3), 1.4,
+								Color(0.72, 0.74, 0.6, 0.5 + 0.3 * pulse))
+					continue
 				for i2 in 4:
 					var ang := TAU * (float(i2) / 4.0 + 0.2 * pulse)
 					var r2: float = ts * (0.16 + 0.07 * float(i2 % 2))
@@ -107,6 +117,17 @@ func _draw() -> void:
 					# старая плесень выпускает споры-точки
 					draw_circle(c2 + Vector2(0, -ts * 0.3), 1.4,
 							Color(0.72, 0.74, 0.6, 0.5 + 0.3 * pulse))
+		# v1.88: след магии героя — выжженная земля на месте плесени
+		var burned_v: Variant = sim.get("mold_burned")
+		if burned_v is Dictionary:
+			for t3: Vector2i in (burned_v as Dictionary).keys():
+				var c3: Vector2 = map.tile_center_px(t3)
+				if not vis.has_point(c3):
+					continue
+				var btex: Texture2D = Assets.tex("res://assets/sprites/env/mold_burned_1.png")
+				if btex != null:
+					draw_texture_rect(btex, Rect2(c3 - Vector2(ts, ts) * 0.62,
+							Vector2(ts, ts) * 1.24), false)
 	# мотыльки: порхают у земли (ночью читаются как мотыльки у фонарей)
 	for b in _butterflies:
 		var pos: Vector2 = (b["base"] as Vector2) + Vector2(
