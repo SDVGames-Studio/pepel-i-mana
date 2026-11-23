@@ -132,3 +132,4 @@ func _test_secrets() -> void:
 	_check(locs.has("diary.slip.thief"), "локаль прокола вора есть")
 	_check(locs.has("diary.slip.demonologist"), "локаль прокола демонолога есть")
 	_check(locs.has("thought.masked.1"), "локаль маскировки есть")
+	_check(locs.has("diary.slip.necromancer"), "локаль прокола некроманта есть")

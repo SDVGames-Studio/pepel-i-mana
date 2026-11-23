@@ -816,10 +816,12 @@ func _daily_notes() -> void:
 		# v1.94: тайный житель изредка ПРОКАЛЫВАЕТСЯ — улика в дневнике
 		var sec := String(r.get("secret", ""))
 		if sec != "" and not bool(r.get("secret_revealed", false)) \
-				and sec != "necromancer" and _event_rng.randf() < 0.12:
+				and _event_rng.randf() < 0.12:
 			res_log(r, "dlog.slip", [sec])
 			if _secret_slips(r) >= 3:
 				r["secret_revealed"] = true
+				if sec == "necromancer":
+					necro_known = true   # v1.94.1: город узнал о некромантии по уликам
 				_chron("chron.secret_out", String(r["name"]), "secret." + sec)
 				events.append({"type": "secret_out", "name": String(r["name"]),
 					"role": sec})
