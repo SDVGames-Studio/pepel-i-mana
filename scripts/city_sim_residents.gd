@@ -366,6 +366,15 @@ func _walk_third(other: Dictionary, except_id: int) -> int:
 ## даёт свой голос (ворчун/весельчак/лентяй/трудяга/обжора/мечтатель/стоик).
 func resident_thoughts(r: Dictionary) -> Array:
 	var out: Array = []
+	# v1.94: НЕРАСКРЫТЫЙ тайный житель прячет мысли — нейтральныйpool
+	# с редкой уликой-проколом (это и есть улика для внимательного героя)
+	if _secret_hidden(r):
+		var slip := _event_rng.randf() < 0.22 if _event_rng != null else false
+		if slip:
+			out.append({"k": "thought.slip." + String(r.get("secret", "")), "a": []})
+		else:
+			out.append({"k": "thought.masked." + str(int(_event_rng.randi_range(1, 3)) if _event_rng != null else 1), "a": []})
+		return out
 	var voice := "plain"
 	for v in ["grumpy", "cheerful", "lazy", "hardworking", "glutton", "dreamer", "stoic"]:
 		if v in (r.get("traits", []) as Array):
@@ -401,3 +410,13 @@ func resident_thoughts(r: Dictionary) -> Array:
 	while out.size() > 3:
 		out.pop_back()
 	return out
+
+
+## Тайная роль ещё не раскрыта городу (v1.94).
+func _secret_hidden(r: Dictionary) -> bool:
+	var s := String(r.get("secret", ""))
+	if s == "" or bool(r.get("secret_revealed", false)):
+		return false
+	if s == "necromancer":
+		return not necro_known   # некромант скрыт до городового раскрытия
+	return true

@@ -132,6 +132,8 @@ func _residents_bbcode() -> String:
 			# тайный некромант (M11): после раскрытия виден в списке жителей
 			if String(r.get("secret", "")) == "necromancer" and bool(sim.necro_known):
 				prof_text += " [color=#ba68c8](%s)[/color]" % Loc.t("city.necro_tag")
+			elif String(r.get("secret", "")) != "" and bool(r.get("secret_revealed", false)):
+				prof_text += " [color=#ba68c8](%s)[/color]" % Loc.t("secret." + String(r["secret"]))
 			parts.append(prof_text)
 			var traits := PackedStringArray()
 			for t_id in r.get("traits", []):

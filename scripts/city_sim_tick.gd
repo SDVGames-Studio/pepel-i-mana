@@ -813,5 +813,24 @@ func _daily_notes() -> void:
 		if bool(r.get("golem", false)):
 			continue
 		res_log(r, "dlog.note", [s])
+		# v1.94: тайный житель изредка ПРОКАЛЫВАЕТСЯ — улика в дневнике
+		var sec := String(r.get("secret", ""))
+		if sec != "" and not bool(r.get("secret_revealed", false)) \
+				and sec != "necromancer" and _event_rng.randf() < 0.12:
+			res_log(r, "dlog.slip", [sec])
+			if _secret_slips(r) >= 3:
+				r["secret_revealed"] = true
+				_chron("chron.secret_out", String(r["name"]), "secret." + sec)
+				events.append({"type": "secret_out", "name": String(r["name"]),
+					"role": sec})
+
+
+## Сколько улик-проколов в дневнике тайного жителя (v1.94).
+func _secret_slips(r: Dictionary) -> int:
+	var n := 0
+	for e in (r.get("log", []) as Array):
+		if String(e["k"]) == "dlog.slip":
+			n += 1
+	return n
 
 

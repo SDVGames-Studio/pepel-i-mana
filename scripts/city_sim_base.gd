@@ -455,6 +455,14 @@ func _new_resident(res_name: String, prof: String, tile: Vector2i) -> Dictionary
 	r["like"] = _roll_bio(people.get("likes", {}).get("list", []))
 	r["dislike"] = _roll_bio(people.get("dislikes", {}).get("list", []))
 	r["habit"] = _roll_bio(people.get("habits", {}).get("list", []))
+	# v1.94: тайная роль (вор/демонолог; некромант назначается сюжетом).
+	# Пока не раскрыт — прячет мысли и изредка прокалывается в дневнике.
+	var sroll := _event_rng.randi_range(1, 100) if _event_rng != null else 0
+	for sd in people.get("secrets", {}).get("list", []):
+		if sroll <= int(sd.get("weight", 0)):
+			r["secret"] = String(sd["id"])
+			r["secret_revealed"] = false
+			break
 	return r
 
 
@@ -486,8 +494,9 @@ func _roll_bio(lst: Array) -> String:
 ## Ключи локализуются в HUD (dlog.*), симуляция хранит только id и аргументы.
 func res_log(r: Dictionary, key: String, args: Array = []) -> void:
 	var log: Array = r.get("log", [])
-	# дедуп: та же запись в тот же день (удары по раненому) не дублируем
-	if not log.is_empty():
+	# дедуп: та же запись в тот же день (удары по раненому) не дублируем;
+	# улики (dlog.slip) — отдельные события, дедуп не действует
+	if key != "dlog.slip" and not log.is_empty():
 		var last: Dictionary = log[log.size() - 1]
 		if String(last["k"]) == key and int(last["d"]) == int(day):
 			return

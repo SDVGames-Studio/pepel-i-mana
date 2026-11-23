@@ -605,6 +605,13 @@ func close_resident() -> void:
 ## (diary.<событие>.<голос>); нет ключа — телеграфный запасной стиль.
 func _diary_paragraph(r: Dictionary, e: Dictionary) -> String:
 	var base := String(e["k"]).substr(5)
+	if String(e["k"]) == "dlog.slip":
+		var srole := String((e.get("a", []) as Array)[0])
+		return Loc.t("diary.slip." + srole)
+	# v1.94: нераскрытый тайный житель пишет СУХО (нейтральный стиль) —
+	# это само по себе улика внимательному читателю
+	if _secret_hidden_public(r):
+		return _dlog_text_of(e)
 	var goal_id := ""
 	if base == "goal_done":
 		var ga: Array = e.get("a", [])
@@ -627,6 +634,17 @@ func _diary_paragraph(r: Dictionary, e: Dictionary) -> String:
 	if args.is_empty():
 		return fmt
 	return fmt % args
+
+
+## Тайный житель нераскрыт? (HUD не знает внутренностей сима —
+## дублируем простое правило по данным жителя и флагам сима.)
+func _secret_hidden_public(r: Dictionary) -> bool:
+	var s := String(r.get("secret", ""))
+	if s == "" or bool(r.get("secret_revealed", false)):
+		return false
+	if s == "necromancer":
+		return not bool(sim.necro_known)
+	return true
 
 
 ## Строка дневника: ключ dlog.* + аргументы локализуются здесь.

@@ -111,3 +111,24 @@ func _test_goal_done() -> void:
 	var locs: Dictionary = _read_json("res://loc/ru.json")
 	_check(locs.has("diary.goal_done.feast_tavern." + sim.res_voice(r)),
 			"абзац «мечта сбылась» в голосе жителя есть")
+
+
+func _test_secrets() -> void:
+	print("[v1.94: тайные роли]")
+	var sim := _make_sim()
+	var r: Dictionary = sim.residents[0]
+	r["secret"] = "thief"
+	r["secret_revealed"] = false
+	# скрытый: мысли — маскировка или прокол, никакой души
+	var th: Array = sim.resident_thoughts(r)
+	var k := String(th[0]["k"])
+	_check(k.begins_with("thought.masked.") or k.begins_with("thought.slip.thief"),
+			"скрытый вор думает нейтрально или прокалывается")
+	# 3 улики -> раскрытие
+	for i in 3:
+		sim.res_log(r, "dlog.slip", ["thief"])
+	_check(sim._secret_slips(r) >= 3, "улики копятся")
+	var locs: Dictionary = _read_json("res://loc/ru.json")
+	_check(locs.has("diary.slip.thief"), "локаль прокола вора есть")
+	_check(locs.has("diary.slip.demonologist"), "локаль прокола демонолога есть")
+	_check(locs.has("thought.masked.1"), "локаль маскировки есть")
