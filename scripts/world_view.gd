@@ -692,6 +692,13 @@ func _draw_animal(a: Dictionary, def: Dictionary) -> void:
 	if def.is_empty():
 		return
 	var pos: Vector2 = a["px"]
+	# волна 2026-11-23: спрайты зверей из листов заказчика (кадры айдл/бег)
+	var art: Dictionary = def.get("art", {})
+	if not art.is_empty() and Assets.draw_animal_art(self, art,
+			pos + Vector2(0, -2.0 * float(def.get("size", 1.0))),
+			not String(def.get("behavior", "")) == "fish",
+			_time + float(a["id"]) * 0.31, bool(a.get("flip", false))):
+		return
 	var col := Color(String(def.get("color", "#cccccc")))
 	var size := float(def.get("size", 1.0))
 	var bob := absf(sin(_time * 3.0 + float(a["id"]))) * 1.5

@@ -42,7 +42,8 @@ const SHEETS := [
 	["цветущий край", "биомы цветуший край и речной", "Пиксельный атлас фантастического мира-1.png"],
 ]
 const SUMMER_TREES := ["e:tree2_summer_oak", "e:tree2_summer_pine",
-	"e:tree2_summer_birch", "e:tree2_summer_willow", "e:tree2_summer_dead"]
+	"e:tree2_summer_birch", "e:tree2_summer_willow", "e:tree2_summer_dead",
+	"e:tree2_spruce", "e:tree2_birch2", "e:tree2_oak_old", "e:tree2_snag"]
 
 var _sources: Array = []        # [{label, sheet, trees[]}]
 var _active := 0

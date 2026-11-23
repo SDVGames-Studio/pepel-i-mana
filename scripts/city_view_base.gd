@@ -498,8 +498,8 @@ func _tree_refs_for_season() -> Array:
 				if not tt.is_empty():
 					return tt
 		if st == "summer":
-			return SUMMER_TREE_REFS
-	return TREE_REFS
+			return SUMMER_TREE_REFS + WAVE23_TREES
+	return TREE_REFS + WAVE23_TREES
 
 
 ## Композит дерева (v1.22): спрайт дерева печётся в одну текстуру один раз
@@ -549,12 +549,16 @@ func _tree_composite(ref: String, t: Texture2D, src: Rect2) -> ImageTexture:
 
 const TREE_REFS := ["e:tree2_red", "e:tree2_pine", "e:tree2_birch",
 		"e:tree2_teal", "e:tree2_willow"]
+# волна 2026-11-23: деревья/пни/брёвна из листа «деревья и брёвна»
+const WAVE23_TREES := ["e:tree2_spruce", "e:tree2_birch2", "e:tree2_oak_old",
+		"e:tree2_snag"]
 # v1.76 «Лето»: деревья из атласа заказчика (summer/decor)
 const SUMMER_TREE_REFS := ["e:tree2_summer_oak", "e:tree2_summer_pine",
 		"e:tree2_summer_birch", "e:tree2_summer_willow", "e:tree2_summer_dead"]
 
 
-const DARK_TREE_REFS := ["e:tree2_dark_pine", "e:tree2_dark_willow"]
+const DARK_TREE_REFS := ["e:tree2_dark_pine", "e:tree2_dark_willow",
+		"e:tree2_snag"]
 
 static func _hash(x: int, y: int, n: int, salt: int = 0) -> int:
 	var v := int((x * 73856093) ^ (y * 19349663) ^ (salt * 83492791))

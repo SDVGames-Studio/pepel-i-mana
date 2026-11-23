@@ -65,9 +65,10 @@ func _test_v158_dragon_bones() -> void:
 		_check(FileAccess.file_exists("res://assets/sprites/" + fname + ".png"),
 				"PNG " + fname + " существует")
 	# другие биомы не затронуты: у них нет decor-ключей — пустые списки = нет декора
+	# (волна 2026-11-23 добавила decor и пак d5 биому «ruins» — руины чуди)
 	var others := 0
 	for key in dg["biomes"]:
-		if key in ["midnight_crypt", "dragon_lair"]:
+		if key in ["midnight_crypt", "dragon_lair", "ruins"]:
 			continue
 		var b: Dictionary = dg["biomes"][key]
 		if b.has("decor_sprites") or b.has("decor_big"):

@@ -28,6 +28,7 @@ var _bosses: Array = []          # [ref, подпись]
 var _buildings: Array = []       # [ref, подпись]
 var _hero_tex: Texture2D = null
 var _biome_patches: Array = []   # v1.76.3: галерея биомов 20x20 (запечённые)
+var _wave_rows: Array = []       # волна 2026-11-23: ряды новой нарезки
 
 
 func _ready() -> void:
@@ -71,7 +72,75 @@ func _ready() -> void:
 		_buildings.append([ref, Loc.t(String(b["loc"]))])
 
 	_hero_tex = Assets.tex("res://assets/sprites/hero/knight_Idle.png")
+	_prepare_wave_rows()       # волна 2026-11-23: чудь/капище/кладбище/скалы
 	_prepare_biome_patches()   # v1.76.3
+
+
+## Волна 2026-11-23: ряды новой нарезки заказчика — чудь-данж, руины чуди,
+## идолы богов (капище), реликвии, кладбище, скалы, деревья, звери.
+func _prepare_wave_rows() -> void:
+	_wave_rows.append({"title": Loc.t("stand.row_wave_chud"), "h": 64.0,
+			"gap": 150.0, "items": [
+		["e:chud_chest_closed", "сундук"], ["e:chud_chest_open", "открыт"],
+		["e:chud_chest_carved", "резной"], ["e:chud_coins_bag", "монеты"],
+		["e:chud_coins_pile", "горка"], ["e:chud_skulls_pile", "черепа"],
+		["e:chud_idol_copper", "идол медный"], ["e:chud_idol_stone", "идол чуди"],
+		["e:chud_stele_runed", "стела"], ["e:chud_key_bone", "ключ"],
+		["e:chud_barrel", "бочка"], ["e:chud_crate", "ящик"],
+		["e:chud_jug", "кувшин"], ["e:chud_candle", "свеча"],
+		["e:chud_cage", "клетка"], ["e:chud_chain_hook", "цепь"],
+		["e:chud_sarcophagus", "саркофаг"], ["e:chud_altar_bowl", "алтарь"],
+		["e:chud_coffin_open", "гроб"], ["e:chud_web", "паутина"],
+		["e:chud_rubble_small", "щебень"], ["e:chud_rubble_big", "обвал"]]})
+	_wave_rows.append({"title": Loc.t("stand.row_wave_ruins"), "h": 110.0,
+			"gap": 220.0, "items": [
+		["e:chud_idol_wood", "идол древний"], ["e:chud_idol_copper_big", "медный"],
+		["e:chud_idol_stone_big", "истукан"], ["e:chud_brazier_fire", "жаровня"],
+		["e:chud_basin", "чаша"], ["e:chud_chest_old", "сундук старый"],
+		["e:chud_sarc_stone", "саркофаг"], ["e:chud_grate", "решётка"],
+		["e:chud_arch", "арка"], ["e:chud_logs_debris", "завал"],
+		["e:rock_menhir", "менгир"], ["e:rock_spire", "столб"]]})
+	_wave_rows.append({"title": Loc.t("stand.row_wave_idols"), "h": 120.0,
+			"gap": 240.0, "items": [
+		["e:idol_veles_a", "Велес"], ["e:idol_veles_b", "Велес II"],
+		["e:idol_mokosh_a", "Мокошь"], ["e:idol_mokosh_b", "Мокошь II"],
+		["e:idol_perun_a", "Перун"], ["e:idol_perun_b", "Перун II"]]})
+	_wave_rows.append({"title": Loc.t("stand.row_wave_relics"), "h": 56.0,
+			"gap": 130.0, "items": [
+		["e:relic_potion_grace", "благодать"], ["e:relic_potion_rage", "ярость"],
+		["e:relic_potion_stone", "камень"], ["e:relic_heart_vial", "сосуд"],
+		["e:relic_feather", "перо"], ["e:relic_heart", "сердце"],
+		["e:relic_dragon_harness", "упряжь"], ["e:relic_crown", "корона"],
+		["e:relic_boat_charm", "ладья"], ["e:relic_horse_charm", "конь"]]})
+	_wave_rows.append({"title": Loc.t("stand.row_wave_cemetery"), "h": 104.0,
+			"gap": 190.0, "items": [
+		["e:cem_fence", "ограда"], ["e:cem_gate", "ворота"], ["e:cem_willow", "ива"],
+		["e:cem_grave_cross", "могила"], ["e:cem_grave_slab", "плита"],
+		["e:cem_sarc", "саркофаг"], ["e:cem_grave_mound", "холмик"],
+		["e:cem_cenotaph", "кенотаф"], ["e:cem_lamp", "фонарь"],
+		["e:cem_skull_bowl", "чаша"]]})
+	_wave_rows.append({"title": Loc.t("stand.row_wave_rocks"), "h": 92.0,
+			"gap": 180.0, "items": [
+		["e:rock_cliff", "утёс"], ["e:rock_big", "валун"],
+		["e:rock_big_moss", "во мху"], ["e:rock_quartz", "кварц"],
+		["e:rock_med", "камень"], ["e:rock_flat", "плитняк"],
+		["e:rock_rubble", "осыпь"], ["e:rock_spire", "столб"],
+		["e:rock_menhir", "менгир"], ["e:rock_arch", "арка"],
+		["e:rock_steps", "ступени"]]})
+	_wave_rows.append({"title": Loc.t("stand.row_wave_trees"), "h": 128.0,
+			"gap": 230.0, "items": [
+		["e:tree2_spruce", "ель"], ["e:tree2_birch2", "берёза"],
+		["e:tree2_oak_old", "дуб"], ["e:tree2_snag", "сухостой"],
+		["e:stump_fresh", "пень"], ["e:stump_mossy", "пень во мху"],
+		["e:stump_split", "расколот"], ["e:snag_bent", "коряга"],
+		["e:logs_stack", "поленница"], ["e:log_mossy", "мшистое"],
+		["e:log_big", "бревно"]]})
+	_wave_rows.append({"title": Loc.t("stand.row_wave_animals"), "h": 42.0,
+			"gap": 120.0, "items": [
+		["e:an_deer_1", "олень"], ["e:an_boar_1", "кабан"],
+		["e:an_wolf_1", "волк"], ["e:an_fox_1", "лиса"],
+		["e:an_hare_1", "заяц"], ["e:an_bird_1", "птица"],
+		["e:an_fish_1", "рыба"], ["e:an_toad_1", "жаба"]]})
 
 
 func _read_json(path: String) -> Variant:
@@ -320,7 +389,23 @@ func _draw() -> void:
 		_label(font, pos + Vector2(0, BLD_HEIGHT * 0.5 + 18.0),
 				String(_buildings[i][1]))
 
-	# --- ряд 6: БИОМЫ — патчи 20x20 с рекой и деревьями (v1.76.3) ---
+	# --- ряды 6+: волна 2026-11-23 — чудь-данж, капище, кладбище, скалы ---
+	for wr: Dictionary in _wave_rows:
+		row_y += ROW_GAP
+		var wh := float(wr["h"])
+		var wg := float(wr["gap"])
+		_row_caption(font, to_screen,
+				Vector2(-VILL_SPACING, row_y - 60.0 - wh), String(wr["title"]))
+		var witems: Array = wr["items"]
+		for i in range(witems.size()):
+			var it: Array = witems[i]
+			var worg := Vector2(float(i) * wg, row_y)
+			var wpos: Vector2 = to_screen.call(
+					worg + Vector2(wg * 0.5, wh * 0.5 + 24.0))
+			Assets.draw_ref(self, String(it[0]), wpos, wh)
+			_label(font, wpos + Vector2(0, wh * 0.5 + 16.0), String(it[1]))
+
+	# --- ряд: БИОМЫ — патчи 20x20 с рекой и деревьями (v1.76.3) ---
 	var by := row_y + 300.0
 	_row_caption(font, to_screen, Vector2(-VILL_SPACING, by - 60.0),
 			Loc.t("stand.row_biomes"))

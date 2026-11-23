@@ -369,6 +369,12 @@ func _draw_fauna_animal(a: Dictionary, kind: String, pos: Vector2, vel: Vector2)
 		Assets.draw_animal(self, "turkey", Assets.dir_of(vel), not vel.is_zero_approx(),
 				pos + Vector2(0, -4), 20.0, _anim_time + float(a["id"]) * 0.37)
 		return
+	# волна 2026-11-23: спрайты зверей из листов заказчика (кадры айдл/бег)
+	var art: Dictionary = def.get("art", {})
+	if not art.is_empty() and Assets.draw_animal_art(self, art,
+			pos + Vector2(0, -3.0), not vel.is_zero_approx(),
+			_anim_time + float(a["id"]) * 0.31, vel.x < -1.0):
+		return
 	var col := Color(String(def.get("color", "#cccccc")))
 	var size := float(def.get("size", 1.0))
 	var moving := not vel.is_zero_approx()

@@ -234,6 +234,24 @@ static func draw_ref(canvas: CanvasItem, ref: String, pos: Vector2, size_px: flo
 	canvas.draw_texture_rect_region(t, dst, src, tint)
 
 
+## Зверь из листов заказчика (волна 2026-11-23): art = {frames: [...],
+## idle_n: N, h: px}. Кадры [0..idle_n) — айдл, хвост — бег (8 fps).
+## Возвращает false, если art нет — вызывающий рисует процедурно.
+static func draw_animal_art(canvas: CanvasItem, art: Dictionary, pos: Vector2,
+		moving: bool, t: float, flip := false) -> bool:
+	if art.is_empty() or not art.has("frames"):
+		return false
+	var frames: Array = art["frames"]
+	var idle_n := mini(maxi(1, int(art.get("idle_n", 2))), frames.size())
+	var idx: int
+	if moving and frames.size() > idle_n:
+		idx = idle_n + (int(t * 8.0) % (frames.size() - idle_n))
+	else:
+		idx = int(t * 2.0) % idle_n
+	draw_ref(canvas, String(frames[idx]), pos, float(art.get("h", 20.0)), flip)
+	return true
+
+
 ## Размер по высоте (ширина с пропорциями) — для расчёта прямоугольников.
 static func ref_size(ref: String, size_px: float) -> Vector2:
 	var t := sprite(ref)

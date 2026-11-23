@@ -224,14 +224,52 @@
 			"boss": "bone_knight",
 			"decor_color": "#5a5248",
 			"exit_color": "#d8c27a",
-			"floor_color": "#9c948a",
+			"floor_color": "#e8e4dc",
 			"floor_sprite": "k:18",
 			"floor_sprite_alt": "k:39",
 			"loc": "biome.ruins",
 			"loot_bonus": 0.0,
 			"pollution_on_visit": 0.0,
-			"wall_color": "#776f64",
+			"wall_color": "#ffffff",
 			"wall_sprite": "k:57",
+			"pack_refs": {
+				"floor_a": "e:d5_floor_a",
+				"floor_b": "e:d5_floor_b",
+				"floor_c": "e:d5_floor_c",
+				"edge_n": "e:d5_edge_n",
+				"edge_s": "e:d5_edge_s",
+				"edge_w": "e:d5_edge_w",
+				"edge_e": "e:d5_edge_e",
+				"wall_face": "e:d5_wall_face",
+				"wall_top": "e:d5_wall_top"
+			},
+			"decor_chance": 12,
+			"decor_size": 26,
+			"decor_big_size": 62,
+			"decor_sprites": [
+				"e:chud_mushrooms",
+				"e:chud_bones",
+				"e:chud_jugs",
+				"e:chud_candles",
+				"e:chud_rubble_small",
+				"e:chud_rubble_big",
+				"e:chud_web",
+				"e:rock_rubble"
+			],
+			"decor_big": [
+				"e:chud_idol_wood",
+				"e:chud_idol_copper_big",
+				"e:chud_idol_stone_big",
+				"e:chud_brazier_fire",
+				"e:chud_basin",
+				"e:chud_chest_old",
+				"e:chud_sarc_stone",
+				"e:chud_grate",
+				"e:chud_arch",
+				"e:chud_logs_debris",
+				"e:rock_menhir",
+				"e:rock_spire"
+			],
 			"enemy_weights": {
 				"polevik": 22.0,
 				"upyr": 14.0,
@@ -240,7 +278,7 @@
 				"ghoul": 12.0,
 				"rat": 6.0
 			},
-			"moss": true,
+			"moss": false,
 			"crystals": false,
 			"humanoids": false
 		},
@@ -299,6 +337,24 @@
 			"bg_color": "#080610",
 			"boss": "viy",
 			"decor_color": "#3a3460",
+			"decor_chance": 11,
+			"decor_size": 26,
+			"decor_big_size": 58,
+			"decor_sprites": [
+				"e:chud_web",
+				"e:chud_candles",
+				"e:chud_jugs",
+				"e:chud_bones",
+				"e:chud_rubble_small"
+			],
+			"decor_big": [
+				"e:chud_coffin_open",
+				"e:chud_sarcophagus",
+				"e:chud_cage",
+				"e:chud_altar_bowl",
+				"e:chud_chest_old",
+				"e:chud_idol_stone"
+			],
 			"enemy_weights": {
 				"upyr": 18.0,
 				"nochnitsa": 16.0,
