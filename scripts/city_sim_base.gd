@@ -443,7 +443,7 @@ func _new_resident(res_name: String, prof: String, tile: Vector2i) -> Dictionary
 	# v1.90: биография — происхождение, страх, прежнее ремесло (people-ролл)
 	r["origin"] = _roll_bio(people.get("origins", {}).get("list", []))
 	if String(r["origin"]) == "lost_forest":
-		r["origin_arg"] = int(_event_rng.randi_range(3, 10)) if _event_rng != null else 5
+		r["origin_arg"] = int(_event_rng.randi_range(5, 10)) if _event_rng != null else 5
 	r["fear"] = _roll_bio(people.get("fears", {}).get("list", []))
 	r["past_prof"] = _roll_bio(people.get("pasts", {}).get("list", []))
 	return r
