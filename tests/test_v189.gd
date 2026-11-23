@@ -78,6 +78,10 @@ func _test_diary_matrix() -> void:
 		for v in voices:
 			if not locs.has("diary.%s.%s" % [ev, v]):
 				missing += 1
+	for g in ["become_master", "build_garden", "feast_tavern", "store_food"]:
+		for v in voices:
+			if not locs.has("diary.goal_done.%s.%s" % [g, v]):
+				missing += 1
 	_check(missing == 0, "матрица дневника полна: 18 событий × 6 голосов (нет %d)" % missing)
 	var sim := _make_sim()
 	var r: Dictionary = sim.residents[0]
@@ -91,3 +95,19 @@ func _test_diary_matrix() -> void:
 		if String(e["k"]) == "dlog.note":
 			has_note = true
 	_check(has_note, "размышление о жизни записано")
+
+
+func _test_goal_done() -> void:
+	print("[v1.93: выполнение цели — в дневник]")
+	var sim := _make_sim()
+	var r: Dictionary = sim.residents[0]
+	r["goal"] = "feast_tavern"
+	r["tavern_visited"] = true
+	sim._roll_goals()   # ежедневная проверка целей
+	var keys: Array = []
+	for e in (r["log"] as Array):
+		keys.append(String(e["k"]))
+	_check("dlog.goal_done" in keys, "выполнение цели — запись в дневнике")
+	var locs: Dictionary = _read_json("res://loc/ru.json")
+	_check(locs.has("diary.goal_done.feast_tavern." + sim.res_voice(r)),
+			"абзац «мечта сбылась» в голосе жителя есть")

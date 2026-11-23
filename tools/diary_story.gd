@@ -26,6 +26,9 @@ func _initialize() -> void:
 	sim = load("res://scripts/city_sim.gd").new()
 	sim.setup(city_map, cfg, 12, "normal")
 	sim._last_daily_day = 1
+	# GOALFOOD=1: полный погреб — цели «запасти еды» сбываются (демо)
+	if OS.get_environment("GOALFOOD") != "":
+		sim.res["food"] = 500.0
 
 	# 30 дней жизни города, шаг 1 сек
 	var steps := int(float(days) * float(cfg["day_length"]))
@@ -100,7 +103,11 @@ func _voice(r: Dictionary) -> String:
 
 func _diary(r: Dictionary, e: Dictionary) -> String:
 	var base := String(e["k"]).substr(5)
-	var key := "diary.%s.%s" % [base, _voice(r)]
+	var goal_id := ""
+	if base == "goal_done":
+		var ga: Array = e.get("a", [])
+		goal_id = String(ga[0]) if not (ga as Array).is_empty() else ""
+	var key := "diary.%s.%s.%s" % [base, goal_id, _voice(r)] if goal_id != "" 			else "diary.%s.%s" % [base, _voice(r)]
 	var fmt := _t(key)
 	if fmt == key:
 		return _dlog(e)
@@ -111,6 +118,8 @@ func _diary(r: Dictionary, e: Dictionary) -> String:
 			args.append(_prof(s))
 		elif base == "goal_set":
 			args.append(_t("goal." + s))
+		elif base == "goal_done":
+			pass   # имя цели вшито в текст абзаца
 		elif base == "note":
 			args.append(_t("season.word." + s))
 		else:

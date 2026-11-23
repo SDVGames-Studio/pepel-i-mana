@@ -260,6 +260,7 @@ const BLOCKS := [
 		"_test_bio",
 		"_test_bio_facets",
 		"_test_diary_matrix",
+		"_test_goal_done",
 ]],
 ]
 

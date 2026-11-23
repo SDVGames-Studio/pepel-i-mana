@@ -605,7 +605,11 @@ func close_resident() -> void:
 ## (diary.<событие>.<голос>); нет ключа — телеграфный запасной стиль.
 func _diary_paragraph(r: Dictionary, e: Dictionary) -> String:
 	var base := String(e["k"]).substr(5)
-	var key := "diary.%s.%s" % [base, sim.res_voice(r)]
+	var goal_id := ""
+	if base == "goal_done":
+		var ga: Array = e.get("a", [])
+		goal_id = String(ga[0]) if not (ga as Array).is_empty() else ""
+	var key := "diary.%s.%s.%s" % [base, goal_id, sim.res_voice(r)] if goal_id != "" 			else "diary.%s.%s" % [base, sim.res_voice(r)]
 	var fmt := Loc.t(key)
 	if fmt == key:
 		return _dlog_text_of(e)

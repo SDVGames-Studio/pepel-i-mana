@@ -573,6 +573,7 @@ func _complete_goal(r: Dictionary, pool: Array) -> void:
 	r["goal_prev"] = goal
 	r["goal"] = ""
 	r["mood"] = clampf(float(r["mood"]) + float(_v3().get("goal_mood", 6.0)), 0.0, 100.0)
+	res_log(r, "dlog.goal_done", [goal])   # v1.93: мечта сбылась — в дневник
 	_mem_push(r, "goal")
 	_chron("chron.goal_done", String(r["name"]), "goal." + goal)
 	events.append({"type": "goal_done", "name": String(r["name"]), "goal": goal})
