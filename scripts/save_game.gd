@@ -350,6 +350,11 @@ static func _build_city(cd: Variant, seed_value := 0, hydro := {}):
 	sim.story_flags = _dec(sd.get("story_flags", {}))
 	# жители после зданий: ссылки bld/site/home восстанавливаются по id
 	sim.residents = _dec(cd.get("residents", []))
+	# v1.89: старые сейвы без uid/дневника — миграция на месте
+	for r0 in sim.residents:
+		if int(r0.get("uid", -1)) < 0:
+			sim._res_uid += 1
+			r0["uid"] = sim._res_uid
 	for r in sim.residents:
 		r["id"] = int(r.get("id", 0))
 		r["fatigue"] = float(r.get("fatigue", 0.0))

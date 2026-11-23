@@ -99,6 +99,7 @@ const GOLEM_NAME := "Голем"     # староста-голем «Белый 
 
 var _next_id := 1
 var _trait_map := {}            # id черты -> описание (из people["traits"])
+var _res_uid := 0                # v1.89: сквозной uid жителей для дневника/клика
 var _spell_ready := {}          # id городского заклинания -> время готовности
 var _event_rng := RandomNumberGenerator.new()
 var _last_event_day := 0
@@ -417,6 +418,7 @@ func _new_resident(res_name: String, prof: String, tile: Vector2i) -> Dictionary
 	var traits := _random_traits()
 	var r := {
 		"id": _next_id, "name": res_name, "prof": prof,
+		"uid": -1, "log": [],
 		"race": _roll_race(),           # раса жителя (v1.64, ответ №108)
 		"bld": null, "site": null, "home": null,
 		"state": "idle", "pos": map.tile_center_px(tile),
@@ -432,7 +434,29 @@ func _new_resident(res_name: String, prof: String, tile: Vector2i) -> Dictionary
 		"parents": [],          # родители-жители (для детей, правки v1.20)
 		"golem": false,         # староста-голем: белый, без цвета и быта
 	}
+	# v1.89: дневник жителя — стабильный uid для клика и кольцо записей
+	_res_uid += 1
+	r["uid"] = _res_uid
+	r["log"] = [{"d": int(day), "k": "dlog.came", "a": []}]
 	return r
+
+
+## Дневник жителя (v1.89): запись события в кольцо последних 24 записей.
+## Ключи локализуются в HUD (dlog.*), симуляция хранит только id и аргументы.
+func res_log(r: Dictionary, key: String, args: Array = []) -> void:
+	var log: Array = r.get("log", [])
+	log.append({"d": int(day), "k": key, "a": args})
+	while log.size() > 24:
+		log.pop_front()
+	r["log"] = log
+
+
+## Житель по uid (клик в списке; старые сейвы мигрируют при загрузке).
+func resident_by_uid(uid: int) -> Dictionary:
+	for r in residents:
+		if int(r.get("uid", -1)) == uid:
+			return r
+	return {}
 
 
 ## --- Жизнь v3 (M14-F, issue #3): отношения, память, цели --------------------
@@ -581,6 +605,7 @@ func _magic_pollution_mult() -> float:
 	return 0.0
 
 func _make_ail(r: Dictionary, kind: String, chron_key: String) -> void:
+	res_log(r, "dlog." + kind)   # v1.89: дневник — заболел/ранен
 	pass
 
 func _manage_walk(r: Dictionary, dt: float) -> void:

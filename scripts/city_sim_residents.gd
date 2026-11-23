@@ -358,3 +358,45 @@ func _walk_third(other: Dictionary, except_id: int) -> int:
 			best_s = s2
 			best = int(cand["id"])
 	return best
+
+
+## Мысли жителя (v1.89): 1-3 строки «о чём он думает сейчас» — из
+## состояния (голод/хворь/рана/сон), настроения и характера: каждая черта
+## даёт свой голос (ворчун/весельчак/лентяй/трудяга/обжора/мечтатель/стоик).
+func resident_thoughts(r: Dictionary) -> Array:
+	var out: Array = []
+	var voice := "plain"
+	for v in ["grumpy", "cheerful", "lazy", "hardworking", "glutton", "dreamer", "stoic"]:
+		if v in (r.get("traits", []) as Array):
+			voice = String(v)
+			break
+	var put := func(key: String, args: Array = []) -> void:
+		out.append({"k": key, "a": args})
+	match String(r.get("state", "")):
+		"hungry":
+			put.call("thought.hungry." + voice)
+		"sick":
+			put.call("thought.sick." + voice)
+		"wounded":
+			put.call("thought.wounded." + voice)
+		"sleep":
+			put.call("thought.sleep." + voice)
+	if out.is_empty():
+		var mood := int(r.get("mood", 50.0))
+		if mood >= 75:
+			put.call("thought.mood_high")
+		elif mood <= 25:
+			put.call("thought.mood_low")
+	var best: Dictionary = rel_best(r)
+	if not best.is_empty():
+		put.call("thought.friend", [String(best["other"]["name"])])
+	var worst: Dictionary = rel_worst(r)
+	if not worst.is_empty():
+		put.call("thought.foe", [String(worst["other"]["name"])])
+	if String(r.get("goal", "")) != "":
+		put.call("thought.goal", [String(r["goal"])])
+	if out.is_empty() or (out.size() < 2 and String(r.get("state", "")) == "idle"):
+		put.call("thought.idle." + voice)
+	while out.size() > 3:
+		out.pop_back()
+	return out

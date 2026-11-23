@@ -456,6 +456,9 @@ func _set_rect(control: Control, pos: Vector2, size: Vector2) -> void:
 func res_icon(id: String) -> ImageTexture:
 	return null
 
+func _prof_loc(prof: String) -> String:
+	return prof   # заглушка base; настоящая локализация — в city_hud.gd
+
 
 # --- диалог выбора (v1.81: староста «Память мира», док 18) ------------------
 # Ленивая конструкция: панель строится при первом открытии, порядок сборки
@@ -510,3 +513,94 @@ func close_choice() -> void:
 
 func choice_visible() -> bool:
 	return _choice_panel != null and _choice_panel.visible
+
+
+# --- Дневник жителя (v1.89): клик по имени в списке (Tab) -------------------
+var _res_detail_panel: PanelContainer = null
+var _res_detail_text: RichTextLabel = null
+
+
+func open_resident(uid: int) -> void:
+	var r: Dictionary = sim.resident_by_uid(uid)
+	if r.is_empty():
+		return
+	if _res_detail_panel == null:
+		_res_detail_panel = PanelContainer.new()
+		_res_detail_panel.add_theme_stylebox_override("panel", _panel_style())
+		_res_detail_panel.visible = false
+		_set_rect(_res_detail_panel, Vector2(250, 90), Vector2(410, 700))
+		add_child(_res_detail_panel)
+		var box := VBoxContainer.new()
+		_res_detail_panel.add_child(box)
+		var head := HBoxContainer.new()
+		box.add_child(head)
+		var title := _label(20)
+		title.text = Loc.t("city.resident_panel")
+		title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		head.add_child(title)
+		var close := _toggle_btn("×", func() -> void: close_resident())
+		close.text = "×"
+		head.add_child(close)
+		_res_detail_text = RichTextLabel.new()
+		_res_detail_text.bbcode_enabled = true
+		_res_detail_text.fit_content = true
+		box.add_child(_res_detail_text)
+	var b := PackedStringArray()
+	b.append("[b][color=#ffe082]%s[/color][/b]" % String(r["name"]))
+	if String(r["prof"]) == "":
+		b.append("[color=#fff59d]%s[/color]" % Loc.t("city.state.child"))
+	else:
+		b.append(_prof_loc(String(r["prof"])))
+	var trait_names := PackedStringArray()
+	for t_id in r.get("traits", []):
+		trait_names.append(Loc.t("trait." + String(t_id)))
+	if not trait_names.is_empty():
+		b.append("[color=#9fa8da]%s[/color]" % ", ".join(trait_names))
+	b.append("[color=#c8c8c8]%s[/color]" % Loc.t("city.state." + String(r["state"])))
+	b.append("%s: %d%%" % [Loc.t("city.mood_label"), int(r.get("mood", 50.0))])
+	if int(r.get("partner", -1)) >= 0:
+		var sp: Dictionary = sim._resident_by_id(int(r["partner"]))
+		if not sp.is_empty():
+			b.append("[color=#f48fb1]%s %s[/color]" % [Loc.t("city.spouse"), String(sp["name"])])
+	if String(r.get("goal", "")) != "":
+		b.append("[color=#ce93d8]%s: %s[/color]" % [Loc.t("city.goal_label"), Loc.t("goal." + String(r["goal"]))])
+	var best: Dictionary = sim.rel_best(r)
+	if not best.is_empty():
+		b.append("[color=#80cbc4]%s %s[/color]" % [Loc.t("city.rel_friend"), String(best["other"]["name"])])
+	var worst: Dictionary = sim.rel_worst(r)
+	if not worst.is_empty():
+		b.append("[color=#ef9a9a]%s %s[/color]" % [Loc.t("city.rel_foe"), String(worst["other"]["name"])])
+	b.append("")
+	b.append("[b][color=#ffe082]%s[/color][/b]" % Loc.t("city.thoughts"))
+	for th in sim.resident_thoughts(r):
+		var tk := String(th["k"])
+		var ta: Array = th.get("a", [])
+		var tl: String = Loc.t(tk) if (ta as Array).is_empty() else String(Loc.t(tk)) % ta
+		if tk == "thought.goal":
+			tl = Loc.t("thought.goal") % Loc.t("goal." + String(ta[0]))
+		b.append("[i][color=#c5cae9]«%s»[/color][/i]" % tl)
+	b.append("")
+	b.append("[b][color=#ffe082]%s[/color][/b]" % Loc.t("city.diary"))
+	var log: Array = r.get("log", [])
+	for i in range(log.size() - 1, -1, -1):
+		var e: Dictionary = log[i]
+		b.append("[color=#8d8d8d][%s %d][/color] %s" % [Loc.t("city.day_word"), int(e["d"]), _dlog_text_of(e)])
+	_res_detail_text.text = "\n".join(b)
+	_res_detail_panel.visible = true
+
+
+func close_resident() -> void:
+	if _res_detail_panel != null:
+		_res_detail_panel.visible = false
+
+
+## Строка дневника: ключ dlog.* + аргументы локализуются здесь.
+func _dlog_text_of(e: Dictionary) -> String:
+	var fmt := Loc.t(String(e["k"]))
+	var args: Array = []
+	for a in (e.get("a", []) as Array):
+		var s := String(a)
+		args.append(_prof_loc(s) if String(e["k"]) in ["dlog.job", "dlog.conscript"] else s)
+	if args.is_empty():
+		return fmt
+	return fmt % args

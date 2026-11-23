@@ -478,6 +478,10 @@ func _build() -> void:
 	_residents_text.bbcode_enabled = true
 	_residents_text.fit_content = true
 	_residents_text.custom_minimum_size = Vector2(370, 0)
+	_residents_text.meta_clicked.connect(func(meta: Variant) -> void:
+		var m := String(meta)
+		if m.begins_with("res:"):
+			open_resident(int(m.substr(4))))
 	rp_scroll.add_child(_residents_text)
 
 	# --- центр слева: летопись (C)

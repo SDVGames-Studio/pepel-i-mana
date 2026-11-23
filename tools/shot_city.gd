@@ -256,6 +256,16 @@ func _on_frame() -> void:
 	# возвращаем её прямо перед снимком
 	if _frames == 40 and _weather_override != "" and _game != null:
 		_game.city_sim.weather = _weather_override
+	# SHOT_RESIDENT=1: открыть летопись жителя (v1.89, оценка панели)
+	if _frames == 40 and OS.get_environment("SHOT_RESIDENT") == "1" and _city != null:
+		for c in _city.get_children():
+			if c is CanvasLayer and c.has_method("toggle_residents"):
+				c.toggle_residents()
+				var rs: Array = _city.sim.residents
+				if not rs.is_empty():
+					c.open_resident(int(rs[1].get("uid", -1)))
+				print("shot: летопись жителя открыта")
+				break
 	if _frames < 45:
 		return
 	if _frames == 44 and OS.get_environment("SHOT_SEASON") != "":

@@ -733,6 +733,7 @@ func _roll_guards() -> void:
 		r["bld"] = null
 		r["site"] = null
 		r["sub_prof"] = ""
+		res_log(r, "dlog.conscript", ["guard"])   # v1.89
 		have += 1
 		_chron("chron.guard_trained", String(r["name"]))
 		events.append({"type": "guard_trained", "name": String(r["name"])})
@@ -872,6 +873,7 @@ func _roll_hunter() -> void:
 		r["bld"] = null
 		r["site"] = null
 		r["sub_prof"] = ""
+		res_log(r, "dlog.conscript", ["hunter"])   # v1.89
 		_chron("chron.hunter_trained", String(r["name"]))
 		events.append({"type": "hunter_trained", "name": String(r["name"])})
 		_assign_jobs()

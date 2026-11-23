@@ -686,13 +686,16 @@ func _grow_skill(r: Dictionary, dt: float, kind := "") -> void:
 		r["rank"] = 3
 		_chron("chron.skill_expert", String(r["name"]), String(r["prof"]))
 		events.append({"type": "skill_up", "name": String(r["name"]), "rank": "expert"})
+		res_log(r, "dlog.rank3")   # v1.89
 	elif rank < 5 and float(r["skill"]) >= skill_max - 0.001:
 		r["rank"] = 5
 		_chron("chron.skill_master", String(r["name"]), String(r["prof"]))
 		events.append({"type": "skill_up", "name": String(r["name"]), "rank": "master"})
+		res_log(r, "dlog.rank5")   # v1.89
 
 
 func _make_ail(r: Dictionary, kind: String, chron_key: String) -> void:
+	res_log(r, "dlog." + kind)   # v1.89: дневник — заболел/ранен
 	r["ail"] = kind
 	r["ail_days"] = 0.0
 	_chron(chron_key, String(r["name"]))
@@ -747,6 +750,7 @@ func _kill(r: Dictionary, chron_key: String) -> void:
 					- float(people.get("couples", {}).get("widow_grief", 10.0)), 0.0, 100.0)
 			_chron("chron.widow", String(widow["name"]), String(r["name"]))
 			_mem_push(widow, "widow")   # память v3: горе тает медленно
+			res_log(widow, "dlog.lost", [String(r["name"])])   # v1.89: дневник
 			events.append({"type": "widow", "a": String(widow["name"]), "b": String(r["name"])})
 	residents.erase(r)
 	_assign_jobs()

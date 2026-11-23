@@ -255,6 +255,9 @@ const BLOCKS := [
 	"_test_composer_sheets",
 	"_test_composer_save",
 ]],
+	["res://tests/test_v189.gd", [
+		"_test_diary_thoughts",
+]],
 ]
 
 

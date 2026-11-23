@@ -113,7 +113,12 @@ func _residents_bbcode() -> String:
 		var name_line := String(r["name"])
 		if int(r.get("partner", -1)) >= 0:
 			name_line += " [color=#f48fb1]♥[/color]"   # состоит в паре (M13)
-		parts.append("[b]%s[/b]" % name_line)
+		# v1.89: клик по имени открывает дневник жителя (мысли + история)
+		var ruid := int(r.get("uid", -1))
+		if ruid >= 0:
+			parts.append("[url=res:%d][b]%s[/b][/url]" % [ruid, name_line])
+		else:
+			parts.append("[b]%s[/b]" % name_line)
 		if String(r["prof"]) == "":
 			parts.append("[color=#fff59d]%s[/color]" % Loc.t("city.state.child"))
 		else:
@@ -388,3 +393,4 @@ func res_icon(id: String) -> ImageTexture:
 	var tex := ImageTexture.create_from_image(img)
 	_res_icons[id] = tex
 	return tex
+

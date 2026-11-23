@@ -537,6 +537,10 @@ func _roll_births() -> void:
 	if not pp.is_empty() and String(pp["prof"]) != "":
 		prnts.append(int(pp["id"]))
 	child["parents"] = prnts
+	res_log(child, "dlog.born")
+	res_log(parent, "dlog.child_born", [String(child["name"])])
+	if not pp.is_empty():
+		res_log(pp, "dlog.child_born", [String(child["name"])])
 	if not _homeless(parent):
 		child["home"] = parent["home"]
 	residents.append(child)
@@ -578,6 +582,8 @@ func _roll_couples() -> void:
 		r["mood"] = clampf(float(r["mood"]) + boost, 0.0, 100.0)
 		other["mood"] = clampf(float(other["mood"]) + boost, 0.0, 100.0)
 		_rel_change(r, other, float(_v3().get("wedding_rel_bonus", 40.0)))   # v3
+		res_log(r, "dlog.married", [String(other["name"])])
+		res_log(other, "dlog.married", [String(r["name"])])
 		_mem_push(r, "wedding")
 		_mem_push(other, "wedding")
 		_chron("chron.wedding", String(r["name"]), String(other["name"]))
@@ -690,6 +696,7 @@ func _grow_up(r: Dictionary) -> void:
 	r["traits"] = _random_traits()
 	r["age_days"] = 100.0
 	_chron("chron.grown", String(r["name"]), best)
+	res_log(r, "dlog.job", [best])   # v1.89: вырос и выбрал дело
 	events.append({"type": "grown", "name": String(r["name"]), "prof": best})
 	_assign_jobs()
 
