@@ -257,6 +257,7 @@ const BLOCKS := [
 ]],
 	["res://tests/test_v189.gd", [
 		"_test_diary_thoughts",
+		"_test_bio",
 ]],
 ]
 

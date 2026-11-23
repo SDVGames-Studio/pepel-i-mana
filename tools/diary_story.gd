@@ -57,6 +57,18 @@ func _print_resident(r: Dictionary) -> void:
 		traits.append(_t("trait." + String(t)))
 	print("\n--- %s, %s%s ---" % [String(r["name"]), _prof(String(r["prof"])),
 			(" (" + ", ".join(traits) + ")") if not traits.is_empty() else ""])
+	# биография (v1.90)
+	var origin := String(r.get("origin", ""))
+	if origin != "":
+		if origin == "lost_forest":
+			print(_t("origin.lost_forest") % int(r.get("origin_arg", 5)))
+		else:
+			print(_t("origin." + origin))
+		past_print(r, self)
+	if String(r.get("fear", "")) != "":
+		print(_t("city.bio.fear") % _t("fear." + String(r["fear"])))
+	if String(r.get("goal", "")) != "":
+		print(_t("city.bio.dream") % _t("goal." + String(r["goal"])))
 	print("Думает сейчас:")
 	for th in _thoughts(r):
 		print("  «%s»" % th)
@@ -103,3 +115,17 @@ func _t(key: String) -> String:
 func _read_json(path: String) -> Dictionary:
 	var f := FileAccess.open(path, FileAccess.READ)
 	return JSON.parse_string(f.get_as_text())
+
+
+## Прошлое ремесло против нынешнего (для печатной биографии).
+static func past_print(r: Dictionary, ctx) -> void:
+	var past := String(r.get("past_prof", ""))
+	var prof := String(r["prof"])
+	if past == "":
+		return
+	var past_l: String = ctx._t("past." + past)
+	var same := (past == "axemaster" and prof == "lumberjack") 		or (past == "hunter_past" and prof == "hunter") 		or (past == "peasant" and prof == "farmer") 		or (past == "herbalist" and prof == "healer") 		or (past == "smith_past" and prof in ["smith", "smelter", "armorer"]) 		or (past == "laborer" and prof == "porter")
+	if same:
+		print(ctx._t("city.bio.same_craft") % past_l)
+	else:
+		print(ctx._t("city.bio.past_and_new") % [past_l, ctx._prof(prof)])

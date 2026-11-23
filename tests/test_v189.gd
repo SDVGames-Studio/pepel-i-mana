@@ -37,3 +37,17 @@ func _test_diary_thoughts() -> void:
 	calm["state"] = "idle"
 	var th2: Array = sim.resident_thoughts(calm)
 	_check(not th2.is_empty(), "у спокойного жителя есть мысли")
+
+
+func _test_bio() -> void:
+	print("[v1.90: биография жителя]")
+	var sim := _make_sim()
+	var r: Dictionary = sim.residents[0]
+	_check(String(r.get("origin", "")) != "", "у жителя есть происхождение")
+	_check(String(r.get("fear", "")) != "", "у жителя есть страх")
+	_check(String(r.get("past_prof", "")) != "", "у жителя есть прошлое ремесло")
+	# локали биографии существуют (файл ru.json читается напрямую)
+	var locs: Dictionary = _read_json("res://loc/ru.json")
+	_check(locs.has("origin." + String(r["origin"])), "локаль происхождения есть")
+	_check(locs.has("fear." + String(r["fear"])), "локаль страха есть")
+	_check(locs.has("past." + String(r["past_prof"])), "локаль прошлого есть")

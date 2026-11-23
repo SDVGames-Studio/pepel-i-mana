@@ -537,6 +537,7 @@ func _roll_births() -> void:
 	if not pp.is_empty() and String(pp["prof"]) != "":
 		prnts.append(int(pp["id"]))
 	child["parents"] = prnts
+	child["origin"] = "born_here"   # v1.90: биография — родной горожанин
 	res_log(child, "dlog.born")
 	res_log(parent, "dlog.child_born", [String(child["name"])])
 	if not pp.is_empty():

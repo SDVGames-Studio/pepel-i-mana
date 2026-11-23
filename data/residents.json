@@ -303,5 +303,100 @@
         "wis": -1
       }
     }
+  },
+  "origins": {
+    "_comment": "v1.90: откуда житель пришёл в город (весовой ролл); born_here/golem ставятся кодом при рождении/спавне голема",
+    "list": [
+      {
+        "id": "lost_forest",
+        "weight": 8
+      },
+      {
+        "id": "ash_walks",
+        "weight": 6
+      },
+      {
+        "id": "caravan",
+        "weight": 4
+      },
+      {
+        "id": "routed",
+        "weight": 4
+      },
+      {
+        "id": "dead_village",
+        "weight": 4
+      },
+      {
+        "id": "old_road",
+        "weight": 4
+      }
+    ]
+  },
+  "fears": {
+    "_comment": "v1.90: чего житель боится — строка в биографии, голос мыслей может отыгрывать",
+    "list": [
+      {
+        "id": "veles_wrath",
+        "weight": 6
+      },
+      {
+        "id": "perun_storm",
+        "weight": 5
+      },
+      {
+        "id": "wolves",
+        "weight": 7
+      },
+      {
+        "id": "dark",
+        "weight": 8
+      },
+      {
+        "id": "navia",
+        "weight": 5
+      },
+      {
+        "id": "fire",
+        "weight": 4
+      },
+      {
+        "id": "hunger",
+        "weight": 6
+      },
+      {
+        "id": "water",
+        "weight": 3
+      }
+    ]
+  },
+  "pasts": {
+    "_comment": "v1.90: прежнее ремесло до города (для биографии; можно связать с профа-бустом позже)",
+    "list": [
+      {
+        "id": "axemaster",
+        "weight": 6
+      },
+      {
+        "id": "hunter_past",
+        "weight": 5
+      },
+      {
+        "id": "peasant",
+        "weight": 8
+      },
+      {
+        "id": "herbalist",
+        "weight": 3
+      },
+      {
+        "id": "smith_past",
+        "weight": 2
+      },
+      {
+        "id": "laborer",
+        "weight": 4
+      }
+    ]
   }
 }

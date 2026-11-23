@@ -350,6 +350,7 @@ func _spawn_golem() -> void:
 	g["golem"] = true
 	g["race"] = "human"    # v1.72.1: староста-гуманоид (спрайт KitElder без
 	g["age_days"] = -1.0   # перекраса случайной расой; не стареет
+	g["origin"] = "golem"  # v1.90: биография — слеплен из глины и памяти
 	residents.append(g)
 	_next_id += 1
 	_chron("chron.golem_awakens", GOLEM_NAME)
@@ -419,6 +420,7 @@ func _new_resident(res_name: String, prof: String, tile: Vector2i) -> Dictionary
 	var r := {
 		"id": _next_id, "name": res_name, "prof": prof,
 		"uid": -1, "log": [],
+		"origin": "", "origin_arg": 0, "fear": "", "past_prof": "",
 		"race": _roll_race(),           # раса жителя (v1.64, ответ №108)
 		"bld": null, "site": null, "home": null,
 		"state": "idle", "pos": map.tile_center_px(tile),
@@ -438,7 +440,28 @@ func _new_resident(res_name: String, prof: String, tile: Vector2i) -> Dictionary
 	_res_uid += 1
 	r["uid"] = _res_uid
 	r["log"] = [{"d": int(day), "k": "dlog.came", "a": []}]
+	# v1.90: биография — происхождение, страх, прежнее ремесло (people-ролл)
+	r["origin"] = _roll_bio(people.get("origins", {}).get("list", []))
+	if String(r["origin"]) == "lost_forest":
+		r["origin_arg"] = int(_event_rng.randi_range(3, 10)) if _event_rng != null else 5
+	r["fear"] = _roll_bio(people.get("fears", {}).get("list", []))
+	r["past_prof"] = _roll_bio(people.get("pasts", {}).get("list", []))
 	return r
+
+
+## Весовой ролл по списку {"id","weight"} (биография v1.90).
+func _roll_bio(lst: Array) -> String:
+	var total := 0
+	for e in lst:
+		total += int(e.get("weight", 1))
+	if total <= 0:
+		return ""
+	var roll := _event_rng.randi_range(1, total) if _event_rng != null else 1
+	for e in lst:
+		roll -= int(e.get("weight", 1))
+		if roll <= 0:
+			return String(e["id"])
+	return ""
 
 
 ## Дневник жителя (v1.89): запись события в кольцо последних 24 записей.
@@ -610,7 +633,9 @@ func _magic_pollution_mult() -> float:
 	return 0.0
 
 func _make_ail(r: Dictionary, kind: String, chron_key: String) -> void:
-	res_log(r, "dlog." + kind)   # v1.89: дневник — заболел/ранен
+	# v1.89: дневник пишет только СМЕНУ хвори (повторный удар по раненому не запись)
+	if String(r.get("ail", "")) != kind:
+		res_log(r, "dlog." + kind)
 	pass
 
 func _manage_walk(r: Dictionary, dt: float) -> void:

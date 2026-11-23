@@ -570,6 +570,13 @@ func open_resident(uid: int) -> void:
 	var worst: Dictionary = sim.rel_worst(r)
 	if not worst.is_empty():
 		b.append("[color=#ef9a9a]%s %s[/color]" % [Loc.t("city.rel_foe"), String(worst["other"]["name"])])
+	# v1.90: биография — проза из происхождения, прошлого и страха
+	var bio: PackedStringArray = _resident_bio_lines(r)
+	if not bio.is_empty():
+		b.append("")
+		b.append("[b][color=#ffe082]%s[/color][/b]" % Loc.t("city.bio"))
+		for line in bio:
+			b.append(line)
 	b.append("")
 	b.append("[b][color=#ffe082]%s[/color][/b]" % Loc.t("city.thoughts"))
 	for th in sim.resident_thoughts(r):
@@ -604,3 +611,44 @@ func _dlog_text_of(e: Dictionary) -> String:
 	if args.is_empty():
 		return fmt
 	return fmt % args
+
+
+## Биография жителя (v1.90): проза из происхождения, прежнего
+## ремесла, страха и мечты. Старые сейвы без origin — общая строка.
+func _resident_bio_lines(r: Dictionary) -> PackedStringArray:
+	var out := PackedStringArray()
+	var origin := String(r.get("origin", ""))
+	if origin == "":
+		out.append(Loc.t("city.bio.unknown"))
+		return out
+	if origin == "born_here" or origin == "golem":
+		out.append(Loc.t("origin." + origin))
+	elif origin == "lost_forest":
+		out.append(String(Loc.t("origin." + origin)) % int(r.get("origin_arg", 5)))
+	else:
+		out.append(Loc.t("origin." + origin))
+	var past := String(r.get("past_prof", ""))
+	var prof := String(r["prof"])
+	if past != "" and prof != "":
+		var past_l: String = Loc.t("past." + past)
+		if _past_matches(prof, past):
+			out.append(String(Loc.t("city.bio.same_craft")) % past_l)
+		else:
+			out.append(String(Loc.t("city.bio.past_and_new")) % [past_l, _prof_loc(prof)])
+	if String(r.get("fear", "")) != "":
+		out.append(String(Loc.t("city.bio.fear")) % Loc.t("fear." + String(r["fear"])))
+	if String(r.get("goal", "")) != "":
+		out.append(String(Loc.t("city.bio.dream")) % Loc.t("goal." + String(r["goal"])))
+	return out
+
+
+## Связь прошлого ремесла с нынешней профессией (v1.90).
+func _past_matches(prof: String, past: String) -> bool:
+	return (
+		(past == "axemaster" and prof == "lumberjack")
+		or (past == "hunter_past" and prof == "hunter")
+		or (past == "peasant" and prof == "farmer")
+		or (past == "herbalist" and prof == "healer")
+		or (past == "smith_past" and prof in ["smith", "smelter", "armorer"])
+		or (past == "laborer" and prof == "porter")
+	)

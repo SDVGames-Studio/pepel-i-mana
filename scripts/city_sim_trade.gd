@@ -695,7 +695,9 @@ func _grow_skill(r: Dictionary, dt: float, kind := "") -> void:
 
 
 func _make_ail(r: Dictionary, kind: String, chron_key: String) -> void:
-	res_log(r, "dlog." + kind)   # v1.89: дневник — заболел/ранен
+	# v1.89: дневник пишет только СМЕНУ хвори (повторный удар по раненому не запись)
+	if String(r.get("ail", "")) != kind:
+		res_log(r, "dlog." + kind)
 	r["ail"] = kind
 	r["ail_days"] = 0.0
 	_chron(chron_key, String(r["name"]))
