@@ -445,6 +445,11 @@ func _new_resident(res_name: String, prof: String, tile: Vector2i) -> Dictionary
 ## Ключи локализуются в HUD (dlog.*), симуляция хранит только id и аргументы.
 func res_log(r: Dictionary, key: String, args: Array = []) -> void:
 	var log: Array = r.get("log", [])
+	# дедуп: та же запись в тот же день (удары по раненому) не дублируем
+	if not log.is_empty():
+		var last: Dictionary = log[log.size() - 1]
+		if String(last["k"]) == key and int(last["d"]) == int(day):
+			return
 	log.append({"d": int(day), "k": key, "a": args})
 	while log.size() > 24:
 		log.pop_front()
