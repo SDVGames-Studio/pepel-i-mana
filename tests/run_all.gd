@@ -259,6 +259,7 @@ const BLOCKS := [
 		"_test_diary_thoughts",
 		"_test_bio",
 		"_test_bio_facets",
+		"_test_diary_matrix",
 ]],
 ]
 

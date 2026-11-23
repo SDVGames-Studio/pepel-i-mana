@@ -64,3 +64,30 @@ func _test_bio_facets() -> void:
 	_check(locs.has("like." + String(r["like"])), "локаль «любит» есть")
 	_check(locs.has("dislike." + String(r["dislike"])), "локаль «не выносит» есть")
 	_check(locs.has("habit." + String(r["habit"])), "локаль привычки есть")
+
+
+func _test_diary_matrix() -> void:
+	print("[v1.92: дневник — голоса по чертам]")
+	var locs: Dictionary = _read_json("res://loc/ru.json")
+	var events := ["came", "born", "job", "conscript", "wounded", "sick",
+			"married", "child_born", "rank3", "rank5", "quarrel", "gift",
+			"friend", "goal_set", "tavern", "winter", "lost", "note"]
+	var voices := ["plain", "grumpy", "cheerful", "lazy", "dreamer", "stoic"]
+	var missing := 0
+	for ev in events:
+		for v in voices:
+			if not locs.has("diary.%s.%s" % [ev, v]):
+				missing += 1
+	_check(missing == 0, "матрица дневника полна: 18 событий × 6 голосов (нет %d)" % missing)
+	var sim := _make_sim()
+	var r: Dictionary = sim.residents[0]
+	_check(sim.res_voice(r) in ["plain", "grumpy", "cheerful", "lazy", "dreamer", "stoic"],
+			"голос жителя — из шести")
+	# заметки-размышления: раз в 5 дней (день 5 — кратен)
+	sim.day = 5
+	sim._daily_notes()
+	var has_note := false
+	for e in (r["log"] as Array):
+		if String(e["k"]) == "dlog.note":
+			has_note = true
+	_check(has_note, "размышление о жизни записано")

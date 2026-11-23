@@ -458,6 +458,15 @@ func _new_resident(res_name: String, prof: String, tile: Vector2i) -> Dictionary
 	return r
 
 
+## Голос жителя (v1.92): черта характера -> стиль дневника/мыслей.
+## 6 голосов; остальные черты дают нейтральный тон.
+func res_voice(r: Dictionary) -> String:
+	for v in ["grumpy", "cheerful", "lazy", "dreamer", "stoic"]:
+		if v in (r.get("traits", []) as Array):
+			return v
+	return "plain"
+
+
 ## Весовой ролл по списку {"id","weight"} (биография v1.90).
 func _roll_bio(lst: Array) -> String:
 	var total := 0
@@ -483,7 +492,7 @@ func res_log(r: Dictionary, key: String, args: Array = []) -> void:
 		if String(last["k"]) == key and int(last["d"]) == int(day):
 			return
 	log.append({"d": int(day), "k": key, "a": args})
-	while log.size() > 24:
+	while log.size() > 30:
 		log.pop_front()
 	r["log"] = log
 

@@ -591,7 +591,7 @@ func open_resident(uid: int) -> void:
 	var log: Array = r.get("log", [])
 	for i in range(log.size() - 1, -1, -1):
 		var e: Dictionary = log[i]
-		b.append("[color=#8d8d8d][%s %d][/color] %s" % [Loc.t("city.day_word"), int(e["d"]), _dlog_text_of(e)])
+		b.append("[color=#8d8d8d][%s %d][/color] %s" % [Loc.t("city.day_word"), int(e["d"]), _diary_paragraph(r, e)])
 	_res_detail_text.text = "\n".join(b)
 	_res_detail_panel.visible = true
 
@@ -599,6 +599,30 @@ func open_resident(uid: int) -> void:
 func close_resident() -> void:
 	if _res_detail_panel != null:
 		_res_detail_panel.visible = false
+
+
+## Запись дневника (v1.92): абзац от первого лица в голосе жителя
+## (diary.<событие>.<голос>); нет ключа — телеграфный запасной стиль.
+func _diary_paragraph(r: Dictionary, e: Dictionary) -> String:
+	var base := String(e["k"]).substr(5)
+	var key := "diary.%s.%s" % [base, sim.res_voice(r)]
+	var fmt := Loc.t(key)
+	if fmt == key:
+		return _dlog_text_of(e)
+	var args: Array = []
+	for a in (e.get("a", []) as Array):
+		var s := String(a)
+		if base in ["job", "conscript"]:
+			args.append(_prof_loc(s))
+		elif base == "goal_set":
+			args.append(Loc.t("goal." + s))
+		elif base == "note":
+			args.append(Loc.t("season.word." + s))
+		else:
+			args.append(s)
+	if args.is_empty():
+		return fmt
+	return fmt % args
 
 
 ## Строка дневника: ключ dlog.* + аргументы локализуются здесь.

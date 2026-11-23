@@ -81,7 +81,7 @@ func _print_resident(r: Dictionary) -> void:
 	var log: Array = r.get("log", [])
 	print("Дневник (%d):" % log.size())
 	for e in log:
-		print("  [День %d] %s" % [int(e["d"]), _dlog(e)])
+		print("  [День %d] %s" % [int(e["d"]), _diary(r, e)])
 
 
 func _thoughts(r: Dictionary) -> Array:
@@ -89,6 +89,33 @@ func _thoughts(r: Dictionary) -> Array:
 	for th in sim.resident_thoughts(r):
 		out.append(_fmt(String(th["k"]), th.get("a", [])))
 	return out
+
+
+func _voice(r: Dictionary) -> String:
+	for v in ["grumpy", "cheerful", "lazy", "dreamer", "stoic"]:
+		if v in (r.get("traits", []) as Array):
+			return v
+	return "plain"
+
+
+func _diary(r: Dictionary, e: Dictionary) -> String:
+	var base := String(e["k"]).substr(5)
+	var key := "diary.%s.%s" % [base, _voice(r)]
+	var fmt := _t(key)
+	if fmt == key:
+		return _dlog(e)
+	var args: Array = []
+	for a in (e.get("a", []) as Array):
+		var s := String(a)
+		if base in ["job", "conscript"]:
+			args.append(_prof(s))
+		elif base == "goal_set":
+			args.append(_t("goal." + s))
+		elif base == "note":
+			args.append(_t("season.word." + s))
+		else:
+			args.append(s)
+	return _fmt(key, args)
 
 
 func _dlog(e: Dictionary) -> String:

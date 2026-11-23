@@ -111,6 +111,7 @@ func tick(dt_raw: float) -> void:
 		_daily_phase = 1
 		_ensure_elder()
 		_ensure_plaza()
+		_daily_notes()   # v1.92: размышления в дневниках жителей
 		_apply_resource_bonuses()   # v1.56: богатства региона
 		_craftsman_convert()        # v1.56: ремесленный двор — сырьё в предметы роскоши
 		if rivalry_cb.is_valid():
@@ -801,3 +802,16 @@ func _move_towards(r: Dictionary, tile: Vector2i, dt: float) -> void:
 	r["moving"] = moved > 0.05
 	if moved > 0.0:
 		map.add_wear(map.tile_of_px(pos), moved / float(map.ts) * float(cfg.get("roads", {}).get("wear_per_tile", 1.0)))
+
+## Периодические записи дневника (v1.92): раз в 5 дней — размышление о
+## нынешней жизни, голосом жителя, с приметой сезона.
+func _daily_notes() -> void:
+	if int(day) % 5 != 0:
+		return
+	var s := String(season())
+	for r in residents:
+		if bool(r.get("golem", false)):
+			continue
+		res_log(r, "dlog.note", [s])
+
+
