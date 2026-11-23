@@ -510,8 +510,18 @@ func _roll_v3() -> void:
 			if float(rel[k]) >= best_score:
 				best_score = float(rel[k])
 				best_id = int(k)
+		if best_id != int(r.get("friend", -1)):
+			var f_other: Dictionary = _resident_by_id(best_id)
+			if not f_other.is_empty():
+				res_log(r, "dlog.friend", [String(f_other["name"])])   # v1.91
 		r["friend"] = best_id
 	# вечерняя попойка в таверне забыта до следующего вечера
+	# v1.91: первая зима — в дневник каждому
+	if String(season()) == "winter":
+		for r in residents:
+			if not bool(r.get("winter_seen", false)):
+				r["winter_seen"] = true
+				res_log(r, "dlog.winter")
 	for r in residents:
 		r["tavern_visited"] = false
 	_roll_goals()
@@ -551,6 +561,7 @@ func _assign_goal(r: Dictionary, pool: Array) -> void:
 		if gid == String(r.get("goal_prev", "")) and attempt < 5:
 			continue
 		r["goal"] = gid
+		res_log(r, "dlog.goal_set", [gid])   # v1.91: решение — в дневник
 		return
 
 

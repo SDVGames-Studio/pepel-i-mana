@@ -330,6 +330,66 @@
       {
         "id": "old_road",
         "weight": 4
+      },
+      {
+        "id": "forgotten",
+        "weight": 3
+      },
+      {
+        "id": "mountain",
+        "weight": 3
+      },
+      {
+        "id": "swamp",
+        "weight": 3
+      },
+      {
+        "id": "forest_folk",
+        "weight": 4
+      },
+      {
+        "id": "river_folk",
+        "weight": 4
+      },
+      {
+        "id": "ex_town",
+        "weight": 3
+      },
+      {
+        "id": "ex_village",
+        "weight": 4
+      },
+      {
+        "id": "pilgrim",
+        "weight": 2
+      },
+      {
+        "id": "seeker",
+        "weight": 3
+      },
+      {
+        "id": "shepherd",
+        "weight": 3
+      },
+      {
+        "id": "exile",
+        "weight": 2
+      },
+      {
+        "id": "sailor",
+        "weight": 2
+      },
+      {
+        "id": "heir",
+        "weight": 3
+      },
+      {
+        "id": "hunter_wander",
+        "weight": 4
+      },
+      {
+        "id": "refugee_wave",
+        "weight": 3
       }
     ]
   },
@@ -396,6 +456,133 @@
       {
         "id": "laborer",
         "weight": 4
+      }
+    ]
+  },
+  "likes": {
+    "_comment": "v1.91: грань души — что житель любит (строка биографии)",
+    "list": [
+      {
+        "id": "resin_smell",
+        "weight": 6
+      },
+      {
+        "id": "quiet_dawn",
+        "weight": 7
+      },
+      {
+        "id": "roads",
+        "weight": 5
+      },
+      {
+        "id": "bread_fresh",
+        "weight": 6
+      },
+      {
+        "id": "river_sound",
+        "weight": 5
+      },
+      {
+        "id": "snow_fall",
+        "weight": 4
+      },
+      {
+        "id": "fire_night",
+        "weight": 6
+      },
+      {
+        "id": "old_tales",
+        "weight": 5
+      },
+      {
+        "id": "work_done",
+        "weight": 6
+      },
+      {
+        "id": "rain_roof",
+        "weight": 5
+      }
+    ]
+  },
+  "dislikes": {
+    "_comment": "v1.91: грань души — чего не выносит",
+    "list": [
+      {
+        "id": "snow_crunch",
+        "weight": 5
+      },
+      {
+        "id": "hammer_noise",
+        "weight": 5
+      },
+      {
+        "id": "lies",
+        "weight": 7
+      },
+      {
+        "id": "stink_swamp",
+        "weight": 4
+      },
+      {
+        "id": "crows",
+        "weight": 5
+      },
+      {
+        "id": "mold_smell",
+        "weight": 6
+      },
+      {
+        "id": "crowds",
+        "weight": 4
+      },
+      {
+        "id": "raw_meat",
+        "weight": 3
+      },
+      {
+        "id": "loud_strangers",
+        "weight": 5
+      },
+      {
+        "id": "empty_cellar",
+        "weight": 6
+      }
+    ]
+  },
+  "habits": {
+    "_comment": "v1.91: грань души — привычка",
+    "list": [
+      {
+        "id": "knocks_wood",
+        "weight": 7
+      },
+      {
+        "id": "counts_steps",
+        "weight": 4
+      },
+      {
+        "id": "saves_crumbs",
+        "weight": 5
+      },
+      {
+        "id": "mends_late",
+        "weight": 5
+      },
+      {
+        "id": "keeps_stone",
+        "weight": 6
+      },
+      {
+        "id": "hums_old",
+        "weight": 6
+      },
+      {
+        "id": "waters_sapling",
+        "weight": 4
+      },
+      {
+        "id": "draws_signs",
+        "weight": 5
       }
     ]
   }

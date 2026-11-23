@@ -607,7 +607,12 @@ func _dlog_text_of(e: Dictionary) -> String:
 	var args: Array = []
 	for a in (e.get("a", []) as Array):
 		var s := String(a)
-		args.append(_prof_loc(s) if String(e["k"]) in ["dlog.job", "dlog.conscript"] else s)
+		if String(e["k"]) in ["dlog.job", "dlog.conscript"]:
+			args.append(_prof_loc(s))
+		elif String(e["k"]) == "dlog.goal_set":
+			args.append(Loc.t("goal." + s))
+		else:
+			args.append(s)
 	if args.is_empty():
 		return fmt
 	return fmt % args
@@ -639,6 +644,12 @@ func _resident_bio_lines(r: Dictionary) -> PackedStringArray:
 		out.append(String(Loc.t("city.bio.fear")) % Loc.t("fear." + String(r["fear"])))
 	if String(r.get("goal", "")) != "":
 		out.append(String(Loc.t("city.bio.dream")) % Loc.t("goal." + String(r["goal"])))
+	if String(r.get("like", "")) != "":
+		out.append(String(Loc.t("city.bio.like")) % Loc.t("like." + String(r["like"])))
+	if String(r.get("dislike", "")) != "":
+		out.append(String(Loc.t("city.bio.dislike")) % Loc.t("dislike." + String(r["dislike"])))
+	if String(r.get("habit", "")) != "":
+		out.append(String(Loc.t("city.bio.habit")) % Loc.t("habit." + String(r["habit"])))
 	return out
 
 

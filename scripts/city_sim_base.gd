@@ -421,6 +421,7 @@ func _new_resident(res_name: String, prof: String, tile: Vector2i) -> Dictionary
 		"id": _next_id, "name": res_name, "prof": prof,
 		"uid": -1, "log": [],
 		"origin": "", "origin_arg": 0, "fear": "", "past_prof": "",
+		"like": "", "dislike": "", "habit": "",
 		"race": _roll_race(),           # раса жителя (v1.64, ответ №108)
 		"bld": null, "site": null, "home": null,
 		"state": "idle", "pos": map.tile_center_px(tile),
@@ -446,6 +447,9 @@ func _new_resident(res_name: String, prof: String, tile: Vector2i) -> Dictionary
 		r["origin_arg"] = int(_event_rng.randi_range(5, 10)) if _event_rng != null else 5
 	r["fear"] = _roll_bio(people.get("fears", {}).get("list", []))
 	r["past_prof"] = _roll_bio(people.get("pasts", {}).get("list", []))
+	r["like"] = _roll_bio(people.get("likes", {}).get("list", []))
+	r["dislike"] = _roll_bio(people.get("dislikes", {}).get("list", []))
+	r["habit"] = _roll_bio(people.get("habits", {}).get("list", []))
 	return r
 
 

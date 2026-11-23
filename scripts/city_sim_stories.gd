@@ -69,6 +69,8 @@ func _story_quarrel(scfg: Dictionary) -> void:
 	for side in [a, b]:
 		side["mood"] = clampf(float(side["mood"]) + dm, 0.0, 100.0)
 	_rel_change(a, b, float(_v3().get("quarrel_rel_hit", -18.0)))   # отношения v3
+	res_log(a, "dlog.quarrel", [String(b["name"])])   # v1.91
+	res_log(b, "dlog.quarrel", [String(a["name"])])
 	_mem_push(a, "quarrel")
 	_mem_push(b, "quarrel")
 	_chron("chron.quarrel", String(a["name"]), String(b["name"]))

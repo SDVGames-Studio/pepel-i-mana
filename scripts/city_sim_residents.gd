@@ -107,6 +107,7 @@ func _leisure(r: Dictionary, dt: float) -> void:
 		# личная цель «пировать в таверне» (M14-F): вечер в таверне засчитан
 		if bool(plan.get("tavern", false)):
 			r["tavern_visited"] = true
+			res_log(r, "dlog.tavern")   # v1.91
 		_try_chat(r)
 
 

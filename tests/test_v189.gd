@@ -51,3 +51,16 @@ func _test_bio() -> void:
 	_check(locs.has("origin." + String(r["origin"])), "локаль происхождения есть")
 	_check(locs.has("fear." + String(r["fear"])), "локаль страха есть")
 	_check(locs.has("past." + String(r["past_prof"])), "локаль прошлого есть")
+
+
+func _test_bio_facets() -> void:
+	print("[v1.91: грани души]")
+	var sim := _make_sim()
+	var r: Dictionary = sim.residents[0]
+	_check(String(r.get("like", "")) != "", "у жителя есть «любит»")
+	_check(String(r.get("dislike", "")) != "", "у жителя есть «не выносит»")
+	_check(String(r.get("habit", "")) != "", "у жителя есть привычка")
+	var locs: Dictionary = _read_json("res://loc/ru.json")
+	_check(locs.has("like." + String(r["like"])), "локаль «любит» есть")
+	_check(locs.has("dislike." + String(r["dislike"])), "локаль «не выносит» есть")
+	_check(locs.has("habit." + String(r["habit"])), "локаль привычки есть")

@@ -67,6 +67,12 @@ func _print_resident(r: Dictionary) -> void:
 		past_print(r, self)
 	if String(r.get("fear", "")) != "":
 		print(_t("city.bio.fear") % _t("fear." + String(r["fear"])))
+	if String(r.get("like", "")) != "":
+		print(_t("city.bio.like") % _t("like." + String(r["like"])))
+	if String(r.get("dislike", "")) != "":
+		print(_t("city.bio.dislike") % _t("dislike." + String(r["dislike"])))
+	if String(r.get("habit", "")) != "":
+		print(_t("city.bio.habit") % _t("habit." + String(r["habit"])))
 	if String(r.get("goal", "")) != "":
 		print(_t("city.bio.dream") % _t("goal." + String(r["goal"])))
 	print("Думает сейчас:")

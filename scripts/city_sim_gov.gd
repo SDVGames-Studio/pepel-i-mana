@@ -658,6 +658,8 @@ func _roll_festival() -> void:
 				continue
 			if float(rel[k]) >= friends_at and _rel_score(other, int(r["id"])) >= friends_at:
 				_rel_change(r, other, gift_bonus)
+				res_log(r, "dlog.gift", [String(other["name"])])   # v1.91
+				res_log(other, "dlog.gift", [String(r["name"])])
 				_mem_push(r, "gift")
 				_mem_push(other, "gift")
 				gifted.append(r)
