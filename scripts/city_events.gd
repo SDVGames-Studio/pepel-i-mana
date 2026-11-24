@@ -243,6 +243,30 @@ func _process_events() -> void:
 				hud.toast(Loc.t("city.fields_burned") % int(ev.get("crops", 0)))
 			"mold_started":
 				hud.toast(Loc.t("city.mold_started"))
+			"spirit_summoned":
+				hud.toast(Loc.t("city.spirit_summoned"))
+			"spirit_died":
+				hud.toast(Loc.t("city.spirit_died"))
+			"hunt_report":
+				hud.toast(Loc.t("city.hunt_report_toast") % String(ev.get("side", "")))
+			"hunt_squad_come":
+				_letter("hunt_squad_come", Loc.t("city.hunt_squad_come"))
+			"hunt_squad_here":
+				hud.toast(Loc.t("city.hunt_squad_here"))
+			"hunt_squad_win":
+				_letter("hunt_squad_win", Loc.t("city.hunt_squad_win"))
+			"warehouse_theft":
+				hud.toast(Loc.t("city.warehouse_theft") % int(ev.get("food", 0)))
+			"sect_sermon":
+				hud.toast(Loc.t("city.sect_sermon"))
+			"camp_found":
+				_letter("camp_found", Loc.t("city.camp_found_toast"))
+			"camp_razed":
+				_letter("camp_razed", Loc.t("city.camp_razed_toast"))
+			"hive_knows_city":
+				hud.toast(Loc.t("city.hive_knows_toast"))
+			"hive_alert_fuzzy":
+				hud.toast(Loc.t("city.hive_alert_toast"))
 			"mold_spread":
 				hud.toast(Loc.t("city.mold_spread") % int(ev.get("count", 1)))
 			"mold_critter":
@@ -779,3 +803,84 @@ func _mold_cure_action(t: Vector2i) -> void:
 	sim.mold_cure(t)
 	hero.play_anim("cast")
 	hud.toast(Loc.t("city.mold_cured_toast"))
+
+
+## ==================== v2.2: СЛЕДЫ / ЛАГЕРЯ / АЛТАРЬ / ДОПРОС ====================
+
+## «Идти по следу» (E у свежего следа): подсветить цепочку и показать,
+## куда она ведёт (по следам мутантов — к логову, по лазутчикам — к лагерю).
+func _follow_tracks_action() -> void:
+	var tcfg: Dictionary = sim.cfg.get("tracks", {})
+	var life := float(tcfg.get("life_days", 1.2)) * float(sim.cfg["day_length"])
+	var chain: Array = []
+	for who in ["raider", "spy", "res"]:
+		chain = sim.TRACKS.chain(sim.city_tracks, hero.position,
+				float(map.ts) * 2.0, float(sim.time), life, who, 12)
+		if chain.size() >= 2:
+			break
+	if chain.is_empty():
+		hud.toast(Loc.t("city.track_lost"))
+		return
+	sim.track_chain = chain
+	sim.track_hint_until = float(sim.time) + 15.0
+	var dirv: Vector2 = chain.back()["dir"]
+	hud.toast(Loc.t("city.track_hint") % sim._compass_of(dirv))
+
+
+## Допрос «путника» (E рядом): алиби, улика с раскрытием лагеря или паника.
+func _interrogate_action(spy: Dictionary) -> void:
+	var res: String = sim.interrogate_spy(int(spy["id"]))
+	match res:
+		"alibi":
+			hud.toast(Loc.t("city.spy_alibi"))
+		"confess":
+			hud.toast(Loc.t("city.spy_confess"))
+		"fled":
+			hud.toast(Loc.t("city.spy_fled"))
+
+
+## Диалог найденного тайного лагеря: штурм героем или отправить стражу.
+func _open_camp_dialog(camp: Dictionary) -> void:
+	var kind := Loc.t("camp.kind." + String(camp["kind"]))
+	var lines: Array = []
+	lines.append(Loc.t("city.camp_found_line") % kind)
+	var choices: Array = []
+	choices.append({
+		"text": Loc.t("city.camp_choice_hero"),
+		"action": func() -> void:
+			var err: String = sim.assault_camp(true)
+			if err != "":
+				hud.toast(Loc.t(err))
+	})
+	choices.append({
+		"text": Loc.t("city.camp_choice_guards"),
+		"action": func() -> void:
+			var err2: String = sim.assault_camp(false)
+			if err2 != "":
+				hud.toast(Loc.t(err2))
+			else:
+				hud.toast(Loc.t("city.camp_razed_toast"))
+	})
+	hud.open_choice(Loc.t("city.camp_title"), lines, choices)
+
+
+## Диалог алтаря благодати: куда назначить духа (стройка/добыча/отдых).
+func _open_altar_dialog(near: Dictionary) -> void:
+	var sp: Dictionary = near["spirit"]
+	var lines: Array = []
+	lines.append(Loc.t("city.altar_eff_line") % int(round(float(sp["eff"]) * 100.0)))
+	lines.append(Loc.t("city.altar_hp_line") % [int(sp["hp"]), int(sp["hp_max"])])
+	var choices: Array = []
+	choices.append({
+		"text": Loc.t("city.altar_choice_build"),
+		"action": func() -> void: sp["mode"] = "build"
+	})
+	choices.append({
+		"text": Loc.t("city.altar_choice_gather"),
+		"action": func() -> void: sp["mode"] = "gather"
+	})
+	choices.append({
+		"text": Loc.t("city.altar_choice_idle"),
+		"action": func() -> void: sp["mode"] = "idle"
+	})
+	hud.open_choice(Loc.t("city.altar_title"), lines, choices)

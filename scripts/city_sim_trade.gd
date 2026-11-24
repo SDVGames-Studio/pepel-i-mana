@@ -208,11 +208,30 @@ func _roll_wanderer() -> void:
 		return
 	_last_wanderer_day = day
 	var from := _edge_tile()
+	var spy := false
+	var spy_name := ""
+	var spy_camp := -1
+	# v2.2 п.4а: воры из тайного лагеря приходят «путниками мимоходом»
+	if not secret_camps.is_empty():
+		var has_spy := false
+		for x in wanderers:
+			if bool(x.get("spy", false)):
+				has_spy = true
+				break
+		if not has_spy and _event_rng.randf() < float(
+				(cfg.get("camps", {}).get("spy_chance", 0.5))):
+			var camp: Dictionary = secret_camps[0]
+			var names: Array = camp.get("spies", [])
+			if not names.is_empty():
+				spy = true
+				spy_name = String(names[int(camp.get("visits", 0)) % names.size()])
+				spy_camp = int(camp["id"])
 	wanderers.append({
 		"id": _wanderer_id, "pos": map.tile_center_px(from), "path": PackedVector2Array(),
 		"target": Vector2i(-1, -1), "mode": "come", "tent": int(tents[0]["id"]),
 		"left": 0.0, "come": 0.0, "edge": from,
 		"prof": "", "dir": "front", "state": "", "moving": false,
+		"spy": spy, "spy_name": spy_name, "spy_camp": spy_camp,
 	})
 	_wanderer_id += 1
 
@@ -248,6 +267,8 @@ func _update_wanderers(dt: float) -> void:
 			var edge: Vector2i = w.get("edge", _edge_tile())
 			_move_towards(w, edge, dt)
 			if map.tile_of_px(w["pos"]) == edge:
+				if bool(w.get("spy", false)):
+					_spy_depart(w)   # v2.2 п.4а: после визита — кража и подозрение
 				continue
 		still.append(w)
 	wanderers = still
@@ -842,3 +863,39 @@ func _tavern_beer(dt: float, day_len: float) -> void:
 				res["food"] = maxf(0.0, float(res["food"]) - sip)
 
 
+## ==================== ПУТНИКИ-ЛАЗУТЧИКИ (v2.2 п.4а) ====================
+## Воры из тайного лагеря ходят в город под видом путников; после визита —
+## шанс кражи со склада; жители замечают частые визиты + пропажи (мысли/
+## дневники), при допросе (war.interrogate_spy) выдают лагерь или паникуют.
+
+## Лагерь по id ({} если разгромлен).
+func _spy_camp(cid: int) -> Dictionary:
+	for c in secret_camps:
+		if int(c["id"]) == cid:
+			return c
+	return {}
+
+
+## Визит окончен: путник ушёл за край — подводим итоги визита.
+func _spy_depart(w: Dictionary) -> void:
+	var camp: Dictionary = _spy_camp(int(w.get("spy_camp", -1)))
+	var ccfg: Dictionary = cfg.get("camps", {})
+	var sname := String(w.get("spy_name", "путник"))
+	var kn: Dictionary = spy_known.get(sname, {"visits": 0})
+	kn["visits"] = int(kn["visits"]) + 1
+	spy_known[sname] = kn
+	if not camp.is_empty():
+		camp["visits"] = int(camp["visits"]) + 1
+	if _event_rng.randf() < float(ccfg.get("spy_steal_chance", 0.6)):
+		var took := minf(float(ccfg.get("spy_steal_food", 3.0)), float(res.get("food", 0.0)))
+		if took > 0.0:
+			res["food"] = float(res["food"]) - took
+			events.append({"type": "warehouse_theft", "food": int(took)})
+		if not camp.is_empty():
+			camp["suspicion"] = int(camp["suspicion"]) + 1
+	# жители замечают: тот же облик + пропажи -> мысли/дневники
+	if int(kn["visits"]) >= 2 and _event_rng.randf() < 0.5:
+		for r in residents:
+			if _event_rng.randf() < 0.5:
+				res_log(r, "dlog.spy_seen")
+				break

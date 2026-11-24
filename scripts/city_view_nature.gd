@@ -59,6 +59,8 @@ func _draw_world_sorted() -> void:
 		dyn.append([Vector2(a["pos"]).y, "stock", a])
 	for w in sim.wanderers:
 		dyn.append([Vector2(w["pos"]).y, "wanderer", w])
+	for s in sim.spirits:
+		dyn.append([Vector2(s["pos"]).y, "spirit", s])
 	for r in sim.raiders:
 		dyn.append([Vector2(r["pos"]).y, "raider", r])
 	for r in sim.residents:
@@ -134,6 +136,8 @@ func _draw_world_sorted() -> void:
 				_draw_wanderer(e[2])
 			"raider":
 				_draw_raider(e[2])
+			"spirit":
+				_draw_spirit(e[2])
 			"res":
 				_draw_resident(e[2])
 			"hero":
@@ -438,6 +442,16 @@ func _draw_stock(a: Dictionary) -> void:
 
 ## Бродячий торговец (этап 2, аспект 4): гражданин с тюком и жёлтой одеждой;
 ## у палатки периодически выкрикивает зазывку-облачко.
+## Дух благодати (v2.2 п.2): полупрозрачная приземистая фигура с ореолом.
+func _draw_spirit(s: Dictionary) -> void:
+	var pos: Vector2 = s["pos"]
+	var bob := sin(_anim_time * 2.4 + float(int(s["id"])) * 1.7) * 2.0
+	var top := pos + Vector2(0, -float(map.ts) * 0.55 + bob)
+	draw_circle(pos + Vector2(0, -2), float(map.ts) * 0.38, Color(0.75, 0.7, 0.95, 0.18))
+	draw_circle(top, float(map.ts) * 0.16, Color(0.85, 0.82, 1.0, 0.55))
+	draw_circle(top, float(map.ts) * 0.09, Color(1.0, 1.0, 1.0, 0.75))
+
+
 func _draw_wanderer(w: Dictionary) -> void:
 	var pos: Vector2 = w["pos"]
 	pos.y -= _entity_lift("wand%d" % int(w["id"]), w["pos"])   # v1.36.1: высота плато

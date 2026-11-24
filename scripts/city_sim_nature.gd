@@ -44,7 +44,7 @@ func _update_hive(dt: float, day_len: float) -> void:
 						"hp": float(HiveSim.HP), "level": 1,
 						"stock": 0, "gathered": 0, "waves": 0,
 						"next_wave_day": float(day) + HiveSim.wave_days(1),
-						"respawn_day": 0.0, "alert": 0.0}
+						"city_known": {}, "respawn_day": 0.0, "alert": 0.0}
 				events.append({"type": "hive_built"})
 				_chron("chron.hive_built")
 				break
@@ -59,11 +59,25 @@ func _update_hive(dt: float, day_len: float) -> void:
 			if _spawn_hive_unit(roles[ri]) == null:
 				break
 			have[ri] += 1
+	# v2.2 п.3: ищейка — лагерь сам не знает, где город, пока не найдёт
+	if (hive.get("city_known", {}) as Dictionary).is_empty():
+		var has_seeker := false
+		for su in raiders:
+			if String(su.get("role", "")) == "seeker" and int(su["hp"]) > 0:
+				has_seeker = true
+				break
+		if not has_seeker and int(day) - _seeker_day >= int(hcfg.get("seeker_gap_days", 2)):
+			if _spawn_hive_unit("seeker") != null:
+				_seeker_day = int(day)
 	# рост уровня от запаса
 	var new_level: int = HiveSim.level_for(int(hive["stock"]))
 	if new_level > level:
 		hive["level"] = new_level
 		events.append({"type": "hive_grew", "level": new_level})
+	# v2.2 п.3: волны «не по воздуху» — ищейка должна привести логово к городу
+	if (hive.get("city_known", {}) as Dictionary).is_empty():
+		hive["next_wave_day"] = float(day) + HiveSim.wave_days(level)
+		return
 	# волны: ресурс улья оплачивает набеги — чем удачнее сбор, тем сильнее
 	if float(day) >= float(hive["next_wave_day"]) \
 			and int(hive["stock"]) >= int(hcfg.get("wave_stock_min", 10)):
@@ -262,26 +276,6 @@ func _hive_consume_resource(t: Vector2i) -> void:
 			map.rock_hp.erase(t)
 	map.note_edit(t)
 	terrain_dirty = true
-
-
-## Улей бьют (удар героя по позиции улья в дуге).
-func _hive_take_damage(dmg: int) -> void:
-	hive["hp"] = float(hive["hp"]) - float(dmg)
-	if float(hive["hp"]) > 0.0:
-		return
-	var level: int = int(hive["level"])
-	var loot: Dictionary = HiveSim.loot_for(level)
-	for key in loot:
-		res[key] = float(res.get(key, 0.0)) + float(loot[key])
-	events.append({"type": "hive_destroyed", "level": level})
-	_chron("chron.hive_destroyed", str(level))
-	# юниты без дома бросают роли и разбегаются (остаются как волна)
-	for r in raiders:
-		if not String(r.get("role", "")).is_empty():
-			r.erase("role")
-			r["mode"] = "advance"
-	hive = {"active": false, "respawn_day": float(day) + float(HiveSim.RESPAWN_DAYS),
-			"pos": hive.get("pos", Vector2.ZERO), "tile": hive.get("tile", map.anomaly_tile)}
 
 
 ## Удар героя в городе (участие в обороне): дуга в сторону курсора. Возвращает, скольких задел.

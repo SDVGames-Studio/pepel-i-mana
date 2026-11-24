@@ -264,6 +264,15 @@ const BLOCKS := [
 		"_test_secrets",
 		"_test_leaving",
 ]],
+	["res://tests/test_v220.gd", [
+		"_test_tracks",
+		"_test_tracks_sampler",
+		"_test_seeker_and_hive_waves",
+		"_test_altar_and_spirit",
+		"_test_camps_and_spies",
+		"_test_hunt_squad",
+		"_test_save_v22",
+]],
 ]
 
 

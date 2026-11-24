@@ -57,6 +57,22 @@ func _unhandled_input(event: InputEvent) -> void:
 			if _near_elder:
 				_open_elder_dialog()
 				return
+			# v2.2 п.4: найденный тайный лагерь — штурм героя/стражей
+			if not _near_camp.is_empty():
+				_open_camp_dialog(_near_camp)
+				return
+			# v2.2 п.2: алтарь благодати — выбор дела духа
+			if not _near_altar.is_empty() and not (_near_altar["spirit"] as Dictionary).is_empty():
+				_open_altar_dialog(_near_altar)
+				return
+			# v2.2 п.4а: допрос подозрительного путника
+			if not _near_spy.is_empty():
+				_interrogate_action(_near_spy)
+				return
+			# v2.2 п.3: идти по следу
+			if not _near_track.is_empty():
+				_follow_tracks_action()
+				return
 			# ручной труд героя (правки v1.12.2): стройка/дерево/скала
 			if _hero_act():
 				return

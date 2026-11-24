@@ -1031,6 +1031,25 @@
 			"cat": "magic"
 		},
 		{
+			"id": "grace_altar",
+			"w": 2,
+			"sprite": "b:altar",
+			"short": "bld.short.grace_altar",
+			"loc": "bld.grace_altar",
+			"desc": "bld.desc.grace_altar",
+			"color": "#b39ddb",
+			"cost": {
+				"stone": 14,
+				"crystal": 4
+			},
+			"build_work": 45,
+			"worker": "acolyte",
+			"effect": "grace_altar",
+			"district": "work",
+			"cat": "magic",
+			"_comment": "v2.2: алтарь благодати — призывает духа-работника (стройка/добыча); эффективность от мастерства аколита 50-120%; минус: фонит магическим загрязнением -> серая плесень"
+		},
+		{
 			"id": "healer_hut",
 			"w": 2,
 			"sprite": "b:хижина_лекаря",
@@ -1481,5 +1500,51 @@
 		"max_tiles": 45,
 		"spread_chance": 0.1,
 		"_note": "v1.84: серая плесень — заражает землю (травяные тайлы), расползается от загрязнения, плодит тварей; лечится магией героя (E, 10 маны)"
+	},
+	"tracks": {
+		"life_days": 1.2,
+		"min_step": 24.0,
+		"cap": 1200,
+		"hunter_sense": 220.0,
+		"_note": "v2.2 п.3: следы всех ходячих на карте города; тают по времени, дождь ускоряет (CityTracks.RAIN_MULT)"
+	},
+	"grace_altar": {
+		"pollution_per_day": 1.5,
+		"skill_max": 20.0,
+		"skill_per_day": 1.0,
+		"eff_min": 0.5,
+		"eff_span": 0.7,
+		"respawn_days": 3,
+		"speed": 70.0,
+		"_note": "v2.2 п.2: алтарь благодати — дух-работник (стройка/добыча), эффективность 0.5..1.2 от мастерства аколита; фонит загрязнением -> плесень"
+	},
+	"camps": {
+		"enabled": true,
+		"start_day": 8,
+		"gap_days": 7,
+		"chance": 0.35,
+		"crime_every_days": 3,
+		"steal_food": 5.0,
+		"steal_coins": 4.0,
+		"sermon_mood": 3.0,
+		"guards_needed": 2,
+		"guards_win": 0.75,
+		"hero_power": 4,
+		"camp_power": 3,
+		"loot_food": 8.0,
+		"loot_coins": 15,
+		"truce_days": 12,
+		"_note": "v2.2 п.4: тайные лагеря бандитов/сектантов — скрытая POI, кражи/проповеди; найдут по следам и уликам, разгром — герой или стража",
+		"spy_chance": 0.5,
+		"spy_steal_chance": 0.6,
+		"spy_steal_food": 3.0
+	},
+	"hunt_squad": {
+		"enabled": true,
+		"chance": 0.25,
+		"gap_days": 5,
+		"travel_days": 1,
+		"members": 3,
+		"_note": "v2.2 п.1: странствующие охотники на чудовищ — после отбонной волны с шансом идут на логово сами, городу доля добычи"
 	}
 }

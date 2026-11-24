@@ -289,6 +289,22 @@ static func _build_city(cd: Variant, seed_value := 0, hydro := {}):
 		w["tent"] = int(w.get("tent", -1))
 	sim._wanderer_id = int(sd.get("_wanderer_id", 1))
 	sim._last_wanderer_day = int(sd.get("_last_wanderer_day", -99))
+	# v2.2 «Следы, алтарь благодати, тайные лагеря»
+	sim.spirits = _dec(sd.get("spirits", []))
+	for s3 in sim.spirits:
+		s3["pos"] = s3.get("pos", Vector2.ZERO) as Vector2
+	sim._spirit_id = int(sd.get("_spirit_id", 1))
+	sim.secret_camps = _dec(sd.get("secret_camps", []))
+	for c3 in sim.secret_camps:
+		c3["tile"] = c3.get("tile", Vector2i(-1, -1)) as Vector2i
+	sim._camp_id = int(sd.get("_camp_id", 1))
+	sim._last_camp_day = int(sd.get("_last_camp_day", -99))
+	sim.spy_known = _dec(sd.get("spy_known", {}))
+	sim.hunter_squad = _dec(sd.get("hunter_squad", {}))
+	if not sim.hunter_squad.is_empty():
+		sim.hunter_squad["edge"] = sim.hunter_squad.get("edge", Vector2i(-1, -1)) as Vector2i
+	sim._last_squad_day = int(sd.get("_last_squad_day", -99))
+	sim.acolyte_skill = float(sd.get("acolyte_skill", 0.0))
 	sim.raiders = _dec(sd.get("raiders", []))
 	sim.raid_active = bool(sd.get("raid_active", false))
 	sim.raid_siege = bool(sd.get("raid_siege", false))

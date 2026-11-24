@@ -168,6 +168,12 @@ func _draw_tent_awning(rect: Rect2) -> void:
 ## варианта craftpix (ур1..3) по номеру дома, чтобы застройка не была клоном.
 var _bld_ref_cache: Dictionary = {}
 
+const GRACE_ALTAR_REFS := [
+	"img:env/idol_mokosh_a",
+	"img:env/idol_mokosh_b",
+]
+
+
 func _bld_sprite_ref(type_id: String, b: Dictionary) -> String:
 	if type_id == "house":
 		# v1.68: уровень дома растёт с городом (ассеты заказчика L1-3):
@@ -175,6 +181,9 @@ func _bld_sprite_ref(type_id: String, b: Dictionary) -> String:
 		var pop: int = sim.residents.size()
 		var tier := 3 if pop >= 24 else (2 if pop >= 12 else 1)
 		return "b:дом_жителей_ур%d" % tier
+	if type_id == "grace_altar":
+		# v2.2 п.2: алтарь благодати — идолы из пака «идолы богов» (вариации)
+		return GRACE_ALTAR_REFS[_hash(int(b["id"]), 7, GRACE_ALTAR_REFS.size())]
 	if type_id == "statue":
 		# v1.63: статуя — вариации из пака (по хэшу id здания)
 		return STATUE_REFS[_hash(int(b["id"]), 7, STATUE_REFS.size())]

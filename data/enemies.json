@@ -1266,5 +1266,22 @@
 			"fear": 0.35
 		},
 		"_comment": "виндиго: лесной людоед-дух, страшится света"
+	},
+	{
+		"id": "wander_hunter",
+		"loc": "enemy.wander_hunter",
+		"hp": 10,
+		"damage": 3,
+		"speed": 80,
+		"aggro": 140,
+		"attack_range": 22,
+		"attack_cooldown": 1.0,
+		"radius": 9,
+		"color": "#8d6e63",
+		"sprite": "e:bandit_archer",
+		"drop_chance": 0.2,
+		"mana_chance": 0.2,
+		"xp": 4,
+		"_comment": "v2.2 п.1: странствующий охотник на чудовищ (союзный отряд, role hunt_ally); в волны не попадает — нет веса в threat.enemy_weights"
 	}
 ]

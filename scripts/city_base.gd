@@ -62,6 +62,10 @@ var _near_temple := false       # храм рядом — E: молитва (M14
 var _near_elder := false        # v1.81: староста-голем рядом — E: Память мира
 var _near_gate := Vector2i(-1, -1)  # v1.82: тайл закрытых руин-ворот рядом
 var _near_mold := Vector2i(-1, -1)  # v1.84: заражённая плесенью клетка рядом
+var _near_track: Dictionary = {}   # v2.2 п.3: свежий след у ног героя
+var _near_spy: Dictionary = {}     # v2.2 п.4а: подозрительный путник рядом
+var _near_camp: Dictionary = {}    # v2.2 п.4: найденный тайный лагерь рядом
+var _near_altar: Dictionary = {}   # v2.2 п.2: алтарь благодати с духом рядом
 var _hero_tree: Dictionary = {} # дерево у ног героя (E — рубить, правки v1.12.2)
 var _hero_rock: Dictionary = {} # скала/руда рядом (E — добыть)
 var _hero_crop: Dictionary = {} # спелая грядка рядом (E — собрать, этап 2, аспект 3)
@@ -478,6 +482,33 @@ func _process(delta: float) -> void:
 				break
 	# v1.84: серая плесень рядом — E лечит магией (10 маны)
 	_near_mold = Vector2i(-1, -1)
+	# v2.2: следы, лазутчики, тайные лагеря, алтарь благодати
+	_near_track = {}
+	_near_spy = {}
+	_near_camp = {}
+	_near_altar = {}
+	if not guest:
+		var tr_cfg: Dictionary = sim.cfg.get("tracks", {})
+		var tr_life := float(tr_cfg.get("life_days", 1.2)) * float(sim.cfg["day_length"])
+		_near_track = sim.TRACKS.near(sim.city_tracks, hero.position,
+				float(map.ts) * 1.7, float(sim.time), tr_life)
+		for w2 in sim.wanderers:
+			if bool(w2.get("spy", false)) and hero.position.distance_to(
+					w2["pos"] as Vector2) < float(map.ts) * 1.7:
+				_near_spy = w2
+				break
+		for camp in sim.secret_camps:
+			if bool(camp.get("found", false)) and hero.position.distance_to(
+					map.tile_center_px(camp["tile"] as Vector2i)) < float(map.ts) * 2.2:
+				_near_camp = camp
+				break
+		for bld in sim.buildings:
+			if bool(bld["done"]) and String(bld["type"]) == "grace_altar" \
+					and hero.position.distance_to(
+					map.tile_center_px(bld["tile"] as Vector2i)) < float(map.ts) * 2.2:
+				var sp2: Dictionary = sim.spirit_of(bld)
+				_near_altar = {"bld": bld, "spirit": sp2}
+				break
 	if not guest and sim.get("mold") != null and not (sim.mold as Dictionary).is_empty():
 		var mt: Vector2i = map.tile_of_px(hero.position)
 		for d2 in [Vector2i(0, 0), Vector2i(1, 0), Vector2i(-1, 0),
@@ -518,6 +549,14 @@ func _process(delta: float) -> void:
 				else Loc.t("city.gate_hint_sealed") % gl)
 	elif _near_elder:
 		hud.set_hint(Loc.t("elder.mem_hint"))
+	elif not _near_camp.is_empty():
+		hud.set_hint(Loc.t("city.camp_hint"))
+	elif not _near_altar.is_empty():
+		hud.set_hint(Loc.t("city.altar_hint"))
+	elif not _near_spy.is_empty():
+		hud.set_hint(Loc.t("city.spy_hint"))
+	elif not _near_track.is_empty():
+		hud.set_hint(Loc.t("city.track_follow_hint"))
 	elif _near_temple:
 		hud.set_hint(Loc.t("city.temple_hint"))
 	elif not _hero_site.is_empty():

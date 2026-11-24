@@ -89,6 +89,53 @@ func _draw() -> void:
 	# v1.84: СЕРАЯ ПЛЕСЕНЬ — с v1.88 спрайты листа «грибной улей и пепел»
 	# (4 стадии по возрасту клетки), выжженное магией — отдельный тайл;
 	# процедурные кляксы — запасной путь, если текстуры не нарезаны
+	# v2.2 п.3: следы всех ходячих — тающие точки; цепочка «идти по следу» ярче
+	if sim != null and sim.get("city_tracks") != null:
+		var tracks: Array = sim.city_tracks
+		var now: float = float(sim.time)
+		var tr_cfg: Dictionary = sim.cfg.get("tracks", {})
+		var tr_life := float(tr_cfg.get("life_days", 1.2)) * float(sim.cfg["day_length"])
+		var chain: Array = sim.get("track_chain", [])
+		var hinted := float(sim.get("track_hint_until", 0.0)) > now
+		for tr in tracks:
+			var p3: Vector2 = tr["pos"]
+			if p3.x < vis.position.x or p3.x > vis.end.x \
+					or p3.y < vis.position.y or p3.y > vis.end.y:
+				continue
+			var age := clampf(1.0 - (now - float(tr["t"])) / tr_life, 0.0, 1.0)
+			var col := Color(0.45, 0.36, 0.28, 0.55 * age)
+			match String(tr["who"]):
+				"raider":
+					col = Color(0.55, 0.25, 0.2, 0.6 * age)
+				"spy":
+					col = Color(0.4, 0.3, 0.5, 0.7 * age)
+				"animal":
+					col = Color(0.5, 0.45, 0.3, 0.45 * age)
+				"wanderer":
+					col = Color(0.4, 0.42, 0.5, 0.5 * age)
+			var in_chain := false
+			if hinted:
+				for c4 in chain:
+					if c4 == tr:
+						in_chain = true
+						break
+			if in_chain:
+				col.a = 0.95
+				draw_circle(p3, 3.0, col)
+				draw_arc(p3, 5.5, 0, TAU, 12, col, 1.0)
+			else:
+				draw_circle(p3, 2.2, col)
+	# v2.2 п.4: найденный тайный лагерь — метка (бандиты красная, сектанты лиловая)
+	if sim != null and sim.get("secret_camps") != null:
+		for camp in (sim.secret_camps as Array):
+			if not bool(camp.get("found", false)):
+				continue
+			var cp: Vector2 = map.tile_center_px(camp["tile"] as Vector2i)
+			var ccol := Color(0.8, 0.3, 0.2, 0.9) \
+					if String(camp["kind"]) == "bandit" else Color(0.6, 0.3, 0.7, 0.9)
+			draw_arc(cp, float(map.ts) * 0.9, 0, TAU, 20, ccol, 2.0)
+			draw_line(cp + Vector2(-6, -6), cp + Vector2(6, 6), ccol, 2.0)
+			draw_line(cp + Vector2(-6, 6), cp + Vector2(6, -6), ccol, 2.0)
 	if sim != null and sim.get("mold") != null:
 		var mold: Dictionary = sim.mold
 		if not mold.is_empty():

@@ -757,6 +757,8 @@ func _complete_site(site: Dictionary) -> void:
 	events.append({"type": "built", "bld": String(site["type"])})
 	if String(site["type"]) == "farm":
 		_make_farm_field(site)   # вокруг фермы распахивается поле (v1.21)
+	if String(site["type"]) == "grace_altar":
+		spirit_summon(site)   # v2.2 п.2: алтарь призывает духа-работника
 	_assign_jobs()
 
 
@@ -834,3 +836,37 @@ func _nearest_walkable(tile: Vector2i) -> Vector2i:
 				if map.is_walkable(n):
 					return n
 	return Vector2i(-1, -1)
+
+
+## ==================== ДУХ БЛАГОДАТИ (v2.2 п.2) ====================
+## Призывается готовым алтарём благодати: не-житель на рабочем слоте —
+## назначается на стройку или добычу, не ест/не спит/не уходит, гибнет
+## от волн (алтарь перезывает через N дней, war.altar_daily).
+
+## Эффективность духа: f(мастерство контролирующего аколита), 50–120%.
+func spirit_eff() -> float:
+	var gcfg: Dictionary = cfg.get("grace_altar", {})
+	var k: float = clampf(acolyte_skill / maxf(1.0, float(gcfg.get("skill_max", 20.0))), 0.0, 1.0)
+	return float(gcfg.get("eff_min", 0.5)) + k * float(gcfg.get("eff_span", 0.7))
+
+
+## Призвать духа к алтарю (после постройки или повторно через N дней).
+func spirit_summon(b: Dictionary) -> void:
+	var ts := float(map.ts) if map != null else 48.0
+	spirits.append({
+		"id": _spirit_id, "bld": int(b["id"]), "mode": "idle",
+		"pos": Vector2(b["tile"]) * ts + Vector2(ts * float(bld_w(b)) * 0.5, ts * 0.5),
+		"hp": 45.0, "hp_max": 45.0, "eff": spirit_eff(),
+		"skill": 0.0, "rank": 0, "fatigue": 0.0, "state": "work", "ail": "",
+	})
+	_spirit_id += 1
+	b["spirit_respawn_day"] = -1
+	events.append({"type": "spirit_summoned"})
+
+
+## Дух этого алтаря ({} если нет живого).
+func spirit_of(b: Dictionary) -> Dictionary:
+	for s in spirits:
+		if int(s["bld"]) == int(b["id"]):
+			return s
+	return {}

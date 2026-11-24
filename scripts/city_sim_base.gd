@@ -84,6 +84,22 @@ var _last_caravan_day := -99
 var wanderers: Array = []       # {id, pos, path, mode: come|trade|leave, tent(id здания), left}
 var _wanderer_id := 1
 var _last_wanderer_day := -99
+# v2.2 «Следы, алтарь благодати, тайные лагеря» ==========================
+var city_tracks: Array = []    # следы всех ходячих {pos, t, who, dir} — CityTracks
+var _track_last := {}          # ключ id|who -> pos последнего следа (троттлинг шага)
+var _track_accum := 0.0        # накопитель сэмплера следов (раз в ~0.9 сек)
+var _seeker_day := -99         # день последней отправки ищейки улья
+var track_chain: Array = []    # подсвеченная цепочка («идти по следу», E у героя)
+var track_hint_until := 0.0    # время, до которого цепочка подсвечена
+var spirits: Array = []        # духи благодати {id, bld, mode, pos, hp, hp_max, eff}
+var _spirit_id := 1
+var secret_camps: Array = []   # тайные лагеря {id, tile, kind, found, suspicion, visits, spies}
+var _camp_id := 1
+var _last_camp_day := -99
+var spy_known := {}            # имя путника -> {visits} (жители считают частые визиты)
+var hunter_squad: Dictionary = {}  # странствующие охотники {state, eta_day, edge, power, left, razed}
+var _last_squad_day := -99
+var acolyte_skill := 0.0       # мастерство аколита-контролёра (растёт со службой, 0..20)
 var zones: Array = []           # зоны (M6): {id, type: "field"|"pasture", cells, progress, crops}
 var _zone_id := 1
 var _livestock_id := 1
@@ -199,6 +215,21 @@ func setup(city_map, city_cfg: Dictionary, residents_count: int, level: String) 
 	wanderers = []
 	_wanderer_id = 1
 	_last_wanderer_day = -99
+	city_tracks = []
+	_track_last = {}
+	_track_accum = 0.0
+	_seeker_day = -99
+	track_chain = []
+	track_hint_until = 0.0
+	spirits = []
+	_spirit_id = 1
+	secret_camps = []
+	_camp_id = 1
+	_last_camp_day = -99
+	spy_known = {}
+	hunter_squad = {}
+	_last_squad_day = -99
+	acolyte_skill = 0.0
 	zones = []
 	_zone_id = 1
 	day_plans = []
@@ -925,3 +956,4 @@ func working_tents() -> Array:
 func _static_full_rebake() -> void:
 	static_dirty = true
 	map.set_meta(&"static_full_rebake", true)
+
