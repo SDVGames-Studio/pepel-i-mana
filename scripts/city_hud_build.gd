@@ -345,12 +345,19 @@ func _build() -> void:
 	res_fold.add_theme_font_size_override("font_size", 15)
 	tl_box.add_child(res_fold)
 	_hud_res_fold = res_fold
+	_hud_res_strip = Label.new()
+	_hud_res_strip.add_theme_font_size_override("font_size", 17)
+	_hud_res_strip.add_theme_color_override("font_color", Color("#ffe9b0"))
+	_hud_res_strip.visible = false
+	tl_box.add_child(_hud_res_strip)
 	res_fold.pressed.connect(func() -> void:
-		var open := res_fold.text == "▼"
-		res_fold.text = "▲" if open else "▼"
+		_hud_res_open = not _hud_res_open
+		res_fold.text = "▼" if _hud_res_open else "▲"
 		for c in tl_box.get_children():
-			if c != res_fold:
-				c.visible = not open)
+			if c != res_fold and c != _hud_res_strip:
+				c.visible = _hud_res_open
+		if _hud_res_strip != null:
+			_hud_res_strip.visible = not _hud_res_open)
 	# v1.53: панель ресурсов — сетка ИКОНОК 6×2 (число рядом с картинкой,
 	# название ресурса — всплывающая подсказка)
 	var res_grid := GridContainer.new()
@@ -553,8 +560,9 @@ func _build() -> void:
 	# v1.97: панель построек сворачивается кнопкой рядом (кнопка вне
 	# панели — иначе прячет саму себя)
 	var bld_fold := Button.new()
-	bld_fold.text = "▲"
-	bld_fold.custom_minimum_size = Vector2(120, 40)
+	bld_fold.text = "Строительство ▲"
+	bld_fold.custom_minimum_size = Vector2(210, 34)
+	bld_fold.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
 	bld_fold.focus_mode = Control.FOCUS_NONE
 	bld_fold.add_theme_font_size_override("font_size", 15)
 	bld_fold.visible = not guest
@@ -565,7 +573,8 @@ func _build() -> void:
 	panel.visible = not guest   # гость не строит: панели инструментов нет (№120)
 	bottom.add_child(panel)
 	bld_fold.pressed.connect(func() -> void:
-		panel.visible = not panel.visible)
+		panel.visible = not panel.visible
+		bld_fold.text = "Строительство ▼" if panel.visible else "Строительство ▲")
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 8)
 	panel.add_child(row)

@@ -43,6 +43,8 @@ var _necro_label: Label = null     # тьма кладбища (M11)
 var _residents_panel: PanelContainer
 var _residents_text: RichTextLabel
 var _hud_res_fold: Button = null   # v1.97: свернуть ресурсы в полоску
+var _hud_res_strip: Label = null   # v1.97.1: полоска цифр в свёрнутом виде
+var _hud_res_open := true          # v1.97.1: панель поселения развёрнута?
 var _hud_bld_fold: Button = null   # v1.97: свернуть панель построек
 var _chron_panel: PanelContainer
 var _chron_text: RichTextLabel
@@ -109,6 +111,15 @@ func refresh() -> void:
 		if lbl.text != txt:
 			lbl.text = txt
 	_pop_label.text = Loc.t("city.pop") % [sim.residents.size(), sim.pop_cap()]
+	# v1.97.1: полоска свёрнутой панели — ключевые цифры + таймер волны
+	if _hud_res_strip != null and not _hud_res_open:
+		var wave_d := 999
+		var nxt: Variant = sim.get("_next_raid_at")
+		if nxt != null:
+			wave_d = int(maxf(0.0, (float(nxt) - float(sim.time)) / maxf(1.0, float(sim.cfg.get("day_length", 300.0)))))
+		_hud_res_strip.text = "День %d · еда %d · брёвна %d · камень %d · волна через %dд" % [
+			sim.day_number(), int(sim.res.get("food", 0)), int(sim.res.get("wood", 0)),
+			int(sim.res.get("stone", 0)), wave_d]
 	var day_text: String = Loc.t("city.day") % sim.day_number()
 	if sim.is_night():
 		_day_label.text = day_text + " · " + Loc.t("city.night")
@@ -474,8 +485,8 @@ var _choice_box: VBoxContainer = null
 func open_choice(title: String, lines: Array, choices: Array) -> void:
 	if _choice_panel == null:
 		_choice_panel = PanelContainer.new()
-		_choice_panel.position = Vector2(660, 260)
-		_choice_panel.custom_minimum_size = Vector2(600, 0)
+		_choice_panel.position = Vector2(1150, 90)
+		_choice_panel.custom_minimum_size = Vector2(540, 0)
 		_choice_panel.visible = false
 		add_child(_choice_panel)
 		var col := VBoxContainer.new()
