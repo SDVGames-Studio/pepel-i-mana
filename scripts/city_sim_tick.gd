@@ -891,5 +891,5 @@ func _update_tracks(dt: float, day_len: float) -> void:
 		var dir := pos - last
 		city_tracks = TRACKS.push(city_tracks, pos, time, who, dir,
 				float(tcfg.get("min_step", 24.0)),
-				int(tcfg.get("cap", 1200)))
+				int(tcfg.get("cap", 700)))
 		_track_last[key] = pos

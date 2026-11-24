@@ -63,6 +63,7 @@ var _near_elder := false        # v1.81: староста-голем рядом 
 var _near_gate := Vector2i(-1, -1)  # v1.82: тайл закрытых руин-ворот рядом
 var _near_mold := Vector2i(-1, -1)  # v1.84: заражённая плесенью клетка рядом
 var _near_track: Dictionary = {}   # v2.2 п.3: свежий след у ног героя
+var _track_flag_ms := -999   # v2.4: троттлинг скана следов, мс
 var _near_spy: Dictionary = {}     # v2.2 п.4а: подозрительный путник рядом
 var _near_camp: Dictionary = {}    # v2.2 п.4: найденный тайный лагерь рядом
 var _near_altar: Dictionary = {}   # v2.2 п.2: алтарь благодати с духом рядом
@@ -487,15 +488,22 @@ func _process(delta: float) -> void:
 	# v1.84: серая плесень рядом — E лечит магией (10 маны)
 	_near_mold = Vector2i(-1, -1)
 	# v2.2: следы, лазутчики, тайные лагеря, алтарь благодати
-	_near_track = {}
+	# v2.4 (оптимизация): скан следов — раз в 150 мс (при 700 следах
+	# покадровый near съедал ~8% кадра; подсказке E хватает 6-7 обновлений/с)
 	_near_spy = {}
 	_near_camp = {}
 	_near_altar = {}
+	var now_ms := int(Time.get_ticks_msec())
+	if now_ms - _track_flag_ms >= 150:
+		_track_flag_ms = now_ms
+		_near_track = {}
+		if not guest:
+			var tr_cfg: Dictionary = sim.cfg.get("tracks", {})
+			var tr_life := float(tr_cfg.get("life_days", 1.2)) * float(sim.cfg["day_length"])
+			_near_track = sim.TRACKS.near(sim.city_tracks, hero.position,
+					float(map.ts) * 1.7, float(sim.time), tr_life)
 	if not guest:
-		var tr_cfg: Dictionary = sim.cfg.get("tracks", {})
-		var tr_life := float(tr_cfg.get("life_days", 1.2)) * float(sim.cfg["day_length"])
-		_near_track = sim.TRACKS.near(sim.city_tracks, hero.position,
-				float(map.ts) * 1.7, float(sim.time), tr_life)
+
 		for w2 in sim.wanderers:
 			if bool(w2.get("spy", false)) and hero.position.distance_to(
 					w2["pos"] as Vector2) < float(map.ts) * 1.7:

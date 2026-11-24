@@ -1638,17 +1638,33 @@ func _update_spirits(dt: float) -> void:
 				_spirit_walk(s, goal, dt, gcfg)
 		elif mode == "gather":
 			# добыча как у собирателей: ближайшее дерево -> брёвна,
-			# скала -> камень (дух не истощает тайл — берёт силой благодати)
-			if not _spirit_res_ok(Vector2i(s.get("res_tile", Vector2i(-1, -1)))):
-				s["res_tile"] = _spirit_find_res(Vector2(s["pos"]))
+			# скала -> камень (дух не истощает тайл — берёт силой благодати).
+			# v2.4 (оптимизация): источник не сбрасывается после сбора —
+			# «доим» тайл не чаще gather_cd секунд; рескан только когда
+			# тайл стал невалиден (а вокруг пусто — ретайр раз в 2 сек).
+			# Раньше каждый тик давал find_res (скан 19x19) + мгновенную
+			# добычу у соседнего дерева — ~1.2 мс/тик на духа в лесу.
+			s["res_cd"] = maxf(0.0, float(s.get("res_cd", 0.0)) - dt)
+			var rt0: Vector2i = Vector2i(s.get("res_tile", Vector2i(-1, -1)))
+			if rt0.x == -2:
+				s["res_retry"] = float(s.get("res_retry", 0.0)) - dt
+				if float(s["res_retry"]) > 0.0:
+					continue
+			if not _spirit_res_ok(rt0):
+				var found: Vector2i = _spirit_find_res(Vector2(s["pos"]))
+				s["res_tile"] = found
+				if found.x < 0:
+					s["res_tile"] = Vector2i(-2, -2)
+					s["res_retry"] = 2.0
 			var rt: Vector2i = Vector2i(s.get("res_tile", Vector2i(-1, -1)))
 			if rt.x >= 0:
 				var goal2: Vector2 = map.tile_center_px(rt)
 				if (s["pos"] as Vector2).distance_to(goal2) < float(map.ts) * 0.9:
-					var kind := "wood" if int(map.grid[rt.y][rt.x]) == map.TILE_TREE else "stone"
-					_add_resource_capped(kind, float(gcfg.get("gather_per_trip", 2.0))
-							* float(s["eff"]))
-					s["res_tile"] = Vector2i(-1, -1)
+					if float(s.get("res_cd", 0.0)) <= 0.0:
+						s["res_cd"] = float(gcfg.get("gather_cd", 1.5))
+						var kind := "wood" if int(map.grid[rt.y][rt.x]) == map.TILE_TREE else "stone"
+						_add_resource_capped(kind, float(gcfg.get("gather_per_trip", 2.0))
+								* float(s["eff"]))
 				else:
 					_spirit_walk(s, goal2, dt, gcfg)
 	# волны бьют духа
@@ -1747,12 +1763,10 @@ func _hive_seeker_update(r: Dictionary, mv: float) -> bool:
 			return true
 	var tcfg: Dictionary = cfg.get("tracks", {})
 	var life := float(tcfg.get("life_days", 1.2)) * float(cfg["day_length"])
-	# нюх: свежие человеческие следы вокруг (жители/путники/лазутчики)
-	var trail: Dictionary = {}
-	for who in ["res", "wanderer", "spy"]:
-		trail = TRACKS.near(city_tracks, pos, float(r["p"]["aggro"]) * 2.0, time, life, who)
-		if not trail.is_empty():
-			break
+	# нюх: свежие человеческие следы вокруг — один проход (v2.4)
+	var trail: Dictionary = TRACKS.near_any(city_tracks, pos,
+			float(r["p"]["aggro"]) * 2.0, time, life,
+			["res", "wanderer", "spy"] as Array)
 	if trail.is_empty():
 		# следов нет — прочёсывает расходящимся кольцом от логова
 		if float(r.get("sk_retarget", 0.0)) <= 0.0:
@@ -1946,8 +1960,8 @@ func _spirit_find_res(from: Vector2) -> Vector2i:
 	var c: Vector2i = map.tile_of_px(from)
 	var best := Vector2i(-1, -1)
 	var best_d := 1e9
-	for dy in range(-12, 13):
-		for dx in range(-12, 13):
+	for dy in range(-9, 10):
+		for dx in range(-9, 10):
 			var t: Vector2i = c + Vector2i(dx, dy)
 			if _spirit_res_ok(t):
 				var d := float(dx * dx + dy * dy)

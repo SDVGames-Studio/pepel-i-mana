@@ -10,7 +10,7 @@ extends RefCounted
 
 const RAIN_MULT := 0.55          # во сколько раз короче жизнь следа под дождём
 const MIN_STEP := 24.0           # минимальный шаг между следами, px (FPS/память)
-const CAP := 1200                # общий потолок следов (~пара дней активного города)
+const CAP := 700                 # общий потолок следов (FPS: worst-case сканов меньше)
 
 
 ## Новый след: отступ от прошлого (чтобы цепочка не слиплась) + потолок.
@@ -33,18 +33,18 @@ static func push(tracks: Array, pos: Vector2, now: float, who: String,
 ## Возвращает {} или сам след (словарь по ссылке).
 static func near(tracks: Array, center: Vector2, radius_px: float, now: float,
 		life: float, who := "") -> Dictionary:
-	var best: Dictionary = {}
-	var best_d := INF
-	for tr in tracks:
+	# v2.4 (оптимизация): следы упорядочены по времени — идём с конца
+	# (самые свежие) и останавливаемся на первом протухшем: O(свежие).
+	# Возвращаем самый СВЕЖИЙ след в радиусе (для выслеживания это вернее).
+	for i in range(tracks.size() - 1, -1, -1):
+		var tr: Dictionary = tracks[i]
 		if now - float(tr["t"]) > life:
-			continue
+			break   # дальше к началу все старше
 		if who != "" and String(tr["who"]) != who:
 			continue
-		var d: float = (tr["pos"] as Vector2).distance_to(center)
-		if d <= radius_px and d < best_d:
-			best_d = d
-			best = tr
-	return best
+		if (tr["pos"] as Vector2).distance_to(center) <= radius_px:
+			return tr
+	return {}
 
 
 ## Цепочка следов от точки: ближайший свежий, затем каждый следующий в
@@ -52,15 +52,18 @@ static func near(tracks: Array, center: Vector2, radius_px: float, now: float,
 ## Возвращает массив следов от старого к новому (порядок ходьбы).
 static func chain(tracks: Array, from: Vector2, radius_px: float, now: float,
 		life: float, who := "", max_len := 12) -> Array:
+	# v2.4 (оптимизация): свежий хвост (с конца до первого протухшего)
 	var pool: Array = []
-	for tr in tracks:
+	for i in range(tracks.size() - 1, -1, -1):
+		var tr: Dictionary = tracks[i]
 		if now - float(tr["t"]) > life:
-			continue
+			break
 		if who != "" and String(tr["who"]) != who:
 			continue
 		if (tr["pos"] as Vector2).distance_to(from) <= radius_px * 2.5:
 			pool.append(tr)
-	pool.sort_custom(func(a, b) -> bool: return float(a["t"]) < float(b["t"]))
+	# pool собран от свежих к старым — ходьба по цепочке уже в порядке времени
+	pool.reverse()
 	# идём по цепочке: следующий след — не дальше шага от предыдущего
 	var out: Array = []
 	var cur := from
@@ -85,3 +88,17 @@ static func prune(tracks: Array, now: float, life: float) -> int:
 			continue
 		i += 1
 	return gone
+
+
+## Самый свежий след из списка видов (нюх ищейки одним проходом — v2.4).
+static func near_any(tracks: Array, center: Vector2, radius_px: float,
+		now: float, life: float, whos: Array) -> Dictionary:
+	for i in range(tracks.size() - 1, -1, -1):
+		var tr: Dictionary = tracks[i]
+		if now - float(tr["t"]) > life:
+			break
+		if not whos.has(String(tr["who"])):
+			continue
+		if (tr["pos"] as Vector2).distance_to(center) <= radius_px:
+			return tr
+	return {}
