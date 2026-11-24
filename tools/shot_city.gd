@@ -154,14 +154,14 @@ func _decorate(city: Node, game: Node) -> void:
 	if OS.get_environment("SHOT_ANIMALS") != "":
 		var kinds := ["bear", "elk", "wolf", "fox", "hare"]
 		for i2 in kinds.size():
-			var at: Vector2i = map.spawn_tile + Vector2i(-7 + i2 * 2, -5)
+			var at: Vector2i = map.spawn_tile + Vector2i(-2 + i2 * 2, -4)
 			if not map.is_walkable(at):
 				at = map.spawn_tile + Vector2i(-7 + i2 * 2, -4)
 			sim.animals.append({
 				"id": 500 + i2, "kind": kinds[i2],
 				"pos": map.tile_center_px(at),
 				"target": Vector2i(-1, -1),
-				"path": PackedVector2Array(), "idle": 2.0 + float(i2),
+				"path": PackedVector2Array(), "idle": 40.0 + float(i2),
 			})
 	sim.map.saplings[map.spawn_tile + Vector2i(-4, 2)] = {"t": 30.0, "grow_days": 1.2}
 	sim.map.saplings[map.spawn_tile + Vector2i(-4, 3)] = {"t": 100.0, "grow_days": 1.2}
