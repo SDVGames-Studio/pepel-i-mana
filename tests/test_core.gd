@@ -86,7 +86,7 @@ func _test_data() -> void:
 			"zones", "roads", "piles", "layout", "repair", "decor_mood_max"]:
 		_check(city.has(key), "city.json содержит %s" % key)
 	var blds: Variant = city.get("buildings", [])
-	_check(blds is Array and blds.size() == 28, "city.json — 26 типов зданий (M14-I: +мост; этап 2, аспект 4: +палатка)")
+	_check(blds is Array and blds.size() == 29, "city.json — 29 типов зданий (v1.95: +мельница)")
 	var bld_ok := true
 	if blds is Array:
 		for b in blds:

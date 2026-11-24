@@ -211,6 +211,12 @@ func field_crop_id(crop: String) -> String:
 
 
 ## Определение культуры: темп созревания и еда за клетку (из data/city.json).
+## v1.95: мельница мелет зерно — +10% еды с полей за каждую (до +30%).
+func mill_mult() -> float:
+	var n := buildings.filter(func(b): return _active(b) and String(b["type"]) == "mill").size()
+	return minf(1.30, 1.0 + 0.10 * float(n))
+
+
 func crop_def(crop: String) -> Dictionary:
 	var fcfg: Dictionary = cfg.get("farming", {})
 	var cdef: Dictionary = fcfg.get("crops", {}).get(crop, {})
@@ -569,7 +575,7 @@ func _harvest_cell(zone: Dictionary, idx: int) -> void:
 		var crops2: Array = zone["crops"]
 		crops2[idx] = {}
 		return
-	_add_resource_capped("food", float(cdef.get("harvest", fcfg.get("harvest_food", 6.0))) * crop_mult())
+	_add_resource_capped("food", float(cdef.get("harvest", fcfg.get("harvest_food", 6.0))) * crop_mult() * mill_mult())
 	# v1.56: фермер хвастается урожаем — обоснованный слух
 	var farmers: Array = residents.filter(func(r): return String(r["prof"]) == "farmer" \
 			and String(r.get("say", "")) == "")

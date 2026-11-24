@@ -1066,6 +1066,25 @@
 			"cat": "special"
 		},
 		{
+			"id": "mill",
+			"w": 2,
+			"sprite": "b:мельница",
+			"short": "bld.short.mill",
+			"loc": "bld.mill",
+			"desc": "bld.desc.mill",
+			"color": "#c9a86a",
+			"cost": {
+				"wood": 20,
+				"stone": 12
+			},
+			"build_work": 35,
+			"worker": "",
+			"effect": "mill",
+			"district": "work",
+			"cat": "resource",
+			"_comment": "v1.95: мельница мелет зерно — +10% еды с полей за каждую (до +30%); работает без мельника (ветряная)"
+		},
+		{
 			"id": "mine",
 			"w": 2,
 			"sprite": "b:шахта",

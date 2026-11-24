@@ -143,6 +143,15 @@ func _prepare_wave_rows() -> void:
 		["e:hive_bones", "кости"], ["e:mold_1", "плесень 1"],
 		["e:mold_2", "плесень 2"], ["e:mold_3", "плесень 3"],
 		["e:mold_4", "плесень 4"], ["e:mold_burned_1", "выжжено"]]})
+	_wave_rows.append({"title": Loc.t("stand.row_wave_mill"), "h": 120.0,
+			"gap": 230.0, "items": [
+		["b:мельница", "мельница"], ["e:mill_b", "мельница II"],
+		["e:mill_c", "мельница III"], ["e:millstone", "жернов"],
+		["e:grain_sacks", "мешки зерна"], ["e:wheat_stage_1", "всходы"],
+		["e:wheat_stage_3", "зелень"], ["e:wheat_stage_5", "колосья"],
+		["e:hay_stook", "сноп"], ["e:hay_rick", "стог"],
+		["e:harvest_cart", "телега"], ["e:stubble", "стерня"],
+		["e:harvest_pile", "сбор"]]})
 	_wave_rows.append({"title": Loc.t("stand.row_wave_animals"), "h": 42.0,
 			"gap": 120.0, "items": [
 		["e:an_deer_1", "олень"], ["e:an_boar_1", "кабан"],
