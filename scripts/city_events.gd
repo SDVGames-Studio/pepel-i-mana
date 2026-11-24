@@ -191,6 +191,9 @@ func _process_events() -> void:
 		SfxLib.event(String(ev["type"]))   # v1.65: звук события (маппинг в SfxLib)
 		var bld_name := _bld_name(String(ev.get("bld", "")))
 		match String(ev["type"]):
+			"quest_new":
+				# v1.98: заказ с доски — сбоку сообщением с «!», журнал — Q
+				hud.toast("! " + Loc.t("city.quest_new") % String(ev.get("customer", "")))
 			"site":
 				hud.toast(Loc.t("city.site_started") % bld_name)
 			"built":

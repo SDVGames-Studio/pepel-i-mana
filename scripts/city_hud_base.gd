@@ -485,8 +485,7 @@ var _choice_box: VBoxContainer = null
 func open_choice(title: String, lines: Array, choices: Array) -> void:
 	if _choice_panel == null:
 		_choice_panel = PanelContainer.new()
-		_choice_panel.position = Vector2(1150, 90)
-		_choice_panel.custom_minimum_size = Vector2(540, 0)
+		_choice_panel.position = Vector2(660, 260)   # центр: разговор с NPC
 		_choice_panel.visible = false
 		add_child(_choice_panel)
 		var col := VBoxContainer.new()

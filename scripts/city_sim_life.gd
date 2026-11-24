@@ -122,6 +122,9 @@ func _spawn_quest(qcfg: Dictionary) -> void:
 		q["reward"] = _event_rng.randi_range(int(bcfg["reward_coins"][0]), int(bcfg["reward_coins"][1]))
 	if int(q["reward"]) <= 0:
 		return
+	events.append({"type": "quest_new", "customer": String(q.get("customer", "")),
+		"kind": String(q.get("kind", "")), "item": String(q.get("item", q.get("type", ""))),
+		"need": int(q.get("need", 1))})   # v1.98: сбоку с «!» как происшествие
 	quests.append(q)
 
 
