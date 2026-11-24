@@ -123,7 +123,46 @@ func _decorate(city: Node, game: Node) -> void:
 		if String(b2["type"]) == "cemetery":
 			b2["hp"] = 25.0
 	sim.map.stumps[map.spawn_tile + Vector2i(5, -1)] = true
-	sim.map.stumps[map.spawn_tile + Vector2i(6, -2)] = true
+	sim.map.stumps[map.spawn_tile + Vector2i(6, -2)] = true	# v2.4: показательные поваленные брёвна пакета B (SHOT_LOGS=1)
+	if OS.get_environment("SHOT_LOGS") != "":
+		for i in 3:
+			var lt: Vector2i = map.spawn_tile + Vector2i(6 + i, 1 + (i % 2))
+			map.logs[lt] = {"size": 1 + i % 3}
+	# v2.4: кадр в чаще (SHOT_FOREST=1): герой телепортируется к густым
+	# деревьям — новые деревья пакета B в кадре, рядом пень и бревно
+	if OS.get_environment("SHOT_FOREST") != "":
+		var best_t: Vector2i = map.spawn_tile
+		var best_n := -1
+		for fy in range(2, map.h - 2):
+			for fx in range(2, map.w - 2):
+				var t3 := Vector2i(fx, fy)
+				if map.grid[fy][fx] != map.TILE_TREE:
+					continue
+				var n3 := 0
+				for d3 in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1),
+						Vector2i(0, -1), Vector2i(1, 1), Vector2i(-1, -1)]:
+					if map.in_bounds(t3 + d3) and map.grid[t3.y + d3.y][t3.x + d3.x] == map.TILE_TREE:
+						n3 += 1
+				if n3 > best_n:
+					best_n = n3
+					best_t = t3
+		_city.hero.position = map.tile_center_px(best_t + Vector2i(1, 1))
+		sim.map.stumps[best_t + Vector2i(2, 0)] = true
+		sim.map.logs[best_t + Vector2i(2, 1)] = {"size": 2}
+	# v2.4: звери у площади для кадра (SHOT_ANIMALS=1): медведь, лось,
+	# волк, лиса, заяц — виды и новые кадры фауны B
+	if OS.get_environment("SHOT_ANIMALS") != "":
+		var kinds := ["bear", "elk", "wolf", "fox", "hare"]
+		for i2 in kinds.size():
+			var at: Vector2i = map.spawn_tile + Vector2i(-7 + i2 * 2, -5)
+			if not map.is_walkable(at):
+				at = map.spawn_tile + Vector2i(-7 + i2 * 2, -4)
+			sim.animals.append({
+				"id": 500 + i2, "kind": kinds[i2],
+				"pos": map.tile_center_px(at),
+				"target": Vector2i(-1, -1),
+				"path": PackedVector2Array(), "idle": 2.0 + float(i2),
+			})
 	sim.map.saplings[map.spawn_tile + Vector2i(-4, 2)] = {"t": 30.0, "grow_days": 1.2}
 	sim.map.saplings[map.spawn_tile + Vector2i(-4, 3)] = {"t": 100.0, "grow_days": 1.2}
 	# некромантия раскрыта: тьма и скелеты у кладбища

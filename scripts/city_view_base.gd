@@ -455,7 +455,9 @@ func _tree_refs_for_season() -> Array:
 			if mf.has(tag):
 				var tt: Array = (mf[tag] as Dictionary).get("trees", [])
 				if not tt.is_empty():
-					return tt
+					# v2.4: пакет деревьев B подмешивается к биомным, а не
+					# перекрывается ими — иначе новые 16 стволов не видны в игре
+					return tt + WAVE24_TREES
 		if st == "summer":
 			return SUMMER_TREE_REFS + WAVE23_TREES + WAVE24_TREES
 	return TREE_REFS + WAVE23_TREES + WAVE24_TREES

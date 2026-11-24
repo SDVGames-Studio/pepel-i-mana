@@ -95,8 +95,11 @@ func _draw() -> void:
 		var now: float = float(sim.time)
 		var tr_cfg: Dictionary = sim.cfg.get("tracks", {})
 		var tr_life := float(tr_cfg.get("life_days", 1.2)) * float(sim.cfg["day_length"])
-		var chain: Array = sim.get("track_chain", [])
-		var hinted := float(sim.get("track_hint_until", 0.0)) > now
+		# у city_sim свой get(ключ) — двухаргументный .get падает (v2.4 фикс)
+		var chain_v: Variant = sim.get("track_chain")
+		var chain: Array = chain_v if chain_v is Array else []
+		var hinted_v: Variant = sim.get("track_hint_until")
+		var hinted := float(hinted_v if hinted_v != null else 0.0) > now
 		for tr in tracks:
 			var p3: Vector2 = tr["pos"]
 			if p3.x < vis.position.x or p3.x > vis.end.x \
