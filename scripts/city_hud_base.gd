@@ -628,8 +628,15 @@ func _diary_paragraph(r: Dictionary, e: Dictionary) -> String:
 	if base == "goal_done":
 		var ga: Array = e.get("a", [])
 		goal_id = String(ga[0]) if not (ga as Array).is_empty() else ""
-	var key := "diary.%s.%s.%s" % [base, goal_id, sim.res_voice(r)] if goal_id != "" 			else "diary.%s.%s" % [base, sim.res_voice(r)]
+	var voice: String = sim.res_voice(r)
+	var key := "diary.%s.%s.%s" % [base, goal_id, voice] if goal_id != "" 			else "diary.%s.%s" % [base, voice]
 	var fmt := Loc.t(key)
+	if fmt == key and goal_id != "":
+		key = "diary.%s.plain" % [base, goal_id]
+		fmt = Loc.t(key)
+	if fmt == key:
+		key = "diary.%s.%s" % [base, "plain"]
+		fmt = Loc.t(key)
 	if fmt == key:
 		return _dlog_text_of(e)
 	var args: Array = []
