@@ -245,6 +245,18 @@ func _process_events() -> void:
 				hud.toast(Loc.t("city.mold_started"))
 			"spirit_summoned":
 				hud.toast(Loc.t("city.spirit_summoned"))
+			"hero_fell":
+				_letter("hero_fell", Loc.t("city.hero_fell_letter"))
+			"champion_arrived":
+				_letter("champion_arrived",
+						Loc.t("city.champion_letter") % String(ev.get("name", "")))
+			"champion_fell":
+				hud.toast(Loc.t("city.champion_fell_toast"))
+			"tavern_request":
+				_letter("tavern_request",
+						Loc.t("city.tavern_request_letter") % String(ev.get("name", "")))
+			"defence_rush":
+				hud.toast(Loc.t("city.defence_rush_toast"))
 			"spirit_died":
 				hud.toast(Loc.t("city.spirit_died"))
 			"hunt_report":

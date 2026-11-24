@@ -209,6 +209,8 @@ static func _city_sim_block(sim) -> Dictionary:
 		"hunter_squad": sim.hunter_squad,
 		"_last_squad_day": int(sim._last_squad_day),
 		"acolyte_skill": float(sim.acolyte_skill),
+		"champion": sim.champion,
+		"champion_due_day": int(sim.champion_due_day),
 		"raiders": sim.raiders,
 		"raid_active": bool(sim.raid_active),
 		"raid_siege": bool(sim.raid_siege),

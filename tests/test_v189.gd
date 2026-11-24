@@ -26,6 +26,10 @@ func _test_diary_thoughts() -> void:
 	_check("dlog.sick" in keys, "хворь попадает в дневник")
 	# мысли: у голодного первая мысль — про голод, формат {k, a}
 	var hungry: Dictionary = sim.residents[1]
+	# v2.1: у жителя может оказаться тайная роль — мысли маскируются
+	# (флейк ~11% прогонов); тесту нужен обычный житель
+	hungry["secret"] = ""
+	hungry["secret_revealed"] = true
 	hungry["state"] = "hungry"
 	var th: Array = sim.resident_thoughts(hungry)
 	_check(not th.is_empty() and String(th[0]["k"]).begins_with("thought.hungry."),

@@ -305,6 +305,10 @@ static func _build_city(cd: Variant, seed_value := 0, hydro := {}):
 		sim.hunter_squad["edge"] = sim.hunter_squad.get("edge", Vector2i(-1, -1)) as Vector2i
 	sim._last_squad_day = int(sd.get("_last_squad_day", -99))
 	sim.acolyte_skill = float(sd.get("acolyte_skill", 0.0))
+	sim.champion = _dec(sd.get("champion", {}))
+	if not sim.champion.is_empty():
+		sim.champion["pos"] = sim.champion.get("pos", Vector2.ZERO) as Vector2
+	sim.champion_due_day = int(sd.get("champion_due_day", -1))
 	sim.raiders = _dec(sd.get("raiders", []))
 	sim.raid_active = bool(sd.get("raid_active", false))
 	sim.raid_siege = bool(sd.get("raid_siege", false))

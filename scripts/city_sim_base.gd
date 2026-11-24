@@ -100,6 +100,9 @@ var spy_known := {}            # имя путника -> {visits} (жители
 var hunter_squad: Dictionary = {}  # странствующие охотники {state, eta_day, edge, power, left, razed}
 var _last_squad_day := -99
 var acolyte_skill := 0.0       # мастерство аколита-контролёра (растёт со службой, 0..20)
+# v2.1 «Мозг старосты»: странствующий чемпион — подкрепление после гибели героя
+var champion: Dictionary = {}  # {name, hp, hp_max, atk, speed, pos, target, cd}
+var champion_due_day := -1     # день, когда придет чемпион (-1 — герой жив)
 var zones: Array = []           # зоны (M6): {id, type: "field"|"pasture", cells, progress, crops}
 var _zone_id := 1
 var _livestock_id := 1
@@ -230,6 +233,8 @@ func setup(city_map, city_cfg: Dictionary, residents_count: int, level: String) 
 	hunter_squad = {}
 	_last_squad_day = -99
 	acolyte_skill = 0.0
+	champion = {}
+	champion_due_day = -1
 	zones = []
 	_zone_id = 1
 	day_plans = []

@@ -23,6 +23,8 @@ const LETTER_KINDS := {
 	"caravan_arrived": "trade", "caravan_left": "trade",
 	"caravan_returned": "trade", "caravan_lost": "trade",
 	"wanderer": "people", "refugee": "people", "legend_joined": "people",
+	"hero_fell": "people", "champion_arrived": "people", "champion_fell": "threat",
+	"tavern_request": "people",
 	"winter_soon": "world",
 	"region_raid": "region", "region_sabotage": "region", "region_war": "region",
 	"region_migrants": "region", "region_gift": "region",

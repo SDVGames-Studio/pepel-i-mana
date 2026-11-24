@@ -91,6 +91,10 @@ func _ready() -> void:
 		sim = Game.city_sim
 	sim.paused = false
 	get_tree().paused = false   # v1.30.1: после смерти в данже пауза не должна протекать в город
+	# v2.1 причина 3: герой погиб в данже — город ждёт странствующего чемпиона
+	if not guest and bool(Game.get("last_run_death")):
+		sim.hero_fell()
+		Game.last_run_death = false
 	Game.in_dungeon = false   # герой в городе — автосейв и «Сохранить» доступны
 	if guest:
 		# кошелёк города НПС уже подшит (npc_cities.attach_wallet) — не лезем

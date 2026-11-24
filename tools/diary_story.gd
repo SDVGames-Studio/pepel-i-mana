@@ -53,6 +53,7 @@ func _initialize() -> void:
 				ev_i -= 1
 			if hero_hp <= 0.0:
 				sim.hero_alive = false
+				sim.hero_fell()   # v2.1: город зовёт чемпиона
 				hero_dead_day = sim.day
 				print("!!! ГЕРОЙ ПАЛ на день %d" % sim.day)
 				continue

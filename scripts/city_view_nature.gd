@@ -61,6 +61,8 @@ func _draw_world_sorted() -> void:
 		dyn.append([Vector2(w["pos"]).y, "wanderer", w])
 	for s in sim.spirits:
 		dyn.append([Vector2(s["pos"]).y, "spirit", s])
+	if not (sim.champion as Dictionary).is_empty():
+		dyn.append([Vector2(sim.champion["pos"]).y, "champion", sim.champion])
 	for r in sim.raiders:
 		dyn.append([Vector2(r["pos"]).y, "raider", r])
 	for r in sim.residents:
@@ -138,6 +140,8 @@ func _draw_world_sorted() -> void:
 				_draw_raider(e[2])
 			"spirit":
 				_draw_spirit(e[2])
+			"champion":
+				_draw_champion(e[2])
 			"res":
 				_draw_resident(e[2])
 			"hero":
@@ -442,6 +446,28 @@ func _draw_stock(a: Dictionary) -> void:
 
 ## Бродячий торговец (этап 2, аспект 4): гражданин с тюком и жёлтой одеждой;
 ## у палатки периодически выкрикивает зазывку-облачко.
+## Чемпион города (v2.1): тёмная фигура в стальном нагруднике с алым плюмажем.
+func _draw_champion(c: Dictionary) -> void:
+	var pos: Vector2 = c["pos"]
+	var bob := sin(_anim_time * 5.0) * 1.5
+	var base := pos + Vector2(0, -3)
+	# тень
+	draw_circle(pos + Vector2(0, 2), float(map.ts) * 0.3, Color(0, 0, 0, 0.18))
+	# алый плащ за спиной
+	draw_circle(base + Vector2(-3, -float(map.ts) * 0.30 + bob), float(map.ts) * 0.22,
+			Color(0.62, 0.13, 0.15, 0.85))
+	# стальной нагрудник
+	draw_circle(base + Vector2(0, -float(map.ts) * 0.28 + bob), float(map.ts) * 0.20,
+			Color(0.72, 0.74, 0.80, 0.95))
+	draw_circle(base + Vector2(0, -float(map.ts) * 0.28 + bob), float(map.ts) * 0.12,
+			Color(0.85, 0.87, 0.92, 1.0))
+	# шлем с плюмажем
+	var head := base + Vector2(0, -float(map.ts) * 0.52 + bob)
+	draw_circle(head, float(map.ts) * 0.12, Color(0.55, 0.57, 0.62, 1.0))
+	draw_rect(Rect2(head + Vector2(-1.5, -float(map.ts) * 0.30), Vector2(3.0, 7.0)),
+			Color(0.75, 0.15, 0.18, 0.95))
+
+
 ## Дух благодати (v2.2 п.2): полупрозрачная приземистая фигура с ореолом.
 func _draw_spirit(s: Dictionary) -> void:
 	var pos: Vector2 = s["pos"]

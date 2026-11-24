@@ -273,6 +273,12 @@ const BLOCKS := [
 		"_test_hunt_squad",
 		"_test_save_v22",
 ]],
+	["res://tests/test_v210.gd", [
+		"_test_defence_rush",
+		"_test_tavern_request",
+		"_test_champion",
+		"_test_save_v21",
+]],
 ]
 
 
