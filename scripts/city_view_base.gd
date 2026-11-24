@@ -414,7 +414,12 @@ func _build_tree_desc(tile: Vector2i, ts: float) -> Array:
 	# v1.78.5: деревья по манифесту биома сезона (в т.ч. собранные
 	# в композиторе) > летние > обычные
 	var tree_refs: Array = _tree_refs_for_season()
-	var ref: String = tree_refs[_hash(tile.x, tile.y, tree_refs.size())]
+	# v2.4 (реалистичный лес): «урочище» 16x16 тайлов держит один основной
+	# вид + до двух соседних из пула — раньше каждый тайл брал случайный
+	# вид из всех, и лес выглядел пёстрой радугой (снежная ель под сакурой)
+	var cl := Vector2i(tile.x >> 4, tile.y >> 4)
+	var base: int = _hash(cl.x, cl.y, 77) % tree_refs.size()
+	var ref: String = tree_refs[(base + _hash(tile.x, tile.y, 5) % 3) % tree_refs.size()]
 	if Assets.sprite(ref) == null:
 		# v1.78.11: спрайт биома не загрузился (битый реф/не импортирован) —
 		# фолбэк на обычное дерево: без этого view падал каждый кадр и
@@ -457,10 +462,10 @@ func _tree_refs_for_season() -> Array:
 				if not tt.is_empty():
 					# v2.4: пакет деревьев B подмешивается к биомным, а не
 					# перекрывается ими — иначе новые 16 стволов не видны в игре
-					return tt + WAVE24_TREES
+					return tt + _wave24_line(st)
 		if st == "summer":
-			return SUMMER_TREE_REFS + WAVE23_TREES + WAVE24_TREES
-	return TREE_REFS + WAVE23_TREES + WAVE24_TREES
+			return SUMMER_TREE_REFS + WAVE23_TREES + _wave24_line(st)
+	return TREE_REFS + WAVE23_TREES + _wave24_line(String(sim.season()) if sim != null else "")
 
 
 ## Композит дерева (v1.22): спрайт дерева печётся в одну текстуру один раз
@@ -522,6 +527,29 @@ const WAVE24_TREES := ["e:tree3_spruce", "e:tree3_birch", "e:tree3_oak",
 		"e:tree3_birch_autumn", "e:tree3_oak_dark", "e:tree3_snag_knotty",
 		"e:tree3_willow_autumn", "e:tree3_sakura", "e:tree3_maple_red",
 		"e:tree3_dead_snow"]
+
+## v2.4 (реалистичный лес): сезонные линии пакета B — весной нет снежных
+## елей и красных клёнов, осенью нет сакуры, зимой голые и снежные стволы
+const WAVE24_LINES := {
+	"green": ["e:tree3_spruce", "e:tree3_birch", "e:tree3_oak",
+			"e:tree3_willow", "e:tree3_apple_bloom", "e:tree3_sakura",
+			"e:tree3_oak_dark", "e:tree3_snag", "e:tree3_snag_knotty"],
+	"autumn": ["e:tree3_maple_orange", "e:tree3_maple_red",
+			"e:tree3_birch_autumn", "e:tree3_willow_autumn",
+			"e:tree3_oak_dark", "e:tree3_snag", "e:tree3_snag_knotty"],
+	"winter": ["e:tree3_spruce_snow", "e:tree3_dead_snow", "e:tree3_dead",
+			"e:tree3_snag", "e:tree3_snag_knotty"],
+}
+
+
+## Линия пакета B по сезону (вне зимы/осени — зелёная).
+func _wave24_line(season: String) -> Array:
+	match season:
+		"autumn":
+			return WAVE24_LINES["autumn"]
+		"winter":
+			return WAVE24_LINES["winter"]
+	return WAVE24_LINES["green"]
 # v1.76 «Лето»: деревья из атласа заказчика (summer/decor)
 const SUMMER_TREE_REFS := ["e:tree2_summer_oak", "e:tree2_summer_pine",
 		"e:tree2_summer_birch", "e:tree2_summer_willow", "e:tree2_summer_dead"]

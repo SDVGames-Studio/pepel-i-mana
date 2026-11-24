@@ -39,6 +39,7 @@ var _swamp_tiles: Array = []
 var _swamp_near: Array = [] # трава вокруг болота (тёмный ореол + камыши)
 var _ford_tiles: Array = []
 var _water_tiles: Array = [] # v1.50: все водные тайлы (для анимированной заливки)
+var _wbbox := Rect2()      # v2.4: прямоугольник всей воды (px) — пропуск redraw, когда вода вне кадра
 var _biome_water := Color(0, 0, 0, 0)   # v1.78.6: цвет воды биома (мель/берега)
 
 # --- запечка статики ---
@@ -49,7 +50,7 @@ var _bake_dirty := true
 var _out: Object = null     # куда рисует хелпер: _sd (запечка) или self (живое)
 
 # --- кап живой перерисовки (15 к/с) ---
-const ANIM_FPS_CAP := 15.0
+const ANIM_FPS_CAP := 10.0
 var _anim_accum := 0.0
 
 const EdgeLangC := preload("res://scripts/edge_lang.gd")
@@ -101,7 +102,13 @@ func _process(delta: float) -> void:
 	_anim_accum += delta
 	if _anim_accum >= 1.0 / ANIM_FPS_CAP:
 		_anim_accum = 0.0
-		queue_redraw()
+		# v2.4: живой слой нужен только когда вода в кадре (bbox с запасом 2 тайла)
+		if _wbbox.size == Vector2.ZERO:
+			return
+		var xfc := get_viewport_transform()
+		var vis: Rect2 = (xfc.affine_inverse() * get_viewport_rect()).grow(float(map.ts) * 4.0)
+		if vis.intersects(_wbbox):
+			queue_redraw()
 
 
 ## Запечь статику воды в SubViewport (НЕ из _draw!).
@@ -133,12 +140,18 @@ func _ensure_cache() -> void:
 	_swamp_near = []
 	_ford_tiles = []
 	_water_tiles = []
+	_wbbox = Rect2()
 	for y in map.h:
 		for x in map.w:
 			var t := Vector2i(x, y)
 			var g: int = map.grid[y][x]
 			if g == map.TILE_WATER:
 				_water_tiles.append(t)
+				var px := Vector2(t) * float(map.ts)
+				if _wbbox.size == Vector2.ZERO:
+					_wbbox = Rect2(px, Vector2(float(map.ts), float(map.ts)))
+				else:
+					_wbbox = _wbbox.merge(Rect2(px, Vector2(float(map.ts), float(map.ts))))
 				var sides: Array = []
 				for d: Vector2i in [Vector2i(0, -1), Vector2i(1, 0), Vector2i(0, 1), Vector2i(-1, 0)]:
 					var n: Vector2i = t + d
