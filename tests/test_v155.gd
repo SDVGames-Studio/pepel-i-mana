@@ -85,13 +85,17 @@ func _test_v155_rivalry() -> void:
 				found = true
 		_check(found, "бросок %.2f даёт %s (события дня: %s)" % [float(pair[0]),
 				String(pair[1]), ", ".join(evs.map(func(e): return String(e["type"])))])
-	# война городов НПС — за 20 случайных дней обязательно
+	# война городов НПС — обязательна; 100 дней с ранним выходом
+	# (v2.2: 20 дней давали редкий флейк на CI — 0.7^20 ≈ 0.1%, но
+	# стреляло; с 100 днями шанс промаха исчезающе мал)
 	var war := false
-	for d in 20:
+	for d in 100:
+		if war:
+			break
 		for ev in npc.rivalry_day(sim):
 			if String(ev["type"]) == "region_war":
 				war = true
-	_check(war, "города НПС воевали между собой (20 дней)")
+	_check(war, "города НПС воевали между собой (до 100 дней)")
 	# сводка для панели: игрок есть, ранги 1..N
 	var summary: Array = npc.region_summary(sim)
 	_check(not summary.is_empty(), "сводка региона не пуста")
