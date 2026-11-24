@@ -42,6 +42,8 @@ var _forest_label: Label = null    # гнев леса (M11)
 var _necro_label: Label = null     # тьма кладбища (M11)
 var _residents_panel: PanelContainer
 var _residents_text: RichTextLabel
+var _hud_res_fold: Button = null   # v1.97: свернуть ресурсы в полоску
+var _hud_bld_fold: Button = null   # v1.97: свернуть панель построек
 var _chron_panel: PanelContainer
 var _chron_text: RichTextLabel
 var _hover_panel: PanelContainer

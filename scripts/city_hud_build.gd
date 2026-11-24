@@ -337,6 +337,20 @@ func _build() -> void:
 	root.add_child(top_left)
 	var tl_box := VBoxContainer.new()
 	top_left.add_child(tl_box)
+	# v1.97: сворачивание панели поселения — остаётся день + кнопка
+	var res_fold := Button.new()
+	res_fold.text = "▼"
+	res_fold.custom_minimum_size = Vector2(34, 28)
+	res_fold.focus_mode = Control.FOCUS_NONE
+	res_fold.add_theme_font_size_override("font_size", 15)
+	tl_box.add_child(res_fold)
+	_hud_res_fold = res_fold
+	res_fold.pressed.connect(func() -> void:
+		var open := res_fold.text == "▼"
+		res_fold.text = "▲" if open else "▼"
+		for c in tl_box.get_children():
+			if c != res_fold:
+				c.visible = not open)
 	# v1.53: панель ресурсов — сетка ИКОНОК 6×2 (число рядом с картинкой,
 	# название ресурса — всплывающая подсказка)
 	var res_grid := GridContainer.new()
@@ -536,10 +550,22 @@ func _build() -> void:
 	keylabel.modulate = Color(1, 1, 1, 0.75)
 	keybar.add_child(keylabel)
 	bottom.add_child(keybar)
+	# v1.97: панель построек сворачивается кнопкой рядом (кнопка вне
+	# панели — иначе прячет саму себя)
+	var bld_fold := Button.new()
+	bld_fold.text = "▲"
+	bld_fold.custom_minimum_size = Vector2(120, 40)
+	bld_fold.focus_mode = Control.FOCUS_NONE
+	bld_fold.add_theme_font_size_override("font_size", 15)
+	bld_fold.visible = not guest
+	bottom.add_child(bld_fold)
+	_hud_bld_fold = bld_fold
 	var panel := PanelContainer.new()
 	panel.add_theme_stylebox_override("panel", _panel_style())
 	panel.visible = not guest   # гость не строит: панели инструментов нет (№120)
 	bottom.add_child(panel)
+	bld_fold.pressed.connect(func() -> void:
+		panel.visible = not panel.visible)
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 8)
 	panel.add_child(row)
