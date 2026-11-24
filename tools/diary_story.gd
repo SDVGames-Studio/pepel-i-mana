@@ -25,6 +25,13 @@ func _initialize() -> void:
 	city_map.generate(seed_v, cfg)
 	sim = load("res://scripts/city_sim.gd").new()
 	sim.setup(city_map, cfg, 12, "normal")
+	var hero_bot := OS.get_environment("HERO_BOT") == "1"
+	var hero_hp := 80.0
+	var bot_cd := 0.0
+	if hero_bot:
+		sim.hero_alive = true
+		sim.hero_pos = city_map.tile_center_px(city_map.spawn_tile)
+		print("=== герой-бот: меч 12, хп 80, лечение +25 между волнами ===")
 	sim._last_daily_day = 1
 	# GOALFOOD=1: полный погреб — цели «запасти еды» сбываются (демо)
 	if OS.get_environment("GOALFOOD") != "":
@@ -32,10 +39,48 @@ func _initialize() -> void:
 
 	# 30 дней жизни города, шаг 1 сек
 	var steps := int(float(days) * float(cfg["day_length"]))
+	var hero_dead_day := -1
+	var hero_kills := 0
 	for i in steps:
 		sim.tick(1.0)
+		if hero_bot and sim.hero_alive:
+			# урон герою из событий (мутанты бьют героя в симуляции)
+			var ev_i: int = sim.events.size() - 1
+			while ev_i >= 0:
+				var ev: Dictionary = sim.events[ev_i]
+				if String(ev["type"]) == "hero_hit":
+					hero_hp -= float(ev["dmg"])
+				ev_i -= 1
+			if hero_hp <= 0.0:
+				sim.hero_alive = false
+				hero_dead_day = sim.day
+				print("!!! ГЕРОЙ ПАЛ на день %d" % sim.day)
+				continue
+			# бот: телепорт в гущу и удар с кулдауном меча
+			if sim.raiders.size() > 0:
+				var nearest: Dictionary = sim.raiders[0]
+				for rr in sim.raiders:
+					if (rr["pos"] as Vector2).distance_to(sim.hero_pos) < (nearest["pos"] as Vector2).distance_to(sim.hero_pos):
+						nearest = rr
+				sim.hero_pos = nearest["pos"]
+				bot_cd -= 1.0
+				if bot_cd <= 0.0:
+					bot_cd = 0.5
+					nearest["hp"] = int(nearest["hp"]) - 12
+					if int(nearest["hp"]) <= 0:
+						sim.raiders.erase(nearest)
+						hero_kills += 1
+			else:
+				sim.hero_pos = city_map.tile_center_px(city_map.spawn_tile)
+				hero_hp = minf(80.0, hero_hp + 25.0)   # лечение между волнами
+
 	print("=== город «%s»: %d дней, жителей %d, построек %d ===" % [
 		"Пепел и Благодать", sim.day, sim.residents.size(), sim.buildings.size()])
+	if hero_bot:
+		var hstate := "жив (хп %d)" % int(maxf(0.0, hero_hp))
+		if hero_dead_day > 0:
+			hstate = "ПАЛ на день %d" % hero_dead_day
+		print("=== герой: %s, убито мутантов: %d ===" % [hstate, hero_kills])
 
 	# самые «событийные» взрослые жители
 	var scored: Array = []
