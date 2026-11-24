@@ -85,8 +85,9 @@ func _test_diary_matrix() -> void:
 	_check(missing == 0, "матрица дневника полна: 18 событий × 6 голосов (нет %d)" % missing)
 	var sim := _make_sim()
 	var r: Dictionary = sim.residents[0]
-	_check(sim.res_voice(r) in ["plain", "grumpy", "cheerful", "lazy", "dreamer", "stoic"],
-			"голос жителя — из шести")
+	_check(sim.res_voice(r) in ["plain", "grumpy", "cheerful", "lazy", "hardworking",
+			"glutton", "dreamer", "stoic", "coward", "kind", "strong", "magiclover"],
+			"голос жителя — из двенадцати (v1.99: +трус/добрый/сильный/трудолюб/обжора/маголюб)")
 	# заметки-размышления: раз в 5 дней (день 5 — кратен)
 	sim.day = 5
 	sim._daily_notes()
@@ -101,6 +102,7 @@ func _test_goal_done() -> void:
 	print("[v1.93: выполнение цели — в дневник]")
 	var sim := _make_sim()
 	var r: Dictionary = sim.residents[0]
+	r["traits"] = []
 	r["goal"] = "feast_tavern"
 	r["tavern_visited"] = true
 	sim._roll_goals()   # ежедневная проверка целей

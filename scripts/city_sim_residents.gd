@@ -107,6 +107,10 @@ func _leisure(r: Dictionary, dt: float) -> void:
 		# личная цель «пировать в таверне» (M14-F): вечер в таверне засчитан
 		if bool(plan.get("tavern", false)):
 			r["tavern_visited"] = true
+		else:
+			# v1.99: гуляния у костра с песнями — +2 настроения
+			r["mood"] = clampf(float(r.get("mood", 50.0)) + 2.0, 0.0, 100.0)
+			res_log(r, "dlog.fire")
 			res_log(r, "dlog.tavern")   # v1.91
 		_try_chat(r)
 
@@ -376,7 +380,8 @@ func resident_thoughts(r: Dictionary) -> Array:
 			out.append({"k": "thought.masked." + str(int(_event_rng.randi_range(1, 3)) if _event_rng != null else 1), "a": []})
 		return out
 	var voice := "plain"
-	for v in ["grumpy", "cheerful", "lazy", "hardworking", "glutton", "dreamer", "stoic"]:
+	for v in ["grumpy", "cheerful", "lazy", "hardworking", "glutton", "dreamer", "stoic",
+			"coward", "kind", "strong", "magiclover"]:
 		if v in (r.get("traits", []) as Array):
 			voice = String(v)
 			break

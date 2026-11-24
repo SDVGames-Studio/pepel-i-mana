@@ -98,6 +98,7 @@ const GOLEM_NAME := "Голем"     # староста-голем «Белый 
                                 # не житель, без цвета, управляет утром деревней
 
 var _next_id := 1
+var _feast_last := -999          # v1.99: день последнего праздника урожая
 var _trait_map := {}            # id черты -> описание (из people["traits"])
 var _res_uid := 0                # v1.89: сквозной uid жителей для дневника/клика
 var _spell_ready := {}          # id городского заклинания -> время готовности
@@ -469,7 +470,8 @@ func _new_resident(res_name: String, prof: String, tile: Vector2i) -> Dictionary
 ## Голос жителя (v1.92): черта характера -> стиль дневника/мыслей.
 ## 6 голосов; остальные черты дают нейтральный тон.
 func res_voice(r: Dictionary) -> String:
-	for v in ["grumpy", "cheerful", "lazy", "dreamer", "stoic"]:
+	for v in ["grumpy", "cheerful", "lazy", "dreamer", "stoic",
+			"coward", "kind", "strong", "hardworking", "glutton", "magiclover"]:
 		if v in (r.get("traits", []) as Array):
 			return v
 	return "plain"

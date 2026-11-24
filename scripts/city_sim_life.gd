@@ -536,6 +536,21 @@ func _roll_goals() -> void:
 	var pool: Array = people.get("goals", [])
 	if pool.is_empty():
 		return
+	# v1.99: ПРАЗДНИК УРОЖАЯ — осенью, с полным погребом, раз в год:
+	# весь город гуляет, настроение всем, мечты «пировать» сбываются
+	if String(season()) == "autumn" and int(day) - int(_feast_last) >= 60:
+		var need_food := float(_adults().size()) * 4.0
+		if float(res.get("food", 0.0)) >= need_food:
+			_feast_last = int(day)
+			_chron("chron.harvest_feast")
+			events.append({"type": "harvest_feast"})
+			for r2 in residents:
+				r2["mood"] = clampf(float(r2.get("mood", 50.0)) + float(people.get("feast_mood", 8.0)), 0.0, 100.0)
+				if String(r2.get("goal", "")) == "feast_tavern":
+					r2["goal"] = ""
+					res_log(r2, "dlog.goal_done", ["feast_tavern"])
+					_assign_goal(r2, pool)
+				res_log(r2, "dlog.feast")
 	for r in _adults():
 		var goal := String(r.get("goal", ""))
 		if goal == "":
