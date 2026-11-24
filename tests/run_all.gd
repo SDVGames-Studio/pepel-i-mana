@@ -262,6 +262,7 @@ const BLOCKS := [
 		"_test_diary_matrix",
 		"_test_goal_done",
 		"_test_secrets",
+		"_test_leaving",
 ]],
 ]
 

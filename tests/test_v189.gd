@@ -133,3 +133,27 @@ func _test_secrets() -> void:
 	_check(locs.has("diary.slip.demonologist"), "локаль прокола демонолога есть")
 	_check(locs.has("thought.masked.1"), "локаль маскировки есть")
 	_check(locs.has("diary.slip.necromancer"), "локаль прокола некроманта есть")
+
+
+func _test_leaving() -> void:
+	print("[v1.96: отъезд жителей]")
+	var sim := _make_sim()
+	var before: int = sim.residents.size()
+	var r: Dictionary = sim.residents[1]
+	if String(r["prof"]) in ["", "elder"] or bool(r.get("golem", false)):
+		return
+	r["mood"] = 5
+	var days_need := int(sim.people.get("leaving", {}).get("days", 4))
+	for i in range(days_need):
+		sim._roll_goals()
+	var ids: Array = []
+	for x in sim.residents:
+		ids.append(int(x["uid"]))
+	_check(int(r["uid"]) not in ids, "житель с низкой тоской ушёл из города")
+	var left_keys: Array = []
+	for e in (r["log"] as Array):
+		left_keys.append(String(e["k"]))
+	_check("dlog.left" in left_keys and "dlog.leave_warn" in left_keys,
+			"в его дневнике — предупреждение и уход")
+	var locs: Dictionary = _read_json("res://loc/ru.json")
+	_check(locs.has("chron.resident_left"), "летопись города знает про отъезд")

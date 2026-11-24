@@ -552,6 +552,34 @@ func _roll_goals() -> void:
 				pass   # завершается постройкой сада/статуи (см. _complete_site)
 		if done:
 			_complete_goal(r, pool)
+	# v1.96: ОТЪЕЗД — долгая тоска уводит жителей из города
+	# («Жители требуют жизни», п.1 очереди): настроение ниже порога
+	# несколько дней подряд — предупреждение, затем уход.
+	var lcfg: Dictionary = people.get("leaving", {})
+	var mood_low := int(lcfg.get("mood_below", 12))
+	var days_need := int(lcfg.get("days", 4))
+	for r in _adults():
+		if bool(r.get("golem", false)) or String(r["prof"]) in ["", "elder"]:
+			continue
+		if int(r.get("mood", 50)) <= mood_low:
+			r["sad_days"] = int(r.get("sad_days", 0)) + 1
+			if int(r["sad_days"]) == days_need - 1:
+				res_log(r, "dlog.leave_warn")
+				events.append({"type": "leave_warn", "name": String(r["name"])})
+			elif int(r["sad_days"]) >= days_need:
+				res_log(r, "dlog.left")
+				var sp2: Dictionary = _resident_by_id(int(r.get("partner", -1)))
+				if not sp2.is_empty():
+					sp2["partner"] = -1
+					res_log(sp2, "dlog.depart", [String(r["name"])])
+				var fr2: Dictionary = _resident_by_id(int(r.get("friend", -1)))
+				if not fr2.is_empty():
+					res_log(fr2, "dlog.depart", [String(r["name"])])
+				_chron("chron.resident_left", String(r["name"]))
+				events.append({"type": "resident_left", "name": String(r["name"])})
+				residents.erase(r)
+		else:
+			r["sad_days"] = 0
 
 
 func _assign_goal(r: Dictionary, pool: Array) -> void:
