@@ -174,6 +174,30 @@ static func tex(path: String) -> Texture2D:
 
 
 ## Текстура по ссылке "k:N" / "img:имя" / "b:id". Пустая строка — null.
+## Иконка предмета из нарезанного лута (v2.0 ЛУТ-1): mapping в
+## wave1123/loot_items/manifest.json ("item" -> файл). Нет mapping — null.
+const LOOT_MANIFEST_PATH := "res://assets/sprites/wave1123/loot_items/manifest.json"
+static var _loot_map: Dictionary = {}
+static var _loot_map_ready := false
+
+
+static func item_tex(item_id: String) -> Texture2D:
+	if not _loot_map_ready:
+		_loot_map_ready = true
+		var f: FileAccess = FileAccess.open(LOOT_MANIFEST_PATH, FileAccess.READ)
+		if f != null:
+			var parsed: Variant = JSON.parse_string(f.get_as_text())
+			if parsed is Dictionary:
+				for e in ((parsed as Dictionary).get("items", []) as Array):
+					if e is Dictionary and String(e.get("item", "")) != "":
+						_loot_map[String(e["item"])] = \
+								"res://assets/sprites/wave1123/loot_items/" + String(e["file"])
+	var path: String = _loot_map.get(item_id, "")
+	if path == "" or not ResourceLoader.exists(path):
+		return null
+	return tex(path)
+
+
 static func sprite(ref: String) -> Texture2D:
 	if ref == "":
 		return null

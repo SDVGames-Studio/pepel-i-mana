@@ -457,8 +457,8 @@ func _tree_refs_for_season() -> Array:
 				if not tt.is_empty():
 					return tt
 		if st == "summer":
-			return SUMMER_TREE_REFS + WAVE23_TREES
-	return TREE_REFS + WAVE23_TREES
+			return SUMMER_TREE_REFS + WAVE23_TREES + WAVE24_TREES
+	return TREE_REFS + WAVE23_TREES + WAVE24_TREES
 
 
 ## Композит дерева (v1.22): спрайт дерева печётся в одну текстуру один раз
@@ -511,6 +511,15 @@ const TREE_REFS := ["e:tree2_red", "e:tree2_pine", "e:tree2_birch",
 # волна 2026-11-23: деревья/пни/брёвна из листа «деревья и брёвна»
 const WAVE23_TREES := ["e:tree2_spruce", "e:tree2_birch2", "e:tree2_oak_old",
 		"e:tree2_snag"]
+
+## v2.0: пакет деревьев B (wave1123/trees_logs_b, 16 стволов: ель/берёза/
+## дуб/сухостой/ива/цвет/клён/сакура + снежные и осенние варианты)
+const WAVE24_TREES := ["e:tree3_spruce", "e:tree3_birch", "e:tree3_oak",
+		"e:tree3_snag", "e:tree3_willow", "e:tree3_apple_bloom",
+		"e:tree3_maple_orange", "e:tree3_dead", "e:tree3_spruce_snow",
+		"e:tree3_birch_autumn", "e:tree3_oak_dark", "e:tree3_snag_knotty",
+		"e:tree3_willow_autumn", "e:tree3_sakura", "e:tree3_maple_red",
+		"e:tree3_dead_snow"]
 # v1.76 «Лето»: деревья из атласа заказчика (summer/decor)
 const SUMMER_TREE_REFS := ["e:tree2_summer_oak", "e:tree2_summer_pine",
 		"e:tree2_summer_birch", "e:tree2_summer_willow", "e:tree2_summer_dead"]

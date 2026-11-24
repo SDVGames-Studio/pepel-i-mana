@@ -248,6 +248,14 @@ func _draw_log_at(tile: Vector2i) -> void:
 	var c: Vector2 = map.tile_center_px(tile) + Vector2(0, ts * 0.2)
 	c.y -= _static_lift(tile)   # v1.36.1: плоскость плато
 	var size: int = int((map.logs[tile] as Dictionary).get("size", 1))
+	# v2.0: пакет брёвен B (8 текстур) — по хэшу тайла, процедура в запасе
+	var lref: String = LOG3_REFS[absi(tile.x * 31 + tile.y * 17) % LOG3_REFS.size()]
+	if Assets.sprite(lref) != null:
+		var lc: Vector2 = map.tile_center_px(tile) + Vector2(0, ts * 0.2)
+		lc.y -= _static_lift(tile)
+		_draw_shadow(lc + Vector2(0, 5), ts * 0.42)
+		Assets.draw_ref(self, lref, lc, ts * (0.5 + 0.08 * float(size)))
+		return
 	var w := ts * 0.55 + ts * 0.18 * float(size)
 	var col := Color("#8d6e63") if size < 3 else Color("#6d4c33")
 	_draw_shadow(c + Vector2(0, 5), ts * 0.42)
@@ -262,7 +270,22 @@ func _draw_log_at(tile: Vector2i) -> void:
 ## Порядок — по индексам TREE_REFS (v1.32: под стволы новых деревьев).
 
 
+## v2.0: пакеты пней/брёвен B (wave1123/trees_logs_b) — текстурные варианты.
+const STUMP3_REFS := ["e:stump3_wide", "e:stump3_mossy", "e:stump3_old",
+		"e:stump3_split", "e:stump3_knotty", "e:stump3_snow",
+		"e:stump3_mushrooms", "e:stump3_snow2"]
+const LOG3_REFS := ["e:log3_mossy", "e:log3_branch", "e:log3_leafy",
+		"e:log3_birch", "e:log3_bough", "e:log3_birch_branch",
+		"e:log3_stack", "e:log3_snow"]
+
+
 func _draw_stump(bottom: Vector2, ts: float, variant: int) -> void:
+	# v2.0: пакет пней B (8 текстур) — процедура остаётся запасным путём
+	var sref: String = STUMP3_REFS[variant % STUMP3_REFS.size()]
+	if Assets.sprite(sref) != null:
+		_draw_shadow(bottom, ts * 0.3)
+		Assets.draw_ref(self, sref, bottom + Vector2(0, -2.0), ts * 0.62)
+		return
 	var pal: Dictionary = STUMP_PALS[variant % STUMP_PALS.size()]
 	_draw_shadow(bottom, ts * 0.3)
 	var w := ts * 0.46

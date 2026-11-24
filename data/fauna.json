@@ -20,7 +20,18 @@
 			"behavior": "flee",
 			"speed": 60.0,
 			"size": 1.0,
-			"art": {"frames": ["e:an_deer_1", "e:an_deer_2", "e:an_deer_3", "e:an_deer_4", "e:an_deer_5", "e:an_deer_6"], "idle_n": 2, "h": 26.0},
+			"art": {
+				"frames": [
+					"e:an_deer_1",
+					"e:an_deer_2",
+					"e:an_deer_3",
+					"e:an_deer_4",
+					"e:an_deer_5",
+					"e:an_deer_6"
+				],
+				"idle_n": 2,
+				"h": 26.0
+			},
 			"color": "#b08a5a",
 			"drop": [
 				{
@@ -42,24 +53,74 @@
 		{
 			"id": "bear",
 			"loc": "fauna.bear",
-			"biomes": ["forest", "hills"],
+			"biomes": [
+				"forest",
+				"hills"
+			],
 			"behavior": "hunt",
 			"speed": 55.0,
 			"size": 1.25,
 			"color": "#5a4638",
-			"drop": [{"id": "meat"}, {"id": "hide"}, {"id": "meat"}],
-			"art": {"frames": ["e:an_bear_1", "e:an_bear_2", "e:an_bear_3", "e:an_bear_4", "e:an_bear_5", "e:an_bear_6", "e:an_bear_7"], "idle_n": 2, "h": 30.0}
+			"drop": [
+				{
+					"id": "meat"
+				},
+				{
+					"id": "hide"
+				},
+				{
+					"id": "meat"
+				}
+			],
+			"art": {
+				"frames": [
+					"e:an_bear_1",
+					"e:an_bear_2",
+					"e:an_bear_3",
+					"e:an_bear_4",
+					"e:an_bear_5",
+					"e:an_bear_6",
+					"e:an_bear_7"
+				],
+				"idle_n": 2,
+				"h": 30.0
+			}
 		},
 		{
 			"id": "elk",
 			"loc": "fauna.elk",
-			"biomes": ["forest", "plains"],
+			"biomes": [
+				"forest",
+				"plains"
+			],
 			"behavior": "flee",
 			"speed": 70.0,
 			"size": 1.15,
 			"color": "#7a6a52",
-			"drop": [{"id": "meat"}, {"id": "hide"}, {"id": "meat"}],
-			"art": {"frames": ["e:an_elk_1", "e:an_elk_2", "e:an_elk_3", "e:an_elk_4", "e:an_elk_5", "e:an_elk_6", "e:an_elk_7"], "idle_n": 2, "h": 30.0}
+			"drop": [
+				{
+					"id": "meat"
+				},
+				{
+					"id": "hide"
+				},
+				{
+					"id": "meat"
+				}
+			],
+			"art": {
+				"frames": [
+					"e:an_elk_1",
+					"e:an_elk_2",
+					"e:an_elk_3",
+					"e:an_elk_4",
+					"e:an_elk_5",
+					"e:an_elk_6",
+					"e:an_elk_7"
+				],
+				"idle_n": 2,
+				"h": 30.0
+			}
 		},
 		{
 			"id": "boar",
@@ -70,7 +131,18 @@
 			"behavior": "flee",
 			"speed": 45.0,
 			"size": 0.9,
-			"art": {"frames": ["e:an_boar_1", "e:an_boar_2", "e:an_boar_3", "e:an_boar_4", "e:an_boar_5", "e:an_boar_6"], "idle_n": 2, "h": 22.0},
+			"art": {
+				"frames": [
+					"e:an_boar_1",
+					"e:an_boar_2",
+					"e:an_boar_3",
+					"e:an_boar_4",
+					"e:an_boar_5",
+					"e:an_boar_6"
+				],
+				"idle_n": 2,
+				"h": 22.0
+			},
 			"color": "#6b5a45",
 			"drop": [
 				{
@@ -101,7 +173,24 @@
 			"behavior": "flee",
 			"speed": 90.0,
 			"size": 0.55,
-			"art": {"frames": ["e:an_wolf_1", "e:an_wolf_2", "e:an_wolf_3", "e:an_wolf_4", "e:an_wolf_5", "e:an_wolf_6"], "idle_n": 2, "h": 24.0},
+			"art": {
+				"frames": [
+					"e:an_wolf_1",
+					"e:an_wolf_2",
+					"e:an_wolf_3",
+					"e:an_wolf_4",
+					"e:an_wolf_5",
+					"e:an_wolf_6",
+					"e:an_bird_b_1",
+					"e:an_bird_b_2",
+					"e:an_bird_b_3",
+					"e:an_bird_b_4",
+					"e:an_bird_b_5",
+					"e:an_bird_b_6"
+				],
+				"idle_n": 2,
+				"h": 24.0
+			},
 			"color": "#d8d8d8",
 			"drop": [
 				{
@@ -123,7 +212,24 @@
 			"behavior": "flee",
 			"speed": 80.0,
 			"size": 0.5,
-			"art": {"frames": ["e:an_fox_1", "e:an_fox_2", "e:an_fox_3", "e:an_fox_4", "e:an_fox_5", "e:an_fox_6"], "idle_n": 2, "h": 19.0},
+			"art": {
+				"frames": [
+					"e:an_fox_1",
+					"e:an_fox_2",
+					"e:an_fox_3",
+					"e:an_fox_4",
+					"e:an_fox_5",
+					"e:an_fox_6",
+					"e:an_hare_b_1",
+					"e:an_hare_b_2",
+					"e:an_hare_b_3",
+					"e:an_hare_b_4",
+					"e:an_hare_b_5",
+					"e:an_hare_b_6"
+				],
+				"idle_n": 2,
+				"h": 19.0
+			},
 			"color": "#a89a8a",
 			"drop": [
 				{
@@ -145,7 +251,24 @@
 			"behavior": "hunt",
 			"speed": 70.0,
 			"size": 0.7,
-			"art": {"frames": ["e:an_hare_1", "e:an_hare_2", "e:an_hare_3", "e:an_hare_4", "e:an_hare_5", "e:an_hare_6"], "idle_n": 2, "h": 14.0},
+			"art": {
+				"frames": [
+					"e:an_hare_1",
+					"e:an_hare_2",
+					"e:an_hare_3",
+					"e:an_hare_4",
+					"e:an_hare_5",
+					"e:an_hare_6",
+					"e:an_fox_b_1",
+					"e:an_fox_b_2",
+					"e:an_fox_b_3",
+					"e:an_fox_b_4",
+					"e:an_fox_b_5",
+					"e:an_fox_b_6"
+				],
+				"idle_n": 2,
+				"h": 14.0
+			},
 			"color": "#c26a2e",
 			"drop": [
 				{
@@ -175,7 +298,24 @@
 			"behavior": "hunt",
 			"speed": 75.0,
 			"size": 0.85,
-			"art": {"frames": ["e:an_bird_1", "e:an_bird_2", "e:an_bird_3", "e:an_bird_4", "e:an_bird_5", "e:an_bird_6"], "idle_n": 2, "h": 13.0},
+			"art": {
+				"frames": [
+					"e:an_bird_1",
+					"e:an_bird_2",
+					"e:an_bird_3",
+					"e:an_bird_4",
+					"e:an_bird_5",
+					"e:an_bird_6",
+					"e:an_wolf_b_1",
+					"e:an_wolf_b_2",
+					"e:an_wolf_b_3",
+					"e:an_wolf_b_4",
+					"e:an_wolf_b_5",
+					"e:an_wolf_b_6"
+				],
+				"idle_n": 2,
+				"h": 13.0
+			},
 			"color": "#8a8a92",
 			"drop": [
 				{
@@ -203,7 +343,22 @@
 			"behavior": "fish",
 			"speed": 0.0,
 			"size": 0.6,
-			"art": {"frames": ["e:an_fish_1", "e:an_fish_2", "e:an_fish_3", "e:an_fish_4"], "idle_n": 2, "h": 15.0},
+			"art": {
+				"frames": [
+					"e:an_fish_1",
+					"e:an_fish_2",
+					"e:an_fish_3",
+					"e:an_fish_4",
+					"e:an_fish_b_1",
+					"e:an_fish_b_2",
+					"e:an_fish_b_3",
+					"e:an_fish_b_4",
+					"e:an_fish_b_5",
+					"e:an_fish_b_6"
+				],
+				"idle_n": 2,
+				"h": 15.0
+			},
 			"color": "#7fd0e0",
 			"drop": [
 				{
@@ -224,7 +379,22 @@
 			"behavior": "flee",
 			"speed": 35.0,
 			"size": 0.7,
-			"art": {"frames": ["e:an_toad_1", "e:an_toad_2", "e:an_toad_3", "e:an_toad_4"], "idle_n": 2, "h": 11.0},
+			"art": {
+				"frames": [
+					"e:an_toad_1",
+					"e:an_toad_2",
+					"e:an_toad_3",
+					"e:an_toad_4",
+					"e:an_toad_b_1",
+					"e:an_toad_b_2",
+					"e:an_toad_b_3",
+					"e:an_toad_b_4",
+					"e:an_toad_b_5",
+					"e:an_toad_b_6"
+				],
+				"idle_n": 2,
+				"h": 11.0
+			},
 			"color": "#7a9a4a",
 			"drop": [
 				{

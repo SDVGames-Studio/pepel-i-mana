@@ -27,9 +27,11 @@ func _ready() -> void:
 	shape.shape = circle
 	add_child(shape)
 	body_entered.connect(_on_body_entered)
-	if sprite_ref != "":
-		var tex: Texture2D = Assets.sprite(sprite_ref)
-		if tex != null:
+	# v2.0 ЛУТ-1: у нарезанных предметов своя иконка, Kenney — запасной путь
+	var tex: Texture2D = Assets.item_tex(item_id)
+	if tex == null and sprite_ref != "":
+		tex = Assets.sprite(sprite_ref)
+	if tex != null:
 			_sprite = Sprite2D.new()
 			_sprite.texture = tex
 			_sprite.scale = Vector2.ONE * (22.0 / 16.0)

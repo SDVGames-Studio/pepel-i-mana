@@ -279,6 +279,13 @@ const BLOCKS := [
 		"_test_champion",
 		"_test_save_v21",
 ]],
+	["res://tests/test_v200.gd", [
+		"_test_loot_icons",
+		"_test_trees_b",
+		"_test_fauna_b",
+		"_test_mill_variants",
+		"_test_items_integrity",
+]],
 ]
 
 
