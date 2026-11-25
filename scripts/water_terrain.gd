@@ -311,6 +311,10 @@ func _draw_fm_water() -> void:
 	var y0 := maxi(0, int(floor(vis.position.y / ts)))
 	var x1 := mini(map.w, int(ceil(vis.end.x / ts)))
 	var y1 := mini(map.h, int(ceil(vis.end.y / ts)))
+	# v2.5 (FPS): при сильном отдалении живой перебор тайлов дорог —
+	# достаточно запечённой статики (живую фактуру видно вблизи)
+	if (x1 - x0) * (y1 - y0) > 520:
+		return
 	for y in range(y0, y1):
 		for x in range(x0, x1):
 			if int(map.grid[y][x]) != map.TILE_WATER:

@@ -75,7 +75,7 @@ func _draw_building(b: Dictionary) -> void:
 		# v1.75.1: частокол и ворота тоже спрайтом (секция palisade/gate
 		# заказчика вместо серой схематичной коробки — замечание на стенде)
 		if tex != null:
-			var dw: float = rect.size.x * 1.5
+			var dw: float = rect.size.x * 2.1   # v2.5: дома крупнее людей (фидбек)
 			var dh: float = dw * float(tex.get_height()) / float(tex.get_width())
 			# якорь — низ-footprint (по нему идёт Y-сортировка), спрайт над ним
 			Assets.draw_ref(self, ref, anchor - Vector2(0, dh * 0.5), dh)

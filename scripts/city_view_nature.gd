@@ -172,7 +172,7 @@ func _draw_campfire() -> void:
 func _fire_tile() -> Vector2i:
 	for b in sim.buildings:
 		if sim._active(b) and String(b["type"]) == "well":
-			return Vector2i(b["tile"]) + Vector2i(1, 0)
+			return Vector2i(b["tile"]) + Vector2i(2, 0)
 	return map.spawn_tile
 
 

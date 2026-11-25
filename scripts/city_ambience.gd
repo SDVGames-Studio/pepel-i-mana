@@ -19,7 +19,7 @@ const WISP_COLOR2 := Color(0.45, 0.7, 1.0)
 const FLY_COUNT := 36
 const WISP_COUNT := 22
 const LIGHT_COUNT := 5        # кочующие огни стай (v1.80.1: 8→5, FPS)
-const STREET_LIGHT_MAX := 8   # фонари у домов (v1.80.1: 10→8, FPS)
+const STREET_LIGHT_MAX := 14   # v2.5: было 8 — света не хватало   # фонари у домов (v1.80.1: 10→8, FPS)
 const VILLAGE_R := 50         # радиус деревни (тайлы) — тут живут стайки
 
 var night := 0.0
@@ -118,7 +118,7 @@ func _build_street(center: Vector2i) -> void:
 	var fire := center
 	for b in blds:
 		if _sim._active(b) and String(b["type"]) == "well":
-			fire = Vector2i(b["tile"]) + Vector2i(1, 0)
+			fire = Vector2i(b["tile"]) + Vector2i(2, 0)
 			break
 	_fire_pos = map.tile_center_px(fire) + Vector2(0, 4)
 	var n := 0
@@ -128,7 +128,7 @@ func _build_street(center: Vector2i) -> void:
 		if not _sim._active(b):
 			continue
 		var bt := Vector2i(b["tile"])
-		if Vector2(bt - center).length() > 40.0:
+		if Vector2(bt - center).length() > 60.0:
 			continue
 		_street.append({
 			"pos": map.tile_center_px(bt) + Vector2(0, -map.ts * 0.6),
