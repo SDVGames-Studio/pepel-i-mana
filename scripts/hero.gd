@@ -468,19 +468,9 @@ func try_attack() -> void:
 		return
 	SfxLib.play("swing")   # v1.65: взмах оружия
 	var arc := float(wpn.get("arc", p["attack_arc"]))
-	var hits := 0
-	for enemy in get_tree().get_nodes_in_group("enemies"):
-		var to_enemy: Vector2 = enemy.global_position - global_position
-		if to_enemy.length() > reach + float(enemy.p["radius"]):
-			continue
-		if absf(facing.angle_to(to_enemy)) > deg_to_rad(arc) / 2.0:
-			continue
-		enemy.take_damage(eff_damage())
-		Game.codex_seen("enemies", String(enemy.p.get("id", enemy.p.get("type", ""))))   # кодекс (M14-K)
-		hits += 1
-	# дело качает стат (v1.24): ближний бой — сила
-	if hits > 0:
-		Game.hero_train("str", float(attrs_cfg().get("train_swing", 0.06)) * float(hits))
+	# v2.5: хитбокс на ЗАМАХЕ — урон посреди анимации (~0.2с)
+	get_tree().create_timer(0.2).timeout.connect(
+			_strike_dungeon.bind(reach, arc, facing, global_position))
 	# мирная фауна данжа (замечание 2026-10-20): попадает той же дугой
 	for creature in get_tree().get_nodes_in_group("dungeon_fauna"):
 		if not is_instance_valid(creature) or bool(creature.dead):
@@ -520,6 +510,31 @@ func _fire_projectile(wpn: Dictionary, reach: float) -> void:
 
 ## Удар в городе (M5): урон мутантам считает симуляция — герой только целится
 ## и показывает замах. Оружие (M14-B) меняет дугу/дальность: снарядное — выстрел.
+## Удар по дуге в городе — вызывается ТАЙМЕРОМ на середине замаха (v2.5).
+func _strike_city(sim, reach: float, arc: float, dir: Vector2, from: Vector2) -> void:
+	if dead or sim == null:
+		return
+	var hits: int = sim.hero_slash(from, dir, reach, arc, eff_damage())
+	# бой в городе качает силу (v1.49)
+	if hits > 0:
+		var ha: Dictionary = attrs_cfg()
+		Game.hero_train("str", float(ha.get("train_swing", 0.06)) * float(hits))
+
+
+## Удар по нодам данжа — таймер середины замаха (v2.5).
+func _strike_dungeon(reach: float, arc: float, dir: Vector2, from: Vector2) -> void:
+	if dead:
+		return
+	for enemy in get_tree().get_nodes_in_group("enemies"):
+		var to_enemy: Vector2 = enemy.global_position - from
+		if to_enemy.length() > reach + float(enemy.p["radius"]):
+			continue
+		if absf(dir.angle_to(to_enemy)) > deg_to_rad(arc) / 2.0:
+			continue
+		enemy.take_damage(eff_damage())
+		Game.codex_seen("enemies", String(enemy.p.get("id", enemy.p.get("type", ""))))
+
+
 func city_attack(sim) -> int:
 	if _attack_cd > 0.0 or dead:
 		return 0
@@ -529,20 +544,17 @@ func city_attack(sim) -> int:
 	if to_mouse.length() > 4.0:
 		facing = to_mouse.normalized()
 	var reach := float(wpn.get("range", p["attack_range"]))
-	var hits: int
+	var arc := float(wpn.get("arc", p["attack_arc"]))
+	var hits: int = 0   # v2.5: у ближнего удара урон отложен — счёт не вернуть
 	if String(wpn.get("pattern", "")) == "projectile":
 		hits = sim.hero_shoot(global_position, facing, reach, eff_damage())
+		if hits > 0:
+			var ha2: Dictionary = attrs_cfg()
+			Game.hero_train("agi", float(ha2.get("train_swing", 0.06)))
 	else:
-		hits = sim.hero_slash(global_position, facing, reach,
-				float(wpn.get("arc", p["attack_arc"])), eff_damage())
-	# бой в городе качает статы как в данже (v1.49): сила — ближний бой,
-	# ловкость — лук (посох в городе ману не пьёт — стреляем древком-лучом)
-	if hits > 0:
-		var ha: Dictionary = attrs_cfg()
-		if String(wpn.get("pattern", "")) == "projectile":
-			Game.hero_train("agi", float(ha.get("train_swing", 0.06)))
-		else:
-			Game.hero_train("str", float(ha.get("train_swing", 0.06)) * float(hits))
+		# v2.5: урон на ЗАМАХЕ — хитбокс посреди анимации удара (~0.2с)
+		get_tree().create_timer(0.2).timeout.connect(
+				_strike_city.bind(sim, reach, arc, facing, global_position))
 	queue_redraw()
 	get_tree().create_timer(0.15).timeout.connect(queue_redraw)
 	return hits

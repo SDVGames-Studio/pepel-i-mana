@@ -962,3 +962,14 @@ func _static_full_rebake() -> void:
 	static_dirty = true
 	map.set_meta(&"static_full_rebake", true)
 
+
+## v2.5: домовые фонари — окно 21:00-24:00 (0..1, разгор с 20:30).
+## Часы суток: f=0 — 06:00 утра; полночь — гаснут, «люди спят».
+func lights_window_amount() -> float:
+	var dl: float = float(cfg["day_length"])
+	var hour: float = fposmod(time / dl * 24.0 + 6.0, 24.0)
+	if hour >= 21.0:
+		return 1.0
+	if hour >= 20.5:
+		return (hour - 20.5) * 2.0
+	return 0.0

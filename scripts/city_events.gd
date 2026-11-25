@@ -603,6 +603,7 @@ func _update_daylight() -> void:
 	_modulate.color = day_col.lerp(night_color, amount)
 	if _ambience != null:
 		_ambience.night = amount   # светлячки и огоньки разгораются к ночи
+		_ambience.lights_night = sim.lights_window_amount()   # v2.5: 21:00-24:00
 	if view != null:
 		view.night = amount   # v1.31: солнечные блики воды гаснут к ночи
 	# магическое загрязнение подкрашивает воздух (больше — фиолетовее)

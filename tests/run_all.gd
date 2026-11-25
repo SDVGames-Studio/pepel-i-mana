@@ -287,6 +287,13 @@ const BLOCKS := [
 		"_test_items_integrity",
 		"_test_music_mute",
 ]],
+	["res://tests/test_v250.gd", [
+		"_test_animal_sizes",
+		"_test_wolf_pack_and_shy",
+		"_test_spirit_calm",
+		"_test_lights_window",
+]],
+]
 ]
 
 

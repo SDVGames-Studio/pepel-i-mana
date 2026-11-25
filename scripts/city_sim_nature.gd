@@ -297,6 +297,10 @@ func hero_slash(origin_px: Vector2, facing: Vector2, range_px: float, arc_deg: f
 			continue
 		_hit_raider(r, dmg, hero_tile, "hero")
 		hits += 1
+		# v2.5: убитый дух леса успокаивает лес — охота на духов имеет смысл
+		if String(r.get("type", "")) == "forest_spirit":
+			forest_anger = maxf(0.0, forest_anger
+					- float(cfg.get("forest", {}).get("calm_per_spirit", 1.5)))
 	if raid_active and _wave_raiders_left() == 0:
 		_raid_end(true)
 	return hits
@@ -382,7 +386,25 @@ func _storm_strike_target() -> Dictionary:
 ## кабаны, птицы и волки («не мирные»: охотятся на прочих зверей).
 func _new_animal() -> Dictionary:
 	_next_id += 1
-	return {"id": _next_id, "kind": _roll_animal_kind(), "pos": _random_walkable_px(),
+	var kind := _roll_animal_kind()
+	var pos := _random_walkable_px()
+	# v2.5: волк — осторожный хищник, держится подальше от жилья
+	if kind == "wolf":
+		for attempt in 30:
+			var away: float = (pos - map.tile_center_px(map.spawn_tile)).length()
+			if away > float(map.ts) * 10.0:
+				break
+			pos = _random_walkable_px()
+	# v2.5: волки стайные — приходят по двое-трое
+	if kind == "wolf":
+		for i in _event_rng.randi_range(1, 2):
+			_next_id += 1
+			animals.append({"id": _next_id, "kind": "wolf",
+					"pos": pos + Vector2(_event_rng.randf_range(-70, 70),
+							_event_rng.randf_range(-70, 70)),
+					"target": Vector2i(-1, -1),
+					"path": PackedVector2Array(), "idle": _event_rng.randf_range(0.0, 4.0)})
+	return {"id": _next_id, "kind": kind, "pos": pos,
 			"target": Vector2i(-1, -1),
 			"path": PackedVector2Array(), "idle": _event_rng.randf_range(0.0, 4.0)}
 

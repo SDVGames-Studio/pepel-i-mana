@@ -23,6 +23,7 @@ const STREET_LIGHT_MAX := 8   # фонари у домов (v1.80.1: 10→8, FPS
 const VILLAGE_R := 50         # радиус деревни (тайлы) — тут живут стайки
 
 var night := 0.0
+var lights_night := 0.0   # v2.5: домовые фонари — окно 21:00-24:00 (отдельно от костра)
 var map = null              # карта города (v1.29.4: центры тайлов берега для света)
 var _sim = null             # v1.79.14: костёр/здания для уличных огней
 var _flies: Array = []   # {base: Vector2, phase: float, span: float}
@@ -238,7 +239,7 @@ func _process(delta: float) -> void:
 			l3.energy = night * (0.85 + 0.15 * sin(_time * 7.0))   # пламя живое
 		elif i - 1 < _street.size():
 			l3.enabled = true
-			l3.energy = night * (0.42 + 0.06 * sin(_time * 2.3 + _street[i - 1]["fl"]))
+			l3.energy = lights_night * (0.6 + 0.08 * sin(_time * 2.3 + _street[i - 1]["fl"]))
 		# выключенные (лишние) уже спрятаны в _sync_street_lights
 
 
@@ -258,8 +259,17 @@ func _draw() -> void:
 	for s in _street:
 		var p: Vector2 = s["pos"]
 		var fl: float = 0.13 + 0.03 * sin(_time * 2.3 + s["fl"])
-		draw_circle(p, map.ts * 1.3, Color(1.0, 0.72, 0.38, fl * night))
-		draw_circle(p, map.ts * 0.22, Color(1.0, 0.85, 0.55, 0.55 * night))
+		# v2.5: фонари домов — окно 21:00-24:00; гало крупнее и заметнее,
+		# светящееся «окно» у фонаря чтобы источник было видно глазами
+		var ln: float = lights_night
+		if ln <= 0.01:
+			continue
+		draw_circle(p, map.ts * 2.1, Color(1.0, 0.7, 0.35, fl * 2.2 * ln))
+		draw_circle(p, map.ts * 0.26, Color(1.0, 0.85, 0.55, 0.7 * ln))
+		draw_rect(Rect2(p + Vector2(-5.0, -14.0), Vector2(10.0, 9.0)),
+				Color(1.0, 0.82, 0.45, 0.85 * ln))
+		draw_rect(Rect2(p + Vector2(-3.5, -12.5), Vector2(7.0, 6.0)),
+				Color(1.0, 0.95, 0.7, 0.9 * ln))
 	for i in _flies.size():
 		var f: Dictionary = _flies[i]
 		var pos: Vector2 = f["base"] + Vector2(
