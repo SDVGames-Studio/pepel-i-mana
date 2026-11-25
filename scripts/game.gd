@@ -93,7 +93,12 @@ func hero_train(stat_id: String, amount: float) -> void:
 	var before := float(hero_stats.get(stat_id, 0.0))
 	if before >= cap:
 		return
-	hero_stats[stat_id] = minf(cap, before + amount)
+	# v2.6: экспоненциальное замедление — чем ближе к капу, тем меньше
+	# прибавка (фидбек заказчика: «чуть помедленней или в экспоненте»).
+	# Кривая hero_growth_curve: 1.0 = старое линейное, 1.5 = мягко, 2.0 = резко
+	var curve := float(cfg2.get("hero_growth_curve", 1.5))
+	var frac: float = maxf(0.04, 1.0 - before / cap)
+	hero_stats[stat_id] = minf(cap, before + amount * pow(frac, curve))
 
 
 ## Конфиг статов героя (balance.json -> hero_attributes), читается лениво.

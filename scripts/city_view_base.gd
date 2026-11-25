@@ -308,6 +308,7 @@ func _crop_sprite(crop_vis: int, stage: int) -> Texture2D:
 
 
 var _anim_time := 0.0
+var _redraw_accum := 0.0   # v2.6: накопитель капа перерисовки (30 к/с)
 var night := 0.0               # 0..1 — фактор ночи (задаёт city.gd, v1.31)
 
 # кэш тайлов деревьев/пней/саженцев (M12): ландшафт меняется редко —
@@ -340,7 +341,13 @@ func _static_window_start() -> int:
 
 func _process(delta: float) -> void:
 	_anim_time += delta
-	queue_redraw()
+	# v2.6 (FPS): городская отрисовка — самый дорогой слой (~12 FPS
+	# потенциала по diag_layers); 30 кадров перерисовки достаточно для
+	# плавности, при 60 это ~-40% работы основного потока
+	_redraw_accum += delta
+	if _redraw_accum >= 1.0 / 30.0:
+		_redraw_accum = 0.0
+		queue_redraw()
 
 
 ## Высота юнита в пикселях (уровень тайла × lift) — мгновенное значение.

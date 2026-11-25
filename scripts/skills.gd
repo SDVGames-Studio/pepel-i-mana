@@ -23,7 +23,12 @@ func reset() -> void:
 
 ## Сколько XP до следующего уровня: растёт с уровнем.
 func xp_next() -> int:
-	return int(cfg.get("xp_base", 12)) + int(cfg.get("xp_growth", 6)) * (level - 1)
+	# v2.6: экспоненциальный множитель — поздние уровни медленнее
+	var lin := int(cfg.get("xp_base", 12)) + int(cfg.get("xp_growth", 6)) * (level - 1)
+	var mult := float(cfg.get("xp_mult", 1.0))
+	if mult <= 1.0:
+		return lin
+	return int(round(float(lin) * pow(mult, float(level - 1))))
 
 
 ## Добавить XP. Возвращает число новых уровней (они попадают в pending).
