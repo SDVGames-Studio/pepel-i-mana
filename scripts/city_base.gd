@@ -218,6 +218,7 @@ func _ready() -> void:
 	# обзорная карта города (v1.51, клавиша N): вся локация с ресурсами
 	_overview = load("res://scripts/city_overview.gd").new()
 	_overview.setup(map, sim)
+	_wd_start()   # v2.6.7: страж зависаний (после готовности сима)
 	_overview.hero_cb = func(): return hero
 	add_child(_overview)
 	# донесения-письма (v1.53): крупные события справа, читается/закрывается
@@ -378,7 +379,51 @@ var _hero_last_land := Vector2(-99999, -99999)  # последняя точка 
 var _baked_grid_ver := -1   # версия сетки, на которую запечена земля (v1.28.1)
 
 
+# v2.6.7: СТРАЖ ЗАВИСАНИЙ — побочный поток следит за пульсом главного.
+# Главный поток штампует пульс в начале каждого кадра; если пульс стоит
+# дольше 5 сек (не пауза/не свёрнуто) — поток-страж сбрасывает контекст
+# игры в user://freeze_dump.log. Ловит даже жёсткие бесконечные циклы.
+var _hb_us := 0
+var _wd_thread: Thread = null
+var _wd_on := false
+
+
+func _wd_start() -> void:
+	_hb_us = Time.get_ticks_usec()
+	_wd_on = true
+	_wd_thread = Thread.new()
+	_wd_thread.start(_wd_loop)
+
+
+func _wd_loop() -> void:
+	while _wd_on and is_inside_tree():
+		OS.delay_msec(1000)
+		var stall: int = Time.get_ticks_usec() - _hb_us
+		if stall > 5000000 and sim != null and not get_tree().paused 				and not Game.is_minimized():
+			_dump_freeze(stall)
+			OS.delay_msec(3000)
+
+
+## Контекст зависшей игры — в лог (вызывается из потока-стража).
+func _dump_freeze(stall_us: int) -> void:
+	var f := FileAccess.open("user://freeze_dump.log", FileAccess.WRITE)
+	if f == null:
+		print("[СТРАЖ] не смог открыть freeze_dump.log")
+		return
+	f.store_string("ЗАВИСАНИЕ: пульс стоял %d мс | день %d | время %.0f |"
+			+ " жителей %d | построек %d | рейдеров %d | рейд=%s |"
+			+ " духов %d | следов %d | волк-стая=%s | скорость x%d
+" % [
+			int(stall_us / 1000.0), int(sim.day), float(sim.time),
+			sim.residents.size(), sim.buildings.size(), sim.raiders.size(),
+			str(sim.raid_active), str(not sim.hive.is_empty()),
+			sim.city_tracks.size(), sim.spirits.size(), int(sim.speed)])
+	f.flush()
+	print("[СТРАЖ] зависание — контекст записан в freeze_dump.log: день %d, жителей %d" % [int(sim.day), sim.residents.size()])
+
+
 func _process(delta: float) -> void:
+	_hb_us = Time.get_ticks_usec()
 	# v1.54: меню-оверлей закрыли изнутри меню — снимаем слой и паузу
 	if _menu_layer != null and not Game.menu_overlay:
 		_menu_layer.queue_free()
