@@ -12,6 +12,7 @@ var hint := ""                      # пояснение под кнопками
 var save_cb := Callable()           # сцена передаёт: func() -> String ("" — успех)
 var on_quit := Callable()           # сцена передаёт действие перед выходом в меню
 var _status: Label = null
+var _vol_sliders: Array = []         # v2.4.1: слайдеры громкости для refresh в open()
 
 
 func _ready() -> void:
@@ -58,6 +59,18 @@ func _ready() -> void:
 		hint_label.add_theme_font_size_override("font_size", 15)
 		hint_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		box.add_child(hint_label)
+	# v2.4.1: быстрое выключение музыки одной кнопкой (тумблер запоминает
+	# прежнюю громкость — возврат кнопкой или клавишей V)
+	var mute := Button.new()
+	UITheme.apply_button(mute)
+	mute.text = Loc.t("menu.music_off" if SfxLib.music_muted() else "menu.music_on")
+	mute.add_theme_font_size_override("font_size", 18)
+	mute.pressed.connect(func() -> void:
+		var muted := SfxLib.toggle_music_mute()
+		mute.text = Loc.t("menu.music_off" if muted else "menu.music_on")
+		for vs in _vol_sliders:
+			vs.value = SfxLib.get_bus_vol(String(vs.get_meta("bus"))))
+	box.add_child(mute)
 	# v1.65: громкость (Музыка/Звуки/Интерфейс) — пишет в шины SfxLib
 	for row in [["menu.vol_music", "Music"], ["menu.vol_sfx", "SFX"], ["menu.vol_ui", "UI"]]:
 		var vol_label := Label.new()
@@ -74,6 +87,8 @@ func _ready() -> void:
 		slider.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 		slider.value_changed.connect(func(v: float) -> void:
 			SfxLib.set_bus_vol(String(row[1]), float(v)))
+		slider.set_meta("bus", String(row[1]))
+		_vol_sliders.append(slider)
 		box.add_child(slider)
 	_status = Label.new()
 	_status.text = ""
@@ -89,6 +104,9 @@ func _unhandled_input(event: InputEvent) -> void:
 
 
 func open() -> void:
+	# v2.4.1: слайдеры/состояние музыки могли поменяться горячей клавишей V
+	for vs in _vol_sliders:
+		vs.value = SfxLib.get_bus_vol(String(vs.get_meta("bus")))
 	if _status != null:
 		_status.text = ""
 	visible = true

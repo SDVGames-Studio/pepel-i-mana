@@ -306,6 +306,39 @@ static func get_bus_vol(bus: String) -> float:
 	return float(_vol.get(bus, 1.0))
 
 
+## Выключена ли музыка (тумблер v2.4.1, клавиша V / кнопка в паузе).
+static var _music_muted := false
+
+
+static func music_muted() -> bool:
+	return _music_muted
+
+
+## Музыка выкл/вкл: шина Music -> 0; предыдущая громкость лежит в
+## _vol["Music_prev"] и переживает перезапуск (тот же audio_settings.json).
+static func set_music_muted(m: bool) -> void:
+	ensure()
+	_music_muted = m
+	if m:
+		var cur := float(_vol.get("Music", 0.75))
+		if cur > 0.05:
+			_vol["Music_prev"] = cur
+		_vol["Music"] = 0.0
+	else:
+		var prev := float(_vol.get("Music_prev", 0.75))
+		if prev <= 0.05:
+			prev = 0.75
+		_vol["Music"] = prev
+	save_settings()
+	_apply_volumes()
+
+
+## Тумблер: возвращает новое состояние (true — музыка выключена).
+static func toggle_music_mute() -> bool:
+	set_music_muted(not _music_muted)
+	return _music_muted
+
+
 static func save_settings() -> void:
 	var f := FileAccess.open(SETTINGS, FileAccess.WRITE)
 	if f != null:

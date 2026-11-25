@@ -81,3 +81,23 @@ func _test_items_integrity() -> void:
 		if AssetsScript.item_tex(String(it["id"])) != null:
 			mapped += 1
 	_check(mapped == 32, "ровно 32 предмета получили иконки (получили %d)" % mapped)
+
+
+func _test_music_mute() -> void:
+	print("[2.4.1: тумблер музыки]")
+	# состояние игрока сохраняем и возвращаем (настройки глобальные!)
+	var was_muted: bool = SfxLib.music_muted()
+	var was_vol: float = SfxLib.get_bus_vol("Music")
+	SfxLib.set_music_muted(true)
+	_check(SfxLib.music_muted(), "музыка помечена выключенной")
+	_check(SfxLib.get_bus_vol("Music") == 0.0, "шина Music заглушена")
+	SfxLib.set_music_muted(false)
+	_check(not SfxLib.music_muted(), "музыка возвращена")
+	_check(SfxLib.get_bus_vol("Music") > 0.05, "прежняя громкость восстановлена")
+	var st: bool = SfxLib.toggle_music_mute()
+	_check(st == SfxLib.music_muted() and st, "тумблер выключает и возвращает состояние")
+	SfxLib.set_music_muted(false)
+	if not was_muted:
+		SfxLib.set_bus_vol("Music", was_vol)
+	_check(absf(SfxLib.get_bus_vol("Music") - was_vol) < 0.01,
+			"настройки игрока восстановлены")

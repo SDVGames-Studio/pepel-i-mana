@@ -108,6 +108,11 @@ func _unhandled_input(event: InputEvent) -> void:
 				hud.toggle_chronicle()
 			KEY_M:
 				hud.toggle_market()
+			KEY_V:
+				# v2.4.1: музыка выкл/вкл на ходу (громкость — в паузе)
+				var muted_v: bool = SfxLib.toggle_music_mute()
+				hud.toast(Loc.t("city.music_off_toast" if muted_v
+						else "city.music_on_toast"))
 			KEY_N:
 				_overview.toggle()   # обзорная карта города (v1.51)
 				return

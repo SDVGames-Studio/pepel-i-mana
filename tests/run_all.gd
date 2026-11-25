@@ -285,6 +285,7 @@ const BLOCKS := [
 		"_test_fauna_b",
 		"_test_mill_variants",
 		"_test_items_integrity",
+		"_test_music_mute",
 ]],
 ]
 
