@@ -311,9 +311,18 @@ func _draw_fm_water() -> void:
 	var y0 := maxi(0, int(floor(vis.position.y / ts)))
 	var x1 := mini(map.w, int(ceil(vis.end.x / ts)))
 	var y1 := mini(map.h, int(ceil(vis.end.y / ts)))
-	# v2.5 (FPS): при сильном отдалении живой перебор тайлов дорог —
-	# достаточно запечённой статики (живую фактуру видно вблизи)
+	# v2.5.2 (фикс просвечивания): тело воды рисует ТОЛЬКО живой слой
+	# (в запечке — глубина/тина), поэтому пустоту оставлять нельзя.
+	# При сильном отдалении рисуем тайлы ПЛОСКИМИ ЦВЕТОМ (без текстур —
+	# в разы дешевле), вода остаётся непрозрачной
 	if (x1 - x0) * (y1 - y0) > 520:
+		for y2 in range(y0, y1):
+			for x2 in range(x0, x1):
+				if int(map.grid[y2][x2]) != map.TILE_WATER:
+					continue
+				var t2 := Vector2i(x2, y2)
+				var base: Color = _base_color(_kind_at(t2)).darkened(0.06)
+				draw_rect(Rect2(Vector2(t2) * ts, Vector2(ts, ts)), base)
 		return
 	for y in range(y0, y1):
 		for x in range(x0, x1):
