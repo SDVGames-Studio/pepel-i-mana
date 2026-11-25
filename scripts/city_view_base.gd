@@ -320,6 +320,7 @@ var night := 0.0               # 0..1 — фактор ночи (задаёт ci
 # без общей пересортировки кадра.
 var _trees_dirty := true
 var _trees_cache: Array = []
+var _lod := 1               # v2.6.2: шаг прореживания при отдалении (1/2/4)
 var _static_sorted: Array = []      # [y, kind, payload] деревья+здания, готово к слиянию
 var _static_sorted_blds := -1       # размер sim.buildings при сборке (смена — пересобрать)
 var _hero_px := Vector2.INF         # v1.50: герой для прозрачности деревьев

@@ -42,6 +42,12 @@ func _draw_world_sorted() -> void:
 		_static_sorted.sort_custom(func(a, b) -> bool: return float(a[0]) < float(b[0]))
 	# динамический набор — короткий: брёвна, останки, кучи, звери, скот, люди, герой
 	var dyn: Array = []
+	var vis_tiles := int(((_vis.size.x / ts) * (_vis.size.y / ts)))
+	_lod = 1
+	if vis_tiles > 2600:
+		_lod = 4
+	elif vis_tiles > 1300:
+		_lod = 2
 	# поваленные брёвна (v1.21.2): герой валит — лесопилка унесёт и распилит
 	for tile: Vector2i in map.logs.keys():
 		dyn.append([float(tile.y) * ts + ts * 0.78 - _static_lift(tile), "log", tile])
@@ -96,6 +102,11 @@ func _draw_world_sorted() -> void:
 			di += 1
 		else:
 			e = _static_sorted[si]
+			# v2.6.2 (LOD при отдалении): издалека прореживаем зелень/декор —
+			# тысяча композитов в кадре роняла FPS; здания не трогаем
+			if _lod > 1 and String(e[1]) in ["tree", "stump", "prop"] 					and (si % _lod) != 0:
+				si += 1
+				continue
 			si += 1
 		match String(e[1]):
 			"tree":
