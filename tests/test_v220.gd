@@ -43,7 +43,11 @@ func _test_tracks_sampler() -> void:
 	sim._track_accum = 0.9
 	sim._update_tracks(1.0, day_len)
 	_check(not sim.city_tracks.is_empty(), "сэмплер пишет следы идущих")
-	_check(String(sim.city_tracks[0]["who"]) == "res", "житель оставил след who=res")
+	var has_res := false
+	for tr in sim.city_tracks:
+		if String(tr["who"]) == "res":
+			has_res = true
+	_check(has_res, "житель оставил след who=res")
 	# дождь укорачивает жизнь следов (константа)
 	_check(Tracks.RAIN_MULT < 1.0, "дождь ускоряет таяние следов")
 

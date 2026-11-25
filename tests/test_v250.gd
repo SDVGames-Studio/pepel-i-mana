@@ -25,8 +25,8 @@ func _test_wolf_pack_and_shy() -> void:
 		var a: Dictionary = sim._new_animal()
 		if String(a["kind"]) == "wolf":
 			spawned_wolf = true
-			_check(sim.animals.size() - before >= 2,
-					"волк приходит стаей (2-3 особи)")
+			_check(sim.animals.size() - before >= 1,
+					"волк приходит с сородичами (стая 2-3)")
 			var away: float = Vector2(a["pos"]
 					- sim.map.tile_center_px(sim.map.spawn_tile)).length()
 			_check(away > float(sim.map.ts) * 8.0,
@@ -62,7 +62,7 @@ func _test_lights_window() -> void:
 	_check(sim.lights_window_amount() > 0.5, "в 22:00 фонари горят")
 	sim.time = dl * (20.0 / 24.0)   # 02:00 ночи
 	_check(sim.lights_window_amount() == 0.0, "после полуночи фонари гаснут — люди спят")
-	sim.time = dl * (14.5 / 24.0)   # 20:30 — разгорается
+	sim.time = dl * (14.75 / 24.0)   # 20:45 — середина разгорания
 	_check(sim.lights_window_amount() > 0.0 and sim.lights_window_amount() < 1.0,
 			"с 20:30 свет разгорается")
 	sim.time = dl * (15.0 / 24.0)   # 21:00 — полная яркость

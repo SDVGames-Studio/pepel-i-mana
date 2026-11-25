@@ -294,7 +294,6 @@ const BLOCKS := [
 		"_test_lights_window",
 ]],
 ]
-]
 
 
 func _initialize() -> void:
