@@ -162,6 +162,10 @@ func refresh() -> void:
 ## Тосты (v1.68): стек до 3 плашек — события города больше не затирают
 ## друг друга; повтор того же текста продлевает свою плашку.
 func toast(msg: String) -> void:
+	# v2.6.4: верхние плашки-тосты убраны по фидбеку — важное теперь приходит
+	# письмами в правую панель (notice_feed); функция оставлена для
+	# совместимости вызовов, но ничего не рисует
+	return
 	for i in _toast_slots.size():
 		var slot: PanelContainer = _toast_slots[i]
 		if slot.visible and (slot.get_child(0) as Label).text == msg:

@@ -49,12 +49,13 @@ func _ready() -> void:
 func _build_music_controls() -> void:
 	var mute := Button.new()
 	UITheme.apply_button(mute)
-	mute.text = Loc.t("menu.music_off" if SfxLib.music_muted() else "menu.music_on")
+	# v2.6.4: кнопка глушит ВЕСЬ звук (Master), а не только музыку
+	mute.text = Loc.t("menu.sound_off" if SfxLib.bus_muted("Master") else "menu.sound_on")
 	mute.add_theme_font_size_override("font_size", 18)
 	mute.focus_mode = Control.FOCUS_NONE
 	mute.pressed.connect(func() -> void:
-		var m: bool = SfxLib.toggle_music_mute()
-		mute.text = Loc.t("menu.music_off" if m else "menu.music_on"))
+		var mm: bool = SfxLib.toggle_bus_mute("Master")
+		mute.text = Loc.t("menu.sound_off" if mm else "menu.sound_on"))
 	($VBox as VBoxContainer).add_child(mute)
 	var lbl := Label.new()
 	lbl.text = Loc.t("menu.vol_music")
