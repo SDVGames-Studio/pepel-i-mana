@@ -123,7 +123,11 @@ func _decorate(city: Node, game: Node) -> void:
 		if String(b2["type"]) == "cemetery":
 			b2["hp"] = 25.0
 	sim.map.stumps[map.spawn_tile + Vector2i(5, -1)] = true
-	sim.map.stumps[map.spawn_tile + Vector2i(6, -2)] = true	# v2.4: показательные поваленные брёвна пакета B (SHOT_LOGS=1)
+	sim.map.stumps[map.spawn_tile + Vector2i(6, -2)] = true	# v2.5.2: ночь для кадра (SHOT_NIGHT=1) — 22:00, окна домов светятся
+	if OS.get_environment("SHOT_NIGHT") != "":
+		var dl3: float = float(sim.cfg["day_length"])
+		sim.time = (float(sim.day) + 16.0 / 24.0) * dl3
+	# v2.4: показательные поваленные брёвна пакета B (SHOT_LOGS=1)
 	if OS.get_environment("SHOT_LOGS") != "":
 		for i in 3:
 			var lt: Vector2i = map.spawn_tile + Vector2i(6 + i, 1 + (i % 2))
