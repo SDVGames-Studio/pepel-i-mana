@@ -102,6 +102,13 @@ func _draw_static_content() -> void:
 func _snapshot_static() -> void:
 	if _vp2 == null or not is_inside_tree():
 		return
+	# v2.5.5: на СВЁРНУТОМ окне рендер стоит — UPDATE_ONCE не выполнится,
+	# и get_image() зависает навсегда (фидбек «зависло при сворачивании»).
+	# Перезапланируем снятие на следующий кадр — снимется при развороте.
+	var wnd := get_window()
+	if wnd != null and wnd.mode == Window.MODE_MINIMIZED:
+		_snapshot_static.call_deferred()
+		return
 	var img := _vp2.get_texture().get_image()
 	if img != null:
 		_static_img = img
