@@ -71,6 +71,15 @@ func _ready() -> void:
 		for vs in _vol_sliders:
 			vs.value = SfxLib.get_bus_vol(String(vs.get_meta("bus"))))
 	box.add_child(mute)
+	# v2.5.4: «весь звук» — глушит Master (музыка+эффекты разом)
+	var mute_all := Button.new()
+	UITheme.apply_button(mute_all)
+	mute_all.text = Loc.t("menu.sound_off" if SfxLib.bus_muted("Master") else "menu.sound_on")
+	mute_all.add_theme_font_size_override("font_size", 18)
+	mute_all.pressed.connect(func() -> void:
+		var m: bool = SfxLib.toggle_bus_mute("Master")
+		mute_all.text = Loc.t("menu.sound_off" if m else "menu.sound_on"))
+	box.add_child(mute_all)
 	# v1.65: громкость (Музыка/Звуки/Интерфейс) — пишет в шины SfxLib
 	for row in [["menu.vol_music", "Music"], ["menu.vol_sfx", "SFX"], ["menu.vol_ui", "UI"]]:
 		var vol_label := Label.new()

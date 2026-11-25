@@ -339,6 +339,34 @@ static func toggle_music_mute() -> bool:
 	return _music_muted
 
 
+## v2.5.4: универсальный тумблер шины (для кнопки «весь звук»).
+## prev-громкость хранится в _vol["<bus>_prev"].
+static func set_bus_muted(bus: String, m: bool) -> void:
+	ensure()
+	if m:
+		var cur := float(_vol.get(bus, 1.0))
+		if cur > 0.05:
+			_vol[bus + "_prev"] = cur
+		_vol[bus] = 0.0
+	else:
+		var prev := float(_vol.get(bus + "_prev", _vol.get(bus, 0.0)))
+		if prev <= 0.05:
+			prev = 0.8
+		_vol[bus] = prev
+	save_settings()
+	_apply_volumes()
+
+
+static func bus_muted(bus: String) -> bool:
+	return float(_vol.get(bus, 1.0)) <= 0.05
+
+
+## Тумблер шины: возвращает новое состояние (true — заглушена).
+static func toggle_bus_mute(bus: String) -> bool:
+	set_bus_muted(bus, not bus_muted(bus))
+	return bus_muted(bus)
+
+
 static func save_settings() -> void:
 	var f := FileAccess.open(SETTINGS, FileAccess.WRITE)
 	if f != null:
