@@ -31,6 +31,9 @@ func _prof(phase: String, usec: int) -> void:
 func tick(dt_raw: float) -> void:
 	if paused or map == null:
 		return
+	# v2.6.5: страж зависаний — длинный кадр дампит контекст в лог
+	var _wt0 := Time.get_ticks_usec()
+
 	var dt := dt_raw * speed
 	var day_len := float(cfg["day_length"])
 	time += dt
@@ -162,6 +165,8 @@ func tick(dt_raw: float) -> void:
 			_roll_story()   # сюжетная рамка (M14-L)
 			_daily_phase = 0
 	_update_gates()   # один скан за тик: страж/стройка/волна меняют створки сразу
+	if Time.get_ticks_usec() - _wt0 > 1000000:
+		_dump_freeze_context()
 
 
 ## Дикие события (ответ №61): при переборе загрязнения (>= band_wild) раз в день
@@ -918,3 +923,17 @@ func _res_separation(dt: float) -> void:
 				ap -= push * 0.5
 				residents[j]["pos"] = (residents[j]["pos"] as Vector2) + push * 0.5
 		residents[i]["pos"] = ap
+
+
+## v2.6.5: дамп контекста при длинном кадре — для ловли зависаний.
+func _dump_freeze_context() -> void:
+	var f := FileAccess.open("user://freeze_dump.log", FileAccess.WRITE)
+	if f != null:
+		f.store_string("ЗАВИСАНИЕ: день %d, время %.1f, жителей %d, рейдеров %d, рейд=%s, хиве=%s, духов %d, следов %d, ищейка=%s
+" % [
+				day, time, residents.size(), raiders.size(),
+				str(raid_active), str(not hive.is_empty()), spirits.size(),
+				city_tracks.size(),
+				str(not (hive.get("city_known", {}) as Dictionary).is_empty())])
+		f.flush()
+	print("[СТРАЖ] кадр дольше секунды: день %d, жителей %d, рейд %s" % [day, residents.size(), str(raid_active)])
