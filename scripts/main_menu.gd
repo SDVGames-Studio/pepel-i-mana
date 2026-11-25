@@ -39,10 +39,41 @@ func _ready() -> void:
 	exit_button.pressed.connect(_on_exit_pressed)
 	_build_save_button()
 	_build_fullscreen_check()
+	_build_music_controls()
 
 
 ## Галочка полноэкранного режима (M9): F11 работает в любой сцене,
 ## выбор запоминается в user://settings.cfg.
+## v2.5.6: управление музыкой в главном меню — тумблер + громкость
+## (те же шины, что и в паузе города; состояние в audio_settings.json).
+func _build_music_controls() -> void:
+	var mute := Button.new()
+	UITheme.apply_button(mute)
+	mute.text = Loc.t("menu.music_off" if SfxLib.music_muted() else "menu.music_on")
+	mute.add_theme_font_size_override("font_size", 18)
+	mute.focus_mode = Control.FOCUS_NONE
+	mute.pressed.connect(func() -> void:
+		var m: bool = SfxLib.toggle_music_mute()
+		mute.text = Loc.t("menu.music_off" if m else "menu.music_on"))
+	($VBox as VBoxContainer).add_child(mute)
+	var lbl := Label.new()
+	lbl.text = Loc.t("menu.vol_music")
+	lbl.add_theme_font_size_override("font_size", 14)
+	lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	($VBox as VBoxContainer).add_child(lbl)
+	var slider := HSlider.new()
+	slider.min_value = 0.0
+	slider.max_value = 1.0
+	slider.step = 0.05
+	slider.value = SfxLib.get_bus_vol("Music")
+	slider.custom_minimum_size = Vector2(220, 16)
+	slider.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	slider.focus_mode = Control.FOCUS_NONE
+	slider.value_changed.connect(func(v: float) -> void:
+		SfxLib.set_bus_vol("Music", float(v)))
+	($VBox as VBoxContainer).add_child(slider)
+
+
 func _build_fullscreen_check() -> void:
 	var check := CheckButton.new()
 	check.text = Loc.t("menu.fullscreen")
