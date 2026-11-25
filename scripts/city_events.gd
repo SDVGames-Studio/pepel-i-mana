@@ -180,13 +180,33 @@ func _region_text(ev: Dictionary) -> String:
 
 
 ## Донесение-письмо вместо тоста (v1.53): крупные события — справа.
-func _letter(ev_type: String, msg: String) -> void:
-	hud.toast(msg)   # короткая вспышка внизу остаётся
+func _letter(ev_type: String, msg: String, pos = null) -> void:
+	hud.toast(msg)
 	if _notices != null:
-		_notices.push(ev_type, msg)
+		_notices.push(ev_type, msg, pos)
+
+
+## v2.6.2: клик по письму — камера показывает место на 2.5 сек
+## v2.6.2: вернуть камеру к герою после панорамы.
+func _cam_back(cam: Camera2D) -> void:
+	if is_instance_valid(cam):
+		cam.offset = Vector2.ZERO
+
+
+func _pan_camera_to(pos: Vector2) -> void:
+	if hero == null or not is_instance_valid(hero):
+		return
+	for ch in hero.get_children():
+		if ch is Camera2D:
+			ch.offset = pos - hero.global_position
+			get_tree().create_timer(2.5).timeout.connect(_cam_back.bind(ch))
+			return
 
 
 func _process_events() -> void:
+	# v2.6.2: разовая привязка клика по письмам (панорама камеры)
+	if _notices != null and not _notices.pan_cb.is_valid():
+		_notices.pan_cb = _pan_camera_to
 	for ev in sim.events:
 		SfxLib.event(String(ev["type"]))   # v1.65: звук события (маппинг в SfxLib)
 		var bld_name := _bld_name(String(ev.get("bld", "")))
@@ -195,9 +215,11 @@ func _process_events() -> void:
 				# v1.98: заказ с доски — сбоку сообщением с «!», журнал — Q
 				hud.toast("! " + Loc.t("city.quest_new") % String(ev.get("customer", "")))
 			"site":
-				hud.toast(Loc.t("city.site_started") % bld_name)
+				_notices.upsert("b" + str(ev.get("bid", 0)), "build",
+						Loc.t("build.started") % bld_name, ev.get("px"))
 			"built":
-				hud.toast(Loc.t("city.built_done") % bld_name)
+				_notices.upsert("b" + str(ev.get("bid", 0)), "build",
+						Loc.t("build.done") % bld_name, ev.get("px"))
 				_rebuild_collision()
 				Game.stat("buildings")   # статистика (M14-K)
 				_gossip("built", "builder")   # v1.56: строитель гордится
@@ -210,7 +232,7 @@ func _process_events() -> void:
 			"wild_gift":
 				hud.toast(Loc.t("magic.wild_gift"))
 			"refugee":
-				_letter("refugee", Loc.t("city.refugee_came") % String(ev["name"]))
+				_letter("refugee", Loc.t("city.refugee_came") % String(ev["name"]), ev.get("px"))
 			"birth":
 				hud.toast(Loc.t("city.birth_toast") % String(ev["name"]))
 			"grown":
@@ -272,7 +294,7 @@ func _process_events() -> void:
 			"sect_sermon":
 				hud.toast(Loc.t("city.sect_sermon"))
 			"camp_found":
-				_letter("camp_found", Loc.t("city.camp_found_toast"))
+				_letter("camp_found", Loc.t("city.camp_found_toast"), ev.get("px"))
 			"camp_razed":
 				_letter("camp_razed", Loc.t("city.camp_razed_toast"))
 			"hive_knows_city":

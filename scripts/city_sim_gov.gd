@@ -490,7 +490,8 @@ func _roll_refugees() -> void:
 		residents.append(r)
 		_next_id += 1
 		_chron("chron.refugee", String(r["name"]), prof)
-		events.append({"type": "refugee", "name": String(r["name"]), "prof": prof})
+		events.append({"type": "refugee", "name": String(r["name"]), "prof": prof,
+				"px": map.tile_center_px(map.spawn_tile + Vector2i(3, -3))})
 	_assign_jobs()
 
 

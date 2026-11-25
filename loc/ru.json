@@ -1941,5 +1941,11 @@
 	"menu.music_on": "Музыка: включить",
 	"menu.music_off": "Музыка: выключить",
 	"city.music_off_toast": "Музыка выключена (V — вернуть)",
-	"city.music_on_toast": "Музыка включена"
+	"city.music_on_toast": "Музыка включена",
+	"menu.sound_on": "Весь звук: включить",
+	"menu.sound_off": "Весь звук: выключить",
+	"letter.click_pan": "Клик — показать, где это",
+	"letter.look": "Смотрим…",
+	"build.started": "Стройка: %s — идёт",
+	"build.done": "%s — построено!"
 }

@@ -372,7 +372,9 @@ func _demo_place(type_id: String, tile: Vector2i) -> void:
 		for dx in w:
 			map.remove_road(tile + Vector2i(dx, dy))
 			_drop_zone_cell(tile + Vector2i(dx, dy))
-	events.append({"type": "site", "bld": type_id})
+	var nb: Dictionary = buildings[buildings.size() - 1]
+	events.append({"type": "site", "bld": type_id, "id": int(nb["id"]),
+				"px": map.tile_center_px(nb["tile"] as Vector2i)})
 
 
 ## Тайл годен под стройку: проходимая суша (или руда под шахту), нет здания, не аномалия.
@@ -477,7 +479,9 @@ func place_building(type_id: String, tile: Vector2i) -> bool:
 			var cell := tile + Vector2i(dx, dy)
 			map.remove_road(cell)
 			_drop_zone_cell(cell)
-	events.append({"type": "site", "bld": type_id})
+	var nb: Dictionary = buildings[buildings.size() - 1]
+	events.append({"type": "site", "bld": type_id, "id": int(nb["id"]),
+				"px": map.tile_center_px(nb["tile"] as Vector2i)})
 	_assign_jobs()
 	return true
 
@@ -754,7 +758,9 @@ func _complete_site(site: Dictionary) -> void:
 		_step_off_bld(site)
 	if _def(site).get("effect", "") == "gate":
 		_update_gates()   # ворота при достройке сразу закрываются/открываются
-	events.append({"type": "built", "bld": String(site["type"])})
+	events.append({"type": "built", "bld": String(site["type"]),
+			"id": int(site["id"]),
+			"px": map.tile_center_px(site["tile"] as Vector2i)})
 	if String(site["type"]) == "farm":
 		_make_farm_field(site)   # вокруг фермы распахивается поле (v1.21)
 	if String(site["type"]) == "grace_altar":

@@ -1545,7 +1545,8 @@ func reveal_camp() -> void:
 		return
 	camp["found"] = true
 	var kind := String(camp["kind"])
-	events.append({"type": "camp_found", "kind": kind})
+	events.append({"type": "camp_found", "kind": kind,
+			"px": map.tile_center_px(camp["tile"] as Vector2i)})
 	_chron("chron.camp_found", "camp.kind." + kind)
 
 
@@ -1882,7 +1883,7 @@ func hunt_squad_daily() -> void:
 				_next_id += 1
 				raiders.append(u)
 		hunter_squad["state"] = "assault"
-		events.append({"type": "hunt_squad_here"})
+		events.append({"type": "hunt_squad_here", "px": map.tile_center_px(hunter_squad["edge"] as Vector2i)})
 		_chron("chron.hunt_squad_here")
 	elif state == "assault":
 		var left := 0

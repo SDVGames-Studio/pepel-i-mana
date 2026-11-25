@@ -46,6 +46,7 @@ const GROUP_COLORS := {
 }
 
 var _box: VBoxContainer = null
+var pan_cb := Callable()   # v2.6.2: клик по письму -> показать место (камера)
 
 
 func _ready() -> void:
@@ -80,7 +81,7 @@ static func group_of(type: String) -> String:
 
 ## Узел донесения: развёрнутое письмо + его закладка (v1.54).
 ## Возвращает {panel, tab}; таймер сворачивания ставит push().
-func _make_letter(group: String, col: Color, text: String) -> Dictionary:
+func _make_letter(group: String, col: Color, text: String, target_px = null, uid := "") -> Dictionary:
 	var panel := PanelContainer.new()
 	var st := StyleBoxFlat.new()
 	st.bg_color = Color("#f4e9cf").darkened(0.05)
@@ -93,6 +94,8 @@ func _make_letter(group: String, col: Color, text: String) -> Dictionary:
 	st.content_margin_top = 5
 	st.content_margin_bottom = 5
 	panel.add_theme_stylebox_override("panel", st)
+	if uid != "":
+		panel.set_meta(&"uid", uid)
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 6)
 	panel.add_child(row)
@@ -111,6 +114,14 @@ func _make_letter(group: String, col: Color, text: String) -> Dictionary:
 	body.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	body.custom_minimum_size = Vector2(260, 0)
 	vbox.add_child(body)
+	if target_px != null and target_px != Vector2.INF:
+		panel.set_meta(&"body", body)
+		panel.set_meta(&"target", target_px)
+		panel.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+		panel.tooltip_text = Loc.t("letter.click_pan")
+		panel.gui_input.connect(func(ev: InputEvent) -> void:
+			if ev is InputEventMouseButton and ev.pressed 					and ev.button_index == MOUSE_BUTTON_LEFT and pan_cb.is_valid():
+				pan_cb.call(panel.get_meta(&"target")))
 	var close := Button.new()
 	close.text = "✕"
 	close.flat = true
@@ -167,12 +178,24 @@ func _arm_collapse(panel: PanelContainer) -> void:
 
 
 ## Новое донесение: развёрнутое письмо, через 6 сек — узкая закладка.
-func push(ev_type: String, text: String) -> void:
+## v2.6.2: обновляемое письмо (одно и то же письмо меняет текст).
+func upsert(uid: String, ev_type: String, text: String, target_px) -> void:
+	for ch in _box.get_children():
+		if ch is PanelContainer and ch.has_meta(&"uid") and str(ch.get_meta(&"uid")) == uid:
+			var b: Label = ch.get_meta(&"body")
+			b.text = text
+			if target_px != null:
+				ch.set_meta(&"target", target_px)
+			return
+	push(ev_type, text, target_px)
+
+
+func push(ev_type: String, text: String, target_px = null) -> void:
 	if _box == null or not is_letter(ev_type):
 		return
 	var group := group_of(ev_type)
 	var col: Color = GROUP_COLORS.get(group, Color.GRAY)
-	var made := _make_letter(group, col, text)
+	var made := _make_letter(group, col, text, target_px, "")
 	var panel: PanelContainer = made["panel"]
 	var tab: Control = made["tab"]
 	_box.add_child(panel)

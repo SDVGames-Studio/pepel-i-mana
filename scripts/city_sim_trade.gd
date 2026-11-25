@@ -254,7 +254,7 @@ func _update_wanderers(dt: float) -> void:
 			if map.tile_of_px(w["pos"]) == spot:
 				w["mode"] = "trade"
 				w["left"] = float(wcfg.get("stay_days", 0.6)) * day_len
-				events.append({"type": "wanderer_arrived"})
+				events.append({"type": "wanderer_arrived", "px": w["pos"]})
 			elif float(w["come"]) > 2.0 * day_len:
 				w["mode"] = "leave"   # застрял по пути — разворачивается
 				w["target"] = Vector2i(-1, -1)
