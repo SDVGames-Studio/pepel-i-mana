@@ -105,6 +105,7 @@ func _update_threat(dt: float, day_len: float) -> void:
 				float(map.ts) * 4.0)
 	if raid_active:
 		_update_raid(dt, day_len)
+		_ai_separation(dt)
 		return
 	if _next_raid_at <= 0.0:
 		_schedule_next_raid()
@@ -668,6 +669,27 @@ func _wave_raiders_left() -> int:
 ## Конец волны: true — отбита (награда), false — осада удалась (город понёс потери).
 ## M11: награда и переналадка мутантских волн — только для волн мутантов;
 ## лес и неспокойные духи не трогают расписание угроз.
+## v2.6: ИИ — мягкое расталкивание своих: мутанты не сбиваются в одну
+## точку при окружении (O(n²) на 10-14 юнитах — копейки).
+func _ai_separation(dt: float) -> void:
+	var n := raiders.size()
+	if n < 2:
+		return
+	for i in n:
+		var a: Dictionary = raiders[i]
+		var ap: Vector2 = a["pos"] as Vector2
+		for j in range(i + 1, n):
+			var b: Dictionary = raiders[j]
+			var v: Vector2 = (b["pos"] as Vector2) - ap
+			var d: float = v.length()
+			var min_d: float = float((a["p"] as Dictionary).get("radius", 8.0)) 					+ float((b["p"] as Dictionary).get("radius", 8.0))
+			if d > 0.01 and d < min_d:
+				var push: Vector2 = v.normalized() * (min_d - d) * 0.5
+				ap -= push * 0.5
+				b["pos"] = (b["pos"] as Vector2) + push * 0.5
+		raiders[i]["pos"] = ap
+
+
 func _raid_end(defended: bool) -> void:
 	var kind := _raid_kind
 	raid_active = false

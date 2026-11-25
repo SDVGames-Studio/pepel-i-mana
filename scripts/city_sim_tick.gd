@@ -893,3 +893,28 @@ func _update_tracks(dt: float, day_len: float) -> void:
 				float(tcfg.get("min_step", 24.0)),
 				int(tcfg.get("cap", 700)))
 		_track_last[key] = pos
+
+
+## v2.6: ИИ жителей — мягкое расталкивание у скоплений (двери, площадь):
+## не даём четверым стоять в одной точке; O(n²) до 40 жителей — дёшево.
+func _res_separation(dt: float) -> void:
+	var n := residents.size()
+	if n < 2:
+		return
+	var min_d := float(map.ts) * 0.45
+	for i in n:
+		var a: Dictionary = residents[i]
+		if int(a.get("inside", 0)) > 0:
+			continue
+		var ap: Vector2 = a["pos"] as Vector2
+		for j in range(i + 1, n):
+			var b: Dictionary = residents[j]
+			if int(b.get("inside", 0)) > 0:
+				continue
+			var v: Vector2 = (b["pos"] as Vector2) - ap
+			var d: float = v.length()
+			if d > 0.01 and d < min_d:
+				var push: Vector2 = v.normalized() * (min_d - d) * 0.35
+				ap -= push * 0.5
+				residents[j]["pos"] = (residents[j]["pos"] as Vector2) + push * 0.5
+		residents[i]["pos"] = ap
