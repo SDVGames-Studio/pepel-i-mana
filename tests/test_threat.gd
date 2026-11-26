@@ -760,7 +760,7 @@ func _test_gathering() -> void:
 	var iron_pile := 0.0
 	sim_mi.map.deposit_tiles.clear()   # v1.56: тест про железо
 	var iron0_mi := float(sim_mi.res["iron"])
-	for i in 80:   # жила ~104 hp по 35/день — пара ходок с ходьбой
+	for i in 200:   # v2.6.2: 80 тиков бывало мало (шахтёр отлынивал — флейк на CI)
 		sim_mi.tick(12.0)
 		iron_pile = float(sim_mi.res["iron"]) - iron0_mi
 		if iron_pile > 0.0:
