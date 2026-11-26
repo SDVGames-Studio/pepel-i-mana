@@ -526,6 +526,20 @@ func _gather_scan_entry(type_id: String, kinds: Array, on_resource: bool,
 	return c
 
 
+## v3.0: свободных клеток под грядки вокруг прямоугольника w×w
+## (годна: трава без дерева, без здания, без зоны).
+func _free_farmland(t: Vector2i, w: int) -> int:
+	var n := 0
+	var r := int(cfg.get("farming", {}).get("field_radius", 3))
+	for dy in range(-r, w + r):
+		for dx in range(-r, w + r):
+			var ct := t + Vector2i(dx, dy)
+			if map.in_bounds(ct) and map.grid[ct.y][ct.x] == map.TILE_GRASS \
+					and building_at(ct).is_empty() and not _tile_in_zone(ct):
+				n += 1
+	return n
+
+
 func _advance_gather_scan(c: Dictionary, budget: int) -> void:
 	if bool(c["done"]):
 		return
@@ -556,7 +570,8 @@ func _advance_gather_scan(c: Dictionary, budget: int) -> void:
 			var t := Vector2i(x, y)
 			var col_d: float = maxf(row_d, absf(float(x) - float(map.spawn_tile.x)))
 			x += 1
-			if col_d >= best_d:
+			# v3.0: ферма сканирует ВСЁ (счёт по свободной земле, не по дистанции)
+			if col_d >= best_d and type_id != "farm":
 				continue
 			if on_resource and not (map.grid[t.y][t.x] in kinds):
 				continue
@@ -586,6 +601,18 @@ func _advance_gather_scan(c: Dictionary, budget: int) -> void:
 						ok = false
 						break
 			if not ok:
+				continue
+			# v3.0 (заказчик): ферма — по максимальному выхлопу: вокруг площадки
+			# нужна свободная земля под грядки; минимум и радиус — в city.json
+			# (farming.min_farmland / farming.field_radius)
+			if type_id == "farm":
+				var sc: int = _free_farmland(t, w)
+				if sc < int(cfg.get("farming", {}).get("min_farmland", 8)):
+					continue
+				if sc > int(c.get("best_sc", -1)) or (sc == int(c.get("best_sc", -1)) and col_d < best_d):
+					c["best_sc"] = sc
+					best = t
+					best_d = col_d
 				continue
 			best = t
 			best_d = col_d

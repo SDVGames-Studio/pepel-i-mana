@@ -313,7 +313,8 @@ func _test_defense() -> void:
 	_check(bool(forge["done"]), "кузня построена")
 	var near_forge: Vector2i = _find_free_tile(sim, forge["tile"], "armory")
 	_check(sim.placement_block("armory", near_forge) == "", "оружейная ставится рядом с кузней")
-	var far_tile: Vector2i = _find_free_tile(sim, sim.map.spawn_tile + Vector2i(10, 0))
+	# v3.0: кузня 3×3 — дальнюю оружейную меряем от неё же (+12, радиус правила меньше)
+	var far_tile: Vector2i = _find_free_tile(sim, (forge["tile"] as Vector2i) + Vector2i(12, 0))
 	_check(sim.placement_block("armory", far_tile) != "", "оружейная вдали от кузни не ставится")
 
 	# цепочка металла: руда → металл → инструменты/комплекты

@@ -388,6 +388,17 @@ func is_buildable_tile(tile: Vector2i, type_id := "") -> bool:
 	# главная площадь (правки v1.20): в радиусе plaza.radius клеток строить нельзя
 	if type_id != "bridge" and near_plaza(tile):
 		return false
+	# v3.0 (заказчик): НЕ строим в лесу (прямо на деревьях) и на клетках
+	# зон — поля/пастбища неприкосновенны, ферма не встанет на чужие грядки
+	# v3.0: стены/ворота вырубают дерево под собой (кольцо частокола
+	# обязано смыкаться через лес), шахта/каменоломня сидят в скалах;
+	# прочие здания в лесу строить нельзя (заказчик)
+	if type_id != "bridge" and type_id != "mine" and type_id != "quarry" \
+			and type_id != "wall" and type_id != "gate" \
+			and map.grid[tile.y][tile.x] == map.TILE_TREE:
+		return false
+	if _tile_in_zone(tile):
+		return false
 	if not map.is_nature_walkable(tile):
 		# шахту ставим и на рудную жилу, и на пустую породу выработанного
 		# массива (v1.21); поле фермы под шахтой не вспахано — до шахты ей дела нет

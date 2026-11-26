@@ -80,9 +80,12 @@ func _test_m6() -> void:
 	var zcells: Array = _grass_tiles(sim_z2, sim_z2.map.spawn_tile + Vector2i(7, 7), 4)
 	sim_z2.add_zone("pasture", zcells)
 	var before_n: int = (sim_z2.zones[0]["cells"] as Array).size()
-	sim_z2.place_building("wall", zcells[0])
-	_check((sim_z2.zones[0]["cells"] as Array).size() == before_n - 1,
-			"здание на клетке пастбища убирает клетку из зоны")
+	# v3.0 (заказчик): здания НЕ строятся на клетках зон — пастбище
+	# больше не уступает клетку, поле и пастбище равноправно закрыты
+	_check(sim_z2.place_building("wall", zcells[0]) == false,
+			"v3.0: здание на клетке пастбища не ставится")
+	_check((sim_z2.zones[0]["cells"] as Array).size() == before_n,
+			"v3.0: клетка пастбища осталась в зоне")
 	# клетки поля фермы (и ручного поля) стройке запрещены (v1.21)
 	var fcells_z: Array = _grass_tiles(sim_z2, sim_z2.map.spawn_tile + Vector2i(-7, 7), 2)
 	sim_z2.add_zone("field", fcells_z)
@@ -222,7 +225,14 @@ func _test_m6() -> void:
 	sim_l.res["stone"] = 60.0
 	var barn_l := _build_now(sim_l, "warehouse")
 	# этап 2: зазор 1 — плавильня в трёх клетках от склада (в радиусе бонуса 4)
-	var smelt_tile_l: Vector2i = sim_l.map.nearest_walkable((barn_l["tile"] as Vector2i) + Vector2i(3, 0))
+	# v3.0: склад 3×3 — зазор 1 с +4; сторону выбираем перебором
+	# (в 3×3 кандидата может попасть дерево/зона)
+	var smelt_tile_l: Vector2i = Vector2i(-1, -1)
+	for off_l in [Vector2i(4, 0), Vector2i(0, 4), Vector2i(-4, 0), Vector2i(0, -4)]:
+		var cand_l: Vector2i = sim_l.map.nearest_walkable((barn_l["tile"] as Vector2i) + off_l)
+		if sim_l.is_buildable_rect("smelter", cand_l) and sim_l.placement_gap_ok("smelter", cand_l):
+			smelt_tile_l = cand_l
+			break
 	var smelt_l := _build_at(sim_l, "smelter", smelt_tile_l)
 	_check(bool(smelt_l["done"]), "плавильня у склада построена")
 	_check(absf(float(sim_l.production_mult(smelt_l)) - float(sim_l.cfg["layout"]["warehouse_mult"])) < 0.001,

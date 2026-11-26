@@ -305,6 +305,10 @@ const BLOCKS := [
 		"_test_strips",
 		"_test_frames",
 ]],
+	["res://tests/test_v300.gd", [
+		"_test_no_build_on_trees_and_zones",
+		"_test_scales",
+]],
 ]
 
 

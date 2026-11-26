@@ -19,44 +19,49 @@ func _test_wishlist() -> void:
 
 	# вырубка: лесоруб валит дерево — пень, гнев леса
 	var sim_f := _make_sim()
-	var tree_tile := Vector2i(-1, -1)
+	# v3.0: tree_tile выбирается перебором достижимых деревьев (tree_spots)
 	# дерево — из ДОСТИЖИМЫХ от старта (v1.29.4): карта режется рекой, первое
 	# по скану дерево могло оказаться на другом берегу без моста — лесоруб
-	# до него не дойдёт, и тест ловил флак по сиду
+	# до него не дойдёт, и тест ловил флак по сиду. v3.0: деревьев несколько
+	# (у первого в гуще леса может не быть окна 3×3 под лесопилку)
 	var reach: Dictionary = sim_f.map._reachable_from(sim_f.map.spawn_tile)
+	var tree_spots: Array = []
 	for y in sim_f.map.h:
 		for x in sim_f.map.w:
 			if sim_f.map.grid[y][x] == sim_f.map.TILE_TREE \
 					and reach.has(Vector2i(x, y)):
-				tree_tile = Vector2i(x, y)
-				break
-		if tree_tile.x >= 0:
-			break
-	_check(tree_tile != Vector2i(-1, -1), "на карте есть дерево для вырубки")
-	# размер дерева малый (v1.29.4): бюджет тиков рассчитан на малое/среднее —
-	# первое по скану дерево могло стать большим (1 день рубки) и цикл
-	# заканчивался за тик до падения (flak по сдвигу потока RNG)
-	sim_f.map.tree_size[tree_tile] = sim_f.map.TREE_SMALL
-	sim_f.cfg["piles"] = {"chunk": 2.0, "max": 60.0, "carry": 10.0}
+				tree_spots.append(Vector2i(x, y))
+	_check(not tree_spots.is_empty(), "на карте есть достижимые деревья")
 	var spot := Vector2i(-1, -1)
-	for dy in range(-2, 3):
-		for dx in range(-2, 3):
-			var t := tree_tile + Vector2i(dx, dy)
-			# этап 2, аспект 2: лесопилка 2×2 — прямоугольник годен и не накрывает дерево
-			if not sim_f.is_buildable_rect("sawmill", t) or sim_f.placement_block("sawmill", t) != "":
-				continue
-			var covers := false
-			for cell in sim_f.bld_cells({"type": "sawmill", "tile": t, "w": 2}):
-				if cell == tree_tile:
-					covers = true
+	var saw_w: int = sim_f.bld_w_of_type("sawmill")   # v3.0: 3×3
+	var tree_tile := Vector2i(-1, -1)   # дерево у найденного места (для лесоруба)
+	for tt: Vector2i in tree_spots:   # первое дерево с окном 3×3 рядом
+		var dy_max := 3
+		for dy in range(-dy_max, dy_max + 1):
+			for dx in range(-dy_max, dy_max + 1):
+				var t := tt + Vector2i(dx, dy)
+				# лесопилка 3×3 — прямоугольник годен и не накрывает дерево
+				if not sim_f.is_buildable_rect("sawmill", t) or sim_f.placement_block("sawmill", t) != "":
+					continue
+				var covers := false
+				for cell in sim_f.bld_cells({"type": "sawmill", "tile": t, "w": saw_w}):
+					if cell == tt:
+						covers = true
+						break
+				if not covers:
+					spot = t
 					break
-			if not covers:
-				spot = t
+			if spot != Vector2i(-1, -1):
 				break
 		if spot != Vector2i(-1, -1):
+			tree_tile = tt   # дерево у найденного места — его рубит лесоруб
 			break
 	_check(spot != Vector2i(-1, -1), "у дерева есть место под лесопилку")
 	_check(sim_f.place_building("sawmill", spot), "лесопилка заложена у дерева")
+	# размер дерева малый (v1.29.4): бюджет тиков рассчитан на малое/среднее —
+	# выбранное дерево могло стать большим (1 день рубки) и цикл заканчивался
+	# за тик до падения (flak по сдвигу потока RNG)
+	sim_f.map.tree_size[tree_tile] = sim_f.map.TREE_SMALL
 	var builder_f: Dictionary = _resident_by_prof(sim_f, "builder")
 	builder_f["mood"] = 100.0
 	builder_f["traits"] = []

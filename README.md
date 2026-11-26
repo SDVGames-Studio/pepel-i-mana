@@ -1,4 +1,4 @@
-# Пепел и Благодать — v2.9.0
+# Пепел и Благодать — v3.0.0
 
 [![Тесты](https://github.com/SDVGames-Studio/pepel-i-mana/actions/workflows/tests.yml/badge.svg)](https://github.com/SDVGames-Studio/pepel-i-mana/actions/workflows/tests.yml)
 

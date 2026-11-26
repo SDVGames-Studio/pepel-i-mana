@@ -54,13 +54,17 @@ func _test_stage2_aspect2() -> void:
 		if infra.has(bid):
 			_check(w == 1, "инфраструктура «%s» осталась 1×1" % bid)
 		else:
-			_check(w == 2, "здание «%s» — 2×2" % bid)
+			# v3.0: площадь 3×3 (заказчик: здания крупнее, площадь больше);
+			# стены/ворота/шатёр/мост 1×1, башня 2×2 — в линии стен
+			var w_exp: int = 1 if bid in ["wall", "gate", "tent", "bridge"] \
+					else (2 if bid in ["tower", "mine", "quarry"] else 3)
+			_check(w == w_exp, "здание «%s» — площадь %d×%d" % [bid, w_exp, w_exp])
 	var sim := _make_sim()
 	# размещение: дом ставится прямоугольником; повторно — нельзя
 	var t1: Vector2i = _find_free_tile(sim, sim.map.spawn_tile, "house")
-	_check(sim.place_building("house", t1), "дом 2×2 ставится")
+	_check(sim.place_building("house", t1), "дом 3×3 ставится")
 	var site: Dictionary = sim.building_at(t1)
-	_check(not site.is_empty() and sim.bld_w(site) == 2, "построенный дом занимает 2×2")
+	_check(not site.is_empty() and sim.bld_w(site) == 3, "построенный дом занимает 3×3")
 	_check(not sim.is_buildable_rect("house", t1), "занятый прямоугольник дважды не застраивается")
 	_check(sim.map.is_walkable(t1), "стройплощадка проходима")
 	# готовое здание — сплошное во всех клетках, вход проходим
@@ -74,7 +78,7 @@ func _test_stage2_aspect2() -> void:
 	for c in sim.bld_cells(site):
 		if not sim.map.is_walkable(c):
 			solid_cnt += 1
-	_check(solid_cnt == 4, "готовый дом непроходим во всех 4 клетках")
+	_check(solid_cnt == 9, "готовый дом непроходим во всех 9 клетках")
 	var spot: Vector2i = sim.bld_entrance(site)
 	_check(not spot == Vector2i(-1, -1) and sim.map.is_walkable(spot), "у дома есть проходимый вход")
 	# стена — по-прежнему одна клетка
@@ -95,12 +99,12 @@ func _test_stage2_aspect2() -> void:
 			"done": true, "progress": 0.0, "worker": -1, "hp": 20.0, "pile": {}}
 	sim.buildings.append(legacy)
 	sim.migrate_legacy_buildings()
-	_check(int(legacy["w"]) == 2, "мигрированному саду присвоен размер 2×2")
+	_check(int(legacy["w"]) == 3, "мигрированному саду присвоен размер 3×3")
 	var covered := 0
 	for c in sim.bld_cells(legacy):
 		if sim.bld_has_cell(legacy, c):
 			covered += 1
-	_check(covered == 4, "мигрированный сад занимает 4 клетки")
+	_check(covered == 9, "мигрированный сад занимает 9 клеток")
 	_check(String(sim._def(legacy).get("effect", "")) == "decor", "мигрированный сад работает как декор")
 	# этап 2, правка приёмки: вода/скалы/руда сплошные для A* — никто не срезает
 	var m: Object = sim.map

@@ -338,7 +338,10 @@ func _next_wall_tile() -> Vector2i:
 		if off.x == 0 or off.y == 0:
 			continue   # ворота на север, юг, запад и восток
 		var tile := c + off
-		if is_buildable_tile(tile):
+		# v3.0: тип обязателен — дерево под стеной вырубается, кольцо
+		# частокола смыкается через лес (без типа клетка с деревом
+		# отсекалась и в кольце оставалась дыра для мутантов)
+		if is_buildable_tile(tile, "wall"):
 			return tile
 	return Vector2i(-1, -1)
 
