@@ -296,6 +296,11 @@ const BLOCKS := [
 	["res://tests/test_v270.gd", [
 		"_test_difficulty",
 ]],
+	["res://tests/test_v280.gd", [
+		"_test_catalog",
+		"_test_world_gen",
+		"_test_bake",
+]],
 ]
 
 

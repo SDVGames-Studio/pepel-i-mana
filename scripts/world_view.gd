@@ -242,6 +242,52 @@ func _bake_sub() -> int:
 	return clampi(int(sqrt(float(BAKE_PIXEL_BUDGET) / float(map.w * map.h))), 2, BAKE_SUB)
 const BAKE_ROCK := Color("#8a8276")   # скальный тон вершин
 
+## v2.8: полотно региона мира — ТА ЖЕ ОБРАБОТКА, что у сезонных полотен
+## города («весна», city_terrain_base._load_grass_set): ÷3 LANCZOS +
+## бесшовные края F=8 (замощение без шва) + статический кэш по пути.
+static var _canvas_cache := {}
+const CANVAS_DENSITY := 3   # как CANVAS_DENSITY в city_terrain_base
+
+
+static func _region_canvas_img(path: String) -> Image:
+	if _canvas_cache.has(path):
+		return _canvas_cache[path]
+	var ct: Texture2D = Assets.tex(path)
+	if ct == null:
+		return null
+	var cim: Image = ct.get_image()
+	if cim == null or cim.is_empty():
+		return null
+	if cim.is_compressed():
+		cim.decompress()
+	if cim.get_width() > 96 and cim.get_height() > 96:
+		cim.convert(Image.FORMAT_RGBA8)
+		cim.resize(int(cim.get_width() / float(CANVAS_DENSITY)),
+				int(cim.get_height() / float(CANVAS_DENSITY)),
+				Image.INTERPOLATE_LANCZOS)
+		var W := cim.get_width()
+		var H := cim.get_height()
+		var F := 8
+		var dup: Image = cim.duplicate()
+		for y in range(F):
+			var wy := 0.5 * (1.0 - float(y) / float(F))
+			var y2 := H - 1 - y
+			for x in range(W):
+				cim.set_pixel(x, y, dup.get_pixel(x, y)
+						.lerp(dup.get_pixel(x, y2), wy))
+				cim.set_pixel(x, y2, dup.get_pixel(x, y2)
+						.lerp(dup.get_pixel(x, y), wy))
+		for y in range(F, H - F):
+			for x in range(F):
+				var wx := 0.5 * (1.0 - float(x) / float(F))
+				var x2 := W - 1 - x
+				cim.set_pixel(x, y, dup.get_pixel(x, y)
+						.lerp(dup.get_pixel(x2, y), wx))
+				cim.set_pixel(x2, y, dup.get_pixel(x2, y)
+						.lerp(dup.get_pixel(x, y), wx))
+	_canvas_cache[path] = cim
+	return cim
+
 
 func _bake_terrain() -> void:
 	# v1.61 «Объёмная и красочная»: сочная палитра биомов (два тона травы
@@ -249,6 +295,21 @@ func _bake_terrain() -> void:
 	# + тени ступеней с ЮВ + террасы высот, кроны леса пятнами.
 	var biomes: Dictionary = map.cfg.get("biomes", {})
 	var hill_thr := float(map.cfg.get("hydro", {}).get("hill_threshold", 0.62))
+	# v2.8 «Биомы мира»: суша региона с ключом biome рисуется КАНВАСОМ
+	# биома из манифеста (полотно заказчика), не плоским цветом. Рельеф,
+	# свет и скальные/снежные шапки ниже — общие; вода остаётся процедурной.
+	var rcv: Dictionary = {}
+	var bmf: Dictionary = Assets.biome_manifest()
+	for entry in map.cfg.get("regions", {}).get("list", []):
+		var btag := String((entry as Dictionary).get("biome", ""))
+		if btag == "" or not bmf.has(btag):
+			continue
+		var cvp := String((bmf[btag] as Dictionary).get("canvas", ""))
+		if cvp == "":
+			continue
+		var cimg: Image = _region_canvas_img(cvp)
+		if cimg != null:
+			rcv[String((entry as Dictionary).get("id", ""))] = cimg
 	var COL_DEEP := Color("#1b3a54")
 	var COL_SURF := Color("#3d7ba6")
 	var COL_WET := Color("#4d7c33")
@@ -336,6 +397,25 @@ func _bake_terrain() -> void:
 		for px in iw:
 			var fx := (float(px) + 0.5) / float(sub) - 0.5
 			var base: Color = _bilinear_col(cols, fx, fy)
+			# v2.8: пиксель суши региона с полотном — канвас биома (тайлится
+			# по миру целиком, без швов набора); лес темнее, пепел серее
+			var ttx := clampi(int(floorf(fx + 0.5)), 0, map.w - 1)
+			var tty := clampi(int(floorf(fy + 0.5)), 0, map.h - 1)
+			var treg: String = map.region_at(Vector2i(ttx, tty)) if map.get("region") != null else ""
+			if treg != "" and rcv.has(treg):
+				var cimg: Image = rcv[treg]
+				# 1 тексель полотна на пиксель запеки — соседние пиксели
+				# читают соседние тексели: текстура цельная, без «крупы»
+				# (канон «весны»: плотность текселей = плотность показа)
+				var tc: Color = cimg.get_pixel(
+					int(px) % cimg.get_width(),
+					int(py) % cimg.get_height())
+				var tkind: int = int(map.grid[tty][ttx])
+				if tkind == map.TILE_FOREST:
+					tc = tc.darkened(0.22)
+				elif tkind == map.TILE_WASTE:
+					tc = tc.darkened(0.12)
+				base = tc
 			var wmk := clampf(_bilinear_f(wmask, fx, fy), 0.0, 1.0)
 			var hgt := float(hgrid[py][px])
 			var mst := float(mgrid[py][px])

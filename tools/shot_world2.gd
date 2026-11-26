@@ -79,9 +79,14 @@ func _reveal_all() -> void:
 	var map = _world.map
 	if map == null:
 		return
+	var all: Array = []
 	for y in map.h:
 		for x in map.w:
-			map.fog[Vector2i(x, y)] = true
+			var p := Vector2i(x, y)
+			map.fog[p] = true
+			all.append(p)
+	map.fog_new = all
+	map.fog_ver += 1
 	for poi in map.pois:
 		poi["discovered"] = true
 	var cam: Camera2D = _world.camera

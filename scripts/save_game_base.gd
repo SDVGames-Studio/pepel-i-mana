@@ -60,8 +60,12 @@ const WORLD_SIM_SCRIPT := "res://scripts/world_sim.gd"
 
 const WATER_KIND_NAMES := {".": "", "l": "lake", "r": "river", "s": "swamp", "e": "sea"}
 
-const REGION_CHARS := {"snow": "a", "volcanic": "b", "desert": "c", "dead": "d"}
-const REGION_IDS := {"a": "snow", "b": "volcanic", "c": "desert", "d": "dead"}
+const REGION_CHARS := {"snow": "a", "volcanic": "b", "desert": "c", "dead": "d",
+	"steppe": "e", "birch": "f", "bloom": "g", "ancient": "h", "mystic": "i",
+	"cursed": "j"}
+const REGION_IDS := {"a": "snow", "b": "volcanic", "c": "desert", "d": "dead",
+	"e": "steppe", "f": "birch", "g": "bloom", "h": "ancient", "i": "mystic",
+	"j": "cursed"}
 
 static func _num_dict(d: Dictionary) -> Dictionary:
 	var out := {}

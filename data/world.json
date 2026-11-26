@@ -454,7 +454,7 @@
     "lich_coins_max": 25
   },
   "regions": {
-    "_note": "Мир v2 этап 2 (v1.40): режим моря — рандом мира; биом-регионы красят сушу и дорожают путь. snow — север, volcanic — у скал, desert — сухие низины, dead — глушь/пепелища (мёртвель).",
+    "_note": "Мир v2 этап 2 (v1.40): режим моря — рандом мира; биом-регионы красят сушу и дорожают путь. v2.8 «Биомы мира»: каждый регион несёт biome — канвас из манифеста (assets/sprites/env/biomes), запека рисует полотном. Новые регионы только В КОНЕЦ списка — буквы сейва a–d не сдвигаются.",
     "sea_modes": {
       "ocean": 1,
       "inner": 1,
@@ -476,7 +476,8 @@
           "forest": "#54645a",
           "hills": "#9aa2a8",
           "waste": "#a8b0b2"
-        }
+        },
+        "biome": "зима"
       },
       {
         "id": "volcanic",
@@ -493,7 +494,8 @@
           "forest": "#3c343a",
           "hills": "#5c5058",
           "waste": "#544850"
-        }
+        },
+        "biome": "огненные земли"
       },
       {
         "id": "desert",
@@ -510,7 +512,8 @@
           "forest": "#96854e",
           "hills": "#a8905c",
           "waste": "#a89468"
-        }
+        },
+        "biome": "пустыня"
       },
       {
         "id": "dead",
@@ -527,6 +530,110 @@
           "forest": "#4c4a42",
           "hills": "#5c5750",
           "waste": "#5e5a52"
+        },
+        "biome": "мёртвый лес"
+      },
+      {
+        "id": "steppe",
+        "count_min": 4,
+        "count_max": 7,
+        "radius": [
+          9,
+          13
+        ],
+        "cost_mult": 1.05,
+        "moist_max": 0.45,
+        "biome": "степи",
+        "colors": {
+          "plains": "#b8a95e",
+          "forest": "#8a8442",
+          "hills": "#a3915e",
+          "waste": "#a89a66"
+        }
+      },
+      {
+        "id": "birch",
+        "count_min": 3,
+        "count_max": 5,
+        "radius": [
+          6,
+          9
+        ],
+        "cost_mult": 1.0,
+        "biome": "берёзовая роща",
+        "colors": {
+          "plains": "#7d9a52",
+          "forest": "#5f7d3e",
+          "hills": "#8a9a60",
+          "waste": "#8f9660"
+        }
+      },
+      {
+        "id": "bloom",
+        "count_min": 3,
+        "count_max": 5,
+        "radius": [
+          6,
+          9
+        ],
+        "cost_mult": 1.0,
+        "biome": "цветущий край",
+        "colors": {
+          "plains": "#6fae4e",
+          "forest": "#4d8a3a",
+          "hills": "#7fa055",
+          "waste": "#8aa05c"
+        }
+      },
+      {
+        "id": "ancient",
+        "count_min": 3,
+        "count_max": 6,
+        "radius": [
+          7,
+          11
+        ],
+        "cost_mult": 1.1,
+        "biome": "древний лес",
+        "colors": {
+          "plains": "#3c5e33",
+          "forest": "#274223",
+          "hills": "#4a5e3e",
+          "waste": "#52604a"
+        }
+      },
+      {
+        "id": "mystic",
+        "count_min": 1,
+        "count_max": 2,
+        "radius": [
+          5,
+          8
+        ],
+        "cost_mult": 1.15,
+        "biome": "мистический лес",
+        "colors": {
+          "plains": "#3e5a6e",
+          "forest": "#2a4054",
+          "hills": "#4a5e6e",
+          "waste": "#50606a"
+        }
+      },
+      {
+        "id": "cursed",
+        "count_min": 2,
+        "count_max": 4,
+        "radius": [
+          6,
+          10
+        ],
+        "cost_mult": 1.25,
+        "biome": "проклятый лес",
+        "colors": {
+          "plains": "#5a4a5e",
+          "forest": "#3e3444",
+          "hills": "#645460",
+          "waste": "#655a62"
         }
       }
     ]

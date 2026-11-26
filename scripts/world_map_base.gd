@@ -87,7 +87,7 @@ func _blob(center: Vector2i, radius: int, kind: int) -> void:
 func _clear_around_land(center: Vector2i, radius: int) -> void:
 	pass
 
-func _random_inner_tile() -> Vector2i:
+func _random_inner_tile(rng = null) -> Vector2i:
 	return Vector2i(-1, -1)
 
 func _swamp_blob(center: Vector2i, radius: int) -> void:

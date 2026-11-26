@@ -100,8 +100,10 @@ func _clear_around_land(center: Vector2i, radius: int) -> void:
 			grid[y][x] = TILE_PLAINS
 
 
-func _random_inner_tile() -> Vector2i:
-	return Vector2i(_rng.randi_range(4, w - 5), _rng.randi_range(4, h - 5))
+func _random_inner_tile(rng = null) -> Vector2i:
+	if rng == null:
+		rng = _rng
+	return Vector2i(rng.randi_range(4, w - 5), rng.randi_range(4, h - 5))
 
 
 # --- гидрология («Мир v2», этап 1) ------------------------------------------
@@ -476,17 +478,25 @@ func tile_hydro(tile: Vector2i) -> Dictionary:
 ## Снег на севере, вулкан у скал, пустыня на сухих низинах, мёртвель —
 ## у пепелищ и в глуши. Регионы красят сушу (view) и дорожают путь;
 ## вода/болото не перекрашиваются.
+## v2.8: регионы вне LEGACY_REGIONS кидают кости ОТДЕЛЬНЫМ потоком —
+## главный _rng не смещается, POI/дороги после регионов как в 2.7.1
+const LEGACY_REGIONS := ["snow", "volcanic", "desert", "dead"]
+
+
 func _build_regions(rcfg: Dictionary) -> void:
 	var list: Array = rcfg.get("list", [])
+	var rx := RandomNumberGenerator.new()
+	rx.seed = int(_rng.seed) + 610_000_003
 	for entry: Dictionary in list:
 		var id := String(entry.get("id", ""))
-		var count := _rng.randi_range(int(entry.get("count_min", 1)), int(entry.get("count_max", 1)))
+		var rng: RandomNumberGenerator = _rng if LEGACY_REGIONS.has(id) else rx
+		var count: int = rng.randi_range(int(entry.get("count_min", 1)), int(entry.get("count_max", 1)))
 		for i in count:
-			var c := _region_center(id, entry)
+			var c := _region_center(id, entry, rng)
 			if c == Vector2i(-1, -1):
 				continue
 			var rad: Array = entry.get("radius", [3, 5])
-			_region_blob(c, _rng.randi_range(int(rad[0]), int(rad[1])), id)
+			_region_blob(c, rng.randi_range(int(rad[0]), int(rad[1])), id, rng)
 
 
 ## Центр региона по его «месту обитания»:
@@ -494,10 +504,10 @@ func _build_regions(rcfg: Dictionary) -> void:
 ##   volcanic — высокие земли (у скального порога);
 ##   desert — сухие низины (влажность ниже порога), юг/центр;
 ##   dead — глушь с низкой влажностью или рядом с пеплом.
-func _region_center(id: String, entry: Dictionary) -> Vector2i:
+func _region_center(id: String, entry: Dictionary, rng = null) -> Vector2i:
 	var moist_thr := float(entry.get("moist_max", 0.5))
 	for attempt in 200:
-		var p := _random_inner_tile()
+		var p := _random_inner_tile(rng)
 		if not is_walkable(p) or grid[p.y][p.x] == TILE_SWAMP:
 			continue
 		var ht := float(height[p.y][p.x])
@@ -514,6 +524,25 @@ func _region_center(id: String, entry: Dictionary) -> Vector2i:
 					continue
 			"dead":
 				if mo > moist_thr and not _near_tile(p, TILE_WASTE, 3):
+					continue
+			# v2.8 «Биомы мира»: шесть манифестных регионов
+			"steppe":
+				if mo > moist_thr or p.y < int(h * 0.25):
+					continue
+			"birch":
+				if mo < 0.35 or mo > 0.8 or p.y < int(h * 0.12):
+					continue
+			"bloom":
+				if mo < 0.6:
+					continue
+			"ancient":
+				if not _near_tile(p, TILE_FOREST, 2):
+					continue
+			"mystic":
+				if not _near_tile(p, TILE_FOREST, 3):
+					continue
+			"cursed":
+				if not _near_tile(p, TILE_WASTE, 3):
 					continue
 			_:
 				pass
@@ -535,11 +564,13 @@ func _near_tile(p: Vector2i, kind: int, r: int) -> bool:
 
 ## Залить регион: суша (не вода/болото) в радиусе; кромка с мягкой
 ## гармонической рябью (как у водоёмов) — не «вырезанные круги».
-func _region_blob(center: Vector2i, radius: int, id: String) -> void:
-	var ph1 := _rng.randf() * TAU
-	var ph2 := _rng.randf() * TAU
-	var a1 := _rng.randf_range(0.10, 0.20)
-	var a2 := _rng.randf_range(0.06, 0.12)
+func _region_blob(center: Vector2i, radius: int, id: String, rng = null) -> void:
+	if rng == null:
+		rng = _rng
+	var ph1: float = rng.randf() * TAU
+	var ph2: float = rng.randf() * TAU
+	var a1: float = rng.randf_range(0.10, 0.20)
+	var a2: float = rng.randf_range(0.06, 0.12)
 	for y in range(center.y - radius * 2, center.y + radius * 2 + 1):
 		for x in range(center.x - radius * 2, center.x + radius * 2 + 1):
 			if x < 0 or y < 0 or x >= w or y >= h:
