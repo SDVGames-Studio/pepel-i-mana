@@ -293,6 +293,10 @@ const BLOCKS := [
 		"_test_spirit_calm",
 		"_test_lights_window",
 ]],
+	["res://tests/test_v270.gd", [
+		"_test_difficulty",
+]],
+]
 ]
 
 

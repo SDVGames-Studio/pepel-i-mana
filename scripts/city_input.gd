@@ -69,6 +69,10 @@ func _unhandled_input(event: InputEvent) -> void:
 			if not _near_spy.is_empty():
 				_interrogate_action(_near_spy)
 				return
+			# v2.7: лекарь лечит героя за монеты
+			if _near_building_kind("healer_hut"):
+				_healer_heal_action()
+				return
 			# v2.2 п.3: идти по следу
 			if not _near_track.is_empty():
 				_follow_tracks_action()

@@ -296,6 +296,7 @@ func _ready() -> void:
 	var cf := ConfigFile.new()
 	if cf.load(SETTINGS_PATH) == OK:
 		fullscreen = bool(cf.get_value("video", "fullscreen", false))
+	difficulty = str(cf.get_value("game", "difficulty", "normal"))
 	if fullscreen:
 		_apply_window_mode()
 	_setup_fps_counter()   # метка FPS в правом верхнем углу (v1.21)
@@ -332,6 +333,7 @@ func set_fullscreen(on: bool) -> void:
 	_apply_window_mode()
 	var cf := ConfigFile.new()
 	cf.set_value("video", "fullscreen", fullscreen)
+	cf.set_value("game", "difficulty", difficulty)
 	cf.save(SETTINGS_PATH)
 
 
@@ -353,6 +355,38 @@ func _input(event: InputEvent) -> void:
 
 ## Создать город с настройками старта (новая игра). Рюкзак и спеллбук очищаются.
 ## Новая игра — новый мир (M8): карта мира генерируется заново.
+## v2.7: сложность новой игры — норм/лёгкая/суровая (множители угрозы).
+var difficulty := "normal"
+
+
+## Выбрать и запомнить сложность (кнопка главного меню).
+func set_difficulty(d: String) -> void:
+	difficulty = d
+	var cf := ConfigFile.new()
+	cf.load(SETTINGS_PATH)
+	cf.set_value("game", "difficulty", difficulty)
+	cf.save(SETTINGS_PATH)
+
+
+## Применить множители сложности к конфигу угрозы (мутирует cfg).
+static func apply_difficulty(cfg: Dictionary, diff: String) -> void:
+	var threat: Dictionary = cfg.get("threat", {})
+	if threat.is_empty():
+		return
+	match diff:
+		"easy":
+			threat["start_day"] = int(round(float(threat.get("start_day", 10)) * 1.4))
+			threat["raid_every_days"] = int(round(float(threat.get("raid_every_days", 10)) * 1.25))
+			threat["raid_size_base"] = maxi(1, int(round(float(threat.get("raid_size_base", 2)) * 0.75)))
+			threat["raid_size_max"] = maxi(2, int(round(float(threat.get("raid_size_max", 6)) * 0.75)))
+		"hard":
+			threat["start_day"] = maxi(4, int(round(float(threat.get("start_day", 10)) * 0.7)))
+			threat["raid_every_days"] = maxi(2, int(round(float(threat.get("raid_every_days", 10)) * 0.8)))
+			threat["raid_size_base"] = int(round(float(threat.get("raid_size_base", 2)) * 1.3))
+			threat["raid_size_max"] = int(round(float(threat.get("raid_size_max", 6)) * 1.25))
+	cfg["threat"] = threat
+
+
 func new_city() -> void:
 	inventory = []
 	spellbook = []
@@ -385,6 +419,7 @@ func new_city() -> void:
 	if not (cfg is Dictionary):
 		push_error("Не читается data/city.json")
 		return
+	apply_difficulty(cfg, difficulty)   # v2.7: сложность новой игры
 	var map_script: Script = load(CITY_MAP_SCRIPT)
 	var sim_script: Script = load(CITY_SIM_SCRIPT)
 	var city_map = map_script.new()

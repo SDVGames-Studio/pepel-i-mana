@@ -39,6 +39,7 @@ func _ready() -> void:
 	exit_button.pressed.connect(_on_exit_pressed)
 	_build_save_button()
 	_build_fullscreen_check()
+	_build_difficulty_button()
 	_build_music_controls()
 
 
@@ -73,6 +74,24 @@ func _build_music_controls() -> void:
 	slider.value_changed.connect(func(v: float) -> void:
 		SfxLib.set_bus_vol("Music", float(v)))
 	($VBox as VBoxContainer).add_child(slider)
+
+
+## v2.7: выбор сложности новой игры — цикличная кнопка.
+func _build_difficulty_button() -> void:
+	var b := Button.new()
+	UITheme.apply_button(b)
+	var names := {"normal": "Сложность: Нормальная", "easy": "Сложность: Лёгкая",
+			"hard": "Сложность: Суровая"}
+	var order := ["normal", "easy", "hard"]
+	var idx := maxi(0, order.find(Game.difficulty))
+	b.text = str(names[order[idx]])
+	b.add_theme_font_size_override("font_size", 18)
+	b.focus_mode = Control.FOCUS_NONE
+	b.pressed.connect(func() -> void:
+		idx = (idx + 1) % order.size()
+		Game.set_difficulty(order[idx])
+		b.text = str(names[order[idx]]))
+	($VBox as VBoxContainer).add_child(b)
 
 
 func _build_fullscreen_check() -> void:

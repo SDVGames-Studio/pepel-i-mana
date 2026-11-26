@@ -193,6 +193,21 @@ func _cam_back(cam: Camera2D) -> void:
 		cam.offset = Vector2.ZERO
 
 
+## v2.7: лекарь лечит героя за монеты (E у хижины лекаря).
+func _healer_heal_action() -> void:
+	if hero == null or hero.hp >= hero.hp_max() - 2:
+		hud.toast(Loc.t("healer.full"))
+		return
+	var cost := int(sim.cfg.get("healer", {}).get("hero_heal_cost", 5))
+	if Game.coins < cost:
+		hud.toast(Loc.t("healer.no_coins") % cost)
+		return
+	Game.coins -= cost
+	hero.heal(hero.hp_max())
+	hud.toast(Loc.t("healer.healed") % cost)
+	SfxLib.play("heal")
+
+
 func _pan_camera_to(pos: Vector2) -> void:
 	if hero == null or not is_instance_valid(hero):
 		return

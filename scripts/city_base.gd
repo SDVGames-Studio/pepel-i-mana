@@ -614,6 +614,8 @@ func _process(delta: float) -> void:
 		hud.set_hint(Loc.t("city.spy_hint"))
 	elif not _near_track.is_empty():
 		hud.set_hint(Loc.t("city.track_follow_hint"))
+	elif _near_building_kind("healer_hut"):
+		hud.set_hint(Loc.t("healer.hint"))
 	elif _near_temple:
 		hud.set_hint(Loc.t("city.temple_hint"))
 	elif not _hero_site.is_empty():
