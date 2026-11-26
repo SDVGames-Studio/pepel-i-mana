@@ -377,8 +377,8 @@ static func apply_difficulty(cfg: Dictionary, diff: String) -> void:
 		"easy":
 			threat["start_day"] = int(round(float(threat.get("start_day", 10)) * 1.4))
 			threat["raid_every_days"] = int(round(float(threat.get("raid_every_days", 10)) * 1.25))
-			threat["raid_size_base"] = maxi(1, int(round(float(threat.get("raid_size_base", 2)) * 0.75)))
-			threat["raid_size_max"] = maxi(2, int(round(float(threat.get("raid_size_max", 6)) * 0.75)))
+			threat["raid_size_base"] = maxi(1, int(floor(float(threat.get("raid_size_base", 2)) * 0.75)))
+			threat["raid_size_max"] = maxi(2, int(floor(float(threat.get("raid_size_max", 6)) * 0.75)))
 		"hard":
 			threat["start_day"] = maxi(4, int(round(float(threat.get("start_day", 10)) * 0.7)))
 			threat["raid_every_days"] = maxi(2, int(round(float(threat.get("raid_every_days", 10)) * 0.8)))

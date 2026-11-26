@@ -297,7 +297,6 @@ const BLOCKS := [
 		"_test_difficulty",
 ]],
 ]
-]
 
 
 func _initialize() -> void:
