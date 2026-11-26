@@ -301,6 +301,10 @@ const BLOCKS := [
 		"_test_world_gen",
 		"_test_bake",
 ]],
+	["res://tests/test_v290.gd", [
+		"_test_strips",
+		"_test_frames",
+]],
 ]
 
 

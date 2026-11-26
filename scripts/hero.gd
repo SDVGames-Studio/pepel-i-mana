@@ -72,7 +72,7 @@ static func build_knight_frames() -> SpriteFrames:
 		# («лунная походка», фидбек заказчика): цикл 0.6с → 0.375с
 		"run": ["knight_Run", 16.0, true],      # вбок (6 кадров)
 		"run_up": ["knight_RunUp", 16.0, true],    # спиной вверх (атлас)
-		"run_down": ["knight_Run", 16.0, true],    # v1.79: вниз — профиль (анфас-бега нет)
+		"run_down": ["knight_RunDown", 16.0, true], # v2.9: анфас-бег вниз — лист заказчика 26.11 (был профиль)
 		"attack": ["knight_Attack", 12.0, false],  # v1.79: 6 кадров с дугой (0.5с)
 		"roll": ["knight_Roll", 16.0, false],      # v1.79: рывок 6 кадров (0.4с)
 		"crouch": ["knight_Crouch", 8.0, true], # крадучись (10 кадров)
