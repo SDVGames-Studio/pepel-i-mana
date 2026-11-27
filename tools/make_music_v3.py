@@ -61,6 +61,21 @@ def pluck(f, dur, vel=1.0):
     return vel * out * 0.4
 
 
+def arp_bar(events, t0, chord, BAR, vel, wide=0.5, up=True):
+    """Перебор гуслей: 8 струн за такт по аккорду, соседние внахлёст
+    (хвост 2.2с), чередование панорамы — в любой момент звенят 3-4 струны."""
+    tones = [chord[0], chord[1], chord[2], chord[2] + 12]
+    order = tones + tones[::-1][1:-1] if False else (tones + tones[1:3])
+    seq = order[:8]
+    while len(seq) < 8:
+        seq.append(tones[len(seq) % len(tones)])
+    if not up:
+        seq = seq[::-1]
+    for k, m in enumerate(seq):
+        events.append((t0 + k * BAR / 8.0 + float(rng.uniform(-0.012, 0.012)),
+                       pluck(midi2f(m), 2.2, vel * float(rng.uniform(0.85, 1.15))),
+                       (-wide if k % 2 == 0 else wide) * float(rng.uniform(0.7, 1.0))))
+
 def pad_voice(f, dur, vel=1.0):
     """Мягкий пэд: 3 детюна, тёплые гармоники, LFO дыхания."""
     n = int(dur * SR)
@@ -200,7 +215,9 @@ for cycle in range(2):
         total = t0 + BAR
         for j, m in enumerate(chord):
             pan = -0.35 + 0.35 * j
-            ev.append((t0 + 0.045 * j, pad_voice(midi2f(m), BAR * 1.05 - 0.045 * j, 0.5), pan))
+            ev.append((t0 + 0.045 * j, pad_voice(midi2f(m), BAR * 1.05 - 0.045 * j, 0.42), pan))
+        # гусли-перебор: несколько струн звенят внахлёст весь такт
+        arp_bar(ev, t0, chord, BAR, 0.16, wide=0.45, up=(i % 2 == 0))
         bass_m = BASS[root] + (7 if i % 4 == 3 else 0)
         ev.append((t0, drone(midi2f(bass_m), BAR * 1.05, 0.55 if i % 4 == 3 else 0.5), 0.0))
         k = (cycle * len(PROG) + i) % (len(MOTIF) // 3)
@@ -261,7 +278,8 @@ for cycle in range(3):
         t0 = (cycle * len(PROG) + i) * BAR
         total = t0 + BAR
         for j, m in enumerate(chord):
-            ev.append((t0 + 0.045 * j, pad_voice(midi2f(m), BAR * 1.04 - 0.045 * j, 0.42), -0.35 + 0.35 * j))
+            ev.append((t0 + 0.045 * j, pad_voice(midi2f(m), BAR * 1.04 - 0.045 * j, 0.36), -0.35 + 0.35 * j))
+        arp_bar(ev, t0, chord, BAR, 0.19, wide=0.5, up=(i % 2 == 0))
         bass_m = BASS[root] + (7 if i % 4 == 3 else 0)
         ev.append((t0, drone(midi2f(bass_m), BAR * 1.04, 0.42 if i % 4 == 3 else 0.5), 0.0))
         # обрядовый барабан: сильная доля + мягкая третья
