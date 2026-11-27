@@ -557,6 +557,7 @@ func _advance_gather_scan(c: Dictionary, budget: int) -> void:
 	var pcfg: Dictionary = cfg.get("placement", {})
 	var build_gap := int(pcfg.get("build_gap", 1))
 	var wall_gap := int(pcfg.get("wall_house_gap", 3))
+	var house_gap := int(pcfg.get("house_gap", 3))
 	# v3.0.2 (зависание 26.11): скан фермы идёт по всей карте без
 	# дистанционного отсева — клетки зон собираем ОДНИМ словарём на
 	# вызов; иначе каждый кандидат через _tile_in_zone ходил по всем
@@ -606,7 +607,11 @@ func _advance_gather_scan(c: Dictionary, budget: int) -> void:
 					var r: Rect2i = o["r"]
 					var dx2: int = maxi(maxi(t.x - r.end.x, r.position.x - (t.x + w)), 0)
 					var dy2: int = maxi(maxi(t.y - r.end.y, r.position.y - (t.y + w)), 0)
-					if maxi(dx2, dy2) < (wall_gap if (o["wall"] and o["house"]) else build_gap):
+					# v3.0.3: у дома со всех сторон коридор под дорогу/проход
+					var need := wall_gap if (o["wall"] and o["house"]) else build_gap
+					if (o["house"] or type_id == "house") and house_gap > need:
+						need = house_gap
+					if maxi(dx2, dy2) < need:
 						ok = false
 						break
 			if not ok:

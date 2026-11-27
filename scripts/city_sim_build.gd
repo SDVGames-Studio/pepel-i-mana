@@ -266,6 +266,7 @@ func placement_gap_ok(type_id: String, tile: Vector2i, skip_id := -1) -> bool:
 	var pcfg: Dictionary = cfg.get("placement", {})
 	var new_b := {"type": type_id, "tile": tile}
 	var wall_class := type_id == "wall" or type_id == "gate"
+	var house_class := type_id == "house"
 	for b in buildings:
 		if int(b["id"]) == skip_id:
 			continue   # перенос здания: собственные клетки не мешают (этап 2, аспект 5)
@@ -275,7 +276,12 @@ func placement_gap_ok(type_id: String, tile: Vector2i, skip_id := -1) -> bool:
 			if other_type == "house" and gap < int(pcfg.get("wall_house_gap", 3)):
 				return false
 		elif other_type != "wall" and other_type != "gate":
-			if gap < int(pcfg.get("build_gap", 1)):
+			# v3.0.3: у дома со всех сторон коридор под дорогу/проход
+			var req := int(pcfg.get("build_gap", 1))
+			if (house_class or other_type == "house") \
+					and int(pcfg.get("house_gap", 3)) > req:
+				req = int(pcfg.get("house_gap", 3))
+			if gap < req:
 				return false
 	return true
 

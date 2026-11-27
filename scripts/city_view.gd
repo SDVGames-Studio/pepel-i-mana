@@ -78,7 +78,8 @@ func _draw_building(b: Dictionary) -> void:
 			# v2.7.1: откат 1.8→1.5 — на 1.8 спрайт нависал за футпринт
 			# (игрок ходил сквозь края, соседние дома налезали);
 			# «дома крупнее людей» достигаем уменьшением героя (38→32px)
-			var bld_scale: float = 1.4 if type_id == "well" else 1.5
+			# v3.0.3: колодец не выше персонажа (фидбек скрина) — 2×2 × 0.9
+			var bld_scale: float = 0.9 if type_id == "well" else 1.5
 			var dw: float = rect.size.x * bld_scale
 			var dh: float = dw * float(tex.get_height()) / float(tex.get_width())
 			# якорь — низ-footprint (по нему идёт Y-сортировка), спрайт над ним

@@ -57,7 +57,7 @@ func _test_stage2_aspect2() -> void:
 			# v3.0: площадь 3×3 (заказчик: здания крупнее, площадь больше);
 			# стены/ворота/шатёр/мост 1×1, башня 2×2 — в линии стен
 			var w_exp: int = 1 if bid in ["wall", "gate", "tent", "bridge"] \
-					else (2 if bid in ["tower", "mine", "quarry"] else 3)
+					else (2 if bid in ["tower", "mine", "quarry", "well"] else 3)
 			_check(w == w_exp, "здание «%s» — площадь %d×%d" % [bid, w_exp, w_exp])
 	var sim := _make_sim()
 	# размещение: дом ставится прямоугольником; повторно — нельзя
