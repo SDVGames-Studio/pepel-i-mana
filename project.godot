@@ -21,6 +21,7 @@ Loc="*res://scripts/loc.gd"
 Game="*res://scripts/game.gd"
 godot_mcp_runtime="*res://addons/godot-mcp/runtime_bridge.gd"
 SfxDirector="*res://scripts/sfx_director.gd"
+MemWatch="*res://scripts/mem_watch.gd"
 
 [display]
 

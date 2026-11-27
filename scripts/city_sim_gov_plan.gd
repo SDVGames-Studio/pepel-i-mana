@@ -528,14 +528,14 @@ func _gather_scan_entry(type_id: String, kinds: Array, on_resource: bool,
 
 ## v3.0: свободных клеток под грядки вокруг прямоугольника w×w
 ## (годна: трава без дерева, без здания, без зоны).
-func _free_farmland(t: Vector2i, w: int) -> int:
+func _free_farmland(t: Vector2i, w: int, zset: Dictionary) -> int:
 	var n := 0
 	var r := int(cfg.get("farming", {}).get("field_radius", 3))
 	for dy in range(-r, w + r):
 		for dx in range(-r, w + r):
 			var ct := t + Vector2i(dx, dy)
 			if map.in_bounds(ct) and map.grid[ct.y][ct.x] == map.TILE_GRASS \
-					and building_at(ct).is_empty() and not _tile_in_zone(ct):
+					and building_at(ct).is_empty() and not zset.has(ct):
 				n += 1
 	return n
 
@@ -557,6 +557,15 @@ func _advance_gather_scan(c: Dictionary, budget: int) -> void:
 	var pcfg: Dictionary = cfg.get("placement", {})
 	var build_gap := int(pcfg.get("build_gap", 1))
 	var wall_gap := int(pcfg.get("wall_house_gap", 3))
+	# v3.0.2 (зависание 26.11): скан фермы идёт по всей карте без
+	# дистанционного отсева — клетки зон собираем ОДНИМ словарём на
+	# вызов; иначе каждый кандидат через _tile_in_zone ходил по всем
+	# зонам×клеткам и кадры вставали на секунды
+	var zset := {}
+	if type_id == "farm":
+		for z in zones:
+			for cz in (z["cells"] as Array):
+				zset[cz] = true
 	var processed := 0
 	var y: int = c["y"]
 	while y < map.h and processed < budget:
@@ -606,7 +615,9 @@ func _advance_gather_scan(c: Dictionary, budget: int) -> void:
 			# нужна свободная земля под грядки; минимум и радиус — в city.json
 			# (farming.min_farmland / farming.field_radius)
 			if type_id == "farm":
-				var sc: int = _free_farmland(t, w)
+				if col_d > float(int(pcfg.get("farm_scan_cap", 48))):
+					continue
+				var sc: int = _free_farmland(t, w, zset)
 				if sc < int(cfg.get("farming", {}).get("min_farmland", 8)):
 					continue
 				if sc > int(c.get("best_sc", -1)) or (sc == int(c.get("best_sc", -1)) and col_d < best_d):
