@@ -43,27 +43,22 @@ def env_ar(n, atk, rel):
 
 
 def pluck(f, dur, vel=1.0):
-    """Живая щипковая струна: два расстроенных слоя, глайд натяжения,
-    яркость от силы щипка, неровный спад, человеческий питч/тайминг
-    снаружи не нужен — здесь же."""
-    vel = vel * float(rng.uniform(0.88, 1.12))
-    f = f * 2 ** (float(rng.uniform(-7, 7)) / 1200.0)
-    dur = dur * float(rng.uniform(0.92, 1.12))
+    """Ясная щипковая струна (сантур/гусли): один когерентный голос,
+    выровненные фазы, жёсткость струны даёт блеск без биений;
+    живость — атака и стерео-дубль, ноты не «выскакивают»."""
+    vel = vel * float(rng.uniform(0.9, 1.1))
+    f = f * 2 ** (float(rng.uniform(-3, 3)) / 1200.0)
+    dur = dur * float(rng.uniform(0.94, 1.1))
     n = int(dur * SR)
     t = np.arange(n) / SR
-    bright = min(1.0, 0.45 + vel * 0.75)
+    bright = min(1.0, 0.55 + vel * 0.6)
     out = np.zeros(n)
-    for det, amp_l in ((-4.6, 0.72), (3.9, 0.52)):
-        fd = f * 2 ** (det / 1200.0)
-        rate = float(rng.uniform(0.88, 1.16))
-        for k in range(1, 11):
-            amp = (1.0 / k ** 1.55) * (bright ** (k - 1))
-            ph = float(rng.uniform(0, 6.28))
-            out += amp_l * amp * np.sin(
-                2 * np.pi * fd * k * t + ph
-                + 3.5 * np.exp(-t * 9.0))                 * np.exp(-t * (2.4 + 1.35 * k ** 0.7) * rate)
-    out += 0.09 * rng.standard_normal(n) * np.exp(-t * 70)
-    return vel * out * 0.45
+    for k in range(1, 13):
+        amp = (1.0 / k ** 1.3) * (bright ** (k - 1))
+        fk = f * k * (1.0 + 0.0004 * k * k)   # жёсткость струны
+        out += amp * np.sin(2 * np.pi * fk * t) * np.exp(-t * (2.2 + 1.5 * k ** 0.65))
+    out += 0.07 * rng.standard_normal(n) * np.exp(-t * 90)
+    return vel * out * 0.4
 
 
 def pad_voice(f, dur, vel=1.0):
@@ -86,7 +81,7 @@ def drone(f, dur, vel=0.8):
     n = int(dur * SR)
     t = np.arange(n) / SR
     v = np.sin(2 * np.pi * f * t) \
-        + 0.62 * np.sin(2 * np.pi * f * 0.5 * t + 0.4) \
+        + (0.62 * np.sin(2 * np.pi * f * 0.5 * t + 0.4) if f >= 48.0 else 0.0) \
         + 0.22 * np.sin(2 * np.pi * f * 2.0 * t + 1.1)
     v *= 0.86 + 0.14 * np.sin(2 * np.pi * 0.07 * t)
     return vel * fft_lp(v * env_ar(n, 2.2, 2.4), 700) / 1.7
@@ -177,7 +172,7 @@ PROG = [
     ("A", [57, 60, 64]), ("F", [53, 57, 60]), ("C", [48, 52, 55]), ("E", [52, 55, 59]),
     ("A", [57, 60, 64]), ("F", [53, 57, 60]), ("G", [55, 59, 62]), ("E", [52, 55, 59]),
 ]
-BASS = {"A": 33, "F": 29, "C": 36, "E": 28, "G": 31}
+BASS = {"A": 33, "F": 41, "C": 36, "E": 40, "G": 43}   # ниже 48 Гц дрон мутнеет
 SCALE = [69, 72, 74, 76, 79, 81]   # ля-минор пентатоника (A4..A5)
 # мотив гуслей: (доля в такте, индекс ноты, длительность, вел)
 MOTIF = [
@@ -211,11 +206,11 @@ for cycle in range(2):
         k = (cycle * len(PROG) + i) % (len(MOTIF) // 3)
         for off, ni, dur, vel in MOTIF[k * 3: k * 3 + 3]:
             sig = pluck(midi2f(SCALE[ni]), dur, vel)
-            tt = t0 + off * BAR / 4.0 + float(rng.uniform(-0.02, 0.02))
-            pan = float(rng.uniform(-0.35, 0.35))
+            tt = t0 + off * BAR / 4.0 + float(rng.uniform(-0.015, 0.015))
+            pan = float(rng.uniform(-0.3, 0.3))
             ev.append((tt, sig, pan))
-            if dur >= 0.9 and float(rng.uniform()) < 0.4:
-                ev.append((tt + BAR / 8.0, sig * 0.3, pan * 0.5))
+            # стерео-дубль 11мс с той же нотой — блеск, не чужая нота
+            ev.append((tt + 0.011, sig * 0.42, -pan))
         # редкий тёплый колокол на сильную долю каждого 4-го такта
         if i % 4 == 2:
             ev.append((t0, pluck(midi2f(SCALE[4]) * 0.5, 3.5, 0.16), -0.15))
@@ -277,11 +272,10 @@ for cycle in range(3):
         k2 = (cycle * len(PROG) + i) % (len(MELO) // 3)
         for off, ni, dur, vel in MELO[k2 * 3: k2 * 3 + 3]:
             sig = pluck(midi2f(SCALE[ni]), dur, vel)
-            tt = t0 + off * BAR / 4.0 + float(rng.uniform(-0.02, 0.02))
-            pan = float(rng.uniform(-0.4, 0.4))
+            tt = t0 + off * BAR / 4.0 + float(rng.uniform(-0.015, 0.015))
+            pan = float(rng.uniform(-0.35, 0.35))
             ev.append((tt, sig, pan))
-            if dur >= 0.9 and float(rng.uniform()) < 0.35:
-                ev.append((tt + BAR / 8.0, sig * 0.28, pan * 0.5))
+            ev.append((tt + 0.011, sig * 0.4, -pan))
         # птицы: 1-2 щелчка в такте через такт, тише на 2-м круге
         if (cycle * len(PROG) + i) % 2 == 1:
             tt = t0 + rng.uniform(0.2, BAR - 0.4)
