@@ -69,13 +69,14 @@ func _test_sfx() -> void:
 	_check(true, "play в headless не падает")
 
 	# 4) директор: карта состояние -> трек (чистая функция)
-	_check(SfxLib.track_for({"scene": "menu"}) == "mus_menu", "меню — тема меню")
+	# v3.0.4: меню/рейд — треки v3; город днём/ночью — сезонные по state.season
+	_check(SfxLib.track_for({"scene": "menu"}) == "mus_menu_v3", "меню — тема меню v3")
 	_check(SfxLib.track_for({"scene": "city", "night": false}) == "mus_city_day",
-			"город днём — гусли-день")
+			"город днём без сезона — прежний трек (фолбэк)")
 	_check(SfxLib.track_for({"scene": "city", "night": true}) == "mus_city_night",
-			"город ночью — свирель")
-	_check(SfxLib.track_for({"scene": "city", "raid": true}) == "mus_city_day",
-			"осада: база дня + слой тревоги")
+			"город ночью без сезона — прежний трек (фолбэк)")
+	_check(SfxLib.track_for({"scene": "city", "raid": true}) == "mus_battle_v3",
+			"осада — боевой трек v3")
 	_check(SfxLib.track_for({"scene": "dungeon"}) == "mus_dungeon_base",
 			"данж — кифара-база")
 	_check(SfxLib.track_for({"scene": "dungeon", "dark_biome": true}) == "mus_dungeon_dark",

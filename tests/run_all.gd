@@ -309,6 +309,10 @@ const BLOCKS := [
 		"_test_no_build_on_trees_and_zones",
 		"_test_scales",
 ]],
+	["res://tests/test_v304.gd", [
+		"_test_manifest_wiring",
+		"_test_track_for",
+]],
 ]
 
 

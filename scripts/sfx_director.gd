@@ -43,6 +43,9 @@ func _compute_state() -> Dictionary:
 			st["raid"] = bool(sim.raid_active) or bool(sim._raid_warned)
 			st["festival"] = bool(sim._festival_today())
 			st["busy"] = sim.residents.size() >= 10
+			# v3.0.4: сезон -> сезонный трек города (data/music.json -> seasons)
+			if sim.has_method("season"):
+				st["season"] = String(sim.season())
 			st["amb"] = "storm" if sim.storm_state != "" else ""
 	elif path.ends_with("dungeon.gd"):
 		st["scene"] = "dungeon"

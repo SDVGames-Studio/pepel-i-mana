@@ -155,7 +155,14 @@ static func track_for(state: Dictionary) -> String:
 		if p > best_p:
 			best_p = p
 			best = cand
-	return String((states.get(best, {}) as Dictionary).get("music", "mus_city_day"))
+	var out := String((states.get(best, {}) as Dictionary).get("music", "mus_city_day"))
+	# v3.0.4: сезонные треки города — states.<ключ>.seasons.<сезон>
+	if best == "city_day" or best == "city_night":
+		var seasons: Dictionary = (states.get(best, {}) as Dictionary).get("seasons", {})
+		var ssn := String(state.get("season", ""))
+		if (seasons as Dictionary).has(ssn):
+			out = String((seasons as Dictionary)[ssn])
+	return out
 
 
 static func _switch_music(track: String) -> void:

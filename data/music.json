@@ -1,5 +1,5 @@
 {
-  "_note": "Музыкальный манифест v1.65 (программа «Оживление», аспект 1). Все файлы генерирует tools/make_sounds.py (детерминирован). Инструменты — славянские (гусли/домра/балалайка/свирель/кугиклы/рожок/жалейка/било/трещотки/ложки/бубен) и греческие (кифара/арфа/авлос/сиринга/тимпан/кимвалы). Правки: скажите агенту «трек X — медленнее/ниже/громче» — правится здесь + перегенерация.",
+  "_note": "Музыкальный манифест v1.65 (программа «Оживление», аспект 1). Все файлы генерирует tools/make_sounds.py (детерминирован). Инструменты — славянские (гусли/домра/балалайка/свирель/кугиклы/рожок/жалейка/било/трещотки/ложки/бубен) и греческие (кифара/арфа/авлос/сиринга/тимпан/кимвалы). Правки: скажите агенту «трек X — медленнее/ниже/громче» — правится здесь + перегенерация. v3.0.4: меню/город по сезонам/бой — новые треки tools/make_music_v3.py (гусли-перебор, пэды, реверб); мир/данж/босс/праздник — прежние, следующая итерация.",
   "crossfade": 1.5,
   "sfx": {
     "hit": {
@@ -198,18 +198,28 @@
   },
   "states": {
     "menu": {
-      "music": "mus_menu",
+      "music": "mus_menu_v3",
       "layers": {}
     },
     "city_day": {
       "music": "mus_city_day",
-      "layers": {
-        "busy": "mus_city_layer"
+      "layers": {},
+      "seasons": {
+        "spring": "mus_city_spring_v3",
+        "summer": "mus_city_summer_v3",
+        "autumn": "mus_city_autumn_v3",
+        "winter": "mus_city_winter_v3"
       }
     },
     "city_night": {
       "music": "mus_city_night",
-      "layers": {}
+      "layers": {},
+      "seasons": {
+        "spring": "mus_city_spring_v3",
+        "summer": "mus_city_summer_v3",
+        "autumn": "mus_city_autumn_v3",
+        "winter": "mus_city_winter_v3"
+      }
     },
     "city_festival": {
       "music": "mus_festival",
@@ -218,10 +228,8 @@
       }
     },
     "raid": {
-      "music": "mus_city_day",
-      "layers": {
-        "raid": "mus_raid_drums"
-      }
+      "music": "mus_battle_v3",
+      "layers": {}
     },
     "world": {
       "music": "mus_world",
