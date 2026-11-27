@@ -43,15 +43,27 @@ def env_ar(n, atk, rel):
 
 
 def pluck(f, dur, vel=1.0):
-    """Щипковая струна (гусли/цитра): гармоники с разными спадами + щелчок."""
+    """Живая щипковая струна: два расстроенных слоя, глайд натяжения,
+    яркость от силы щипка, неровный спад, человеческий питч/тайминг
+    снаружи не нужен — здесь же."""
+    vel = vel * float(rng.uniform(0.88, 1.12))
+    f = f * 2 ** (float(rng.uniform(-7, 7)) / 1200.0)
+    dur = dur * float(rng.uniform(0.92, 1.12))
     n = int(dur * SR)
     t = np.arange(n) / SR
+    bright = min(1.0, 0.45 + vel * 0.75)
     out = np.zeros(n)
-    for k in range(1, 9):
-        out += (1.0 / k ** 1.55) * np.sin(2 * np.pi * f * k * (1 + 0.0007 * k) * t + 0.7 * k) \
-            * np.exp(-t * (2.4 + 1.35 * k ** 0.7))
-    out += 0.12 * rng.standard_normal(n) * np.exp(-t * 55)
-    return vel * out * 0.5
+    for det, amp_l in ((-4.6, 0.72), (3.9, 0.52)):
+        fd = f * 2 ** (det / 1200.0)
+        rate = float(rng.uniform(0.88, 1.16))
+        for k in range(1, 11):
+            amp = (1.0 / k ** 1.55) * (bright ** (k - 1))
+            ph = float(rng.uniform(0, 6.28))
+            out += amp_l * amp * np.sin(
+                2 * np.pi * fd * k * t + ph
+                + 3.5 * np.exp(-t * 9.0))                 * np.exp(-t * (2.4 + 1.35 * k ** 0.7) * rate)
+    out += 0.09 * rng.standard_normal(n) * np.exp(-t * 70)
+    return vel * out * 0.45
 
 
 def pad_voice(f, dur, vel=1.0):
@@ -193,13 +205,17 @@ for cycle in range(2):
         total = t0 + BAR
         for j, m in enumerate(chord):
             pan = -0.35 + 0.35 * j
-            ev.append((t0, pad_voice(midi2f(m), BAR * 1.05, 0.5), pan))
-        ev.append((t0, drone(midi2f(BASS[root]), BAR * 1.05, 0.55), 0.0))
+            ev.append((t0 + 0.045 * j, pad_voice(midi2f(m), BAR * 1.05 - 0.045 * j, 0.5), pan))
+        bass_m = BASS[root] + (7 if i % 4 == 3 else 0)
+        ev.append((t0, drone(midi2f(bass_m), BAR * 1.05, 0.55 if i % 4 == 3 else 0.5), 0.0))
         k = (cycle * len(PROG) + i) % (len(MOTIF) // 3)
         for off, ni, dur, vel in MOTIF[k * 3: k * 3 + 3]:
-            ev.append((t0 + off * BAR / 4.0,
-                       pluck(midi2f(SCALE[ni]), dur, vel),
-                       0.25 * np.sin(i * 1.3 + cycle)))
+            sig = pluck(midi2f(SCALE[ni]), dur, vel)
+            tt = t0 + off * BAR / 4.0 + float(rng.uniform(-0.02, 0.02))
+            pan = float(rng.uniform(-0.35, 0.35))
+            ev.append((tt, sig, pan))
+            if dur >= 0.9 and float(rng.uniform()) < 0.4:
+                ev.append((tt + BAR / 8.0, sig * 0.3, pan * 0.5))
         # редкий тёплый колокол на сильную долю каждого 4-го такта
         if i % 4 == 2:
             ev.append((t0, pluck(midi2f(SCALE[4]) * 0.5, 3.5, 0.16), -0.15))
@@ -250,8 +266,9 @@ for cycle in range(3):
         t0 = (cycle * len(PROG) + i) * BAR
         total = t0 + BAR
         for j, m in enumerate(chord):
-            ev.append((t0, pad_voice(midi2f(m), BAR * 1.04, 0.42), -0.35 + 0.35 * j))
-        ev.append((t0, drone(midi2f(BASS[root]), BAR * 1.04, 0.5), 0.0))
+            ev.append((t0 + 0.045 * j, pad_voice(midi2f(m), BAR * 1.04 - 0.045 * j, 0.42), -0.35 + 0.35 * j))
+        bass_m = BASS[root] + (7 if i % 4 == 3 else 0)
+        ev.append((t0, drone(midi2f(bass_m), BAR * 1.04, 0.42 if i % 4 == 3 else 0.5), 0.0))
         # обрядовый барабан: сильная доля + мягкая третья
         ev.append((t0, thump(0.42), -0.1))
         ev.append((t0 + 2 * BAR / 4.0, thump(0.2), 0.1))
@@ -259,8 +276,12 @@ for cycle in range(3):
         ev.append((t0 + 3.5 * BAR / 4.0, tick(0.06), -0.3))
         k2 = (cycle * len(PROG) + i) % (len(MELO) // 3)
         for off, ni, dur, vel in MELO[k2 * 3: k2 * 3 + 3]:
-            ev.append((t0 + off * BAR / 4.0, pluck(midi2f(SCALE[ni]), dur, vel),
-                       0.25 * np.sin(i * 1.7 + cycle * 2)))
+            sig = pluck(midi2f(SCALE[ni]), dur, vel)
+            tt = t0 + off * BAR / 4.0 + float(rng.uniform(-0.02, 0.02))
+            pan = float(rng.uniform(-0.4, 0.4))
+            ev.append((tt, sig, pan))
+            if dur >= 0.9 and float(rng.uniform()) < 0.35:
+                ev.append((tt + BAR / 8.0, sig * 0.28, pan * 0.5))
         # птицы: 1-2 щелчка в такте через такт, тише на 2-м круге
         if (cycle * len(PROG) + i) % 2 == 1:
             tt = t0 + rng.uniform(0.2, BAR - 0.4)
