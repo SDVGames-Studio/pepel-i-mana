@@ -44,15 +44,17 @@ func _test_sfx() -> void:
 		_check((cfg.get("sfx", {}) as Dictionary).has(sid)
 				and _wav_ok("res://assets/audio/sfx/%s.wav" % sid),
 				"вариант v1.68 описан и на месте: %s" % sid)
-	_check(SfxLib.track_for({"scene": "city", "festival": true}) == "mus_festival",
-			"праздник — своя пьеса (не поверх дневной, BPM совпадает)")
+	_check(SfxLib.track_for({"scene": "city", "festival": true}) == "mus_festival_v3",
+			"праздник — своя пьеса v3")
 
 	# 2) амбиент и музыкальные стемы
 	for want in ["amb_day", "amb_night", "amb_dungeon", "amb_raid", "amb_storm"]:
 		_check(_wav_ok("res://assets/audio/amb/%s.wav" % want),
 				"амбиент на месте: %s" % want)
-	for mus in ["mus_menu", "mus_city_day", "mus_city_night", "mus_world",
-			"mus_dungeon_base", "mus_dungeon_dark", "mus_boss_layer", "mus_victory"]:
+	for mus in ["mus_menu_v3", "mus_city_day_v3", "mus_city_night_v3", "mus_world_v3",
+			"mus_dungeon_base_v3", "mus_dungeon_dark_v3", "mus_boss_v3", "mus_festival_v3",
+			"mus_battle_v3", "mus_city_spring_v3", "mus_city_summer_v3",
+			"mus_city_autumn_v3", "mus_city_winter_v3", "mus_boss_layer", "mus_victory"]:
 		_check(_wav_ok("res://assets/audio/music/%s.wav" % mus),
 				"музыкальный стем на месте: %s" % mus)
 	var raid_drums: bool = _wav_ok("res://assets/audio/music/mus_raid_drums.wav") \
@@ -71,20 +73,20 @@ func _test_sfx() -> void:
 	# 4) директор: карта состояние -> трек (чистая функция)
 	# v3.0.4: меню/рейд — треки v3; город днём/ночью — сезонные по state.season
 	_check(SfxLib.track_for({"scene": "menu"}) == "mus_menu_v3", "меню — тема меню v3")
-	_check(SfxLib.track_for({"scene": "city", "night": false}) == "mus_city_day",
-			"город днём без сезона — прежний трек (фолбэк)")
-	_check(SfxLib.track_for({"scene": "city", "night": true}) == "mus_city_night",
-			"город ночью без сезона — прежний трек (фолбэк)")
+	_check(SfxLib.track_for({"scene": "city", "night": false}) == "mus_city_day_v3",
+			"город днём без сезона — фолбэк v3")
+	_check(SfxLib.track_for({"scene": "city", "night": true}) == "mus_city_night_v3",
+			"город ночью без сезона — фолбэк v3")
 	_check(SfxLib.track_for({"scene": "city", "raid": true}) == "mus_battle_v3",
 			"осада — боевой трек v3")
-	_check(SfxLib.track_for({"scene": "dungeon"}) == "mus_dungeon_base",
+	_check(SfxLib.track_for({"scene": "dungeon"}) == "mus_dungeon_base_v3",
 			"данж — кифара-база")
-	_check(SfxLib.track_for({"scene": "dungeon", "dark_biome": true}) == "mus_dungeon_dark",
+	_check(SfxLib.track_for({"scene": "dungeon", "dark_biome": true}) == "mus_dungeon_dark_v3",
 			"тёмный данж — авлос-тьма")
-	_check(SfxLib.track_for({"scene": "dungeon", "boss": true}) == "mus_dungeon_base"
+	_check(SfxLib.track_for({"scene": "dungeon", "boss": true}) == "mus_boss_v3"
 			and SfxLib._state_key({"scene": "dungeon", "boss": true}) == "boss",
-			"босс рядом — слой тимпанов")
-	_check(SfxLib.track_for({"scene": "world"}) == "mus_world", "карта мира — рожок")
+			"босс рядом — своя тема v3")
+	_check(SfxLib.track_for({"scene": "world"}) == "mus_world_v3", "карта мира — степной переход")
 
 	# 5) события города покрыты маппингом
 	for ev in ["raid_warn", "built", "quest_done", "wedding", "birth", "tree_felled"]:

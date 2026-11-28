@@ -36,5 +36,5 @@ func _test_track_for() -> void:
 	_check(SfxLib.track_for({"scene": "city", "raid": true}) == "mus_battle_v3",
 			"рейд -> mus_battle_v3")
 	# без сезона (старые вызовы) — фолбэк на прежний трек
-	_check(SfxLib.track_for({"scene": "city", "night": false}) == "mus_city_day",
+	_check(SfxLib.track_for({"scene": "city", "night": false}) == "mus_city_day_v3",
 			"без сезона — прежний mus_city_day")

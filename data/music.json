@@ -1,5 +1,5 @@
 {
-  "_note": "Музыкальный манифест v1.65 (программа «Оживление», аспект 1). Все файлы генерирует tools/make_sounds.py (детерминирован). Инструменты — славянские (гусли/домра/балалайка/свирель/кугиклы/рожок/жалейка/било/трещотки/ложки/бубен) и греческие (кифара/арфа/авлос/сиринга/тимпан/кимвалы). Правки: скажите агенту «трек X — медленнее/ниже/громче» — правится здесь + перегенерация. v3.0.4: меню/город по сезонам/бой — новые треки tools/make_music_v3.py (гусли-перебор, пэды, реверб); мир/данж/босс/праздник — прежние, следующая итерация.",
+  "_note": "Музыкальный манифест v1.65 (программа «Оживление», аспект 1). Все файлы генерирует tools/make_sounds.py (детерминирован). Инструменты — славянские (гусли/домра/балалайка/свирель/кугиклы/рожок/жалейка/било/трещотки/ложки/бубен) и греческие (кифара/арфа/авлос/сиринга/тимпан/кимвалы). Правки: скажите агенту «трек X — медленнее/ниже/громче» — правится здесь + перегенерация. v3.0.4: меню/город по сезонам/бой — новые треки tools/make_music_v3.py (гусли-перебор, пэды, реверб); мир/данж/босс/праздник — прежние, следующая итерация. v3.1: ВСЯ музыка и ВСЕ 44 SFX — натуральный синтез (KS-струны/мембрана/било), инструменты tools/make_music_v3.py + tools/make_sfx_v3.py.",
   "crossfade": 1.5,
   "sfx": {
     "hit": {
@@ -202,7 +202,7 @@
       "layers": {}
     },
     "city_day": {
-      "music": "mus_city_day",
+      "music": "mus_city_day_v3",
       "layers": {},
       "seasons": {
         "spring": "mus_city_spring_v3",
@@ -212,7 +212,7 @@
       }
     },
     "city_night": {
-      "music": "mus_city_night",
+      "music": "mus_city_night_v3",
       "layers": {},
       "seasons": {
         "spring": "mus_city_spring_v3",
@@ -222,36 +222,28 @@
       }
     },
     "city_festival": {
-      "music": "mus_festival",
-      "layers": {
-        "festival_layer": "mus_festival_layer"
-      }
+      "music": "mus_festival_v3",
+      "layers": {}
     },
     "raid": {
       "music": "mus_battle_v3",
       "layers": {}
     },
     "world": {
-      "music": "mus_world",
-      "layers": {
-        "world_layer": "mus_world_layer"
-      }
+      "music": "mus_world_v3",
+      "layers": {}
     },
     "dungeon": {
-      "music": "mus_dungeon_base",
-      "layers": {
-        "dungeon_magic": "mus_dungeon_magic"
-      }
+      "music": "mus_dungeon_base_v3",
+      "layers": {}
     },
     "dungeon_dark": {
-      "music": "mus_dungeon_dark",
+      "music": "mus_dungeon_dark_v3",
       "layers": {}
     },
     "boss": {
-      "music": "mus_dungeon_base",
-      "layers": {
-        "boss": "mus_boss_layer"
-      }
+      "music": "mus_boss_v3",
+      "layers": {}
     }
   },
   "priority": {
