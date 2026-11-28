@@ -145,10 +145,14 @@ def ks_pluck(f, dur, vel=1.0, damp=0.996, lp=8000, pick=0.28):
     естественный спад, у высоких струн быстрее (как в жизни)."""
     N = max(2, int(SR / f))
     exc = rng.standard_normal(N)
-    exc = fft_lp(exc, min(f * 9.0, lp))
+    exc = fft_lp(exc, min(f * 5.0, lp))
     d = max(1, int(N * pick))
-    exc[d:] -= exc[:-d] * 0.85
-    exc[:d] *= 0.2
+    exc[d:] -= exc[:-d] * 0.45
+    exc[:d] *= 0.45
+    # v3.0.8 «трям»: сшивка хвоста возбуждения с началом — без
+    # безступенчатого оборота буфера нет периодического щелчка
+    m = min(N // 8, 24)
+    exc[N - m:] = np.linspace(exc[N - m], exc[0], m)
     n = int(dur * SR)
     blocks = (n + N - 1) // N
     b = exc.copy()
