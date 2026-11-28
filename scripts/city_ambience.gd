@@ -18,8 +18,9 @@ const WISP_COLOR := Color(0.5, 0.95, 0.85)
 const WISP_COLOR2 := Color(0.45, 0.7, 1.0)
 const FLY_COUNT := 36
 const WISP_COUNT := 22
-const LIGHT_COUNT := 5        # кочующие огни стай (v1.80.1: 8→5, FPS)
-const STREET_LIGHT_MAX := 8    # v2.6.5: откат 14 — 14 PointLight2D роняли ночной FPS   # фонари у домов (v1.80.1: 10→8, FPS)
+const LIGHT_COUNT := 3        # v3.0.5: 5→3 — ночные PointLight2D съедали ~50 FPS
+                              # (замер diag_fps_all: ночь 59 -> 110 без света)
+const STREET_LIGHT_MAX := 6    # v3.0.5: 8→6 (ночь 59->110 без света; радиусы срезаны)
 const VILLAGE_R := 50         # радиус деревни (тайлы) — тут живут стайки
 
 var night := 0.0
@@ -153,11 +154,11 @@ func _sync_street_lights() -> void:
 		if i == 0:
 			l2.position = _fire_pos
 			l2.color = Color(1.0, 0.58, 0.26)
-			l2.texture_scale = 2.6
+			l2.texture_scale = 1.7
 		elif i - 1 < _street.size():
 			l2.position = _street[i - 1]["pos"]
 			l2.color = Color(1.0, 0.72, 0.38)
-			l2.texture_scale = 1.6
+			l2.texture_scale = 1.05
 		else:
 			l2.enabled = false
 			l2.position = Vector2(-99999, -99999)
@@ -208,6 +209,9 @@ func _process(delta: float) -> void:
 		for l in _lights:
 			if l.enabled:
 				l.enabled = false
+	# v3.0.5: diag-режим FPS — изолируем стоимость PointLight2D
+	if OS.get_environment("DIAG_LIGHTS") == "off":
+		return
 		for l2 in _street_lights:
 			if l2.enabled:
 				l2.enabled = false
@@ -216,31 +220,52 @@ func _process(delta: float) -> void:
 	# света дышат и дрейфуют вокруг своих стай; свет «у воды» — по берегу
 	for i in _lights.size():
 		var l: PointLight2D = _lights[i]
-		var base := Vector2.ZERO
-		if i < _lights.size() / 2:
+		# v3.0.5 (заказчик: «огоньки и светлячки не светятся»): свет следует
+		# ЗА САМИМИ существами — 2 тёплых за светлячками, 3 холодных за
+		# огоньками (огонёк дрейфует — свет дрейфует с ним). Число источников
+		# не растёт (5 как было) — FPS ночи не платит.
+		if i < 2:
 			if _flies.is_empty():
 				l.enabled = false
 				continue
-			base = _flies[i % _flies.size()]["base"]
+			var f: Dictionary = _flies[i % _flies.size()]
+			l.color = FLY_COLOR
+			l.texture_scale = 1.5
+			l.position = (f["base"] as Vector2) + Vector2(
+					sin(_time * 0.9 + float(f["phase"])) * float(f["span"]),
+					sin(_time * 1.3 + float(f["phase"]) * 1.6) * float(f["span"]) * 0.6)
+			l.energy = night * (0.85 + 0.2 * sin(_time * 3.0 + float(f["phase"]) * 2.0))
 		else:
-			if _lowlands.is_empty() or map == null:
+			var wi := (i - 2) * 7 % maxi(1, _wisps.size())
+			if _wisps.is_empty():
 				l.enabled = false
 				continue
-			base = map.tile_center_px(_lowlands[i % _lowlands.size()])
-		var t2 := _time * 0.13 + float(i) * 2.1
-		l.enabled = true
-		l.position = base + Vector2(sin(t2) * 22.0, cos(t2 * 0.8) * 15.0)
-		l.energy = night * (0.35 + 0.15 * sin(_time * 1.2 + float(i) * 1.9))
+			var w: Dictionary = _wisps[wi]
+			l.color = WISP_COLOR
+			l.texture_scale = 1.0
+			l.position = (w["base"] as Vector2) + Vector2(
+					sin(_time * 0.5 + float(w["phase"])) * float(w["span"]),
+					cos(_time * 0.7 + float(w["phase"]) * 1.2) * 3.0)
+			l.energy = night * (1.0 + 0.25 * sin(_time * 1.7 + float(w["phase"]) * 3.0))
+		l.enabled = _on_screen(l.position)
 	# v1.79.14: уличные огни — костёр и фонари домов
 	for i in _street_lights.size():
 		var l3: PointLight2D = _street_lights[i]
 		if i == 0:
-			l3.enabled = true
+			l3.enabled = _on_screen(l3.position)
 			l3.energy = night * (0.85 + 0.15 * sin(_time * 7.0))   # пламя живое
 		elif i - 1 < _street.size():
-			l3.enabled = true
+			l3.enabled = _on_screen(l3.position)
 			l3.energy = lights_night * (0.6 + 0.08 * sin(_time * 2.3 + _street[i - 1]["fl"]))
 		# выключенные (лишние) уже спрятаны в _sync_street_lights
+
+
+## Источник на экране? Вне кадра PointLight2D не рендерится вовсе —
+## ночью при панораме это половина стоимости света (v3.0.5, diag_fps_all).
+func _on_screen(pos: Vector2) -> bool:
+	var xf := get_viewport_transform()
+	var vis := (xf.affine_inverse() * get_viewport_rect()).grow(map.ts * 3.0)
+	return vis.has_point(pos)
 
 
 ## Детерминированный «случайный» для setup (важен стабильный вид, не честность).
@@ -278,8 +303,8 @@ func _draw() -> void:
 		var blink := 0.55 + 0.45 * sin(_time * 3.0 + f["phase"] * 2.0)
 		var col: Color = FLY_COLOR.lerp(FLY_COLOR2, 0.5 + 0.5 * sin(_time * 0.4 + f["phase"]))
 		# трёхслойное свечение: гало → ореол → ядро
-		draw_circle(pos, 7.0, Color(col.r, col.g, col.b, 0.10 * night))
-		draw_circle(pos, 3.2, Color(col.r, col.g, col.b, 0.34 * night * blink))
+		draw_circle(pos, 9.0, Color(col.r, col.g, col.b, 0.16 * night))
+		draw_circle(pos, 4.0, Color(col.r, col.g, col.b, 0.5 * night * blink))
 		draw_circle(pos, 1.4, Color(1.0, 0.98, 0.85, night * blink))
 		# искры-блики у каждой третьей
 		if i % 3 == 0:
@@ -293,8 +318,8 @@ func _draw() -> void:
 				cos(_time * 0.7 + w["phase"] * 1.2) * 3.0)
 		var flicker := 0.5 + 0.5 * sin(_time * 1.7 + w["phase"] * 3.0)
 		var col2: Color = WISP_COLOR.lerp(WISP_COLOR2, 0.5 + 0.5 * sin(_time * 0.3 + w["phase"]))
-		draw_circle(pos2, 10.0, Color(col2.r, col2.g, col2.b, 0.09 * night))
-		draw_circle(pos2, 5.0, Color(col2.r, col2.g, col2.b, 0.26 * night * flicker))
+		draw_circle(pos2, 13.0, Color(col2.r, col2.g, col2.b, 0.17 * night))
+		draw_circle(pos2, 6.0, Color(col2.r, col2.g, col2.b, 0.45 * night * flicker))
 		draw_circle(pos2, 2.0, Color(0.92, 1.0, 0.98, night * flicker))
 		# «дыхание» огонька: расходящееся кольцо
 		var ripple := fmod(_time * 0.6 + w["phase"], 2.0)
