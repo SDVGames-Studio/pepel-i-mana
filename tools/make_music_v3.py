@@ -163,10 +163,10 @@ def ks_pluck(f, dur, vel=1.0, damp=0.996, lp=8000, pick=0.28):
     return vel * fft_lp(out[:n], 7000)
 
 
-def ks_bass(f, dur, vel=1.0, damp=0.9993):
+def ks_bass(f, dur, vel=1.0, damp=0.9993, pick=0.42):
     """Низкая струна: медленный KS-спад + lowpass в тело — тяжесть без
     синтетического гула."""
-    return vel * fft_lp(ks_pluck(f, dur, 1.0, damp=damp, lp=1400, pick=0.42), 520)
+    return vel * fft_lp(ks_pluck(f, dur, 1.0, damp=damp, lp=1400, pick=pick), 520)
 
 
 def thump2(vel=0.5):
@@ -492,18 +492,18 @@ for cycle in range(2):
         for j, m in enumerate(chord):
             ev.append((t0 + 0.09 * j,
                        ks_pluck(midi2f(m), BAR * 1.6 - 0.09 * j, 0.3,
-                                damp=0.9975, lp=4200),
+                                damp=0.9985, lp=2400, pick=0.45),
                        -0.35 + 0.35 * j))
         # сердце: глухой удар через такт
         if (cycle * len(PROG) + i) % 2 == 0:
-            ev.append((t0, thump2(0.32), 0.0))
+            ev.append((t0, bell2(midi2f(40), 4.0, 0.22), 0.0))
         # било на первом и пятом тактах круга
         if i == 0 or i == 4:
             ev.append((t0, bell2(midi2f(64), 7.0, 0.42), -0.2))
         # льдинка: одна струна на такт
         k4 = (cycle * len(PROG) + i) % len(WIN_MELO)
         off, ni, dur = WIN_MELO[k4]
-        sig = ks_pluck(midi2f(SCALE[ni]), dur, 0.3, damp=0.997, lp=7000)
+        sig = ks_pluck(midi2f(SCALE[ni]), dur, 0.3, damp=0.997, lp=5000, pick=0.45)
         tt = t0 + off * BAR / 4.0 + float(rng.uniform(-0.015, 0.015))
         pan = float(rng.uniform(-0.3, 0.3))
         ev.append((tt, sig, pan))
@@ -533,13 +533,13 @@ def _battle_bar(t0, root, chord, section, bar_i):
     for j, m in enumerate(chord):
         ev.append((t0 + 0.02 * j,
                    ks_pluck(midi2f(m + 12), 0.5 - 0.02 * j, 0.5,
-                            damp=0.9935, lp=6000),
+                            damp=0.9935, lp=6000, pick=0.12),
                    -0.3 + 0.3 * j))
     if section != "A" and bar_i % 2 == 1:
         ev.append((t0 + BAR * 0.375,
-                   ks_pluck(midi2f(chord[2] + 24), 0.35, 0.4, damp=0.9935, lp=6500),
+                   ks_pluck(midi2f(chord[2] + 24), 0.35, 0.4, damp=0.9935, lp=6500, pick=0.12),
                    0.2))
-    ev.append((t0, ks_bass(midi2f(BASS[root]), BAR * 1.05, 0.7, damp=0.9975), 0.0))
+    ev.append((t0, ks_bass(midi2f(BASS[root]), BAR * 1.05, 0.7, damp=0.9975, pick=0.15), 0.0))
     # мембрана: все доли + шестнадцатые тики перекличкой
     for b in range(4):
         ev.append((t0 + b * BAR / 4.0, thump2(0.6 if b % 2 == 0 else 0.38), 0.0))
@@ -551,18 +551,18 @@ def _battle_bar(t0, root, chord, section, bar_i):
         ev.append((t0 + BAR * 0.875, thump2(0.55), 0.0))
     # остинато: восьмые KS-струны, в B — перекличка рифом и высокими
     for k5 in range(8):
-        sig = ks_pluck(midi2f(OST[k5]), 0.45, 0.34, damp=0.994, lp=6500)
+        sig = ks_pluck(midi2f(OST[k5]), 0.45, 0.34, damp=0.994, lp=6500, pick=0.12)
         ev.append((t0 + k5 * BAR / 8.0, sig, 0.3 * np.sin(k5 + bar_i)))
     if section == "B":
         for k6 in range(4):
             m = RIFF[(bar_i * 4 + k6) % len(RIFF)]
             ev.append((t0 + k6 * BAR / 4.0 + BAR / 16.0,
-                       ks_pluck(midi2f(m + 12), 0.45, 0.36, damp=0.994, lp=6500),
+                       ks_pluck(midi2f(m + 12), 0.45, 0.36, damp=0.994, lp=6500, pick=0.12),
                        -0.3 * np.sin(bar_i + k6)))
         if bar_i % 2 == 0:
             ev.append((t0 + BAR * 0.5,
                        ks_pluck(midi2f(HIGH[(bar_i // 2) % len(HIGH)] + 12), 0.5, 0.22,
-                                damp=0.994, lp=7000), 0.4))
+                                damp=0.994, lp=7000, pick=0.12), 0.4))
 
 
 for cycle in range(6):
